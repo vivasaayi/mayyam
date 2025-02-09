@@ -1,14 +1,11 @@
 package org.poriyiyal.mayyam.kubernetes.services;
 
 import io.kubernetes.client.openapi.ApiClient;
-import io.kubernetes.client.openapi.ApiException;
 import io.kubernetes.client.openapi.Configuration;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.models.V1Pod;
 import io.kubernetes.client.openapi.models.V1PodList;
 import io.kubernetes.client.util.Config;
-
-import java.io.IOException;
 
 public class KubernetesService {
     public void initialize() throws Exception {
