@@ -10,7 +10,7 @@ const RDSClustersTable = () => {
     const [selectedClusters, setSelectedClusters] = useState([]);
 
     useEffect(() => {
-        fetch('/api/rds-clusters')
+        fetch('/api/rds/clusters')
             .then(response => response.json())
             .then(data => setClusters(data))
             .catch(error => console.error('Error fetching RDS clusters:', error));
@@ -22,7 +22,7 @@ const RDSClustersTable = () => {
 
     const handleScaleDown = () => {
         if (window.confirm('Are you sure you want to scale down the selected clusters?')) {
-            fetch('/api/scale-down', {
+            fetch('/api/rds/scale-down', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

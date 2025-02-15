@@ -36,7 +36,9 @@
     "react-redux": "^9.2.0",
     "react-router-dom": "^7.1.5",
     "redux": "5.0.1",
-    "simplebar-react": "^3.3.0"
+    "simplebar-react": "^3.3.0",
+    "ag-grid-react": "^29.0.0",
+    "ag-grid-community": "^29.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
