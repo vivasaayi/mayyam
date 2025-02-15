@@ -23,4 +23,20 @@ public class CsvExportService {
             throw new IOException("Error writing CSV file: " + e.getMessage(), e);
         }
     }
+
+    public <T> void exportDataAsCsv(List<String[]> data, String[] headers, String filePath, char delimiter) throws IOException {
+        java.nio.file.Path path = java.nio.file.Paths.get(filePath);
+        if (!java.nio.file.Files.exists(path.getParent())) {
+            throw new IOException("Directory does not exist: " + path.getParent());
+        }
+
+        try (CSVWriter writer = new CSVWriter(new FileWriter(filePath), delimiter, CSVWriter.NO_QUOTE_CHARACTER, CSVWriter.DEFAULT_ESCAPE_CHARACTER, CSVWriter.DEFAULT_LINE_END)) {
+            writer.writeNext(headers);
+            for (String[] row : data) {
+                writer.writeNext(row);
+            }
+        } catch (IOException e) {
+            throw new IOException("Error writing CSV file: " + e.getMessage(), e);
+        }
+    }
 }

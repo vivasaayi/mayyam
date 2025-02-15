@@ -11,12 +11,14 @@ import java.util.List;
 public class AuroraFailover {
 
     private final AmazonRDS rdsClient;
+    private List<String> globalClusterIdentifiers;
+    private String secondaryRegion;
 
-    public AuroraFailover() {
+    public AuroraFailover(List<String> globalClusterIdentifiers, String secondaryRegion) {
         this.rdsClient = AmazonRDSClientBuilder.defaultClient();
+        this.globalClusterIdentifiers = globalClusterIdentifiers;
+        this.secondaryRegion = secondaryRegion;
         List<GlobalCluster> globalClusters = rdsClient.describeGlobalClusters(new DescribeGlobalClustersRequest()).getGlobalClusters();
-        List<String> globalClusterIdentifiers = List.of("your-cluster-identifier-1", "your-cluster-identifier-2"); // Add your actual cluster identifiers here
-        String secondaryRegion = "your-secondary-region"; // Define your secondary region here
         for (String globalClusterIdentifier : globalClusterIdentifiers) {
             boolean exists = globalClusters.stream()
                     .anyMatch(gc -> gc.getGlobalClusterIdentifier().equals(globalClusterIdentifier));

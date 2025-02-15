@@ -38,6 +38,15 @@ public class ExportService {
         csvExportService.exportDataAsCsv(data, headers, filePath);
     }
 
+    public void exportBucketsAsCsv(String filePath, char delimiter) throws IOException {
+        List<Bucket> buckets = s3Service.listBuckets();
+        List<String[]> data = buckets.stream()
+                .map(bucket -> new String[]{bucket.name(), bucket.creationDate().toString()})
+                .collect(Collectors.toList());
+        String[] headers = {"Bucket Name", "Creation Date"};
+        csvExportService.exportDataAsCsv(data, headers, filePath, delimiter);
+    }
+
     public void exportBucketsAsExcel(String filePath) throws IOException {
         List<Bucket> buckets = s3Service.listBuckets();
         Workbook workbook = new XSSFWorkbook();
