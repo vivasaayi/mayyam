@@ -14,12 +14,16 @@ import java.util.List;
 @RequestMapping("/api/rds")
 public class RdsController {
 
+    private final RdsService rdsService;
+
     @Autowired
-    private RdsService rdsService;
+    public RdsController(RdsService rdsService) {
+        this.rdsService = rdsService;
+    }
 
     @GetMapping("/instances")
     public List<DBInstance> listInstances() {
-        return rdsService.listInstances();
+        return rdsService.listDBInstances();
     }
 
     @GetMapping("/clusters")

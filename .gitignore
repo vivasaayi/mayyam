@@ -37,3 +37,4 @@ build/
 ### Mac OS ###
 .DS_Store
 reactapp/node_modules
+.gradle

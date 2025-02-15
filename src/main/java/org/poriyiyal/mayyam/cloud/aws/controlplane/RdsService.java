@@ -2,12 +2,14 @@ package org.poriyiyal.mayyam.cloud.aws.controlplane;
 
 import software.amazon.awssdk.services.rds.RdsClient;
 import software.amazon.awssdk.services.rds.model.*;
+import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Scanner;
 import java.util.stream.Collectors;
 
+@Service
 public class RdsService extends BaseAwsService {
     private final RdsClient rdsClient;
 
