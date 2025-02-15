@@ -9,7 +9,13 @@ import software.amazon.awssdk.services.sqs.model.GetQueueUrlResponse;
 import software.amazon.awssdk.services.sqs.model.SqsException;
 import software.amazon.awssdk.services.sqs.model.ListQueuesRequest;
 import software.amazon.awssdk.services.sqs.model.ListQueuesResponse;
+import software.amazon.awssdk.services.sqs.model.GetQueueAttributesRequest;
+import software.amazon.awssdk.services.sqs.model.GetQueueAttributesResponse;
+import software.amazon.awssdk.services.sqs.model.QueueAttributeName;
+
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -75,6 +81,30 @@ public class SqsService extends BaseAwsService {
         }
     }
 
+    public Map<String, Map<QueueAttributeName, String>> listAllQueuesWithDetails() {
+        List<String> allQueueUrls = listAllQueues();
+        Map<String, Map<QueueAttributeName, String>> queueDetailsMap = new HashMap<>();
+
+        List<CompletableFuture<Void>> futures = allQueueUrls.stream()
+                .map(queueUrl -> CompletableFuture.runAsync(() -> {
+                    Map<QueueAttributeName, String> details = getQueueDetails(queueUrl);
+                    synchronized (queueDetailsMap) {
+                        queueDetailsMap.put(queueUrl, details);
+                    }
+                }))
+                .collect(Collectors.toList());
+
+        for (CompletableFuture<Void> future : futures) {
+            try {
+                future.get();
+            } catch (InterruptedException | ExecutionException e) {
+                System.err.println("Error retrieving queue details: " + e.getMessage());
+            }
+        }
+
+        return queueDetailsMap;
+    }
+
     public List<String> listAllQueues() {
         List<String> allQueueUrls = new ArrayList<>();
         String nextToken = null;
@@ -96,30 +126,15 @@ public class SqsService extends BaseAwsService {
         return allQueueUrls;
     }
 
-    public List<String> listAllQueuesParallel() {
-        List<String> allQueueUrls = new ArrayList<>();
-        String nextToken = null;
+    public List<Map<QueueAttributeName, String>> listAllQueuesParallel() {
+        List<String> allQueueUrls = listAllQueues();
 
-        do {
-            try {
-                ListQueuesRequest request = ListQueuesRequest.builder()
-                        .nextToken(nextToken)
-                        .build();
-                ListQueuesResponse response = sqsClient.listQueues(request);
-                allQueueUrls.addAll(response.queueUrls());
-                nextToken = response.nextToken();
-            } catch (SqsException e) {
-                System.err.println(e.awsErrorDetails().errorMessage());
-                throw e;
-            }
-        } while (nextToken != null);
-
-        List<CompletableFuture<String>> futures = allQueueUrls.stream()
+        List<CompletableFuture<Map<QueueAttributeName, String>>> futures = allQueueUrls.stream()
                 .map(queueUrl -> CompletableFuture.supplyAsync(() -> getQueueDetails(queueUrl)))
                 .collect(Collectors.toList());
 
-        List<String> queueDetails = new ArrayList<>();
-        for (CompletableFuture<String> future : futures) {
+        List<Map<QueueAttributeName, String>> queueDetails = new ArrayList<>();
+        for (CompletableFuture<Map<QueueAttributeName, String>> future : futures) {
             try {
                 queueDetails.add(future.get());
             } catch (InterruptedException | ExecutionException e) {
@@ -130,9 +145,17 @@ public class SqsService extends BaseAwsService {
         return queueDetails;
     }
 
-    private String getQueueDetails(String queueUrl) {
-        // Implement the logic to get queue details using the queueUrl
-        // This is a placeholder method and should be implemented as per your requirements
-        return "Details of queue: " + queueUrl;
+    private Map<QueueAttributeName, String> getQueueDetails(String queueUrl) {
+        try {
+            GetQueueAttributesRequest request = GetQueueAttributesRequest.builder()
+                    .queueUrl(queueUrl)
+                    .attributeNames(QueueAttributeName.ALL)
+                    .build();
+            GetQueueAttributesResponse response = sqsClient.getQueueAttributes(request);
+            return response.attributes();
+        } catch (SqsException e) {
+            System.err.println("Error retrieving queue details for " + queueUrl + ": " + e.awsErrorDetails().errorMessage());
+            throw e;
+        }
     }
 }

@@ -1,4 +1,4 @@
-package org.poriyiyal.mayyam.ticketmanagement.controller;
+package org.poriyiyal.mayyam.userinterface.web.controllers.ticketmanagement;
 
 import org.poriyiyal.mayyam.ticketmanagement.entity.Ticket;
 import org.poriyiyal.mayyam.ticketmanagement.service.TicketService;

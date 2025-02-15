@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
+import java.util.Collections;
 
 public class S3Service extends BaseAwsService {
     private final S3Client s3Client;
@@ -48,13 +49,14 @@ public class S3Service extends BaseAwsService {
             System.err.println(e.awsErrorDetails().errorMessage());
         }
     }
+
     public List<Bucket> listBuckets() {
         try {
             ListBucketsResponse listBucketsResponse = s3Client.listBuckets();
             return listBucketsResponse.buckets();
         } catch (S3Exception e) {
             System.err.println(e.awsErrorDetails().errorMessage());
-            return null;
+            return Collections.emptyList();
         }
     }
 
