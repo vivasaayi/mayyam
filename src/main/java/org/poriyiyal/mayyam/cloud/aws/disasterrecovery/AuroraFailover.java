@@ -18,6 +18,9 @@ public class AuroraFailover {
         this.rdsClient = AmazonRDSClientBuilder.defaultClient();
         this.globalClusterIdentifiers = globalClusterIdentifiers;
         this.secondaryRegion = secondaryRegion;
+    }
+
+    public void initializeFailover() {
         List<GlobalCluster> globalClusters = rdsClient.describeGlobalClusters(new DescribeGlobalClustersRequest()).getGlobalClusters();
         for (String globalClusterIdentifier : globalClusterIdentifiers) {
             boolean exists = globalClusters.stream()
