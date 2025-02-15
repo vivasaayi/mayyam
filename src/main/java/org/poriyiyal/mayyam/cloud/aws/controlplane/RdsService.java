@@ -145,4 +145,9 @@ public class RdsService extends BaseAwsService {
             throw e;
         }
     }
+
+    public List<DBCluster> listClusters() {
+        DescribeDbClustersResponse response = rdsClient.describeDBClusters();
+        return response.dbClusters();
+    }
 }

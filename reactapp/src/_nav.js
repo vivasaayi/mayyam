@@ -48,6 +48,18 @@ const _nav = [
     icon: <CIcon icon={cilPencil} customClassName="nav-icon" />,
   },
   {
+    component: CNavItem,
+    name: 'RDS Clusters',
+    to: '/rds-clusters',
+    icon: <CIcon icon={cilChartPie} customClassName="nav-icon" />,
+  },
+  {
+    component: CNavItem,
+    name: 'New Link',
+    to: '/rds-clusterstable',
+    icon: <CIcon icon={cilExternalLink} customClassName="nav-icon" />,
+  },
+  {
     component: CNavTitle,
     name: 'Components',
   },
