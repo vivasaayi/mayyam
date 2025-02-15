@@ -4,8 +4,10 @@ import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.*;
 import software.amazon.awssdk.core.async.SdkPublisher;
 import software.amazon.awssdk.core.exception.SdkException;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
 
 public class S3Service extends BaseAwsService {
     private final S3Client s3Client;
@@ -46,13 +48,13 @@ public class S3Service extends BaseAwsService {
             System.err.println(e.awsErrorDetails().errorMessage());
         }
     }
-
-    public void listBuckets() {
+    public List<Bucket> listBuckets() {
         try {
             ListBucketsResponse listBucketsResponse = s3Client.listBuckets();
-            listBucketsResponse.buckets().forEach(bucket -> System.out.println(bucket.name()));
+            return listBucketsResponse.buckets();
         } catch (S3Exception e) {
             System.err.println(e.awsErrorDetails().errorMessage());
+            return null;
         }
     }
 
