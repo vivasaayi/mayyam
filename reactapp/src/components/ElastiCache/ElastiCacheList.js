@@ -3,10 +3,10 @@ import { AgGridReact } from 'ag-grid-react';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { CButton, CFormSelect } from '@coreui/react';
-import KinesisModal from './KinesisModal';
+import ElastiCacheModal from './ElastiCacheModal';
 import DeleteConfirmationModal from './DeleteConfirmationModal';
 
-const KinesisList = () => {
+const ElastiCacheList = () => {
   const [rowData, setRowData] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -15,22 +15,18 @@ const KinesisList = () => {
   const [region, setRegion] = useState('us-west-2');
 
   useEffect(() => {
-    fetch(`/api/kinesis/list?region=${region}`)
+    fetch(`/api/elasticache/list?region=${region}`)
       .then(response => response.json())
       .then(data => {
-        const formattedData = Object.keys(data).map(key => ({
-          streamName: key,
-          ...data[key]
-        }));
-        setRowData(formattedData);
+        setRowData(data);
       });
   }, [region]);
 
   const columnDefs = [
-    { headerName: 'Stream Name', field: 'streamName', filter: true, sortable: true, checkboxSelection: true },
-    { headerName: 'Stream ARN', field: 'streamARN', filter: true, sortable: true },
-    { headerName: 'Stream Status', field: 'streamStatus', filter: true, sortable: true },
-    { headerName: 'Shards', field: 'shards.length', filter: true, sortable: true }
+    { headerName: 'Cluster ID', field: 'cacheClusterId', filter: true, sortable: true, checkboxSelection: true },
+    { headerName: 'Engine', field: 'engine', filter: true, sortable: true },
+    { headerName: 'Node Type', field: 'cacheNodeType', filter: true, sortable: true },
+    { headerName: 'Status', field: 'cacheClusterStatus', filter: true, sortable: true }
   ];
 
   const defaultColDef = {
@@ -40,63 +36,59 @@ const KinesisList = () => {
     enableRowGroup: true,
   };
 
-  const handleCreate = async (streamName, shardCount) => {
-    const response = await fetch(`/api/kinesis/create?streamName=${streamName}&shardCount=${shardCount}&region=${region}`, {
-      method: 'POST'
+  const handleCreate = async (clusterId, properties) => {
+    const response = await fetch(`/api/elasticache/create?clusterId=${clusterId}&region=${region}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(properties),
     });
     const result = await response.text();
     setMessage(result);
     setShowModal(false);
-    // Refresh the list after creating a new stream
-    fetch(`/api/kinesis/list?region=${region}`)
+    // Refresh the list after creating a new cluster
+    fetch(`/api/elasticache/list?region=${region}`)
       .then(response => response.json())
       .then(data => {
-        const formattedData = Object.keys(data).map(key => ({
-          streamName: key,
-          ...data[key]
-        }));
-        setRowData(formattedData);
+        setRowData(data);
       });
   };
 
   const handleDelete = async () => {
-    const streamNamesAndRegions = selectedRows.reduce((acc, row) => {
-      acc[row.streamName] = region;
+    const clusterIdsAndRegions = selectedRows.reduce((acc, row) => {
+      acc[row.cacheClusterId] = region;
       return acc;
     }, {});
-    const response = await fetch('/api/kinesis/deleteMultiple', {
+    const response = await fetch('/api/elasticache/deleteMultiple', {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(streamNamesAndRegions),
+      body: JSON.stringify(clusterIdsAndRegions),
     });
     const result = await response.text();
     setMessage(result);
     setShowDeleteModal(false);
-    // Refresh the list after deleting streams
-    fetch(`/api/kinesis/list?region=${region}`)
+    // Refresh the list after deleting clusters
+    fetch(`/api/elasticache/list?region=${region}`)
       .then(response => response.json())
       .then(data => {
-        const formattedData = Object.keys(data).map(key => ({
-          streamName: key,
-          ...data[key]
-        }));
-        setRowData(formattedData);
+        setRowData(data);
       });
   };
 
   return (
     <div>
-      <h2>Kinesis Streams</h2>
+      <h2>ElastiCache Clusters</h2>
       <CFormSelect value={region} onChange={(e) => setRegion(e.target.value)}>
         <option value="us-west-2">US West (Oregon)</option>
         <option value="us-east-1">US East (N. Virginia)</option>
         <option value="eu-west-1">EU (Ireland)</option>
         {/* Add more regions as needed */}
       </CFormSelect>
-      <CButton color="primary" onClick={() => setShowModal(true)}>Create Kinesis Stream</CButton>
-      <CButton color="danger" onClick={() => setShowDeleteModal(true)} disabled={selectedRows.length === 0}>Delete Selected Streams</CButton>
+      <CButton color="primary" onClick={() => setShowModal(true)}>Create ElastiCache Cluster</CButton>
+      <CButton color="danger" onClick={() => setShowDeleteModal(true)} disabled={selectedRows.length === 0}>Delete Selected Clusters</CButton>
       {message && <p>{message}</p>}
       <div className="ag-theme-alpine" style={{ height: 600, width: '100%' }}>
         <AgGridReact
@@ -109,10 +101,10 @@ const KinesisList = () => {
           domLayout='autoHeight'
           defaultColDef={defaultColDef}
           groupSelectsChildren={true}
-          autoGroupColumnDef={{ headerName: 'Group', field: 'streamName', cellRenderer: 'agGroupCellRenderer', cellRendererParams: { checkbox: true } }}
+          autoGroupColumnDef={{ headerName: 'Group', field: 'cacheClusterId', cellRenderer: 'agGroupCellRenderer', cellRendererParams: { checkbox: true } }}
         />
       </div>
-      <KinesisModal
+      <ElastiCacheModal
         show={showModal}
         handleClose={() => setShowModal(false)}
         handleCreate={handleCreate}
@@ -127,4 +119,4 @@ const KinesisList = () => {
   );
 };
 
-export default KinesisList;
+export default ElastiCacheList;

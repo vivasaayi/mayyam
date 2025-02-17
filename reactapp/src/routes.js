@@ -22,6 +22,7 @@ const DynamoDbList = React.lazy(() => import('./components/DynamoDb/DynamoDbList
 const S3List = React.lazy(() => import('./components/S3/S3List'))
 const S3Replication = React.lazy(() => import('./components/S3/S3Replication'))
 const DynamoDbReplication = React.lazy(() => import('./components/DynamoDb/DynamoDbReplication'))
+const ElastiCacheModal = React.lazy(() => import('./components/ElastiCache/ElastiCacheModal'))
 
 const routes = [
   { path: '/', exact: true, name: 'Home' },
@@ -39,6 +40,7 @@ const routes = [
   { path: '/s3/list', name: 'S3 Buckets', element: S3List },
   { path: '/s3/replication', name: 'S3 Replication', element: S3Replication },
   { path: '/dynamodb/replication', name: 'DynamoDB Replication', element: DynamoDbReplication },
+  { path: '/elasticache/modal', name: 'ElastiCache Modal', element: ElastiCacheModal },
 ]
 
 export default routes

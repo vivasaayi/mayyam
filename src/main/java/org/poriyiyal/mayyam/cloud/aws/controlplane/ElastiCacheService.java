@@ -1,45 +1,67 @@
 package org.poriyiyal.mayyam.cloud.aws.controlplane;
 
 import org.springframework.stereotype.Service;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.elasticache.ElastiCacheClient;
 import software.amazon.awssdk.services.elasticache.model.*;
 
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.stream.Collectors;
 
 @Service
 public class ElastiCacheService extends BaseAwsService {
-    private final ElastiCacheClient elastiCacheClient;
 
-    public ElastiCacheService() {
-        this.elastiCacheClient = ElastiCacheClient.builder()
-                .region(region)
+    private final ConcurrentMap<Region, ElastiCacheClient> clientCache = new ConcurrentHashMap<>();
+
+    private ElastiCacheClient getElastiCacheClient(String region) {
+        return clientCache.computeIfAbsent(Region.of(region), r -> ElastiCacheClient.builder()
+                .region(r)
                 .credentialsProvider(credentialsProvider)
-                .build();
+                .build());
     }
 
     // Create an ElastiCache cluster
-    public CacheCluster createCacheCluster(String clusterId, String nodeType, int numNodes, String engine) {
-        if (clusterId == null || clusterId.isEmpty() || nodeType == null || nodeType.isEmpty() || engine == null || engine.isEmpty() || numNodes <= 0) {
-            throw new IllegalArgumentException("Invalid input parameters for creating cache cluster");
+    public void createCacheCluster(String region, String clusterId, Map<String, Object> properties) {
+        if (clusterId == null || clusterId.isEmpty()) {
+            throw new IllegalArgumentException("Cluster ID cannot be null or empty");
         }
 
         try {
-            CreateCacheClusterRequest request = CreateCacheClusterRequest.builder()
-                    .cacheClusterId(clusterId)
-                    .cacheNodeType(nodeType)
-                    .numCacheNodes(numNodes)
-                    .engine(engine)
-                    .build();
-            CreateCacheClusterResponse response = elastiCacheClient.createCacheCluster(request);
-            return response.cacheCluster();
+            ElastiCacheClient elastiCacheClient = getElastiCacheClient(region);
+            CreateCacheClusterRequest.Builder requestBuilder = CreateCacheClusterRequest.builder()
+                    .cacheClusterId(clusterId);
+
+            // Set properties from the map
+            properties.forEach((key, value) -> {
+                switch (key) {
+                    case "cacheNodeType":
+                        requestBuilder.cacheNodeType((String) value);
+                        break;
+                    case "engine":
+                        requestBuilder.engine((String) value);
+                        break;
+                    case "numCacheNodes":
+                        requestBuilder.numCacheNodes((Integer) value);
+                        break;
+                    // Add more cases as needed for other properties
+                }
+            });
+
+            elastiCacheClient.createCacheCluster(requestBuilder.build());
+            System.out.println("Cache cluster created successfully: " + clusterId);
         } catch (ElastiCacheException e) {
-            throw new RuntimeException("Failed to create cache cluster: " + e.getMessage(), e);
+            System.err.println("Failed to create cache cluster: " + e.getMessage());
+            throw e;
         }
     }
 
     // Describe ElastiCache clusters
-    public List<CacheCluster> describeCacheClusters() {
+    public List<CacheCluster> describeCacheClusters(String region) {
         try {
+            ElastiCacheClient elastiCacheClient = getElastiCacheClient(region);
             DescribeCacheClustersRequest request = DescribeCacheClustersRequest.builder()
                     .showCacheNodeInfo(true)
                     .build();
@@ -51,12 +73,13 @@ public class ElastiCacheService extends BaseAwsService {
     }
 
     // Describe a specific ElastiCache cluster
-    public CacheCluster describeCacheCluster(String clusterId) {
+    public CacheCluster describeCacheCluster(String region, String clusterId) {
         if (clusterId == null || clusterId.isEmpty()) {
             throw new IllegalArgumentException("Invalid input parameter for describing cache cluster");
         }
 
         try {
+            ElastiCacheClient elastiCacheClient = getElastiCacheClient(region);
             DescribeCacheClustersRequest request = DescribeCacheClustersRequest.builder()
                     .cacheClusterId(clusterId)
                     .showCacheNodeInfo(true)
@@ -69,29 +92,32 @@ public class ElastiCacheService extends BaseAwsService {
     }
 
     // Delete an ElastiCache cluster
-    public CacheCluster deleteCacheCluster(String clusterId) {
+    public void deleteCacheCluster(String region, String clusterId) {
         if (clusterId == null || clusterId.isEmpty()) {
-            throw new IllegalArgumentException("Invalid input parameter for deleting cache cluster");
+            throw new IllegalArgumentException("Cluster ID cannot be null or empty");
         }
 
         try {
+            ElastiCacheClient elastiCacheClient = getElastiCacheClient(region);
             DeleteCacheClusterRequest request = DeleteCacheClusterRequest.builder()
                     .cacheClusterId(clusterId)
                     .build();
-            DeleteCacheClusterResponse response = elastiCacheClient.deleteCacheCluster(request);
-            return response.cacheCluster();
+            elastiCacheClient.deleteCacheCluster(request);
+            System.out.println("Cache cluster deleted successfully: " + clusterId);
         } catch (ElastiCacheException e) {
-            throw new RuntimeException("Failed to delete cache cluster: " + e.getMessage(), e);
+            System.err.println("Failed to delete cache cluster: " + e.getMessage());
+            throw e;
         }
     }
 
     // Modify an ElastiCache cluster
-    public CacheCluster modifyCacheCluster(String clusterId, String nodeType, int numNodes) {
+    public CacheCluster modifyCacheCluster(String region, String clusterId, String nodeType, int numNodes) {
         if (clusterId == null || clusterId.isEmpty() || nodeType == null || nodeType.isEmpty() || numNodes <= 0) {
             throw new IllegalArgumentException("Invalid input parameters for modifying cache cluster");
         }
 
         try {
+            ElastiCacheClient elastiCacheClient = getElastiCacheClient(region);
             ModifyCacheClusterRequest request = ModifyCacheClusterRequest.builder()
                     .cacheClusterId(clusterId)
                     .cacheNodeType(nodeType)
@@ -106,8 +132,9 @@ public class ElastiCacheService extends BaseAwsService {
     }
 
     // List replication groups
-    public List<ReplicationGroup> listReplicationGroups() {
+    public List<ReplicationGroup> listReplicationGroups(String region) {
         try {
+            ElastiCacheClient elastiCacheClient = getElastiCacheClient(region);
             DescribeReplicationGroupsRequest request = DescribeReplicationGroupsRequest.builder().build();
             DescribeReplicationGroupsResponse response = elastiCacheClient.describeReplicationGroups(request);
             return response.replicationGroups();
@@ -117,12 +144,13 @@ public class ElastiCacheService extends BaseAwsService {
     }
 
     // Describe a specific replication group
-    public ReplicationGroup describeReplicationGroup(String replicationGroupId) {
+    public ReplicationGroup describeReplicationGroup(String region, String replicationGroupId) {
         if (replicationGroupId == null || replicationGroupId.isEmpty()) {
             throw new IllegalArgumentException("Invalid input parameter for describing replication group");
         }
 
         try {
+            ElastiCacheClient elastiCacheClient = getElastiCacheClient(region);
             DescribeReplicationGroupsRequest request = DescribeReplicationGroupsRequest.builder()
                     .replicationGroupId(replicationGroupId)
                     .build();

@@ -1,18 +1,9 @@
 package org.poriyiyal.mayyam.cloud.aws.controlplane;
 
 import org.springframework.stereotype.Service;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sqs.SqsClient;
-import software.amazon.awssdk.services.sqs.model.CreateQueueRequest;
-import software.amazon.awssdk.services.sqs.model.CreateQueueResponse;
-import software.amazon.awssdk.services.sqs.model.DeleteQueueRequest;
-import software.amazon.awssdk.services.sqs.model.GetQueueUrlRequest;
-import software.amazon.awssdk.services.sqs.model.GetQueueUrlResponse;
-import software.amazon.awssdk.services.sqs.model.SqsException;
-import software.amazon.awssdk.services.sqs.model.ListQueuesRequest;
-import software.amazon.awssdk.services.sqs.model.ListQueuesResponse;
-import software.amazon.awssdk.services.sqs.model.GetQueueAttributesRequest;
-import software.amazon.awssdk.services.sqs.model.GetQueueAttributesResponse;
-import software.amazon.awssdk.services.sqs.model.QueueAttributeName;
+import software.amazon.awssdk.services.sqs.model.*;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -24,38 +15,88 @@ import java.util.stream.Collectors;
 
 @Service
 public class SqsService extends BaseAwsService {
-    private final SqsClient sqsClient;
 
-    public SqsService() {
-        this.sqsClient = SqsClient.builder()
-                .region(region)
+    private SqsClient getSqsClient(String region) {
+        return SqsClient.builder()
+                .region(Region.of(region))
                 .credentialsProvider(credentialsProvider)
                 .build();
     }
 
-    public String createQueue(String queueName) {
+    public void createQueue(String queueName, String region) {
         if (queueName == null || queueName.isEmpty()) {
             throw new IllegalArgumentException("Queue name cannot be null or empty");
         }
 
         try {
+            SqsClient sqsClient = getSqsClient(region);
             CreateQueueRequest request = CreateQueueRequest.builder()
                     .queueName(queueName)
                     .build();
-            CreateQueueResponse response = sqsClient.createQueue(request);
-            return response.queueUrl();
+            sqsClient.createQueue(request);
+            System.out.println("Queue created successfully: " + queueName);
         } catch (SqsException e) {
-            System.err.println(e.awsErrorDetails().errorMessage());
+            System.err.println("Failed to create queue: " + e.getMessage());
             throw e;
         }
     }
 
-    public String getQueueUrl(String queueName) {
+    public void deleteQueue(String queueUrl, String region) {
+        if (queueUrl == null || queueUrl.isEmpty()) {
+            throw new IllegalArgumentException("Queue URL cannot be null or empty");
+        }
+
+        try {
+            SqsClient sqsClient = getSqsClient(region);
+            DeleteQueueRequest request = DeleteQueueRequest.builder()
+                    .queueUrl(queueUrl)
+                    .build();
+            sqsClient.deleteQueue(request);
+            System.out.println("Queue deleted successfully: " + queueUrl);
+        } catch (SqsException e) {
+            System.err.println("Failed to delete queue: " + e.getMessage());
+            throw e;
+        }
+    }
+
+    public Map<String, String> listQueues(String region) {
+        try {
+            SqsClient sqsClient = getSqsClient(region);
+            ListQueuesResponse response = sqsClient.listQueues();
+            return response.queueUrls().stream()
+                    .collect(Collectors.toMap(queueUrl -> queueUrl, queueUrl -> queueUrl));
+        } catch (SqsException e) {
+            System.err.println("Failed to list queues: " + e.getMessage());
+            throw e;
+        }
+    }
+
+    public Map<QueueAttributeName, String> getQueueAttributes(String queueUrl, String region) {
+        if (queueUrl == null || queueUrl.isEmpty()) {
+            throw new IllegalArgumentException("Queue URL cannot be null or empty");
+        }
+
+        try {
+            SqsClient sqsClient = getSqsClient(region);
+            GetQueueAttributesRequest request = GetQueueAttributesRequest.builder()
+                    .queueUrl(queueUrl)
+                    .attributeNames(QueueAttributeName.ALL)
+                    .build();
+            GetQueueAttributesResponse response = sqsClient.getQueueAttributes(request);
+            return response.attributes();
+        } catch (SqsException e) {
+            System.err.println("Failed to get queue attributes: " + e.getMessage());
+            throw e;
+        }
+    }
+
+    public String getQueueUrl(String queueName, String region) {
         if (queueName == null || queueName.isEmpty()) {
             throw new IllegalArgumentException("Queue name cannot be null or empty");
         }
 
         try {
+            SqsClient sqsClient = getSqsClient(region);
             GetQueueUrlRequest request = GetQueueUrlRequest.builder()
                     .queueName(queueName)
                     .build();
@@ -67,29 +108,13 @@ public class SqsService extends BaseAwsService {
         }
     }
 
-    public void deleteQueue(String queueUrl) {
-        if (queueUrl == null || queueUrl.isEmpty()) {
-            throw new IllegalArgumentException("Queue URL cannot be null or empty");
-        }
-
-        try {
-            DeleteQueueRequest request = DeleteQueueRequest.builder()
-                    .queueUrl(queueUrl)
-                    .build();
-            sqsClient.deleteQueue(request);
-        } catch (SqsException e) {
-            System.err.println(e.awsErrorDetails().errorMessage());
-            throw e;
-        }
-    }
-
-    public Map<String, Map<QueueAttributeName, String>> listAllQueuesWithDetails() {
-        List<String> allQueueUrls = listAllQueues();
+    public Map<String, Map<QueueAttributeName, String>> listAllQueuesWithDetails(String region) {
+        List<String> allQueueUrls = listAllQueues(region);
         Map<String, Map<QueueAttributeName, String>> queueDetailsMap = new HashMap<>();
 
         List<CompletableFuture<Void>> futures = allQueueUrls.stream()
                 .map(queueUrl -> CompletableFuture.runAsync(() -> {
-                    Map<QueueAttributeName, String> details = getQueueDetails(queueUrl);
+                    Map<QueueAttributeName, String> details = getQueueAttributes(queueUrl, region);
                     synchronized (queueDetailsMap) {
                         queueDetailsMap.put(queueUrl, details);
                     }
@@ -107,12 +132,13 @@ public class SqsService extends BaseAwsService {
         return queueDetailsMap;
     }
 
-    public List<String> listAllQueues() {
+    public List<String> listAllQueues(String region) {
         List<String> allQueueUrls = new ArrayList<>();
         String nextToken = null;
 
         do {
             try {
+                SqsClient sqsClient = getSqsClient(region);
                 ListQueuesRequest request = ListQueuesRequest.builder()
                         .nextToken(nextToken)
                         .build();
@@ -128,11 +154,11 @@ public class SqsService extends BaseAwsService {
         return allQueueUrls;
     }
 
-    public List<Map<QueueAttributeName, String>> listAllQueuesParallel() {
-        List<String> allQueueUrls = listAllQueues();
+    public List<Map<QueueAttributeName, String>> listAllQueuesParallel(String region) {
+        List<String> allQueueUrls = listAllQueues(region);
 
         List<CompletableFuture<Map<QueueAttributeName, String>>> futures = allQueueUrls.stream()
-                .map(queueUrl -> CompletableFuture.supplyAsync(() -> getQueueDetails(queueUrl)))
+                .map(queueUrl -> CompletableFuture.supplyAsync(() -> getQueueAttributes(queueUrl, region)))
                 .collect(Collectors.toList());
 
         List<Map<QueueAttributeName, String>> queueDetails = new ArrayList<>();
@@ -147,23 +173,9 @@ public class SqsService extends BaseAwsService {
         return queueDetails;
     }
 
-    private Map<QueueAttributeName, String> getQueueDetails(String queueUrl) {
+    public List<Map<String, String>> listQueuesWithDetails(String region) {
         try {
-            GetQueueAttributesRequest request = GetQueueAttributesRequest.builder()
-                    .queueUrl(queueUrl)
-                    .attributeNames(QueueAttributeName.ALL)
-                    .build();
-            GetQueueAttributesResponse response = sqsClient.getQueueAttributes(request);
-            return response.attributes();
-        } catch (SqsException e) {
-            System.err.println("Error retrieving queue details for " + queueUrl + ": " + e.awsErrorDetails().errorMessage());
-            throw e;
-        }
-    }
-
-    public List<Map<String, String>> listQueues() {
-        try {
-            Map<String, Map<QueueAttributeName, String>> queueDetailsMap = listAllQueuesWithDetails();
+            Map<String, Map<QueueAttributeName, String>> queueDetailsMap = listAllQueuesWithDetails(region);
             System.out.println("Queue details map: " + queueDetailsMap); // Add logging
             return queueDetailsMap.entrySet().stream()
                     .map(entry -> {

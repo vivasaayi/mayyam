@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 import java.util.stream.Collectors;
 import java.util.Map;
 import java.util.Collections;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.kinesis.model.StreamDescription;
 import software.amazon.awssdk.services.kinesis.model.StreamStatus;
 import software.amazon.awssdk.services.kinesis.model.DescribeStreamResponse;
@@ -11,18 +12,15 @@ import software.amazon.awssdk.services.kinesis.KinesisClient;
 
 @Service
 public class KinesisService extends BaseAwsService {
-    private final KinesisClient kinesisClient;
 
-    public KinesisService() {
-        this.kinesisClient = KinesisClient.builder()
-                .region(region)
+    private KinesisClient getKinesisClient(String region) {
+        return KinesisClient.builder()
+                .region(Region.of(region))
                 .credentialsProvider(credentialsProvider)
                 .build();
     }
 
-    // Add methods to interact with Kinesis
-
-    public void createStream(String streamName, int shardCount) {
+    public void createStream(String region, String streamName, int shardCount) {
         if (streamName == null || streamName.isEmpty()) {
             throw new IllegalArgumentException("Stream name cannot be null or empty");
         }
@@ -31,6 +29,7 @@ public class KinesisService extends BaseAwsService {
         }
 
         try {
+            KinesisClient kinesisClient = getKinesisClient(region);
             if (kinesisClient.listStreams().streamNames().contains(streamName)) {
                 throw new IllegalArgumentException("Stream with name " + streamName + " already exists");
             }
@@ -59,12 +58,13 @@ public class KinesisService extends BaseAwsService {
         }
     }
 
-    public void deleteStream(String streamName) {
+    public void deleteStream(String region, String streamName) {
         if (streamName == null || streamName.isEmpty()) {
             throw new IllegalArgumentException("Stream name cannot be null or empty");
         }
 
         try {
+            KinesisClient kinesisClient = getKinesisClient(region);
             kinesisClient.deleteStream(builder -> builder
                 .streamName(streamName)
                 .build());
@@ -75,8 +75,9 @@ public class KinesisService extends BaseAwsService {
         }
     }
 
-    public Map<String, StreamDescription> listStreams() {
+    public Map<String, StreamDescription> listStreams(String region) {
         try {
+            KinesisClient kinesisClient = getKinesisClient(region);
             return kinesisClient.listStreamsPaginator().stream()
             .flatMap(response -> response.streamNames().stream())
             .parallel()
@@ -84,7 +85,7 @@ public class KinesisService extends BaseAwsService {
                 streamName -> streamName,
                 streamName -> {
                     try {
-                        return describeStream(streamName);
+                        return describeStream(region, streamName);
                     } catch (Exception e) {
                         System.err.println("Failed to describe stream: " + streamName + " - " + e.getMessage());
                         e.printStackTrace();
@@ -99,12 +100,13 @@ public class KinesisService extends BaseAwsService {
         }
     }
 
-    public StreamDescription describeStream(String streamName) {
+    public StreamDescription describeStream(String region, String streamName) {
         if (streamName == null || streamName.isEmpty()) {
             throw new IllegalArgumentException("Stream name cannot be null or empty");
         }
 
         try {
+            KinesisClient kinesisClient = getKinesisClient(region);
             StreamDescription streamDescription = kinesisClient.describeStream(builder -> builder
                 .streamName(streamName)
                 .build())
