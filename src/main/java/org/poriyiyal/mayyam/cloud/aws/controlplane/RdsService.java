@@ -73,6 +73,17 @@ public class RdsService extends BaseAwsService {
         }
     }
 
+    public DBInstance createDBInstance(String dbInstanceIdentifier, String dbInstanceClass, String engine, int allocatedStorage) {
+        CreateDbInstanceRequest request = CreateDbInstanceRequest.builder()
+                .dbInstanceIdentifier(dbInstanceIdentifier)
+                .dbInstanceClass(dbInstanceClass)
+                .engine(engine)
+                .allocatedStorage(allocatedStorage)
+                .build();
+        CreateDbInstanceResponse response = rdsClient.createDBInstance(request);
+        return response.dbInstance();
+    }
+
     public void deleteDBInstance(String dbInstanceIdentifier) {
         if (dbInstanceIdentifier == null || dbInstanceIdentifier.isEmpty()) {
             throw new IllegalArgumentException("DB instance identifier cannot be null or empty");

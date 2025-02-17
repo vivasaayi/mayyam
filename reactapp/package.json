@@ -38,7 +38,8 @@
     "redux": "5.0.1",
     "simplebar-react": "^3.3.0",
     "ag-grid-react": "^29.0.0",
-    "ag-grid-community": "^29.0.0"
+    "ag-grid-community": "^29.0.0",
+    "axios": "^0.21.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
