@@ -1,18 +1,14 @@
 package org.poriyiyal.mayyam.cloud.aws.controlplane;
 
-import software.amazon.awssdk.services.dynamodb.model.CreateTableRequest;
-import java.util.List;
-import software.amazon.awssdk.services.dynamodb.model.DeleteTableRequest;
-import software.amazon.awssdk.services.dynamodb.model.ListTablesRequest;
-import software.amazon.awssdk.services.dynamodb.model.ListTablesResponse;
-import software.amazon.awssdk.services.dynamodb.model.DescribeTableRequest;
-import software.amazon.awssdk.services.dynamodb.model.DescribeTableResponse;
-import software.amazon.awssdk.services.dynamodb.model.AttributeDefinition;
-import software.amazon.awssdk.services.dynamodb.model.KeySchemaElement;
-import software.amazon.awssdk.services.dynamodb.model.ProvisionedThroughput;
-
+import org.springframework.stereotype.Service;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
+import software.amazon.awssdk.services.dynamodb.model.*;
 
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+@Service
 public class DynamoDbService extends BaseAwsService {
     private final DynamoDbClient dynamoDbClient;
 
@@ -24,51 +20,58 @@ public class DynamoDbService extends BaseAwsService {
     }
 
     public void createTable(String tableName, List<AttributeDefinition> attributeDefinitions, List<KeySchemaElement> keySchema, ProvisionedThroughput provisionedThroughput) {
-        if (tableName == null || tableName.isEmpty()) {
-            throw new IllegalArgumentException("Table name must be provided");
-        }
-
         try {
             CreateTableRequest request = CreateTableRequest.builder()
-                .tableName(tableName)
-                .attributeDefinitions(attributeDefinitions)
-                .keySchema(keySchema)
-                .provisionedThroughput(provisionedThroughput)
-                .build();
+                    .tableName(tableName)
+                    .attributeDefinitions(attributeDefinitions)
+                    .keySchema(keySchema)
+                    .provisionedThroughput(provisionedThroughput)
+                    .build();
             dynamoDbClient.createTable(request);
-        } catch (Exception e) {
-            // Handle the exception appropriately
+            System.out.println("Table created successfully: " + tableName);
+        } catch (DynamoDbException e) {
             System.err.println("Failed to create table: " + e.getMessage());
+            throw e;
         }
     }
 
     public void deleteTable(String tableName) {
         try {
             DeleteTableRequest request = DeleteTableRequest.builder()
-                .tableName(tableName)
-                .build();
+                    .tableName(tableName)
+                    .build();
             dynamoDbClient.deleteTable(request);
-        } catch (Exception e) {
-            // Handle the exception appropriately
+            System.out.println("Table deleted successfully: " + tableName);
+        } catch (DynamoDbException e) {
             System.err.println("Failed to delete table: " + e.getMessage());
+            throw e;
         }
     }
 
-    public ListTablesResponse listTables() {
+    public List<Map<String, String>> listTables() {
         try {
-            ListTablesRequest request = ListTablesRequest.builder().build();
-            return dynamoDbClient.listTables(request);
-        } catch (Exception e) {
-            // Handle the exception appropriately
-            System.err.println("Failed to describe table: " + e.getMessage());
-            return null;
+            ListTablesResponse response = dynamoDbClient.listTables();
+            return response.tableNames().stream()
+                    .map(tableName -> {
+                        try {
+                            DescribeTableResponse describeResponse = dynamoDbClient.describeTable(DescribeTableRequest.builder()
+                                    .tableName(tableName)
+                                    .build());
+                            return Map.of(
+                                    "tableName", tableName,
+                                    "tableStatus", describeResponse.table().tableStatusAsString(),
+                                    "itemCount", String.valueOf(describeResponse.table().itemCount()),
+                                    "tableSizeBytes", String.valueOf(describeResponse.table().tableSizeBytes())
+                            );
+                        } catch (DynamoDbException e) {
+                            System.err.println("Failed to describe table: " + tableName + " - " + e.getMessage());
+                            return Map.of("tableName", tableName);
+                        }
+                    })
+                    .collect(Collectors.toList());
+        } catch (DynamoDbException e) {
+            System.err.println("Failed to list tables: " + e.getMessage());
+            throw e;
         }
-    }
-    
-    public DescribeTableResponse describeTable(String tableName) {
-        DescribeTableRequest request = DescribeTableRequest.builder()
-                .tableName(tableName)
-                .build();
-        return dynamoDbClient.describeTable(request);
     }
 }

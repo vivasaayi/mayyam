@@ -1,5 +1,6 @@
 package org.poriyiyal.mayyam.cloud.aws.controlplane;
 
+import org.springframework.stereotype.Service;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.CreateQueueRequest;
 import software.amazon.awssdk.services.sqs.model.CreateQueueResponse;
@@ -21,6 +22,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
+@Service
 public class SqsService extends BaseAwsService {
     private final SqsClient sqsClient;
 
@@ -156,6 +158,26 @@ public class SqsService extends BaseAwsService {
         } catch (SqsException e) {
             System.err.println("Error retrieving queue details for " + queueUrl + ": " + e.awsErrorDetails().errorMessage());
             throw e;
+        }
+    }
+
+    public List<Map<String, String>> listQueues() {
+        try {
+            Map<String, Map<QueueAttributeName, String>> queueDetailsMap = listAllQueuesWithDetails();
+            System.out.println("Queue details map: " + queueDetailsMap); // Add logging
+            return queueDetailsMap.entrySet().stream()
+                    .map(entry -> {
+                        Map<String, String> queueDetails = new HashMap<>();
+                        queueDetails.put("queueUrl", entry.getKey());
+                        queueDetails.put("queueName", entry.getKey().substring(entry.getKey().lastIndexOf('/') + 1));
+                        queueDetails.put("attributes", entry.getValue().toString());
+                        return queueDetails;
+                    })
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            System.err.println("Failed to list queues: " + e.getMessage());
+            e.printStackTrace();
+            return List.of();
         }
     }
 }

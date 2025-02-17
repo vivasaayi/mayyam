@@ -17,6 +17,9 @@ const ElastiCacheClusters = React.lazy(() => import('./views/ElastiCacheClusters
 const ElastiCacheReplicationGroups = React.lazy(() => import('./views/ElastiCacheReplicationGroups'))
 
 const KinesisList = React.lazy(() => import('./components/Kinesis/KinesisList'))
+const SqsList = React.lazy(() => import('./components/Sqs/SqsList'))
+const DynamoDbList = React.lazy(() => import('./components/DynamoDb/DynamoDbList'))
+const S3List = React.lazy(() => import('./components/S3/S3List'))
 
 const routes = [
   { path: '/', exact: true, name: 'Home' },
@@ -29,6 +32,9 @@ const routes = [
   { path: '/elasticache-clusters', name: 'ElastiCacheClusters', element: ElastiCacheClusters },
   { path: '/elasticache-replication-groups', name: 'ElastiCacheReplicationGroups', element: ElastiCacheReplicationGroups },
   { path: '/kinesis/list', name: 'Kinesis Streams', element: KinesisList },
+  { path: '/sqs/list', name: 'SQS Queues', element: SqsList },
+  { path: '/dynamodb/list', name: 'DynamoDB Tables', element: DynamoDbList },
+  { path: '/s3/list', name: 'S3 Buckets', element: S3List },
 ]
 
 export default routes
