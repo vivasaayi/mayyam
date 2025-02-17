@@ -113,20 +113,13 @@ public class DynamoDbService extends BaseAwsService {
             throw new IllegalArgumentException("Region cannot be null or empty");
         }
 
-        DynamoDbClient dynamoDbClient = getDynamoDbClient(region);
-        ListTablesResponse listTablesResponse = dynamoDbClient.listTables();
-        return listTablesResponse.tableNames().stream()
-                .map(tableName -> {
-                    DescribeTableResponse describeTableResponse = dynamoDbClient.describeTable(DescribeTableRequest.builder().tableName(tableName).build());
-                    if (describeTableResponse.table().replicas() == null || describeTableResponse.table().replicas().isEmpty()) {
-                        return Map.of(
-                                "tableName", tableName,
-                                "status", describeTableResponse.table().tableStatusAsString()
-                        );
-                    }
-                    return null;
-                })
-                .filter(table -> table != null)
+        Map<String, TableDescription> tables = listTables(region);
+        return tables.entrySet().stream()
+                .filter(entry -> entry.getValue().replicas() == null || entry.getValue().replicas().isEmpty())
+                .map(entry -> Map.of(
+                        "tableName", entry.getKey(),
+                        "status", entry.getValue().tableStatusAsString()
+                ))
                 .collect(Collectors.toList());
     }
 
@@ -135,44 +128,16 @@ public class DynamoDbService extends BaseAwsService {
             throw new IllegalArgumentException("Region cannot be null or empty");
         }
 
-        DynamoDbClient dynamoDbClient = getDynamoDbClient(region);
-        ListTablesResponse listTablesResponse = dynamoDbClient.listTables();
-        return listTablesResponse.tableNames().stream()
-                .map(tableName -> {
-                    DescribeTableResponse describeTableResponse = dynamoDbClient.describeTable(DescribeTableRequest.builder().tableName(tableName).build());
-                    if (describeTableResponse.table().replicas() != null && !describeTableResponse.table().replicas().isEmpty()) {
-                        return Map.of(
-                                "tableName", tableName,
-                                "status", describeTableResponse.table().tableStatusAsString(),
-                                "replicas", describeTableResponse.table().replicas().stream()
-                                        .map(replica -> replica.regionName())
-                                        .collect(Collectors.joining(", "))
-                        );
-                    }
-                    return null;
-                })
-                .filter(table -> table != null)
+        Map<String, TableDescription> tables = listTables(region);
+        return tables.entrySet().stream()
+                .filter(entry -> entry.getValue().replicas() != null && !entry.getValue().replicas().isEmpty())
+                .map(entry -> Map.of(
+                        "tableName", entry.getKey(),
+                        "status", entry.getValue().tableStatusAsString(),
+                        "replicas", entry.getValue().replicas().stream()
+                                .map(replica -> replica.regionName())
+                                .collect(Collectors.joining(", "))
+                ))
                 .collect(Collectors.toList());
-    }
-
-    // Existing functions without region parameter
-    public void createTable(String tableName, List<AttributeDefinition> attributeDefinitions, List<KeySchemaElement> keySchema, ProvisionedThroughput provisionedThroughput) {
-        createTable("us-west-2", tableName, attributeDefinitions, keySchema, provisionedThroughput);
-    }
-
-    public void deleteTable(String tableName) {
-        deleteTable("us-west-2", tableName);
-    }
-
-    public Map<String, TableDescription> listTables() {
-        return listTables("us-west-2");
-    }
-
-    public List<Map<String, String>> getTablesWithoutGlobalReplication() {
-        return getTablesWithoutGlobalReplication("us-west-2");
-    }
-
-    public List<Map<String, String>> getTablesWithGlobalReplication() {
-        return getTablesWithGlobalReplication("us-west-2");
     }
 }
