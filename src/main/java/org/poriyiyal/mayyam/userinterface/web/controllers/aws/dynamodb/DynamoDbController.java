@@ -11,6 +11,7 @@ import software.amazon.awssdk.services.dynamodb.model.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
 
 @RestController
 @RequestMapping("/api/dynamodb")
@@ -62,7 +63,9 @@ public class DynamoDbController {
     @GetMapping("/list")
     public ResponseEntity<List<TableDescription>> listTables(@RequestParam String region) {
         try {
-            return ResponseEntity.ok(dynamoDbService.listTables(region));
+            Map<String, TableDescription> tablesMap = dynamoDbService.listTables(region);
+            List<TableDescription> tablesList = new ArrayList<>(tablesMap.values());
+            return ResponseEntity.ok(tablesList);
         } catch (Exception e) {
             logger.error("Failed to list tables: {}", e.getMessage());
             return ResponseEntity.status(500).body(null);
@@ -89,38 +92,13 @@ public class DynamoDbController {
         }
     }
 
-    @PostMapping("/createDefault")
-    public ResponseEntity<String> createTable(@RequestParam String tableName, @RequestBody Map<String, Object> properties) {
-        return createTable("us-west-2", tableName, properties);
-    }
-
-    @DeleteMapping("/deleteDefault")
-    public ResponseEntity<String> deleteTable(@RequestParam String tableName) {
-        return deleteTable("us-west-2", tableName);
-    }
-
-    @DeleteMapping("/deleteMultipleDefault")
-    public ResponseEntity<String> deleteMultipleTables(@RequestBody String[] tableNames) {
-        return deleteMultipleTables("us-west-2", tableNames);
-    }
-
-    @GetMapping("/listDefault")
-    public ResponseEntity<List<TableDescription>> listTables() {
-        return listTables("us-west-2");
-    }
-
-    @GetMapping("/tablesWithoutReplicationDefault")
-    public ResponseEntity<List<Map<String, String>>> getTablesWithoutGlobalReplication() {
-        return getTablesWithoutGlobalReplication("us-west-2");
-    }
-
-    @GetMapping("/tablesWithReplicationDefault")
-    public ResponseEntity<List<Map<String, String>>> getTablesWithGlobalReplication() {
-        return getTablesWithGlobalReplication("us-west-2");
-    }
-
     @GetMapping("/tablesWithoutPITR")
-    public Map<String, String> getTablesWithoutPITR(@RequestParam String region) {
-        return dynamoDbService.getTablesWithoutPITR(region);
+    public ResponseEntity<Map<String, String>> getTablesWithoutPITR(@RequestParam String region) {
+        try {
+            return ResponseEntity.ok(dynamoDbService.getTablesWithoutPITR(region));
+        } catch (Exception e) {
+            logger.error("Failed to get tables without PITR: {}", e.getMessage());
+            return ResponseEntity.status(500).body(null);
+        }
     }
 }

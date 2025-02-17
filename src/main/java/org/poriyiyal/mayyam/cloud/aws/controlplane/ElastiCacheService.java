@@ -160,4 +160,14 @@ public class ElastiCacheService extends BaseAwsService {
             throw new RuntimeException("Failed to describe replication group: " + e.getMessage(), e);
         }
     }
+
+    // List ElastiCache clusters
+    public List<CacheCluster> listCacheClusters(String region) {
+        ElastiCacheClient elastiCacheClient = getElastiCacheClient(region);
+        DescribeCacheClustersRequest request = DescribeCacheClustersRequest.builder()
+                .showCacheNodeInfo(true)
+                .build();
+        DescribeCacheClustersResponse response = elastiCacheClient.describeCacheClusters(request);
+        return response.cacheClusters();
+    }
 }

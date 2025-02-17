@@ -140,4 +140,22 @@ public class DynamoDbService extends BaseAwsService {
                 ))
                 .collect(Collectors.toList());
     }
+
+    public Map<String, String> getTablesWithoutPITR(String region) {
+        DynamoDbClient dynamoDbClient = getDynamoDbClient(region);
+        Map<String, TableDescription> tables = listTables(region);
+        return tables.entrySet().stream()
+                .filter(entry -> {
+                    DescribeContinuousBackupsResponse backupsResponse = dynamoDbClient.describeContinuousBackups(
+                            DescribeContinuousBackupsRequest.builder()
+                                    .tableName(entry.getKey())
+                                    .build()
+                    );
+                    return backupsResponse.continuousBackupsDescription().pointInTimeRecoveryDescription().pointInTimeRecoveryStatus() != PointInTimeRecoveryStatus.ENABLED;
+                })
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        entry -> entry.getValue().tableStatusAsString()
+                ));
+    }
 }

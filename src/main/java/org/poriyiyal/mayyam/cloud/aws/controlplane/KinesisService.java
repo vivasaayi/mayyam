@@ -1,23 +1,28 @@
 package org.poriyiyal.mayyam.cloud.aws.controlplane;
 
 import org.springframework.stereotype.Service;
-import java.util.stream.Collectors;
-import java.util.Map;
-import java.util.Collections;
 import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.kinesis.KinesisClient;
 import software.amazon.awssdk.services.kinesis.model.StreamDescription;
 import software.amazon.awssdk.services.kinesis.model.StreamStatus;
 import software.amazon.awssdk.services.kinesis.model.DescribeStreamResponse;
-import software.amazon.awssdk.services.kinesis.KinesisClient;
+
+import java.util.Map;
+import java.util.Collections;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.stream.Collectors;
 
 @Service
 public class KinesisService extends BaseAwsService {
 
+    private final ConcurrentMap<Region, KinesisClient> clientCache = new ConcurrentHashMap<>();
+
     private KinesisClient getKinesisClient(String region) {
-        return KinesisClient.builder()
-                .region(Region.of(region))
+        return clientCache.computeIfAbsent(Region.of(region), r -> KinesisClient.builder()
+                .region(r)
                 .credentialsProvider(credentialsProvider)
-                .build();
+                .build());
     }
 
     public void createStream(String region, String streamName, int shardCount) {

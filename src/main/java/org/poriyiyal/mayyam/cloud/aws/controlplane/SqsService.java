@@ -10,20 +10,24 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 @Service
 public class SqsService extends BaseAwsService {
 
+    private final ConcurrentMap<Region, SqsClient> clientCache = new ConcurrentHashMap<>();
+
     private SqsClient getSqsClient(String region) {
-        return SqsClient.builder()
-                .region(Region.of(region))
+        return clientCache.computeIfAbsent(Region.of(region), r -> SqsClient.builder()
+                .region(r)
                 .credentialsProvider(credentialsProvider)
-                .build();
+                .build());
     }
 
-    public void createQueue(String queueName, String region) {
+    public void createQueue(String region, String queueName) {
         if (queueName == null || queueName.isEmpty()) {
             throw new IllegalArgumentException("Queue name cannot be null or empty");
         }
@@ -41,7 +45,7 @@ public class SqsService extends BaseAwsService {
         }
     }
 
-    public void deleteQueue(String queueUrl, String region) {
+    public void deleteQueue(String region, String queueUrl) {
         if (queueUrl == null || queueUrl.isEmpty()) {
             throw new IllegalArgumentException("Queue URL cannot be null or empty");
         }
@@ -71,7 +75,7 @@ public class SqsService extends BaseAwsService {
         }
     }
 
-    public Map<QueueAttributeName, String> getQueueAttributes(String queueUrl, String region) {
+    public Map<QueueAttributeName, String> getQueueAttributes(String region, String queueUrl) {
         if (queueUrl == null || queueUrl.isEmpty()) {
             throw new IllegalArgumentException("Queue URL cannot be null or empty");
         }
@@ -90,7 +94,7 @@ public class SqsService extends BaseAwsService {
         }
     }
 
-    public String getQueueUrl(String queueName, String region) {
+    public String getQueueUrl(String region, String queueName) {
         if (queueName == null || queueName.isEmpty()) {
             throw new IllegalArgumentException("Queue name cannot be null or empty");
         }
@@ -114,7 +118,7 @@ public class SqsService extends BaseAwsService {
 
         List<CompletableFuture<Void>> futures = allQueueUrls.stream()
                 .map(queueUrl -> CompletableFuture.runAsync(() -> {
-                    Map<QueueAttributeName, String> details = getQueueAttributes(queueUrl, region);
+                    Map<QueueAttributeName, String> details = getQueueAttributes(region, queueUrl);
                     synchronized (queueDetailsMap) {
                         queueDetailsMap.put(queueUrl, details);
                     }
@@ -158,7 +162,7 @@ public class SqsService extends BaseAwsService {
         List<String> allQueueUrls = listAllQueues(region);
 
         List<CompletableFuture<Map<QueueAttributeName, String>>> futures = allQueueUrls.stream()
-                .map(queueUrl -> CompletableFuture.supplyAsync(() -> getQueueAttributes(queueUrl, region)))
+                .map(queueUrl -> CompletableFuture.supplyAsync(() -> getQueueAttributes(region, queueUrl)))
                 .collect(Collectors.toList());
 
         List<Map<QueueAttributeName, String>> queueDetails = new ArrayList<>();
