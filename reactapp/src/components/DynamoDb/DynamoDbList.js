@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
-import { CButton } from '@coreui/react';
+import { CButton, CFormSelect } from '@coreui/react';
 import DynamoDbModal from './DynamoDbModal';
 import DeleteConfirmationModal from './DeleteConfirmationModal';
 
@@ -12,14 +12,15 @@ const DynamoDbList = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [message, setMessage] = useState('');
   const [selectedRows, setSelectedRows] = useState([]);
+  const [region, setRegion] = useState('us-west-2');
 
   useEffect(() => {
-    fetch('/api/dynamodb/list')
+    fetch(`/api/dynamodb/list?region=${region}`)
       .then(response => response.json())
       .then(data => {
         setRowData(data);
       });
-  }, []);
+  }, [region]);
 
   const columnDefs = [
     { headerName: 'Table Name', field: 'tableName', filter: true, sortable: true, checkboxSelection: true },
@@ -36,7 +37,7 @@ const DynamoDbList = () => {
   };
 
   const handleCreate = async (tableName, attributeDefinitions, keySchema, provisionedThroughput) => {
-    const response = await fetch('/api/dynamodb/create', {
+    const response = await fetch(`/api/dynamodb/create?region=${region}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -47,7 +48,7 @@ const DynamoDbList = () => {
     setMessage(result);
     setShowModal(false);
     // Refresh the list after creating a new table
-    fetch('/api/dynamodb/list')
+    fetch(`/api/dynamodb/list?region=${region}`)
       .then(response => response.json())
       .then(data => {
         setRowData(data);
@@ -55,19 +56,22 @@ const DynamoDbList = () => {
   };
 
   const handleDelete = async () => {
-    const tableNames = selectedRows.map(row => row.tableName);
+    const tableNamesAndRegions = selectedRows.reduce((acc, row) => {
+      acc[row.tableName] = region;
+      return acc;
+    }, {});
     const response = await fetch('/api/dynamodb/deleteMultiple', {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(tableNames),
+      body: JSON.stringify(tableNamesAndRegions),
     });
     const result = await response.text();
     setMessage(result);
     setShowDeleteModal(false);
     // Refresh the list after deleting tables
-    fetch('/api/dynamodb/list')
+    fetch(`/api/dynamodb/list?region=${region}`)
       .then(response => response.json())
       .then(data => {
         setRowData(data);
@@ -81,6 +85,12 @@ const DynamoDbList = () => {
   return (
     <div>
       <h2>DynamoDB Tables</h2>
+      <CFormSelect value={region} onChange={(e) => setRegion(e.target.value)}>
+        <option value="us-west-2">US West (Oregon)</option>
+        <option value="us-east-1">US East (N. Virginia)</option>
+        <option value="eu-west-1">EU (Ireland)</option>
+        {/* Add more regions as needed */}
+      </CFormSelect>
       <CButton color="primary" onClick={() => setShowModal(true)}>Create DynamoDB Table</CButton>
       <CButton color="danger" onClick={() => setShowDeleteModal(true)} disabled={selectedRows.length === 0}>Delete Selected Tables</CButton>
       <CButton color="info" onClick={handleReplicationStatus}>See Replication Status</CButton>

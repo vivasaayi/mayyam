@@ -1,6 +1,7 @@
 package org.poriyiyal.mayyam.cloud.aws.controlplane;
 
 import org.springframework.stereotype.Service;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
 
@@ -10,17 +11,21 @@ import java.util.stream.Collectors;
 
 @Service
 public class DynamoDbService extends BaseAwsService {
-    private final DynamoDbClient dynamoDbClient;
 
-    public DynamoDbService() {
-        this.dynamoDbClient = DynamoDbClient.builder()
-                .region(region)
+    private DynamoDbClient getDynamoDbClient(String region) {
+        return DynamoDbClient.builder()
+                .region(Region.of(region))
                 .credentialsProvider(credentialsProvider)
                 .build();
     }
 
-    public void createTable(String tableName, List<AttributeDefinition> attributeDefinitions, List<KeySchemaElement> keySchema, ProvisionedThroughput provisionedThroughput) {
+    public void createTable(String region, String tableName, List<AttributeDefinition> attributeDefinitions, List<KeySchemaElement> keySchema, ProvisionedThroughput provisionedThroughput) {
+        if (tableName == null || tableName.isEmpty()) {
+            throw new IllegalArgumentException("Table name cannot be null or empty");
+        }
+
         try {
+            DynamoDbClient dynamoDbClient = getDynamoDbClient(region);
             CreateTableRequest request = CreateTableRequest.builder()
                     .tableName(tableName)
                     .attributeDefinitions(attributeDefinitions)
@@ -35,8 +40,13 @@ public class DynamoDbService extends BaseAwsService {
         }
     }
 
-    public void deleteTable(String tableName) {
+    public void deleteTable(String region, String tableName) {
+        if (tableName == null || tableName.isEmpty()) {
+            throw new IllegalArgumentException("Table name cannot be null or empty");
+        }
+
         try {
+            DynamoDbClient dynamoDbClient = getDynamoDbClient(region);
             DeleteTableRequest request = DeleteTableRequest.builder()
                     .tableName(tableName)
                     .build();
@@ -48,8 +58,9 @@ public class DynamoDbService extends BaseAwsService {
         }
     }
 
-    public List<Map<String, String>> listTables() {
+    public List<Map<String, String>> listTables(String region) {
         try {
+            DynamoDbClient dynamoDbClient = getDynamoDbClient(region);
             ListTablesResponse response = dynamoDbClient.listTables();
             return response.tableNames().stream()
                     .map(tableName -> {
@@ -75,7 +86,8 @@ public class DynamoDbService extends BaseAwsService {
         }
     }
 
-    public List<Map<String, String>> getTablesWithoutGlobalReplication() {
+    public List<Map<String, String>> getTablesWithoutGlobalReplication(String region) {
+        DynamoDbClient dynamoDbClient = getDynamoDbClient(region);
         ListTablesResponse listTablesResponse = dynamoDbClient.listTables();
         return listTablesResponse.tableNames().stream()
                 .map(tableName -> {
@@ -92,7 +104,8 @@ public class DynamoDbService extends BaseAwsService {
                 .collect(Collectors.toList());
     }
 
-    public List<Map<String, String>> getTablesWithGlobalReplication() {
+    public List<Map<String, String>> getTablesWithGlobalReplication(String region) {
+        DynamoDbClient dynamoDbClient = getDynamoDbClient(region);
         ListTablesResponse listTablesResponse = dynamoDbClient.listTables();
         return listTablesResponse.tableNames().stream()
                 .map(tableName -> {

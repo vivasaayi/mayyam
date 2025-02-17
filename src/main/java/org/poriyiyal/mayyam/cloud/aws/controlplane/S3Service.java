@@ -27,7 +27,7 @@ public class S3Service extends BaseAwsService {
                 .build();
     }
 
-    private S3Client getS3ClientForBucket(String bucketName) {
+    private S3Client getS3ClientForBucket(String region, String bucketName) {
         GetBucketLocationResponse locationResponse = s3Client.getBucketLocation(GetBucketLocationRequest.builder().bucket(bucketName).build());
         Region bucketRegion = Region.of(locationResponse.locationConstraintAsString());
         return S3Client.builder()
@@ -37,12 +37,13 @@ public class S3Service extends BaseAwsService {
                 .build();
     }
 
-    public void createBucket(String bucketName) {
+    public void createBucket(String region, String bucketName) {
         try {
+            S3Client client = getS3ClientForBucket(region, bucketName);
             CreateBucketRequest request = CreateBucketRequest.builder()
                     .bucket(bucketName)
                     .build();
-            s3Client.createBucket(request);
+            client.createBucket(request);
             System.out.println("Bucket created successfully: " + bucketName);
         } catch (S3Exception e) {
             System.err.println("Failed to create bucket: " + e.getMessage());
@@ -50,9 +51,9 @@ public class S3Service extends BaseAwsService {
         }
     }
 
-    public void deleteBucket(String bucketName) {
+    public void deleteBucket(String region, String bucketName) {
         try {
-            S3Client client = getS3ClientForBucket(bucketName);
+            S3Client client = getS3ClientForBucket(region, bucketName);
             DeleteBucketRequest request = DeleteBucketRequest.builder()
                     .bucket(bucketName)
                     .build();
@@ -64,7 +65,7 @@ public class S3Service extends BaseAwsService {
         }
     }
 
-    public Map<String, Bucket> listBuckets() {
+    public Map<String, Bucket> listBuckets(String region) {
         try {
             ListBucketsResponse response = s3Client.listBuckets();
             return response.buckets().stream()
@@ -75,18 +76,18 @@ public class S3Service extends BaseAwsService {
         }
     }
 
-    public List<Bucket> getBucketsAsList() {
-        return listBuckets().values().stream().collect(Collectors.toList());
+    public List<Bucket> getBucketsAsList(String region) {
+        return listBuckets(region).values().stream().collect(Collectors.toList());
     }
 
-    public void uploadObject(String bucketName, String key, String filePath) {
+    public void uploadObject(String region, String bucketName, String key, String filePath) {
         if (bucketName == null || bucketName.isEmpty() || key == null || key.isEmpty() || filePath == null
                 || filePath.isEmpty()) {
             throw new IllegalArgumentException("Bucket name, key, and file path cannot be null or empty");
         }
 
         try {
-            S3Client client = getS3ClientForBucket(bucketName);
+            S3Client client = getS3ClientForBucket(region, bucketName);
             PutObjectRequest putObjectRequest = PutObjectRequest.builder()
                     .bucket(bucketName)
                     .key(key)
@@ -98,14 +99,14 @@ public class S3Service extends BaseAwsService {
         }
     }
 
-    public void downloadObject(String bucketName, String key, String destinationPath) {
+    public void downloadObject(String region, String bucketName, String key, String destinationPath) {
         if (bucketName == null || bucketName.isEmpty() || key == null || key.isEmpty() || destinationPath == null
                 || destinationPath.isEmpty()) {
             throw new IllegalArgumentException("Bucket name, key, and destination path cannot be null or empty");
         }
 
         try {
-            S3Client client = getS3ClientForBucket(bucketName);
+            S3Client client = getS3ClientForBucket(region, bucketName);
             GetObjectRequest getObjectRequest = GetObjectRequest.builder()
                     .bucket(bucketName)
                     .key(key)
@@ -117,12 +118,12 @@ public class S3Service extends BaseAwsService {
         }
     }
 
-    public List<Map<String, String>> getBucketsWithoutReplication() {
+    public List<Map<String, String>> getBucketsWithoutReplication(String region) {
         ListBucketsResponse listBucketsResponse = s3Client.listBuckets();
         return listBucketsResponse.buckets().stream()
                 .map(bucket -> {
                     try {
-                        S3Client client = getS3ClientForBucket(bucket.name());
+                        S3Client client = getS3ClientForBucket(region, bucket.name());
                         GetBucketReplicationResponse replicationResponse = client.getBucketReplication(GetBucketReplicationRequest.builder().bucket(bucket.name()).build());
                         if (replicationResponse.replicationConfiguration() == null || replicationResponse.replicationConfiguration().rules().isEmpty()) {
                             return Map.of(
@@ -146,12 +147,12 @@ public class S3Service extends BaseAwsService {
                 .collect(Collectors.toList());
     }
 
-    public List<Map<String, String>> getBucketsWithReplication() {
+    public List<Map<String, String>> getBucketsWithReplication(String region) {
         ListBucketsResponse listBucketsResponse = s3Client.listBuckets();
         return listBucketsResponse.buckets().stream()
                 .map(bucket -> {
                     try {
-                        S3Client client = getS3ClientForBucket(bucket.name());
+                        S3Client client = getS3ClientForBucket(region, bucket.name());
                         GetBucketReplicationResponse replicationResponse = client.getBucketReplication(GetBucketReplicationRequest.builder().bucket(bucket.name()).build());
                         if (replicationResponse.replicationConfiguration() != null && !replicationResponse.replicationConfiguration().rules().isEmpty()) {
                             return Map.of(
