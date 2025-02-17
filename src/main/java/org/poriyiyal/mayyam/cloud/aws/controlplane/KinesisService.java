@@ -1,14 +1,15 @@
 package org.poriyiyal.mayyam.cloud.aws.controlplane;
 
+import org.springframework.stereotype.Service;
 import java.util.stream.Collectors;
 import java.util.Map;
 import java.util.Collections;
 import software.amazon.awssdk.services.kinesis.model.StreamDescription;
 import software.amazon.awssdk.services.kinesis.model.StreamStatus;
 import software.amazon.awssdk.services.kinesis.model.DescribeStreamResponse;
-
 import software.amazon.awssdk.services.kinesis.KinesisClient;
 
+@Service
 public class KinesisService extends BaseAwsService {
     private final KinesisClient kinesisClient;
 

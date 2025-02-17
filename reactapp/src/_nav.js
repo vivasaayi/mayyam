@@ -44,6 +44,30 @@ const _nav = [
     icon: <CIcon icon={cilChartPie} customClassName="nav-icon" />,
   },
   {
+    component: CNavItem,
+    name: 'Kinesis Streams',
+    to: '/kinesis/list',
+    icon: <CIcon icon={cilChartPie} customClassName="nav-icon" />,
+  },
+  {
+    component: CNavItem,
+    name: 'SQS Queues',
+    to: '/sqs/list',
+    icon: <CIcon icon={cilChartPie} customClassName="nav-icon" />,
+  },
+  {
+    component: CNavItem,
+    name: 'DynamoDB Tables',
+    to: '/dynamodb/list',
+    icon: <CIcon icon={cilChartPie} customClassName="nav-icon" />,
+  },
+  {
+    component: CNavItem,
+    name: 'S3 Buckets',
+    to: '/s3/list',
+    icon: <CIcon icon={cilChartPie} customClassName="nav-icon" />,
+  },
+  {
     component: CNavTitle,
     name: 'Theme',
   },
