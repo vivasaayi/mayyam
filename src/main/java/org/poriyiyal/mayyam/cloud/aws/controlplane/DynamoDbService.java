@@ -80,7 +80,7 @@ public class DynamoDbService extends BaseAwsService {
         }
     }
 
-    public List<Map<String, String>> listTables(String region) {
+    public Map<String, TableDescription> listTables(String region) {
         if (region == null || region.isEmpty()) {
             throw new IllegalArgumentException("Region cannot be null or empty");
         }
@@ -89,23 +89,19 @@ public class DynamoDbService extends BaseAwsService {
             DynamoDbClient dynamoDbClient = getDynamoDbClient(region);
             ListTablesResponse response = dynamoDbClient.listTables();
             return response.tableNames().stream()
-                    .map(tableName -> {
-                        try {
-                            DescribeTableResponse describeResponse = dynamoDbClient.describeTable(DescribeTableRequest.builder()
-                                    .tableName(tableName)
-                                    .build());
-                            return Map.of(
-                                    "tableName", tableName,
-                                    "tableStatus", describeResponse.table().tableStatusAsString(),
-                                    "itemCount", String.valueOf(describeResponse.table().itemCount()),
-                                    "tableSizeBytes", String.valueOf(describeResponse.table().tableSizeBytes())
-                            );
-                        } catch (DynamoDbException e) {
-                            logger.error("Failed to describe table: {} - {}", tableName, e.getMessage());
-                            return Map.of("tableName", tableName);
-                        }
-                    })
-                    .collect(Collectors.toList());
+                    .collect(Collectors.toMap(
+                            tableName -> tableName,
+                            tableName -> {
+                                try {
+                                    return dynamoDbClient.describeTable(DescribeTableRequest.builder()
+                                            .tableName(tableName)
+                                            .build()).table();
+                                } catch (DynamoDbException e) {
+                                    logger.error("Failed to describe table: {} - {}", tableName, e.getMessage());
+                                    return null;
+                                }
+                            }
+                    ));
         } catch (DynamoDbException e) {
             logger.error("Failed to list tables: {}", e.getMessage());
             throw e;
@@ -168,7 +164,7 @@ public class DynamoDbService extends BaseAwsService {
         deleteTable("us-west-2", tableName);
     }
 
-    public List<Map<String, String>> listTables() {
+    public Map<String, TableDescription> listTables() {
         return listTables("us-west-2");
     }
 
