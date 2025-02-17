@@ -21,7 +21,7 @@ public class S3ExportService extends BaseExportService<Bucket> {
             throw new IllegalArgumentException("File path cannot be null or empty");
         }
         try {
-            List<Bucket> buckets = s3Service.listBuckets();
+            List<Bucket> buckets = s3Service.getBucketsAsList();
             exportAsJson(buckets, filePath);
         } catch (Exception e) {
             System.err.println("Error exporting buckets as JSON: " + e.getMessage());
@@ -38,7 +38,7 @@ public class S3ExportService extends BaseExportService<Bucket> {
             throw new IllegalArgumentException("File path cannot be null or empty");
         }
         try {
-            List<Bucket> buckets = s3Service.listBuckets();
+            List<Bucket> buckets = s3Service.getBucketsAsList();
             List<String[]> data = convertToDataFormat(buckets);
             String[] headers = {"Bucket Name", "Creation Date"};
             exportAsCsv(data, headers, filePath, delimiter);
@@ -53,7 +53,7 @@ public class S3ExportService extends BaseExportService<Bucket> {
             throw new IllegalArgumentException("File path cannot be null or empty");
         }
         try {
-            List<Bucket> buckets = s3Service.listBuckets();
+            List<Bucket> buckets = s3Service.getBucketsAsList();
             List<String[]> data = convertToDataFormat(buckets);
             String[] headers = {"Bucket Name", "Creation Date"};
             exportAsExcel(data, headers, filePath);
