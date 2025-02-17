@@ -84,7 +84,7 @@ public class ElastiCacheController {
     }
 
     @DeleteMapping("/delete-cluster/{clusterId}")
-    public ResponseEntity<?> deleteCacheCluster(@RequestParam String region, @PathVariable String clusterId) {
+    public ResponseEntity<?> deleteCacheClusterById(@RequestParam String region, @PathVariable String clusterId) {
         try {
             elastiCacheService.deleteCacheCluster(region, clusterId);
             return ResponseEntity.ok("Cache cluster deleted successfully: " + clusterId);

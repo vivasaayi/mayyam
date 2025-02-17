@@ -99,6 +99,10 @@ const DynamoDbList = () => {
     window.open('/#/dynamodb/replication', '_blank');
   };
 
+  const handleViewTablesWithoutPITR = () => {
+    window.open(`/dynamodb/tablesWithoutPITR?region=${region}`, '_blank');
+  };
+
   return (
     <div>
       <h2>DynamoDB Tables</h2>
@@ -111,6 +115,7 @@ const DynamoDbList = () => {
       <CButton color="primary" onClick={() => setShowModal(true)}>Create DynamoDB Table</CButton>
       <CButton color="danger" onClick={() => setShowDeleteModal(true)} disabled={selectedRows.length === 0}>Delete Selected Tables</CButton>
       <CButton color="info" onClick={handleReplicationStatus}>See Replication Status</CButton>
+      <CButton color="warning" onClick={handleViewTablesWithoutPITR}>View Tables without PITR</CButton>
       {message && <CAlert color={messageType}>{message}</CAlert>}
       <div className="ag-theme-alpine" style={{ height: 600, width: '100%' }}>
         <AgGridReact

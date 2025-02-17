@@ -118,4 +118,9 @@ public class DynamoDbController {
     public ResponseEntity<List<Map<String, String>>> getTablesWithGlobalReplication() {
         return getTablesWithGlobalReplication("us-west-2");
     }
+
+    @GetMapping("/tablesWithoutPITR")
+    public Map<String, String> getTablesWithoutPITR(@RequestParam String region) {
+        return dynamoDbService.getTablesWithoutPITR(region);
+    }
 }

@@ -18,6 +18,8 @@ const Page404 = React.lazy(() => import('./views/pages/page404/Page404'))
 const Page500 = React.lazy(() => import('./views/pages/page500/Page500'))
 const RdsClusters = React.lazy(() => import('./components/RdsClusters'))
 const RDSClustersTable = React.lazy(() => import('./components/RDSClustersTable'))
+const DynamoDbList = React.lazy(() => import('./components/DynamoDb/DynamoDbList'))
+const DynamoDbTablesWithoutPITR = React.lazy(() => import('./components/DynamoDb/DynamoDbTablesWithoutPITR'))
 
 const App = () => {
   const { isColorModeSet, setColorMode } = useColorModes('coreui-free-react-admin-template-theme')
@@ -54,6 +56,8 @@ const App = () => {
             <Route exact path="/500" name="Page 500" element={<Page500 />} />
             <Route exact path="/rds-clusters" name="Rds Clusters" element={<RdsClusters />} />
             <Route exact path="/rds-clusters-table" name="RDS Clusters Table" element={<RDSClustersTable />} />
+            <Route exact path="/dynamodb" name="DynamoDb List" element={<DynamoDbList />} />
+            <Route exact path="/dynamodb/tablesWithoutPITR" name="DynamoDb Tables Without PITR" element={<DynamoDbTablesWithoutPITR />} />
             <Route path="*" name="Home" element={<DefaultLayout />} />
           </Routes>
         </CContainer>
