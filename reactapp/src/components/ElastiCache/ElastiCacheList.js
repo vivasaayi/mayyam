@@ -3,7 +3,7 @@ import { AgGridReact } from 'ag-grid-react';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { CButton, CFormSelect } from '@coreui/react';
-import ElastiCacheModal from './ElastiCacheModal';
+// import ElastiCacheModal from './ElastiCacheModal';
 import DeleteConfirmationModal from './DeleteConfirmationModal';
 
 const ElastiCacheList = () => {
