@@ -16,6 +16,8 @@ const RdsInstances = React.lazy(() => import('./views/RdsInstances'))
 const ElastiCacheClusters = React.lazy(() => import('./views/ElastiCacheClusters'))
 const ElastiCacheReplicationGroups = React.lazy(() => import('./views/ElastiCacheReplicationGroups'))
 
+const KinesisList = React.lazy(() => import('./components/Kinesis/KinesisList'))
+
 const routes = [
   { path: '/', exact: true, name: 'Home' },
   { path: '/dashboard', name: 'Dashboard', element: Dashboard },
@@ -26,6 +28,7 @@ const routes = [
   { path: '/rds-instances', name: 'RdsInstances', element: RdsInstances },
   { path: '/elasticache-clusters', name: 'ElastiCacheClusters', element: ElastiCacheClusters },
   { path: '/elasticache-replication-groups', name: 'ElastiCacheReplicationGroups', element: ElastiCacheReplicationGroups },
+  { path: '/kinesis/list', name: 'Kinesis Streams', element: KinesisList },
 ]
 
 export default routes

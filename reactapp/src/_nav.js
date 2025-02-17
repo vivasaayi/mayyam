@@ -44,6 +44,12 @@ const _nav = [
     icon: <CIcon icon={cilChartPie} customClassName="nav-icon" />,
   },
   {
+    component: CNavItem,
+    name: 'Kinesis Streams',
+    to: '/kinesis/list',
+    icon: <CIcon icon={cilChartPie} customClassName="nav-icon" />,
+  },
+  {
     component: CNavTitle,
     name: 'Theme',
   },

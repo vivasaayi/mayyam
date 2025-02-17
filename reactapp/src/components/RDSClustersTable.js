@@ -2,10 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
-import { useHistory } from 'react-router-dom';
 
 const RDSClustersTable = () => {
-    const history = useHistory();
     const [clusters, setClusters] = useState([]);
     const [selectedClusters, setSelectedClusters] = useState([]);
 
