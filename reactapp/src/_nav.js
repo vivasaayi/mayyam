@@ -29,7 +29,19 @@ const _nav = [
   },
   {
     component: CNavTitle,
-    name: 'Hello from rajan',
+    name: 'AWS Services',
+  },
+  {
+    component: CNavItem,
+    name: 'ElastiCache Clusters',
+    to: '/elasticache-clusters',
+    icon: <CIcon icon={cilChartPie} customClassName="nav-icon" />,
+  },
+  {
+    component: CNavItem,
+    name: 'ElastiCache Replication Groups',
+    to: '/elasticache-replication-groups',
+    icon: <CIcon icon={cilChartPie} customClassName="nav-icon" />,
   },
   {
     component: CNavTitle,
@@ -46,6 +58,24 @@ const _nav = [
     name: 'Typography',
     to: '/theme/typography',
     icon: <CIcon icon={cilPencil} customClassName="nav-icon" />,
+  },
+  {
+    component: CNavItem,
+    name: 'RDS Clusters',
+    to: '/rds-clusters',
+    icon: <CIcon icon={cilChartPie} customClassName="nav-icon" />,
+  },
+  {
+    component: CNavItem,
+    name: 'New Link',
+    to: '/rds-clusterstable',
+    icon: <CIcon icon={cilExternalLink} customClassName="nav-icon" />,
+  },
+  {
+    component: CNavItem,
+    name: 'RDS Instances',
+    to: '/rds-instances',
+    icon: <CIcon icon={cilChartPie} customClassName="nav-icon" />,
   },
   {
     component: CNavTitle,
