@@ -84,4 +84,22 @@ public class DynamoDbController {
             return ResponseEntity.status(500).body(null);
         }
     }
+
+    @GetMapping("/tablesWithoutReplication")
+    public ResponseEntity<List<Map<String, String>>> getTablesWithoutGlobalReplication() {
+        try {
+            return ResponseEntity.ok(dynamoDbService.getTablesWithoutGlobalReplication());
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(null);
+        }
+    }
+
+    @GetMapping("/tablesWithReplication")
+    public ResponseEntity<List<Map<String, String>>> getTablesWithGlobalReplication() {
+        try {
+            return ResponseEntity.ok(dynamoDbService.getTablesWithGlobalReplication());
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(null);
+        }
+    }
 }

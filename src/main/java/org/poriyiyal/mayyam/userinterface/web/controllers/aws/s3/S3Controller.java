@@ -61,4 +61,22 @@ public class S3Controller {
             return ResponseEntity.status(500).body(null);
         }
     }
+
+    @GetMapping("/bucketsWithoutReplication")
+    public ResponseEntity<List<Map<String, String>>> getBucketsWithoutReplication() {
+        try {
+            return ResponseEntity.ok(s3Service.getBucketsWithoutReplication());
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(null);
+        }
+    }
+
+    @GetMapping("/bucketsWithReplication")
+    public ResponseEntity<List<Map<String, String>>> getBucketsWithReplication() {
+        try {
+            return ResponseEntity.ok(s3Service.getBucketsWithReplication());
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(null);
+        }
+    }
 }

@@ -74,4 +74,41 @@ public class DynamoDbService extends BaseAwsService {
             throw e;
         }
     }
+
+    public List<Map<String, String>> getTablesWithoutGlobalReplication() {
+        ListTablesResponse listTablesResponse = dynamoDbClient.listTables();
+        return listTablesResponse.tableNames().stream()
+                .map(tableName -> {
+                    DescribeTableResponse describeTableResponse = dynamoDbClient.describeTable(DescribeTableRequest.builder().tableName(tableName).build());
+                    if (describeTableResponse.table().replicas() == null || describeTableResponse.table().replicas().isEmpty()) {
+                        return Map.of(
+                                "tableName", tableName,
+                                "status", describeTableResponse.table().tableStatusAsString()
+                        );
+                    }
+                    return null;
+                })
+                .filter(table -> table != null)
+                .collect(Collectors.toList());
+    }
+
+    public List<Map<String, String>> getTablesWithGlobalReplication() {
+        ListTablesResponse listTablesResponse = dynamoDbClient.listTables();
+        return listTablesResponse.tableNames().stream()
+                .map(tableName -> {
+                    DescribeTableResponse describeTableResponse = dynamoDbClient.describeTable(DescribeTableRequest.builder().tableName(tableName).build());
+                    if (describeTableResponse.table().replicas() != null && !describeTableResponse.table().replicas().isEmpty()) {
+                        return Map.of(
+                                "tableName", tableName,
+                                "status", describeTableResponse.table().tableStatusAsString(),
+                                "replicas", describeTableResponse.table().replicas().stream()
+                                        .map(replica -> replica.regionName())
+                                        .collect(Collectors.joining(", "))
+                        );
+                    }
+                    return null;
+                })
+                .filter(table -> table != null)
+                .collect(Collectors.toList());
+    }
 }

@@ -84,11 +84,16 @@ const S3List = () => {
       });
   };
 
+  const handleReplicationStatus = () => {
+    window.open('/#/s3/replication', '_blank');
+  };
+
   return (
     <div>
       <h2>S3 Buckets</h2>
       <CButton color="primary" onClick={() => setShowModal(true)}>Create S3 Bucket</CButton>
       <CButton color="danger" onClick={() => setShowDeleteModal(true)} disabled={selectedRows.length === 0}>Delete Selected Buckets</CButton>
+      <CButton color="info" onClick={handleReplicationStatus}>See Replication Status</CButton>
       {message && <p>{message}</p>}
       <div className="ag-theme-alpine" style={{ height: 600, width: '100%' }}>
         <AgGridReact

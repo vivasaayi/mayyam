@@ -74,11 +74,16 @@ const DynamoDbList = () => {
       });
   };
 
+  const handleReplicationStatus = () => {
+    window.open('/#/dynamodb/replication', '_blank');
+  };
+
   return (
     <div>
       <h2>DynamoDB Tables</h2>
       <CButton color="primary" onClick={() => setShowModal(true)}>Create DynamoDB Table</CButton>
       <CButton color="danger" onClick={() => setShowDeleteModal(true)} disabled={selectedRows.length === 0}>Delete Selected Tables</CButton>
+      <CButton color="info" onClick={handleReplicationStatus}>See Replication Status</CButton>
       {message && <p>{message}</p>}
       <div className="ag-theme-alpine" style={{ height: 600, width: '100%' }}>
         <AgGridReact
