@@ -8,6 +8,7 @@ const DeleteConfirmationModal = ({ show, handleClose, handleConfirm, selectedStr
     setLoading(true);
     await handleConfirm();
     setLoading(false);
+    handleClose();
   };
 
   return (

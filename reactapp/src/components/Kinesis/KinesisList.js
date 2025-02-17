@@ -26,11 +26,18 @@ const KinesisList = () => {
   }, []);
 
   const columnDefs = [
-    { headerName: 'Stream Name', field: 'streamName', filter: true, checkboxSelection: true },
-    { headerName: 'Stream ARN', field: 'streamARN', filter: true },
-    { headerName: 'Stream Status', field: 'streamStatus', filter: true },
-    { headerName: 'Shards', field: 'shards.length', filter: true }
+    { headerName: 'Stream Name', field: 'streamName', filter: true, sortable: true, checkboxSelection: true },
+    { headerName: 'Stream ARN', field: 'streamARN', filter: true, sortable: true },
+    { headerName: 'Stream Status', field: 'streamStatus', filter: true, sortable: true },
+    { headerName: 'Shards', field: 'shards.length', filter: true, sortable: true }
   ];
+
+  const defaultColDef = {
+    sortable: true,
+    filter: true,
+    resizable: true,
+    enableRowGroup: true,
+  };
 
   const handleCreate = async (streamName, shardCount) => {
     const response = await fetch(`/api/kinesis/create?streamName=${streamName}&shardCount=${shardCount}`, {
@@ -90,6 +97,9 @@ const KinesisList = () => {
           pagination={true}
           paginationPageSize={10}
           domLayout='autoHeight'
+          defaultColDef={defaultColDef}
+          groupSelectsChildren={true}
+          autoGroupColumnDef={{ headerName: 'Group', field: 'streamName', cellRenderer: 'agGroupCellRenderer', cellRendererParams: { checkbox: true } }}
         />
       </div>
       <KinesisModal
