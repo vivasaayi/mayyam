@@ -2,15 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
-import { CButton, CFormSelect } from '@coreui/react';
+import { CButton, CAlert } from '@coreui/react';
 import SqsModal from './SqsModal';
 import DeleteConfirmationModal from './DeleteConfirmationModal';
+import RegionDropdown from '../RegionDropdown';
 
 const SqsList = () => {
   const [rowData, setRowData] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [message, setMessage] = useState('');
+  const [messageType, setMessageType] = useState('success');
   const [selectedRows, setSelectedRows] = useState([]);
   const [region, setRegion] = useState('us-west-2');
 
@@ -23,6 +25,10 @@ const SqsList = () => {
           ...data[key]
         }));
         setRowData(formattedData);
+      })
+      .catch(error => {
+        setMessage(`Failed to fetch queues: ${error.message}`);
+        setMessageType('danger');
       });
   }, [region]);
 
@@ -88,15 +94,10 @@ const SqsList = () => {
   return (
     <div>
       <h2>SQS Queues</h2>
-      <CFormSelect value={region} onChange={(e) => setRegion(e.target.value)}>
-        <option value="us-west-2">US West (Oregon)</option>
-        <option value="us-east-1">US East (N. Virginia)</option>
-        <option value="eu-west-1">EU (Ireland)</option>
-        {/* Add more regions as needed */}
-      </CFormSelect>
+      <RegionDropdown selectedRegion={region} onChange={(e) => setRegion(e.target.value)} />
       <CButton color="primary" onClick={() => setShowModal(true)}>Create SQS Queue</CButton>
       <CButton color="danger" onClick={() => setShowDeleteModal(true)} disabled={selectedRows.length === 0}>Delete Selected Queues</CButton>
-      {message && <p>{message}</p>}
+      {message && <CAlert color={messageType}>{message}</CAlert>}
       <div className="ag-theme-alpine" style={{ height: 600, width: '100%' }}>
         <AgGridReact
           columnDefs={columnDefs}

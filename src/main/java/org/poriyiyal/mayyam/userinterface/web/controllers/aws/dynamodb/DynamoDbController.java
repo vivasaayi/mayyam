@@ -12,6 +12,7 @@ import software.amazon.awssdk.services.dynamodb.model.*;
 import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/dynamodb")
@@ -25,10 +26,33 @@ public class DynamoDbController {
     @PostMapping("/create")
     public ResponseEntity<String> createTable(@RequestParam String region, @RequestParam String tableName, @RequestBody Map<String, Object> properties) {
         try {
-            List<AttributeDefinition> attributeDefinitions = (List<AttributeDefinition>) properties.get("attributeDefinitions");
-            List<KeySchemaElement> keySchema = (List<KeySchemaElement>) properties.get("keySchema");
-            ProvisionedThroughput provisionedThroughput = (ProvisionedThroughput) properties.get("provisionedThroughput");
-            dynamoDbService.createTable(region, tableName, attributeDefinitions, keySchema, provisionedThroughput);
+            List<Map<String, String>> attributeDefinitionsMap = (List<Map<String, String>>) properties.get("attributeDefinitions");
+            List<AttributeDefinition> attributeDefinitions = attributeDefinitionsMap.stream()
+                    .map(map -> AttributeDefinition.builder()
+                            .attributeName(map.get("AttributeName"))
+                            .attributeType(map.get("AttributeType"))
+                            .build())
+                    .collect(Collectors.toList());
+
+            List<Map<String, String>> keySchemaMap = (List<Map<String, String>>) properties.get("keySchema");
+            List<KeySchemaElement> keySchema = keySchemaMap.stream()
+                    .map(map -> KeySchemaElement.builder()
+                            .attributeName(map.get("AttributeName"))
+                            .keyType(map.get("KeyType"))
+                            .build())
+                    .collect(Collectors.toList());
+
+            String billingMode = (String) properties.get("billingMode");
+            ProvisionedThroughput provisionedThroughput = null;
+            if ("PROVISIONED".equals(billingMode)) {
+                Map<String, Object> provisionedThroughputMap = (Map<String, Object>) properties.get("provisionedThroughput");
+                provisionedThroughput = ProvisionedThroughput.builder()
+                        .readCapacityUnits(((Number) provisionedThroughputMap.get("readCapacityUnits")).longValue())
+                        .writeCapacityUnits(((Number) provisionedThroughputMap.get("writeCapacityUnits")).longValue())
+                        .build();
+            }
+
+            dynamoDbService.createTable(region, tableName, attributeDefinitions, keySchema, billingMode, provisionedThroughput);
             return ResponseEntity.ok("Table created successfully: " + tableName);
         } catch (Exception e) {
             logger.error("Failed to create table: {}", e.getMessage());

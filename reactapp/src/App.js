@@ -15,7 +15,6 @@ const DefaultLayout = React.lazy(() => import('./layout/DefaultLayout'))
 const RdsClusters = React.lazy(() => import('./components/RDS/RdsClusters'))
 // const RDSClustersTable = React.lazy(() => import('./components/RDS/RDSClustersTable'))
 const DynamoDbList = React.lazy(() => import('./components/DynamoDb/DynamoDbList'))
-const DynamoDbTablesWithoutPITR = React.lazy(() => import('./components/DynamoDb/DynamoDbTablesWithoutPITR'))
 // const ElastiCacheClusters = React.lazy(() => import('./components/ElastiCache/ElastiCacheClusters'))
 // const ElastiCacheReplicationGroups = React.lazy(() => import('./components/ElastiCache/ElastiCacheReplicationGroups'))
 // const KinesisStreams = React.lazy(() => import('./components/Kinesis/KinesisStreams'))
@@ -58,14 +57,13 @@ const App = () => {
             {/* <Route path="/kinesis/list" component={KinesisStreams} /> */}
             {/* <Route path="/sqs/list" component={SQSQueues} /> */}
             {/* <Route path="/dynamodb/list" component={DynamoDBTables} /> */}
-            <Route path="/s3/list" component={S3List} />
+            {/* <Route path="/s3/list" component={S3List} /> */}
             <Route path="/rds-clusters" component={RdsClusters} />
             {/* <Route path="/rds-clusterstable" component={RdsClustersTable} /> */}
             <Route path="/rds-instances" component={RdsInstances} />
             <Route exact path="/rds-clusters" name="Rds Clusters" element={<RdsClusters />} />
             {/* <Route exact path="/rds-clusters-table" name="RDS Clusters Table" element={<RDSClustersTable />} /> */}
             <Route exact path="/dynamodb" name="DynamoDb List" element={<DynamoDbList />} />
-            <Route exact path="/dynamodb/tablesWithoutPITR" name="DynamoDb Tables Without PITR" element={<DynamoDbTablesWithoutPITR />} />
             <Route path="*" name="Home" element={<DefaultLayout />} />
           </Routes>
         </CContainer>

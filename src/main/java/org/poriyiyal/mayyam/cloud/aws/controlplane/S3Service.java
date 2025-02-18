@@ -28,9 +28,14 @@ public class S3Service extends BaseAwsService {
 
     private S3Client getS3ClientForBucket(String bucketName) {
         S3Client s3Client = getS3Client("us-east-1"); // Default region for bucket location
-        GetBucketLocationResponse locationResponse = s3Client.getBucketLocation(GetBucketLocationRequest.builder().bucket(bucketName).build());
-        Region bucketRegion = Region.of(locationResponse.locationConstraintAsString());
-        return getS3Client(bucketRegion.id());
+        try {
+            HeadBucketResponse headBucketResponse = s3Client.headBucket(HeadBucketRequest.builder().bucket(bucketName).build());
+            String bucketRegion = headBucketResponse.sdkHttpResponse().firstMatchingHeader("x-amz-bucket-region").orElse("us-east-1");
+            return getS3Client(bucketRegion);
+        } catch (S3Exception e) {
+            System.err.println("Failed to get bucket region: " + e.getMessage());
+            throw e;
+        }
     }
 
     public void createBucket(String region, String bucketName) {
@@ -52,7 +57,7 @@ public class S3Service extends BaseAwsService {
 
     public void deleteBucket(String region, String bucketName) {
         try {
-            S3Client client = getS3ClientForBucket(bucketName);
+            S3Client client = getS3Client(region);
             DeleteBucketRequest request = DeleteBucketRequest.builder()
                     .bucket(bucketName)
                     .build();
@@ -87,7 +92,7 @@ public class S3Service extends BaseAwsService {
         }
 
         try {
-            S3Client client = getS3ClientForBucket(bucketName);
+            S3Client client = getS3Client(region);
             PutObjectRequest putObjectRequest = PutObjectRequest.builder()
                     .bucket(bucketName)
                     .key(key)
@@ -106,7 +111,7 @@ public class S3Service extends BaseAwsService {
         }
 
         try {
-            S3Client client = getS3ClientForBucket(bucketName);
+            S3Client client = getS3Client(region);
             GetObjectRequest getObjectRequest = GetObjectRequest.builder()
                     .bucket(bucketName)
                     .key(key)

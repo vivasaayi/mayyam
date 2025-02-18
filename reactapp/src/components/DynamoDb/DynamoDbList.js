@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
-import { CButton, CFormSelect, CAlert } from '@coreui/react';
+import { CButton, CAlert } from '@coreui/react';
 import DynamoDbModal from './DynamoDbModal';
 import DeleteConfirmationModal from './DeleteConfirmationModal';
 import RegionDropdown from '../RegionDropdown';
@@ -42,9 +42,9 @@ const DynamoDbList = () => {
     enableRowGroup: true,
   };
 
-  const handleCreate = async (tableName, properties) => {
+  const handleCreate = async (properties) => {
     try {
-      const response = await fetch(`/api/dynamodb/create?tableName=${tableName}&region=${region}`, {
+      const response = await fetch(`/api/dynamodb/create?tableName=${properties.tableName}&region=${region}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -97,11 +97,11 @@ const DynamoDbList = () => {
   };
 
   const handleReplicationStatus = () => {
-    window.open('/#/dynamodb/replication', '_blank');
+    window.open(`/#/dynamodb/replication?region=${region}`, '_blank');
   };
 
   const handleViewTablesWithoutPITR = () => {
-    window.open(`/dynamodb/tablesWithoutPITR?region=${region}`, '_blank');
+    window.open(`/#/dynamodb/tablesWithoutPITR?region=${region}`, '_blank');
   };
 
   return (

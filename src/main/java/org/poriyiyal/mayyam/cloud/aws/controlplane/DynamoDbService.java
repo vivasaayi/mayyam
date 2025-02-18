@@ -26,7 +26,7 @@ public class DynamoDbService extends BaseAwsService {
                 .build());
     }
 
-    public void createTable(String region, String tableName, List<AttributeDefinition> attributeDefinitions, List<KeySchemaElement> keySchema, ProvisionedThroughput provisionedThroughput) {
+    public void createTable(String region, String tableName, List<AttributeDefinition> attributeDefinitions, List<KeySchemaElement> keySchema, String billingMode, ProvisionedThroughput provisionedThroughput) {
         if (region == null || region.isEmpty()) {
             throw new IllegalArgumentException("Region cannot be null or empty");
         }
@@ -39,19 +39,23 @@ public class DynamoDbService extends BaseAwsService {
         if (keySchema == null || keySchema.isEmpty()) {
             throw new IllegalArgumentException("Key schema cannot be null or empty");
         }
-        if (provisionedThroughput == null) {
-            throw new IllegalArgumentException("Provisioned throughput cannot be null");
+        if (billingMode == null || billingMode.isEmpty()) {
+            throw new IllegalArgumentException("Billing mode cannot be null or empty");
         }
 
         try {
             DynamoDbClient dynamoDbClient = getDynamoDbClient(region);
-            CreateTableRequest request = CreateTableRequest.builder()
+            CreateTableRequest.Builder requestBuilder = CreateTableRequest.builder()
                     .tableName(tableName)
                     .attributeDefinitions(attributeDefinitions)
                     .keySchema(keySchema)
-                    .provisionedThroughput(provisionedThroughput)
-                    .build();
-            dynamoDbClient.createTable(request);
+                    .billingMode(BillingMode.fromValue(billingMode));
+
+            if ("PROVISIONED".equals(billingMode) && provisionedThroughput != null) {
+                requestBuilder.provisionedThroughput(provisionedThroughput);
+            }
+
+            dynamoDbClient.createTable(requestBuilder.build());
             logger.info("Table created successfully: {}", tableName);
         } catch (DynamoDbException e) {
             logger.error("Failed to create table: {}", e.getMessage());
