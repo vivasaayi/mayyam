@@ -10,7 +10,7 @@ const Accordion = React.lazy(() => import('./views/base/accordion/Accordion'))
 // Buttons
 const ButtonGroups = React.lazy(() => import('./views/buttons/button-groups/ButtonGroups'))
 
-const RdsInstances = React.lazy(() => import('./views/RdsInstances'))
+const RdsInstances = React.lazy(() => import('./components/RDS/RdsInstances'))
 
 // ElastiCache
 const ElastiCacheClusters = React.lazy(() => import('./views/ElastiCacheClusters'))

@@ -1,10 +1,10 @@
-import React from 'react'
-import CIcon from '@coreui/icons-react'
+import React from 'react';
+import CIcon from '@coreui/icons-react';
 import {
   cilChartPie,
   cilExternalLink,
-} from '@coreui/icons'
-import { CNavItem, CNavTitle } from '@coreui/react'
+} from '@coreui/icons';
+import { CNavItem, CNavTitle } from '@coreui/react';
 
 const _nav = [
   {
@@ -75,6 +75,6 @@ const _nav = [
     to: '/rds-instances',
     icon: <CIcon icon={cilChartPie} customClassName="nav-icon" />,
   },
-]
+];
 
-export default _nav
+export default _nav;

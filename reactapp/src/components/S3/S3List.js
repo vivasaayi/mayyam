@@ -5,6 +5,7 @@ import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { CButton, CFormSelect } from '@coreui/react';
 import S3Modal from './S3Modal';
 import DeleteConfirmationModal from './DeleteConfirmationModal';
+import RegionDropdown from '../RegionDropdown';
 
 const S3List = () => {
   const [rowData, setRowData] = useState([]);
@@ -91,12 +92,7 @@ const S3List = () => {
   return (
     <div>
       <h2>S3 Buckets</h2>
-      <CFormSelect value={region} onChange={(e) => setRegion(e.target.value)}>
-        <option value="us-west-2">US West (Oregon)</option>
-        <option value="us-east-1">US East (N. Virginia)</option>
-        <option value="eu-west-1">EU (Ireland)</option>
-        {/* Add more regions as needed */}
-      </CFormSelect>
+      <RegionDropdown selectedRegion={region} onChange={(e) => setRegion(e.target.value)} />
       <CButton color="primary" onClick={() => setShowModal(true)}>Create S3 Bucket</CButton>
       <CButton color="danger" onClick={() => setShowDeleteModal(true)} disabled={selectedRows.length === 0}>Delete Selected Buckets</CButton>
       <CButton color="info" onClick={handleReplicationStatus}>See Replication Status</CButton>

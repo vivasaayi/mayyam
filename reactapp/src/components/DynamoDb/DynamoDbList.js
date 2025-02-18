@@ -5,6 +5,7 @@ import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { CButton, CFormSelect, CAlert } from '@coreui/react';
 import DynamoDbModal from './DynamoDbModal';
 import DeleteConfirmationModal from './DeleteConfirmationModal';
+import RegionDropdown from '../RegionDropdown';
 
 const DynamoDbList = () => {
   const [rowData, setRowData] = useState([]);
@@ -106,12 +107,7 @@ const DynamoDbList = () => {
   return (
     <div>
       <h2>DynamoDB Tables</h2>
-      <CFormSelect value={region} onChange={(e) => setRegion(e.target.value)}>
-        <option value="us-west-2">US West (Oregon)</option>
-        <option value="us-east-1">US East (N. Virginia)</option>
-        <option value="eu-west-1">EU (Ireland)</option>
-        {/* Add more regions as needed */}
-      </CFormSelect>
+      <RegionDropdown selectedRegion={region} onChange={(e) => setRegion(e.target.value)} />
       <CButton color="primary" onClick={() => setShowModal(true)}>Create DynamoDB Table</CButton>
       <CButton color="danger" onClick={() => setShowDeleteModal(true)} disabled={selectedRows.length === 0}>Delete Selected Tables</CButton>
       <CButton color="info" onClick={handleReplicationStatus}>See Replication Status</CButton>
