@@ -23,6 +23,7 @@ const S3List = React.lazy(() => import('./components/S3/S3List'))
 const S3Replication = React.lazy(() => import('./components/S3/S3Replication'))
 const DynamoDbReplication = React.lazy(() => import('./components/DynamoDb/DynamoDbReplication'))
 const DynamoDbTablesWithoutPITR = React.lazy(() => import('./components/DynamoDb/DynamoDbTablesWithoutPITR'))
+const ClusterMap = React.lazy(() => import('./components/RDS/ClusterMap'))
 
 const routes = [
   { path: '/', exact: true, name: 'Home' },
@@ -41,6 +42,7 @@ const routes = [
   { path: '/s3/replication', name: 'S3 Replication', element: S3Replication },
   { path: '/dynamodb/replication', name: 'DynamoDB Replication', element: DynamoDbReplication },
   { path: '/dynamodb/tablesWithoutPITR', name: 'DynamoDb Tables Without PITR', element: DynamoDbTablesWithoutPITR },
+  { path: '/rds/cluster-map', name: 'Cluster Map', element: ClusterMap },
 ]
 
 export default routes
