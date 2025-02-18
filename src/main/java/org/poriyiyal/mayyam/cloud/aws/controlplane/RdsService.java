@@ -3,9 +3,11 @@ package org.poriyiyal.mayyam.cloud.aws.controlplane;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.rds.RdsClient;
 import software.amazon.awssdk.services.rds.model.*;
+
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
+import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
@@ -175,9 +177,163 @@ public class RdsService extends BaseAwsService {
         }
     }
 
+    public List<GlobalClusterDetails> listGlobalClustersWithReplicationFlows(String regionName) {
+        try {
+            RdsClient rdsClient = getRdsClient(regionName);
+            DescribeGlobalClustersResponse response = rdsClient.describeGlobalClusters();
+            List<GlobalCluster> globalClusters = response.globalClusters();
+            
+            return globalClusters.stream().map(cluster -> {
+                List<ReplicationFlow> replicationFlows = calculateReplicationFlows(cluster);
+                GlobalClusterMember writer = cluster.globalClusterMembers().stream()
+                    .filter(GlobalClusterMember::isWriter)
+                    .findFirst()
+                    .orElse(null);
+                String writerRegion = writer != null ? getRegionForArn(writer.dbClusterArn()) : "unknown-region";
+                double[] writerCoordinates = writer != null ? getCoordinatesForRegion(writerRegion) : new double[]{0.0, 0.0};
+                return new GlobalClusterDetails(
+                    cluster.globalClusterIdentifier(),
+                    cluster.status(),
+                    replicationFlows,
+                    writerCoordinates,
+                    writerRegion
+                );
+            }).collect(Collectors.toList());
+        } catch (RdsException e) {
+            System.err.println("Error listing global clusters with replication flows: " + e.awsErrorDetails().errorMessage());
+            throw e;
+        }
+    }
+
+    private double[] getCoordinatesForRegion(String region) {
+        switch (region) {
+            case "us-east-1":
+                return new double[]{-77.0369, 38.9072}; // Example coordinates for us-east-1
+            case "us-west-2":
+                return new double[]{-122.3321, 47.6062}; // Example coordinates for us-west-2
+            case "eu-west-1":
+                return new double[]{-6.2603, 53.3498}; // Example coordinates for eu-west-1
+            case "us-east-2":
+                return new double[]{-82.9988, 39.9612}; // Example coordinates for us-east-2
+            case "us-west-1":
+                return new double[]{-121.8947, 37.3394}; // Example coordinates for us-west-1
+            case "eu-central-1":
+                return new double[]{8.6821, 50.1109}; // Example coordinates for eu-central-1
+            case "ap-southeast-1":
+                return new double[]{103.851959, 1.290270}; // Example coordinates for ap-southeast-1
+            case "ap-southeast-2":
+                return new double[]{151.2093, -33.8688}; // Example coordinates for ap-southeast-2
+            case "ap-northeast-1":
+                return new double[]{139.6917, 35.6895}; // Example coordinates for ap-northeast-1
+            case "ap-northeast-2":
+                return new double[]{126.9780, 37.5665}; // Example coordinates for ap-northeast-2
+            case "sa-east-1":
+                return new double[]{-46.6333, -23.5505}; // Example coordinates for sa-east-1
+            case "ca-central-1":
+                return new double[]{-75.6972, 45.4215}; // Example coordinates for ca-central-1
+            case "eu-west-2":
+                return new double[]{-0.1276, 51.5074}; // Example coordinates for eu-west-2
+            case "eu-west-3":
+                return new double[]{2.3522, 48.8566}; // Example coordinates for eu-west-3
+            case "eu-north-1":
+                return new double[]{18.0686, 59.3293}; // Example coordinates for eu-north-1
+            case "ap-south-1":
+                return new double[]{72.8777, 19.0760}; // Example coordinates for ap-south-1
+            case "me-south-1":
+                return new double[]{55.2708, 25.2048}; // Example coordinates for me-south-1
+            // Add more cases for other regions
+            default:
+                return new double[]{0.0, 0.0}; // Default coordinates
+        }
+    }
+
+    private String getRegionForArn(String arn) {
+        // Extract region from ARN
+        String[] arnParts = arn.split(":");
+        if (arnParts.length > 3) {
+            return arnParts[3];
+        }
+        return "unknown-region";
+    }
+
     public List<DBCluster> listClusters(String regionName) {
         RdsClient rdsClient = getRdsClient(regionName);
         DescribeDbClustersResponse response = rdsClient.describeDBClusters();
         return response.dbClusters();
+    }
+
+    public Map<String, Object> getRegionDetails(String region) {
+        RdsClient rdsClient = getRdsClient(region);
+        DescribeDbClustersResponse response = rdsClient.describeDBClusters();
+        List<DBCluster> clusters = response.dbClusters();
+        return Map.of(
+                "region", region,
+                "clusters", clusters
+        );
+    }
+
+    public void initiateFailover(String region, String clusterId, String targetDbClusterIdentifier) {
+        RdsClient rdsClient = getRdsClient(region);
+        rdsClient.failoverGlobalCluster(FailoverGlobalClusterRequest.builder()
+                .globalClusterIdentifier(clusterId)
+                .targetDbClusterIdentifier(targetDbClusterIdentifier)
+                .build());
+    }
+
+    public void initiateFailback(String region, String clusterId) {
+        RdsClient rdsClient = getRdsClient(region);
+        rdsClient.failoverGlobalCluster(FailoverGlobalClusterRequest.builder()
+                .globalClusterIdentifier(clusterId)
+                .targetDbClusterIdentifier(clusterId)
+                .build());
+    }
+
+    public Map<String, String> getFailoverStatus(String region, String clusterId) {
+        RdsClient rdsClient = getRdsClient(region);
+        DescribeGlobalClustersResponse response = rdsClient.describeGlobalClusters(DescribeGlobalClustersRequest.builder()
+                .globalClusterIdentifier(clusterId)
+                .build());
+        GlobalCluster cluster = response.globalClusters().get(0);
+        
+        // Calculate replicationFlows
+        List<ReplicationFlow> replicationFlows = calculateReplicationFlows(cluster);
+
+        return Map.of(
+                "status", cluster.status(),
+                "replicationFlows", replicationFlows.toString()
+        );
+    }
+
+    private List<ReplicationFlow> calculateReplicationFlows(GlobalCluster cluster) {
+        if (cluster.globalClusterMembers() == null || cluster.globalClusterMembers().isEmpty()) {
+            return List.of();
+        }
+
+        // Find the writer
+        GlobalClusterMember writer = cluster.globalClusterMembers().stream()
+            .filter(GlobalClusterMember::isWriter)
+            .findFirst()
+            .orElse(null);
+
+        if (writer == null) {
+            return List.of(); // No writer found, no replication flows
+        }
+
+        String writerRegion = getRegionForArn(writer.dbClusterArn());
+        double[] writerCoordinates = getCoordinatesForRegion(writerRegion);
+
+        // Find the readers and create replication flows
+        return cluster.globalClusterMembers().stream()
+            .filter(member -> !member.isWriter())
+            .map(reader -> new ReplicationFlow(
+                writer.dbClusterArn(),
+                reader.dbClusterArn(),
+                "Replication",
+                writerRegion,
+                getRegionForArn(reader.dbClusterArn()),
+                writerCoordinates,
+                getCoordinatesForRegion(getRegionForArn(reader.dbClusterArn()))
+            ))
+            .collect(Collectors.toList());
     }
 }
