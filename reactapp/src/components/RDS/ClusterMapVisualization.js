@@ -24,6 +24,13 @@ const ClusterMapVisualization = ({ cluster, onRegionClick }) => {
     });
   };
 
+  const handleMouseEnter = (event, region, id) => {
+    contextMenu.show({
+      id: id,
+      event: event,
+    });
+  };
+
   const handleMakePrimary = async (targetRegion, targetDbClusterIdentifier) => {
     setSelectedFlow({ targetRegion, targetDbClusterIdentifier });
     setConfirmationVisible(true);
@@ -41,6 +48,11 @@ const ClusterMapVisualization = ({ cluster, onRegionClick }) => {
       console.error("Failed to initiate failover:", error);
       alert("Failed to initiate failover");
     }
+  };
+
+  const getClusterNameFromArn = (arn) => {
+    const parts = arn.split(':');
+    return parts[parts.length - 1];
   };
 
   console.log('Cluster coordinates:', coordinates);
@@ -70,7 +82,7 @@ const ClusterMapVisualization = ({ cluster, onRegionClick }) => {
             ))
           }
         </Geographies>
-        <Marker coordinates={coordinates} onClick={() => handleMarkerClick(region)} onContextMenu={(e) => handleContextMenu(e, region, `menu-${globalClusterId}`)}>
+        <Marker coordinates={coordinates} onClick={() => handleMarkerClick(region)} onMouseEnter={(e) => handleMouseEnter(e, region, `menu-${globalClusterId}`)}>
           <circle r={5} fill="green" />
           <text textAnchor="middle" y={-10} style={{ fontFamily: "system-ui", fill: "#5D5A6D" }}>
             {globalClusterId}
@@ -78,10 +90,10 @@ const ClusterMapVisualization = ({ cluster, onRegionClick }) => {
         </Marker>
         {replicationFlows.map((flow, index) => (
           <React.Fragment key={index}>
-            <Marker coordinates={flow.targetCoordinates} onClick={() => handleMarkerClick(flow.targetRegion)} onContextMenu={(e) => handleContextMenu(e, flow.targetRegion, `menu-${globalClusterId}-${index}`)}>
+            <Marker coordinates={flow.targetCoordinates} onClick={() => handleMarkerClick(flow.targetRegion)} onMouseEnter={(e) => handleMouseEnter(e, flow.targetRegion, `menu-${globalClusterId}-${index}`)}>
               <circle r={5} fill="red" />
               <text textAnchor="middle" y={-10} style={{ fontFamily: "system-ui", fill: "#5D5A6D" }}>
-                {flow.targetArn}
+                {getClusterNameFromArn(flow.targetArn)}
               </text>
             </Marker>
             <Line
@@ -97,7 +109,7 @@ const ClusterMapVisualization = ({ cluster, onRegionClick }) => {
       </ComposableMap>
       {replicationFlows.map((flow, index) => (
         <Menu id={`menu-${globalClusterId}-${index}`} key={index}>
-          <Item onClick={() => handleMakePrimary(flow.targetRegion, flow.targetArn)}>Make as Primary</Item>
+          <Item onClick={() => handleMakePrimary(flow.targetRegion, flow.targetArn)}>Make {getClusterNameFromArn(flow.targetArn)} as Primary</Item>
         </Menu>
       ))}
       <CModal visible={confirmationVisible} onClose={() => setConfirmationVisible(false)}>
