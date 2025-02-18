@@ -15,12 +15,8 @@ import java.util.List;
 @RequestMapping("/api/rds")
 public class RdsController {
 
-    private final RdsService rdsService;
-
     @Autowired
-    public RdsController(RdsService rdsService) {
-        this.rdsService = rdsService;
-    }
+    private RdsService rdsService;
 
     @GetMapping("/instances")
     public ResponseEntity<List<DBInstance>> listInstances() {

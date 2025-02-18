@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
-import { CButton, CFormSelect } from '@coreui/react';
-// import ElastiCacheModal from './ElastiCacheModal';
+import { CButton } from '@coreui/react';
+import RegionDropdown from '../RegionDropdown';
 import DeleteConfirmationModal from './DeleteConfirmationModal';
 
 const ElastiCacheList = () => {
@@ -12,15 +12,15 @@ const ElastiCacheList = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [message, setMessage] = useState('');
   const [selectedRows, setSelectedRows] = useState([]);
-  const [region, setRegion] = useState('us-west-2');
+  const [selectedRegion, setSelectedRegion] = useState('us-west-2');
 
   useEffect(() => {
-    fetch(`/api/elasticache/list?region=${region}`)
+    fetch(`/api/elasticache/list?region=${selectedRegion}`)
       .then(response => response.json())
       .then(data => {
         setRowData(data);
       });
-  }, [region]);
+  }, [selectedRegion]);
 
   const columnDefs = [
     { headerName: 'Cluster ID', field: 'cacheClusterId', filter: true, sortable: true, checkboxSelection: true },
@@ -37,7 +37,7 @@ const ElastiCacheList = () => {
   };
 
   const handleCreate = async (clusterId, properties) => {
-    const response = await fetch(`/api/elasticache/create?clusterId=${clusterId}&region=${region}`, {
+    const response = await fetch(`/api/elasticache/create?clusterId=${clusterId}&region=${selectedRegion}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -48,7 +48,7 @@ const ElastiCacheList = () => {
     setMessage(result);
     setShowModal(false);
     // Refresh the list after creating a new cluster
-    fetch(`/api/elasticache/list?region=${region}`)
+    fetch(`/api/elasticache/list?region=${selectedRegion}`)
       .then(response => response.json())
       .then(data => {
         setRowData(data);
@@ -57,7 +57,7 @@ const ElastiCacheList = () => {
 
   const handleDelete = async () => {
     const clusterIdsAndRegions = selectedRows.reduce((acc, row) => {
-      acc[row.cacheClusterId] = region;
+      acc[row.cacheClusterId] = selectedRegion;
       return acc;
     }, {});
     const response = await fetch('/api/elasticache/deleteMultiple', {
@@ -71,22 +71,21 @@ const ElastiCacheList = () => {
     setMessage(result);
     setShowDeleteModal(false);
     // Refresh the list after deleting clusters
-    fetch(`/api/elasticache/list?region=${region}`)
+    fetch(`/api/elasticache/list?region=${selectedRegion}`)
       .then(response => response.json())
       .then(data => {
         setRowData(data);
       });
   };
 
+  const handleRegionChange = (event) => {
+    setSelectedRegion(event.target.value);
+  };
+
   return (
     <div>
       <h2>ElastiCache Clusters</h2>
-      <CFormSelect value={region} onChange={(e) => setRegion(e.target.value)}>
-        <option value="us-west-2">US West (Oregon)</option>
-        <option value="us-east-1">US East (N. Virginia)</option>
-        <option value="eu-west-1">EU (Ireland)</option>
-        {/* Add more regions as needed */}
-      </CFormSelect>
+      <RegionDropdown selectedRegion={selectedRegion} onChange={handleRegionChange} />
       <CButton color="primary" onClick={() => setShowModal(true)}>Create ElastiCache Cluster</CButton>
       <CButton color="danger" onClick={() => setShowDeleteModal(true)} disabled={selectedRows.length === 0}>Delete Selected Clusters</CButton>
       {message && <p>{message}</p>}
