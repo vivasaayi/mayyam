@@ -2,5 +2,5 @@ package org.poriyiyal.mayyam.cloud.aws.controlplane;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
-public interface FailoverEventRepository extends JpaRepository<FailoverEvent, Long> {
+public interface FailoverEventRepository {
 }
