@@ -81,6 +81,12 @@ const _nav = [
     to: '/rds/cluster-map',
     icon: <CIcon icon={cilChartPie} customClassName="nav-icon" />,
   },
+  {
+    component: CNavItem,
+    name: 'RDS Global Clusters (V1)',
+    to: '/global-cluster-status',
+    icon: <CIcon icon={cilChartPie} customClassName="nav-icon" />,
+  },
 ];
 
 export default _nav;

@@ -40,14 +40,10 @@ Task 9: Even if I refresh tha page, detect that the cluster is failing over and 
 
 Task 10: The failover and failback events should be logged into a database, so that I can revisit the events later. The events should have details like the cluster name, failvoer start time, failover end time, duration, success ot failure.
 
+
+Ensure you capture all the details. Do not remove exiting code unnecessariliy. 
+
+My ReactApp is in Reactapp folder.
+
+RDS controller is here: src/main/java/org/poriyiyal/mayyam/userinterface/web/controllers/aws/rds
 -------------------
-
-Goal: I want to build advanced visualizations for Global RDS Clusters
-
-For each RDS Global Cluster, I want to build a visualization like below.
-
-Cluster Map (World Map with Nodes)
-Displays each RDS region as a node.
-Lines between nodes represent replication flows.
-Clicking a region shows detailed cluster info. And provide options to failvor and failback menus.
-
