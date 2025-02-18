@@ -19,10 +19,9 @@ public class S3Controller {
     private S3Service s3Service;
 
     @PostMapping("/create")
-    public ResponseEntity<String> createBucket(@RequestBody Map<String, String> requestBody) {
+    public ResponseEntity<String> createBucket(@RequestParam String region, @RequestParam String bucketName) {
         try {
-            String bucketName = requestBody.get("bucketName");
-            s3Service.createBucket(bucketName);
+            s3Service.createBucket(region, bucketName);
             return ResponseEntity.ok("Bucket created successfully: " + bucketName);
         } catch (Exception e) {
             return ResponseEntity.status(500).body("Failed to create bucket: " + e.getMessage());
@@ -30,9 +29,9 @@ public class S3Controller {
     }
 
     @DeleteMapping("/delete")
-    public ResponseEntity<String> deleteBucket(@RequestParam String bucketName) {
+    public ResponseEntity<String> deleteBucket(@RequestParam String region, @RequestParam String bucketName) {
         try {
-            s3Service.deleteBucket(bucketName);
+            s3Service.deleteBucket(region, bucketName);
             return ResponseEntity.ok("Bucket deleted successfully: " + bucketName);
         } catch (Exception e) {
             return ResponseEntity.status(500).body("Failed to delete bucket: " + e.getMessage());
@@ -40,10 +39,10 @@ public class S3Controller {
     }
 
     @DeleteMapping("/deleteMultiple")
-    public ResponseEntity<String> deleteMultipleBuckets(@RequestBody List<String> bucketNames) {
+    public ResponseEntity<String> deleteMultipleBuckets(@RequestParam String region, @RequestBody List<String> bucketNames) {
         try {
             for (String bucketName : bucketNames) {
-                s3Service.deleteBucket(bucketName);
+                s3Service.deleteBucket(region, bucketName);
             }
             return ResponseEntity.ok("Buckets deleted successfully");
         } catch (Exception e) {
@@ -52,29 +51,27 @@ public class S3Controller {
     }
 
     @GetMapping("/list")
-    public ResponseEntity<List<Bucket>> listBuckets() {
+    public ResponseEntity<Map<String, Bucket>> listBuckets(@RequestParam String region) {
         try {
-            Map<String, Bucket> bucketMap = s3Service.listBuckets();
-            List<Bucket> bucketList = bucketMap.values().stream().collect(Collectors.toList());
-            return ResponseEntity.ok(bucketList);
+            return ResponseEntity.ok(s3Service.listBuckets(region));
         } catch (Exception e) {
             return ResponseEntity.status(500).body(null);
         }
     }
 
     @GetMapping("/bucketsWithoutReplication")
-    public ResponseEntity<List<Map<String, String>>> getBucketsWithoutReplication() {
+    public ResponseEntity<List<Map<String, String>>> getBucketsWithoutReplication(@RequestParam String region) {
         try {
-            return ResponseEntity.ok(s3Service.getBucketsWithoutReplication());
+            return ResponseEntity.ok(s3Service.getBucketsWithoutReplication(region));
         } catch (Exception e) {
             return ResponseEntity.status(500).body(null);
         }
     }
 
     @GetMapping("/bucketsWithReplication")
-    public ResponseEntity<List<Map<String, String>>> getBucketsWithReplication() {
+    public ResponseEntity<List<Map<String, String>>> getBucketsWithReplication(@RequestParam String region) {
         try {
-            return ResponseEntity.ok(s3Service.getBucketsWithReplication());
+            return ResponseEntity.ok(s3Service.getBucketsWithReplication(region));
         } catch (Exception e) {
             return ResponseEntity.status(500).body(null);
         }

@@ -1,27 +1,36 @@
 package org.poriyiyal.mayyam.cloud.aws.controlplane;
 
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.rds.RdsClient;
 import software.amazon.awssdk.services.rds.model.*;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Scanner;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Service
 public class RdsService extends BaseAwsService {
-    private final RdsClient rdsClient;
 
-    public RdsService() {
-        this.rdsClient = RdsClient.builder()
-                .region(region)
+    // Cache RdsClient objects by region
+    private static final Map<String, RdsClient> rdsClientCache = new ConcurrentHashMap<>();
+
+    /**
+     * Retrieve or build an RdsClient for the specified region.
+     */
+    private RdsClient getRdsClient(String regionName) {
+        return rdsClientCache.computeIfAbsent(regionName, r -> RdsClient.builder()
+                .region(Region.of(r))
                 .credentialsProvider(credentialsProvider)
-                .build();
+                .build());
     }
 
-    public List<DBInstance> listDBInstances() {
+    public List<DBInstance> listDBInstances(String regionName) {
         try {
+            RdsClient rdsClient = getRdsClient(regionName);
             DescribeDbInstancesResponse response = rdsClient.describeDBInstances();
             return response.dbInstances();
         } catch (RdsException e) {
@@ -30,12 +39,13 @@ public class RdsService extends BaseAwsService {
         }
     }
 
-    public DBInstance describeDBInstance(String dbInstanceIdentifier) {
+    public DBInstance describeDBInstance(String regionName, String dbInstanceIdentifier) {
         if (dbInstanceIdentifier == null || dbInstanceIdentifier.isEmpty()) {
             throw new IllegalArgumentException("DB instance identifier cannot be null or empty");
         }
 
         try {
+            RdsClient rdsClient = getRdsClient(regionName);
             DescribeDbInstancesRequest request = DescribeDbInstancesRequest.builder()
                     .dbInstanceIdentifier(dbInstanceIdentifier)
                     .build();
@@ -47,7 +57,7 @@ public class RdsService extends BaseAwsService {
         }
     }
 
-    public DBInstance createDBInstance(String dbInstanceIdentifier, String dbInstanceClass, String engine) {
+    public DBInstance createDBInstance(String regionName, String dbInstanceIdentifier, String dbInstanceClass, String engine) {
         if (dbInstanceIdentifier == null || dbInstanceIdentifier.isEmpty()) {
             throw new IllegalArgumentException("DB instance identifier cannot be null or empty");
         }
@@ -59,6 +69,7 @@ public class RdsService extends BaseAwsService {
         }
 
         try {
+            RdsClient rdsClient = getRdsClient(regionName);
             CreateDbInstanceRequest request = CreateDbInstanceRequest.builder()
                     .dbInstanceIdentifier(dbInstanceIdentifier)
                     .dbInstanceClass(dbInstanceClass)
@@ -73,7 +84,8 @@ public class RdsService extends BaseAwsService {
         }
     }
 
-    public DBInstance createDBInstance(String dbInstanceIdentifier, String dbInstanceClass, String engine, int allocatedStorage) {
+    public DBInstance createDBInstance(String regionName, String dbInstanceIdentifier, String dbInstanceClass, String engine, int allocatedStorage) {
+        RdsClient rdsClient = getRdsClient(regionName);
         CreateDbInstanceRequest request = CreateDbInstanceRequest.builder()
                 .dbInstanceIdentifier(dbInstanceIdentifier)
                 .dbInstanceClass(dbInstanceClass)
@@ -84,15 +96,16 @@ public class RdsService extends BaseAwsService {
         return response.dbInstance();
     }
 
-    public void deleteDBInstance(String dbInstanceIdentifier) {
+    public void deleteDBInstance(String regionName, String dbInstanceIdentifier) {
         if (dbInstanceIdentifier == null || dbInstanceIdentifier.isEmpty()) {
             throw new IllegalArgumentException("DB instance identifier cannot be null or empty");
         }
 
         try {
+            RdsClient rdsClient = getRdsClient(regionName);
             DeleteDbInstanceRequest request = DeleteDbInstanceRequest.builder()
                     .dbInstanceIdentifier(dbInstanceIdentifier)
-                    .skipFinalSnapshot(true) // Example value, adjust as needed
+                    .skipFinalSnapshot(true)
                     .build();
             rdsClient.deleteDBInstance(request);
         } catch (RdsException e) {
@@ -101,7 +114,7 @@ public class RdsService extends BaseAwsService {
         }
     }
 
-    public void scaleDBInstance(String dbInstanceIdentifier, String newDbInstanceClass) {
+    public void scaleDBInstance(String regionName, String dbInstanceIdentifier, String newDbInstanceClass) {
         if (dbInstanceIdentifier == null || dbInstanceIdentifier.isEmpty()) {
             throw new IllegalArgumentException("DB instance identifier cannot be null or empty");
         }
@@ -109,7 +122,7 @@ public class RdsService extends BaseAwsService {
             throw new IllegalArgumentException("New DB instance class cannot be null or empty");
         }
 
-        DBInstance dbInstance = describeDBInstance(dbInstanceIdentifier);
+        DBInstance dbInstance = describeDBInstance(regionName, dbInstanceIdentifier);
         if (dbInstance == null) {
             System.err.println("DB instance with identifier " + dbInstanceIdentifier + " does not exist.");
             return;
@@ -125,6 +138,7 @@ public class RdsService extends BaseAwsService {
         }
 
         try {
+            RdsClient rdsClient = getRdsClient(regionName);
             ModifyDbInstanceRequest request = ModifyDbInstanceRequest.builder()
                     .dbInstanceIdentifier(dbInstanceIdentifier)
                     .dbInstanceClass(newDbInstanceClass)
@@ -138,8 +152,9 @@ public class RdsService extends BaseAwsService {
         }
     }
 
-    public HashMap<String, DBInstance> listDBInstancesAsMap() {
+    public HashMap<String, DBInstance> listDBInstancesAsMap(String regionName) {
         try {
+            RdsClient rdsClient = getRdsClient(regionName);
             DescribeDbInstancesResponse response = rdsClient.describeDBInstances();
             return response.dbInstances().stream()
                     .collect(Collectors.toMap(DBInstance::dbInstanceIdentifier, dbInstance -> dbInstance, (oldValue, newValue) -> oldValue, HashMap::new));
@@ -149,8 +164,9 @@ public class RdsService extends BaseAwsService {
         }
     }
 
-    public List<GlobalCluster> listGlobalClusters() {
+    public List<GlobalCluster> listGlobalClusters(String regionName) {
         try {
+            RdsClient rdsClient = getRdsClient(regionName);
             DescribeGlobalClustersResponse response = rdsClient.describeGlobalClusters();
             return response.globalClusters();
         } catch (RdsException e) {
@@ -159,7 +175,8 @@ public class RdsService extends BaseAwsService {
         }
     }
 
-    public List<DBCluster> listClusters() {
+    public List<DBCluster> listClusters(String regionName) {
+        RdsClient rdsClient = getRdsClient(regionName);
         DescribeDbClustersResponse response = rdsClient.describeDBClusters();
         return response.dbClusters();
     }

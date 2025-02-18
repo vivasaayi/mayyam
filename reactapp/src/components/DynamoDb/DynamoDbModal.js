@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { CModal, CModalHeader, CModalTitle, CModalBody, CModalFooter, CButton, CForm, CFormLabel, CFormInput, CFormTextarea, CSpinner } from '@coreui/react';
+import { CModal, CModalHeader, CModalTitle, CModalBody, CModalFooter, CButton, CForm, CFormLabel, CFormInput, CFormTextarea, CFormSelect, CSpinner } from '@coreui/react';
 import yaml from 'js-yaml';
 
 const DynamoDbModal = ({ show, handleClose, handleCreate }) => {
   const [tableName, setTableName] = useState('');
   const [attributeDefinitions, setAttributeDefinitions] = useState([]);
   const [keySchema, setKeySchema] = useState([]);
+  const [billingMode, setBillingMode] = useState('PAY_PER_REQUEST');
   const [provisionedThroughput, setProvisionedThroughput] = useState({ readCapacityUnits: 5, writeCapacityUnits: 5 });
   const [yamlText, setYamlText] = useState('');
   const [jsonText, setJsonText] = useState('');
@@ -21,9 +22,7 @@ attributeDefinitions:
 keySchema:
   - AttributeName: id
     KeyType: HASH
-provisionedThroughput:
-  readCapacityUnits: 5
-  writeCapacityUnits: 5
+billingMode: PAY_PER_REQUEST
 `;
     setYamlText(sampleYaml);
     setJsonText(JSON.stringify(yaml.load(sampleYaml), null, 2));
@@ -38,7 +37,10 @@ provisionedThroughput:
       setTableName(jsonValue.tableName || '');
       setAttributeDefinitions(jsonValue.attributeDefinitions || []);
       setKeySchema(jsonValue.keySchema || []);
-      setProvisionedThroughput(jsonValue.provisionedThroughput || { readCapacityUnits: 5, writeCapacityUnits: 5 });
+      setBillingMode(jsonValue.billingMode || 'PAY_PER_REQUEST');
+      if (jsonValue.billingMode === 'PROVISIONED') {
+        setProvisionedThroughput(jsonValue.provisionedThroughput || { readCapacityUnits: 5, writeCapacityUnits: 5 });
+      }
     } catch (error) {
       setJsonText('Invalid YAML');
     }
@@ -54,7 +56,10 @@ provisionedThroughput:
       setTableName(parsedJson.tableName || '');
       setAttributeDefinitions(parsedJson.attributeDefinitions || []);
       setKeySchema(parsedJson.keySchema || []);
-      setProvisionedThroughput(parsedJson.provisionedThroughput || { readCapacityUnits: 5, writeCapacityUnits: 5 });
+      setBillingMode(parsedJson.billingMode || 'PAY_PER_REQUEST');
+      if (parsedJson.billingMode === 'PROVISIONED') {
+        setProvisionedThroughput(parsedJson.provisionedThroughput || { readCapacityUnits: 5, writeCapacityUnits: 5 });
+      }
     } catch (error) {
       setYamlText('Invalid JSON');
     }
@@ -63,7 +68,13 @@ provisionedThroughput:
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    await handleCreate(tableName, attributeDefinitions, keySchema, provisionedThroughput);
+    await handleCreate({
+      tableName,
+      attributeDefinitions,
+      keySchema,
+      billingMode,
+      provisionedThroughput
+    });
     setLoading(false);
   };
 
@@ -123,15 +134,29 @@ provisionedThroughput:
             />
           </div>
           <div className="mb-3">
-            <CFormLabel htmlFor="provisionedThroughput">Provisioned Throughput (JSON)</CFormLabel>
-            <CFormInput
-              type="text"
-              id="provisionedThroughput"
-              value={JSON.stringify(provisionedThroughput)}
-              onChange={(e) => setProvisionedThroughput(JSON.parse(e.target.value))}
+            <CFormLabel htmlFor="billingMode">Billing Mode</CFormLabel>
+            <CFormSelect
+              id="billingMode"
+              value={billingMode}
+              onChange={(e) => setBillingMode(e.target.value)}
               required
-            />
+            >
+              <option value="PAY_PER_REQUEST">On-Demand</option>
+              <option value="PROVISIONED">Provisioned</option>
+            </CFormSelect>
           </div>
+          {billingMode === 'PROVISIONED' && (
+            <div className="mb-3">
+              <CFormLabel htmlFor="provisionedThroughput">Provisioned Throughput (JSON)</CFormLabel>
+              <CFormInput
+                type="text"
+                id="provisionedThroughput"
+                value={JSON.stringify(provisionedThroughput)}
+                onChange={(e) => setProvisionedThroughput(JSON.parse(e.target.value))}
+                required
+              />
+            </div>
+          )}
         </CForm>
       </CModalBody>
       <CModalFooter>

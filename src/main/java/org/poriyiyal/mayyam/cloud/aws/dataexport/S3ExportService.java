@@ -7,13 +7,16 @@ import software.amazon.awssdk.services.s3.model.Bucket;
 import java.io.IOException;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.ArrayList;
 
-public class S3ExportService extends BaseExportService<Bucket> {
+public class S3ExportService extends BaseExportService<BucketWithRegion> {
     private final S3Service s3Service;
+    private final List<String> regions;
 
-    public S3ExportService(S3Service s3Service, CsvExportService csvExportService) {
+    public S3ExportService(S3Service s3Service, CsvExportService csvExportService, List<String> regions) {
         super(csvExportService);
         this.s3Service = s3Service;
+        this.regions = regions;
     }
 
     public void exportBucketsAsJson(String filePath) throws IOException {
@@ -21,7 +24,7 @@ public class S3ExportService extends BaseExportService<Bucket> {
             throw new IllegalArgumentException("File path cannot be null or empty");
         }
         try {
-            List<Bucket> buckets = s3Service.getBucketsAsList();
+            List<BucketWithRegion> buckets = getBucketDescriptions();
             exportAsJson(buckets, filePath);
         } catch (Exception e) {
             System.err.println("Error exporting buckets as JSON: " + e.getMessage());
@@ -38,9 +41,9 @@ public class S3ExportService extends BaseExportService<Bucket> {
             throw new IllegalArgumentException("File path cannot be null or empty");
         }
         try {
-            List<Bucket> buckets = s3Service.getBucketsAsList();
+            List<BucketWithRegion> buckets = getBucketDescriptions();
             List<String[]> data = convertToDataFormat(buckets);
-            String[] headers = {"Bucket Name", "Creation Date"};
+            String[] headers = {"Region", "Bucket Name", "Creation Date"};
             exportAsCsv(data, headers, filePath, delimiter);
         } catch (Exception e) {
             System.err.println("Error exporting buckets as CSV: " + e.getMessage());
@@ -53,9 +56,9 @@ public class S3ExportService extends BaseExportService<Bucket> {
             throw new IllegalArgumentException("File path cannot be null or empty");
         }
         try {
-            List<Bucket> buckets = s3Service.getBucketsAsList();
+            List<BucketWithRegion> buckets = getBucketDescriptions();
             List<String[]> data = convertToDataFormat(buckets);
-            String[] headers = {"Bucket Name", "Creation Date"};
+            String[] headers = {"Region", "Bucket Name", "Creation Date"};
             exportAsExcel(data, headers, filePath);
         } catch (Exception e) {
             System.err.println("Error exporting buckets as Excel: " + e.getMessage());
@@ -64,9 +67,26 @@ public class S3ExportService extends BaseExportService<Bucket> {
     }
 
     @Override
-    protected List<String[]> convertToDataFormat(List<Bucket> buckets) {
+    protected List<String[]> convertToDataFormat(List<BucketWithRegion> buckets) {
         return buckets.stream()
-                .map(bucket -> new String[]{bucket.name(), bucket.creationDate().toString()})
+                .map(bucketWithRegion -> new String[]{
+                        bucketWithRegion.getRegion(),
+                        bucketWithRegion.getBucket().name(),
+                        bucketWithRegion.getBucket().creationDate().toString()
+                })
                 .collect(Collectors.toList());
+    }
+
+    private List<BucketWithRegion> getBucketDescriptions() {
+        List<BucketWithRegion> allBuckets = new ArrayList<>();
+        for (String region : regions) {
+            try {
+                List<Bucket> buckets = s3Service.getBucketsAsList(region);
+                buckets.forEach(bucket -> allBuckets.add(new BucketWithRegion(region, bucket)));
+            } catch (Exception e) {
+                System.err.println("Failed to get bucket descriptions for region " + region + ": " + e.getMessage());
+            }
+        }
+        return allBuckets;
     }
 }

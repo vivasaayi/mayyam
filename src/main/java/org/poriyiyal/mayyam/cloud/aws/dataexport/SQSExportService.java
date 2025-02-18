@@ -8,13 +8,16 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.ArrayList;
 
-public class SQSExportService extends BaseExportService<Map<QueueAttributeName, String>> {
+public class SQSExportService extends BaseExportService<QueueDescriptionWithRegion> {
     private final SqsService sqsService;
+    private final List<String> regions;
 
-    public SQSExportService(SqsService sqsService, CsvExportService csvExportService) {
+    public SQSExportService(SqsService sqsService, CsvExportService csvExportService, List<String> regions) {
         super(csvExportService);
         this.sqsService = sqsService;
+        this.regions = regions;
     }
 
     public void exportQueuesAsJson(String filePath) throws IOException {
@@ -22,8 +25,7 @@ public class SQSExportService extends BaseExportService<Map<QueueAttributeName, 
             throw new IllegalArgumentException("File path cannot be null or empty");
         }
         try {
-            Map<String, Map<QueueAttributeName, String>> queuesMap = sqsService.listAllQueuesWithDetails();
-            List<Map<QueueAttributeName, String>> queues = queuesMap.values().stream().collect(Collectors.toList());
+            List<QueueDescriptionWithRegion> queues = getQueueDescriptions();
             exportAsJson(queues, filePath);
         } catch (Exception e) {
             System.err.println("Error exporting queues as JSON: " + e.getMessage());
@@ -32,19 +34,7 @@ public class SQSExportService extends BaseExportService<Map<QueueAttributeName, 
     }
 
     public void exportQueuesAsCsv(String filePath) throws IOException {
-        if (filePath == null || filePath.isEmpty()) {
-            throw new IllegalArgumentException("File path cannot be null or empty");
-        }
-        try {
-            Map<String, Map<QueueAttributeName, String>> queuesMap = sqsService.listAllQueuesWithDetails();
-            List<Map<QueueAttributeName, String>> queues = queuesMap.values().stream().collect(Collectors.toList());
-            List<String[]> data = convertToDataFormat(queues);
-            String[] headers = {"Queue URL", "Queue ARN", "Approximate Number of Messages"};
-            exportAsCsv(data, headers, filePath);
-        } catch (Exception e) {
-            System.err.println("Error exporting queues as CSV: " + e.getMessage());
-            throw e;
-        }
+        exportQueuesAsCsv(filePath, ',');
     }
 
     public void exportQueuesAsCsv(String filePath, char delimiter) throws IOException {
@@ -52,10 +42,9 @@ public class SQSExportService extends BaseExportService<Map<QueueAttributeName, 
             throw new IllegalArgumentException("File path cannot be null or empty");
         }
         try {
-            Map<String, Map<QueueAttributeName, String>> queuesMap = sqsService.listAllQueuesWithDetails();
-            List<Map<QueueAttributeName, String>> queues = queuesMap.values().stream().collect(Collectors.toList());
+            List<QueueDescriptionWithRegion> queues = getQueueDescriptions();
             List<String[]> data = convertToDataFormat(queues);
-            String[] headers = {"Queue URL", "Queue ARN", "Approximate Number of Messages"};
+            String[] headers = {"Region", "Queue URL", "Queue ARN", "Approximate Number of Messages"};
             exportAsCsv(data, headers, filePath, delimiter);
         } catch (Exception e) {
             System.err.println("Error exporting queues as CSV with delimiter: " + e.getMessage());
@@ -68,10 +57,9 @@ public class SQSExportService extends BaseExportService<Map<QueueAttributeName, 
             throw new IllegalArgumentException("File path cannot be null or empty");
         }
         try {
-            Map<String, Map<QueueAttributeName, String>> queuesMap = sqsService.listAllQueuesWithDetails();
-            List<Map<QueueAttributeName, String>> queues = queuesMap.values().stream().collect(Collectors.toList());
+            List<QueueDescriptionWithRegion> queues = getQueueDescriptions();
             List<String[]> data = convertToDataFormat(queues);
-            String[] headers = {"Queue URL", "Queue ARN", "Approximate Number of Messages"};
+            String[] headers = {"Region", "Queue URL", "Queue ARN", "Approximate Number of Messages"};
             exportAsExcel(data, headers, filePath);
         } catch (Exception e) {
             System.err.println("Error exporting queues as Excel: " + e.getMessage());
@@ -80,12 +68,28 @@ public class SQSExportService extends BaseExportService<Map<QueueAttributeName, 
     }
 
     @Override
-    protected List<String[]> convertToDataFormat(List<Map<QueueAttributeName, String>> queues) {
+    protected List<String[]> convertToDataFormat(List<QueueDescriptionWithRegion> queues) {
         return queues.stream()
                 .map(queue -> new String[]{
-                        queue.get(QueueAttributeName.QUEUE_ARN),
-                        queue.get(QueueAttributeName.APPROXIMATE_NUMBER_OF_MESSAGES)
+                        queue.getRegion(),
+                        queue.getQueueAttributes().get(QueueAttributeName.QUEUE_ARN),
+                        queue.getQueueAttributes().get(QueueAttributeName.APPROXIMATE_NUMBER_OF_MESSAGES)
                 })
                 .collect(Collectors.toList());
+    }
+
+    private List<QueueDescriptionWithRegion> getQueueDescriptions() {
+        List<QueueDescriptionWithRegion> allQueues = new ArrayList<>();
+        for (String region : regions) {
+            try {
+                Map<String, Map<QueueAttributeName, String>> queuesMap = sqsService.listAllQueuesWithDetails(region);
+                queuesMap.forEach((queueUrl, attributes) -> 
+                    allQueues.add(new QueueDescriptionWithRegion(region, attributes))
+                );
+            } catch (Exception e) {
+                System.err.println("Failed to get queue descriptions for region " + region + ": " + e.getMessage());
+            }
+        }
+        return allQueues;
     }
 }

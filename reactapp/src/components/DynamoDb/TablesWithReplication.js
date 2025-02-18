@@ -3,17 +3,19 @@ import { AgGridReact } from 'ag-grid-react';
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { CButton } from '@coreui/react';
+import RegionDropdown from '../RegionDropdown';
 
 const TablesWithReplication = () => {
   const [rowData, setRowData] = useState([]);
+  const [region, setRegion] = useState('us-west-2');
 
   useEffect(() => {
-    fetch('/api/dynamodb/tablesWithReplication')
+    fetch(`/api/dynamodb/tablesWithReplication?region=${region}`)
       .then(response => response.json())
       .then(data => {
         setRowData(data);
       });
-  }, []);
+  }, [region]);
 
   const columnDefs = [
     { headerName: 'Table Name', field: 'tableName', filter: true, sortable: true },
@@ -53,6 +55,7 @@ const TablesWithReplication = () => {
   return (
     <div>
       <h2>Tables With Global Replication</h2>
+      <RegionDropdown selectedRegion={region} onChange={(e) => setRegion(e.target.value)} />
       <CButton color="primary" onClick={exportToCsv}>Export to CSV</CButton>
       <div className="ag-theme-alpine" style={{ height: 600, width: '100%' }}>
         <AgGridReact

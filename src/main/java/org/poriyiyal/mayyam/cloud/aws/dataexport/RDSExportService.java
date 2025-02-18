@@ -16,27 +16,27 @@ public class RDSExportService extends BaseExportService<DBInstance> {
         this.rdsService = rdsService;
     }
 
-    public void exportDBInstancesAsJson(String filePath) throws IOException {
-        List<DBInstance> dbInstances = rdsService.listDBInstances();
+    public void exportDBInstancesAsJson(String region, String filePath) throws IOException {
+        List<DBInstance> dbInstances = rdsService.listDBInstances(region);
         exportAsJson(dbInstances, filePath);
     }
 
-    public void exportDBInstancesAsCsv(String filePath) throws IOException {
-        List<DBInstance> dbInstances = rdsService.listDBInstances();
+    public void exportDBInstancesAsCsv(String region, String filePath) throws IOException {
+        List<DBInstance> dbInstances = rdsService.listDBInstances(region);
         List<String[]> data = convertToDataFormat(dbInstances);
         String[] headers = {"DB Instance Identifier", "DB Instance Class", "Engine"};
         exportAsCsv(data, headers, filePath);
     }
 
-    public void exportDBInstancesAsCsv(String filePath, char delimiter) throws IOException {
-        List<DBInstance> dbInstances = rdsService.listDBInstances();
+    public void exportDBInstancesAsCsv(String region, String filePath, char delimiter) throws IOException {
+        List<DBInstance> dbInstances = rdsService.listDBInstances(region);
         List<String[]> data = convertToDataFormat(dbInstances);
         String[] headers = {"DB Instance Identifier", "DB Instance Class", "Engine"};
         exportAsCsv(data, headers, filePath, delimiter);
     }
 
-    public void exportDBInstancesAsExcel(String filePath) throws IOException {
-        List<DBInstance> dbInstances = rdsService.listDBInstances();
+    public void exportDBInstancesAsExcel(String region, String filePath) throws IOException {
+        List<DBInstance> dbInstances = rdsService.listDBInstances(region);
         List<String[]> data = convertToDataFormat(dbInstances);
         String[] headers = {"DB Instance Identifier", "DB Instance Class", "Engine"};
         exportAsExcel(data, headers, filePath);
