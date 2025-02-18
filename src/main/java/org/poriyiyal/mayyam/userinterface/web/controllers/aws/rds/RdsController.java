@@ -20,12 +20,12 @@ import java.util.Map;
 public class RdsController {
 
     private final RdsService rdsService;
-    private final FailoverEventRepository failoverEventRepository;
+//    private final FailoverEventRepository failoverEventRepository;
 
     @Autowired
-    public RdsController(RdsService rdsService, FailoverEventRepository failoverEventRepository) {
+    public RdsController(RdsService rdsService) {
         this.rdsService = rdsService;
-        this.failoverEventRepository = failoverEventRepository;
+//        this.failoverEventRepository = failoverEventRepository;
     }
 
     @GetMapping("/instances")
@@ -148,10 +148,10 @@ public class RdsController {
             @RequestParam String targetDbClusterIdentifier) {
         try {
             rdsService.initiateFailover(region, clusterId, targetDbClusterIdentifier);
-            failoverEventRepository.save(new FailoverEvent(clusterId, region, targetRegion, "failover", "initiated"));
+//            failoverEventRepository.save(new FailoverEvent(clusterId, region, targetRegion, "failover", "initiated"));
             return ResponseEntity.ok("Failover initiated successfully");
         } catch (Exception e) {
-            failoverEventRepository.save(new FailoverEvent(clusterId, region, targetRegion, "failover", "failed"));
+//            failoverEventRepository.save(new FailoverEvent(clusterId, region, targetRegion, "failover", "failed"));
             return ResponseEntity.status(500).body("Failed to initiate failover: " + e.getMessage());
         }
     }
@@ -160,10 +160,10 @@ public class RdsController {
     public ResponseEntity<String> initiateFailback(@RequestParam String region, @RequestParam String clusterId) {
         try {
             rdsService.initiateFailback(region, clusterId);
-            failoverEventRepository.save(new FailoverEvent(clusterId, region, region, "failback", "initiated"));
+//            failoverEventRepository.save(new FailoverEvent(clusterId, region, region, "failback", "initiated"));
             return ResponseEntity.ok("Failback initiated successfully");
         } catch (Exception e) {
-            failoverEventRepository.save(new FailoverEvent(clusterId, region, region, "failback", "failed"));
+//            failoverEventRepository.save(new FailoverEvent(clusterId, region, region, "failback", "failed"));
             return ResponseEntity.status(500).body("Failed to initiate failback: " + e.getMessage());
         }
     }
