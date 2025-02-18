@@ -27,6 +27,9 @@
     "@coreui/react-chartjs": "^3.0.0",
     "@coreui/utils": "^2.0.2",
     "@popperjs/core": "^2.11.8",
+    "ag-grid-community": "^29.0.0",
+    "ag-grid-react": "^29.0.0",
+    "axios": "^0.21.1",
     "chart.js": "^4.4.7",
     "classnames": "^2.5.1",
     "core-js": "^3.40.0",
@@ -35,11 +38,9 @@
     "react-dom": "^19.0.0",
     "react-redux": "^9.2.0",
     "react-router-dom": "^7.1.5",
+    "react-select": "^5.10.0",
     "redux": "5.0.1",
-    "simplebar-react": "^3.3.0",
-    "ag-grid-react": "^29.0.0",
-    "ag-grid-community": "^29.0.0",
-    "axios": "^0.21.1"
+    "simplebar-react": "^3.3.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
