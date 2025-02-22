@@ -25,6 +25,9 @@ const DynamoDbReplication = React.lazy(() => import('./components/DynamoDb/Dynam
 const DynamoDbTablesWithoutPITR = React.lazy(() => import('./components/DynamoDb/DynamoDbTablesWithoutPITR'))
 const ClusterMap = React.lazy(() => import('./components/RDS/ClusterMap'))
 const GlobalClusterStatus = React.lazy(() => import('./components/RDS/GlobalClusterStatus'))
+const KubernetesDashboard = React.lazy(() => import('./components/Kubernetes/KubernetesDashboard'))
+const KubernetesPods = React.lazy(() => import('./components/Kubernetes/KubernetesPods'))
+const KubernetesPodDetails = React.lazy(() => import('./components/Kubernetes/KubernetesPodDetails'))
 
 const routes = [
   { path: '/', exact: true, name: 'Home' },
@@ -45,6 +48,9 @@ const routes = [
   { path: '/dynamodb/tablesWithoutPITR', name: 'DynamoDb Tables Without PITR', element: DynamoDbTablesWithoutPITR },
   { path: '/rds/cluster-map', name: 'Cluster Map', element: ClusterMap },
   { path: '/global-cluster-status', name: 'Global Cluster Status', element: GlobalClusterStatus },
+  { path: '/kubernetes-dashboard', name: 'Kubernetes Dashboard', element: KubernetesDashboard },
+  { path: '/kubernetes-pods', name: 'Kubernetes Pods', element: KubernetesPods },
+  { path: '/kubernetes-pod-details', name: 'Kubernetes Pod Details', element: KubernetesPodDetails },
 ]
 
 export default routes

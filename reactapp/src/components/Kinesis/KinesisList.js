@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { AgGridReact } from 'ag-grid-react';
-import 'ag-grid-community/styles/ag-grid.css';
-import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { CButton, CAlert } from '@coreui/react';
 import KinesisModal from './KinesisModal';
 import DeleteConfirmationModal from './DeleteConfirmationModal';
 import RegionDropdown from '../RegionDropdown';
-import { ClientSideRowModelModule } from '@ag-grid-community/client-side-row-model';
+
+import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
+import { AgGridReact } from "ag-grid-react";
+
+ModuleRegistry.registerModules([AllCommunityModule]);
 
 const KinesisList = () => {
   const [rowData, setRowData] = useState([]);
@@ -138,7 +139,6 @@ const KinesisList = () => {
           defaultColDef={defaultColDef}
           groupSelectsChildren={true}
           autoGroupColumnDef={{ headerName: 'Group', field: 'streamName', cellRenderer: 'agGroupCellRenderer', cellRendererParams: { checkbox: true } }}
-          modules={[ClientSideRowModelModule]}
         />
       </div>
       <KinesisModal

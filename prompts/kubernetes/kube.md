@@ -9,22 +9,22 @@ Task 3:
 Under the "Deployments" Tab, I want to add a AgGrid table, which lists all the kubernetes deployments. 
 
 Task 4:
-Under the "CronJobs" Tab, I want to add a AgGrid table, which lists all the kubernetes cron jobs. 
+Under the "CronJobs" Tab, I want to add a AgGrid table, which lists all the kubernetes cron jobs. When the user selects the tab, fetch the deployments from teh server and populate the table.
 
 Task 5:
-Under the "Daemon Sets" Tab, I want to add a AgGrid table, which lists all the kubernetes Daemon Sets. 
+Under the "Daemon Sets" Tab, I want to add a AgGrid table, which lists all the kubernetes Daemon Sets. When the user selects the tab, fetch the daemonsets from teh server and populate the table.
 
 Task 6:
-Under the "Stateful Sets" Tab, I want to add a AgGrid table, which lists all the kubernetes Stateful Sets. 
+Under the "Stateful Sets" Tab, I want to add a AgGrid table, which lists all the kubernetes Stateful Sets. When the user selects the tab, fetch the statefulset from teh server and populate the table.
 
 Task 7:
-Under the "PVCs" Tab, I want to add a AgGrid table, which lists all the kubernetes PVCs. 
+Under the "PVCs" Tab, I want to add a AgGrid table, which lists all the kubernetes PVCs. When the user selects the tab, fetch the PVCs from teh server and populate the table.
 
 Task 7:
-Under the "PVs" Tab, I want to add a AgGrid table, which lists all the kubernetes PVs.
+Under the "PVs" Tab, I want to add a AgGrid table, which lists all the kubernetes PVs. When the user selects the tab, fetch the PVs from teh server and populate the table.
 
 Task 8:
-Under the "Storage Classes" Tab, I want to add a AgGrid table, which lists all the kubernetes Storage Classes.
+Under the "Storage Classes" Tab, I want to add a AgGrid table, which lists all the kubernetes Storage Classes. When the user selects the tab, fetch the statefulset from teh storage and populate the table.
 
 Task 9:
 For all the above tasks, You need to add a method to my existing Kubernetes Controller, then add necessary logic to the existing Kubernetes Service.
@@ -55,3 +55,9 @@ Under the Parsed Pod Details tab, I want to parse the pod details and show them 
 My React routes are here: reactapp/src/routes.js
 
 My coreUI react menu is here: /Users/rajanpanneerselvam/work/mayyam/reactapp/src/_nav.js
+
+My Kuberntes controller is here: /Users/rajanpanneerselvam/work/mayyam/src/main/java/org/poriyiyal/mayyam/userinterface/web/controllers/kubernetes/Kubernetes.java
+
+My Kubernetes service is here: /Users/rajanpanneerselvam/work/mayyam/src/main/java/org/poriyiyal/mayyam/kubernetes/services/KubernetesService.java
+
+Update the existing ones.

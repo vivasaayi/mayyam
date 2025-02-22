@@ -19,7 +19,6 @@
     "start": "vite"
   },
   "dependencies": {
-    "@ag-grid-community/client-side-row-model": "^32.3.3",
     "@coreui/chartjs": "^4.0.0",
     "@coreui/coreui": "^5.2.0",
     "@coreui/icons": "^3.0.1",

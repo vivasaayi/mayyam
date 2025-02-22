@@ -2,7 +2,6 @@ package org.poriyiyal.mayyam.kubernetes.services;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kubernetes.client.openapi.ApiClient;
-import io.kubernetes.client.openapi.Configuration;
 import io.kubernetes.client.openapi.apis.AppsV1Api;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.models.V1DaemonSet;
@@ -35,6 +34,17 @@ import java.util.Map;
 import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
+
+import io.kubernetes.client.openapi.models.V1StatefulSetList;
+import io.kubernetes.client.openapi.models.V1PersistentVolumeClaimList;
+import io.kubernetes.client.openapi.models.V1PersistentVolumeList;
+import io.kubernetes.client.openapi.models.V1StorageClassList;
+import io.kubernetes.client.openapi.apis.BatchV1beta1Api;
+import io.kubernetes.client.openapi.apis.StorageV1Api;
+import io.kubernetes.client.openapi.models.V1beta1CronJobList;
+import io.kubernetes.client.openapi.models.V1Namespace;
+import io.kubernetes.client.openapi.models.V1NamespaceList;
 
 @Service
 public class KubernetesService {
@@ -42,27 +52,26 @@ public class KubernetesService {
     private final ExecutorService executorService = Executors.newCachedThreadPool();
     private final Map<String, String> fieldsConfig = new HashMap<>();
     private final OpenSearchService openSearchService;
-    private final ApiClient client;
     private final CoreV1Api coreV1Api;
     private final AppsV1Api appsV1Api;
+    private final BatchV1beta1Api batchV1beta1Api;
+    private final StorageV1Api storageV1Api;
 
-    public KubernetesService(OpenSearchService openSearchService) {
+    public KubernetesService(OpenSearchService openSearchService) throws IOException {
         this.openSearchService = openSearchService;
         loadFieldsConfig();
-        this.client = initializeApiClient();
+        ApiClient client;
+        String kubeConfigPath = System.getenv("KUBECONFIG_PATH");
+        if (kubeConfigPath != null && !kubeConfigPath.isEmpty()) {
+            client = Config.fromConfig(kubeConfigPath);
+        } else {
+            client = Config.defaultClient();
+        }
+        io.kubernetes.client.openapi.Configuration.setDefaultApiClient(client);
         this.coreV1Api = new CoreV1Api();
         this.appsV1Api = new AppsV1Api();
-    }
-
-    private ApiClient initializeApiClient() {
-        try {
-            ApiClient client = Config.defaultClient();
-            Configuration.setDefaultApiClient(client);
-            return client;
-        } catch (IOException e) {
-            logger.error("Error initializing Kubernetes API client: {}", e.getMessage());
-            throw new RuntimeException("Failed to initialize Kubernetes API client", e);
-        }
+        this.batchV1beta1Api = new BatchV1beta1Api();
+        this.storageV1Api = new StorageV1Api();
     }
 
     private void loadFieldsConfig() {
@@ -123,6 +132,7 @@ public class KubernetesService {
         });
     }
 
+    @SuppressWarnings("unchecked")
     private void parseAndStoreLog(String log) {
         try {
             Map<String, Object> parsedLog = new HashMap<>();
@@ -228,8 +238,9 @@ public class KubernetesService {
     private String execCommand(String namespace, String podName, String command) throws IOException {
         ProcessBuilder processBuilder = new ProcessBuilder("kubectl", "exec", "-n", namespace, podName, "--", "sh", "-c", command);
         Process process = processBuilder.start();
-        Scanner scanner = new Scanner(process.getInputStream()).useDelimiter("\\A");
-        return scanner.hasNext() ? scanner.next() : "";
+        try (Scanner scanner = new Scanner(process.getInputStream()).useDelimiter("\\A")) {
+            return scanner.hasNext() ? scanner.next() : "";
+        }
     }
 
     private boolean parseResolvConf(String resolvConf, String searchDomain) {
@@ -245,5 +256,84 @@ public class KubernetesService {
             }
         }
         return false;
+    }
+
+    public List<Object> getDeployments(String namespace) throws Exception {
+        V1DeploymentList deploymentList = appsV1Api.listNamespacedDeployment(namespace, null, null, null, null, null, null, null, null, null, null);
+        return deploymentList.getItems().stream().map(deployment -> {
+            Map<String, Object> deploymentMap = new HashMap<>();
+            deploymentMap.put("name", deployment.getMetadata().getName());
+            deploymentMap.put("expectedReplicas", deployment.getSpec().getReplicas());
+            deploymentMap.put("podsRunning", deployment.getStatus().getReadyReplicas());
+            deploymentMap.put("podsPending", deployment.getStatus().getUnavailableReplicas());
+            deploymentMap.put("podsNotStarted", deployment.getStatus().getReplicas() - deployment.getStatus().getReadyReplicas());
+            return deploymentMap;
+        }).collect(Collectors.toList());
+    }
+
+    public List<Object> getCronJobs(String namespace) throws Exception {
+        V1beta1CronJobList cronJobList = batchV1beta1Api.listNamespacedCronJob(namespace, null, null, null, null, null, null, null, null, null, null);
+        return cronJobList.getItems().stream().map(cronJob -> {
+            Map<String, Object> cronJobMap = new HashMap<>();
+            cronJobMap.put("name", cronJob.getMetadata().getName());
+            return cronJobMap;
+        }).collect(Collectors.toList());
+    }
+
+    public List<Object> getDaemonSets(String namespace) throws Exception {
+        V1DaemonSetList daemonSetList = appsV1Api.listNamespacedDaemonSet(namespace, null, null, null, null, null, null, null, null, null, null);
+        return daemonSetList.getItems().stream().map(daemonSet -> {
+            Map<String, Object> daemonSetMap = new HashMap<>();
+            daemonSetMap.put("name", daemonSet.getMetadata().getName());
+            return daemonSetMap;
+        }).collect(Collectors.toList());
+    }
+
+    public List<Object> getStatefulSets(String namespace) throws Exception {
+        V1StatefulSetList statefulSetList = appsV1Api.listNamespacedStatefulSet(namespace, null, null, null, null, null, null, null, null, null, null);
+        return statefulSetList.getItems().stream().map(statefulSet -> {
+            Map<String, Object> statefulSetMap = new HashMap<>();
+            statefulSetMap.put("name", statefulSet.getMetadata().getName());
+            return statefulSetMap;
+        }).collect(Collectors.toList());
+    }
+
+    public List<Object> getPVCs(String namespace) throws Exception {
+        V1PersistentVolumeClaimList pvcList = coreV1Api.listNamespacedPersistentVolumeClaim(namespace, null, null, null, null, null, null, null, null, null, null);
+        return pvcList.getItems().stream().map(pvc -> {
+            Map<String, Object> pvcMap = new HashMap<>();
+            pvcMap.put("name", pvc.getMetadata().getName());
+            return pvcMap;
+        }).collect(Collectors.toList());
+    }
+
+    public List<Object> getPVs() throws Exception {
+        V1PersistentVolumeList pvList = coreV1Api.listPersistentVolume(null, null, null, null, null, null, null, null, null, null);
+        return pvList.getItems().stream().map(pv -> {
+            Map<String, Object> pvMap = new HashMap<>();
+            pvMap.put("name", pv.getMetadata().getName());
+            return pvMap;
+        }).collect(Collectors.toList());
+    }
+
+    public List<Object> getStorageClasses() throws Exception {
+        V1StorageClassList storageClassList = storageV1Api.listStorageClass(null, null, null, null, null, null, null, null, null, null);
+        return storageClassList.getItems().stream().map(storageClass -> {
+            Map<String, Object> storageClassMap = new HashMap<>();
+            storageClassMap.put("name", storageClass.getMetadata().getName());
+            return storageClassMap;
+        }).collect(Collectors.toList());
+    }
+
+    public List<String> getNamespaces() {
+        try {
+            V1NamespaceList namespaceList = coreV1Api.listNamespace(null, null, null, null, null, null, null, null, null, null);
+            return namespaceList.getItems().stream()
+                    .map(V1Namespace::getMetadata)
+                    .map(metadata -> metadata.getName())
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            throw new RuntimeException("Error fetching namespaces: " + e.getMessage(), e);
+        }
     }
 }
