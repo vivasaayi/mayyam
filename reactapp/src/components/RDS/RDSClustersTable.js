@@ -43,11 +43,13 @@ const RDSClustersTable = () => {
     ];
 
     return (
-        <div className="ag-theme-alpine" style={{ height: 400, width: 600 }}>
+        (<div className="ag-theme-alpine" style={{ height: 400, width: 600 }}>
             <AgGridReact
                 rowData={clusters}
                 columnDefs={columnDefs}
-                rowSelection="multiple"
+                rowSelection={{
+                    mode: 'multiRow'
+                }}
                 onSelectionChanged={onSelectionChanged}
             />
             <button onClick={handleScaleDown} disabled={selectedClusters.length === 0}>
@@ -56,7 +58,7 @@ const RDSClustersTable = () => {
             <button onClick={() => history.push('/')}>
                 Go Back
             </button>
-        </div>
+        </div>)
     );
 };
 

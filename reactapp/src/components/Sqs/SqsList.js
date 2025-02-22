@@ -92,7 +92,7 @@ const SqsList = () => {
   };
 
   return (
-    <div>
+    (<div>
       <h2>SQS Queues</h2>
       <RegionDropdown selectedRegion={region} onChange={(e) => setRegion(e.target.value)} />
       <CButton color="primary" onClick={() => setShowModal(true)}>Create SQS Queue</CButton>
@@ -102,13 +102,14 @@ const SqsList = () => {
         <AgGridReact
           columnDefs={columnDefs}
           rowData={rowData}
-          rowSelection="multiple"
+          rowSelection={{
+            mode: 'multiRow'
+          }}
           onSelectionChanged={(event) => setSelectedRows(event.api.getSelectedRows())}
           pagination={true}
           paginationPageSize={10}
           domLayout='autoHeight'
           defaultColDef={defaultColDef}
-          groupSelectsChildren={true}
           autoGroupColumnDef={{ headerName: 'Group', field: 'queueName', cellRenderer: 'agGroupCellRenderer', cellRendererParams: { checkbox: true } }}
         />
       </div>
@@ -123,7 +124,7 @@ const SqsList = () => {
         handleConfirm={handleDelete}
         selectedStreams={selectedRows}
       />
-    </div>
+    </div>)
   );
 };
 

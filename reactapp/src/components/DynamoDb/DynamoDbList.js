@@ -105,7 +105,7 @@ const DynamoDbList = () => {
   };
 
   return (
-    <div>
+    (<div>
       <h2>DynamoDB Tables</h2>
       <RegionDropdown selectedRegion={region} onChange={(e) => setRegion(e.target.value)} />
       <CButton color="primary" onClick={() => setShowModal(true)}>Create DynamoDB Table</CButton>
@@ -117,13 +117,14 @@ const DynamoDbList = () => {
         <AgGridReact
           columnDefs={columnDefs}
           rowData={rowData}
-          rowSelection="multiple"
+          rowSelection={{
+            mode: 'multiRow'
+          }}
           onSelectionChanged={(event) => setSelectedRows(event.api.getSelectedRows())}
           pagination={true}
           paginationPageSize={10}
           domLayout='autoHeight'
           defaultColDef={defaultColDef}
-          groupSelectsChildren={true}
           autoGroupColumnDef={{ headerName: 'Group', field: 'tableName', cellRenderer: 'agGroupCellRenderer', cellRendererParams: { checkbox: true } }}
         />
       </div>
@@ -138,7 +139,7 @@ const DynamoDbList = () => {
         handleConfirm={handleDelete}
         selectedStreams={selectedRows}
       />
-    </div>
+    </div>)
   );
 };
 
