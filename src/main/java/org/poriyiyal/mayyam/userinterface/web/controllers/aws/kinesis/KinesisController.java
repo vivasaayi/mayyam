@@ -4,9 +4,10 @@ import org.poriyiyal.mayyam.cloud.aws.controlplane.KinesisService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.kinesis.model.StreamDescription;
 
+import java.util.HashMap;
 import java.util.Map;
 
 @RestController
@@ -55,6 +56,21 @@ public class KinesisController {
         } catch (Exception e) {
             return ResponseEntity.status(500).body(null);
         }
+    }
+
+    @GetMapping("/listAllRegions")
+    public ResponseEntity<Map<String, Object>> listStreamsFromAllRegions() {
+        Map<String, Object> allStreams = new HashMap<>();
+        Map<String, String> errors = new HashMap<>();
+        for (Region region : Region.regions()) {
+            try {
+                allStreams.putAll(kinesisService.listStreams(region.id()));
+            } catch (Exception e) {
+                errors.put(region.id(), e.getMessage());
+            }
+        }
+        allStreams.put("errors", errors);
+        return ResponseEntity.ok(allStreams);
     }
 
     @GetMapping("/describe")

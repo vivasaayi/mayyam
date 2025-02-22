@@ -12,6 +12,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
+
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -19,9 +22,14 @@ import java.util.Map;
 @Service
 public class OpenSearchService {
     private static final Logger logger = LoggerFactory.getLogger(OpenSearchService.class);
-    private final RestHighLevelClient client;
+    private RestHighLevelClient client;
 
     public OpenSearchService() {
+        this.client = null; // Initialize client in the init method
+    }
+
+    @PostConstruct
+    public void init() {
         this.client = new RestHighLevelClient(
                 RestClient.builder(new HttpHost("localhost", 9200, "http")));
     }
@@ -45,11 +53,14 @@ public class OpenSearchService {
         }
     }
 
+    @PreDestroy
     public void close() {
-        try {
-            client.close();
-        } catch (IOException e) {
-            logger.error("Error closing OpenSearch client: {}", e.getMessage());
+        if (client != null) {
+            try {
+                client.close();
+            } catch (IOException e) {
+                logger.error("Error closing OpenSearch client: {}", e.getMessage());
+            }
         }
     }
 }

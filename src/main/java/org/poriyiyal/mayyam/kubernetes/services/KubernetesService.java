@@ -3,7 +3,12 @@ package org.poriyiyal.mayyam.kubernetes.services;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.Configuration;
+import io.kubernetes.client.openapi.apis.AppsV1Api;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
+import io.kubernetes.client.openapi.models.V1DaemonSet;
+import io.kubernetes.client.openapi.models.V1DaemonSetList;
+import io.kubernetes.client.openapi.models.V1Deployment;
+import io.kubernetes.client.openapi.models.V1DeploymentList;
 import io.kubernetes.client.openapi.models.V1Pod;
 import io.kubernetes.client.openapi.models.V1PodList;
 import io.kubernetes.client.util.Config;
@@ -27,6 +32,7 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -36,10 +42,27 @@ public class KubernetesService {
     private final ExecutorService executorService = Executors.newCachedThreadPool();
     private final Map<String, String> fieldsConfig = new HashMap<>();
     private final OpenSearchService openSearchService;
+    private final ApiClient client;
+    private final CoreV1Api coreV1Api;
+    private final AppsV1Api appsV1Api;
 
     public KubernetesService(OpenSearchService openSearchService) {
         this.openSearchService = openSearchService;
         loadFieldsConfig();
+        this.client = initializeApiClient();
+        this.coreV1Api = new CoreV1Api();
+        this.appsV1Api = new AppsV1Api();
+    }
+
+    private ApiClient initializeApiClient() {
+        try {
+            ApiClient client = Config.defaultClient();
+            Configuration.setDefaultApiClient(client);
+            return client;
+        } catch (IOException e) {
+            logger.error("Error initializing Kubernetes API client: {}", e.getMessage());
+            throw new RuntimeException("Failed to initialize Kubernetes API client", e);
+        }
     }
 
     private void loadFieldsConfig() {
@@ -57,9 +80,6 @@ public class KubernetesService {
     }
 
     public void initialize() throws Exception {
-        ApiClient client = Config.defaultClient();
-        Configuration.setDefaultApiClient(client);
-
         CoreV1Api api = new CoreV1Api();
         V1PodList list = api.listPodForAllNamespaces(
                 null, null, null, null, null,
@@ -154,5 +174,76 @@ public class KubernetesService {
     public void getDeployments() {
         // Implement method to get deployments
         // Example: Use Kubernetes API to list deployments
+        try {
+            V1DeploymentList deploymentList = appsV1Api.listNamespacedDeployment("default", null, false, null, null, null, null, null, null, 0, false);
+            for (V1Deployment deployment : deploymentList.getItems()) {
+                logger.info("Deployment: {}", deployment.getMetadata().getName());
+            }
+        } catch (Exception e) {
+            logger.error("Error getting deployments: {}", e.getMessage());
+        }
+    }
+
+    public boolean checkSearchDomain(String namespace, String searchDomain) throws Exception {
+        boolean result = false;
+        result |= checkDeployments(namespace, searchDomain);
+        result |= checkDaemonSets(namespace, searchDomain);
+        return result;
+    }
+
+    private boolean checkDeployments(String namespace, String searchDomain) throws Exception {
+        V1DeploymentList deploymentList = appsV1Api.listNamespacedDeployment(namespace, null, null, null, null, null, null, null, null, null, null);
+        for (V1Deployment deployment : deploymentList.getItems()) {
+            if (checkPods(namespace, deployment.getMetadata().getName(), searchDomain)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean checkDaemonSets(String namespace, String searchDomain) throws Exception {
+        V1DaemonSetList daemonSetList = appsV1Api.listNamespacedDaemonSet(namespace, null, null, null, null, null, null, null, null, null, null);
+        for (V1DaemonSet daemonSet : daemonSetList.getItems()) {
+            if (checkPods(namespace, daemonSet.getMetadata().getName(), searchDomain)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean checkPods(String namespace, String name, String searchDomain) throws Exception {
+        V1PodList podList = coreV1Api.listNamespacedPod(namespace, null, null, null, "metadata.ownerReferences[0].name=" + name, null, null, null, null, null, null);
+        for (V1Pod pod : podList.getItems()) {
+            if (pod.getStatus().getPhase().equals("Running")) {
+                String podName = pod.getMetadata().getName();
+                String resolvConf = execCommand(namespace, podName, "cat /etc/resolv.conf");
+                if (parseResolvConf(resolvConf, searchDomain)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private String execCommand(String namespace, String podName, String command) throws IOException {
+        ProcessBuilder processBuilder = new ProcessBuilder("kubectl", "exec", "-n", namespace, podName, "--", "sh", "-c", command);
+        Process process = processBuilder.start();
+        Scanner scanner = new Scanner(process.getInputStream()).useDelimiter("\\A");
+        return scanner.hasNext() ? scanner.next() : "";
+    }
+
+    private boolean parseResolvConf(String resolvConf, String searchDomain) {
+        String[] lines = resolvConf.split("\n");
+        for (String line : lines) {
+            if (line.startsWith("search")) {
+                String[] domains = line.split(" ");
+                for (String domain : domains) {
+                    if (domain.equals(searchDomain)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 }

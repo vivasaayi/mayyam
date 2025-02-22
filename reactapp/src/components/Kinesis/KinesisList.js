@@ -6,6 +6,7 @@ import { CButton, CAlert } from '@coreui/react';
 import KinesisModal from './KinesisModal';
 import DeleteConfirmationModal from './DeleteConfirmationModal';
 import RegionDropdown from '../RegionDropdown';
+import { ClientSideRowModelModule } from '@ag-grid-community/client-side-row-model';
 
 const KinesisList = () => {
   const [rowData, setRowData] = useState([]);
@@ -94,12 +95,36 @@ const KinesisList = () => {
       });
   };
 
+  const fetchStreamsFromAllRegions = async () => {
+    try {
+      const response = await fetch('/api/kinesis/listAllRegions');
+      const data = await response.json();
+      const formattedData = Object.keys(data).filter(key => key !== 'errors').map(key => ({
+        streamName: key,
+        ...data[key]
+      }));
+      setRowData(formattedData);
+      if (data.errors && Object.keys(data.errors).length > 0) {
+        const errorMessages = Object.entries(data.errors).map(([region, error]) => `Region ${region}: ${error}`).join(', ');
+        setMessage(`Fetched streams with errors: ${errorMessages}`);
+        setMessageType('warning');
+      } else {
+        setMessage('Fetched streams from all regions successfully.');
+        setMessageType('success');
+      }
+    } catch (error) {
+      setMessage(`Failed to fetch streams from all regions: ${error.message}`);
+      setMessageType('danger');
+    }
+  };
+
   return (
     <div>
       <h2>Kinesis Streams</h2>
       <RegionDropdown selectedRegion={region} onChange={(e) => setRegion(e.target.value)} />
       <CButton color="primary" onClick={() => setShowModal(true)}>Create Kinesis Stream</CButton>
       <CButton color="danger" onClick={() => setShowDeleteModal(true)} disabled={selectedRows.length === 0}>Delete Selected Streams</CButton>
+      <CButton color="info" onClick={fetchStreamsFromAllRegions}>Fetch Streams From All Regions</CButton>
       {message && <CAlert color={messageType}>{message}</CAlert>}
       <div className="ag-theme-alpine" style={{ height: 600, width: '100%' }}>
         <AgGridReact
@@ -113,6 +138,7 @@ const KinesisList = () => {
           defaultColDef={defaultColDef}
           groupSelectsChildren={true}
           autoGroupColumnDef={{ headerName: 'Group', field: 'streamName', cellRenderer: 'agGroupCellRenderer', cellRendererParams: { checkbox: true } }}
+          modules={[ClientSideRowModelModule]}
         />
       </div>
       <KinesisModal
