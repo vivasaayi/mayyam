@@ -3,11 +3,10 @@ import { CButton, CAlert } from '@coreui/react';
 import KinesisModal from './KinesisModal';
 import DeleteConfirmationModal from './DeleteConfirmationModal';
 import RegionDropdown from '../RegionDropdown';
-
-import { AllCommunityModule, ModuleRegistry } from "ag-grid-community";
-import { AgGridReact } from "ag-grid-react";
-
-ModuleRegistry.registerModules([AllCommunityModule]);
+import { AgGridReact } from 'ag-grid-react';
+import { ClientSideRowModelModule } from 'ag-grid-community';
+import 'ag-grid-community/styles/ag-grid.css';
+import 'ag-grid-community/styles/ag-theme-alpine.css';
 
 const KinesisList = () => {
   const [rowData, setRowData] = useState([]);
@@ -34,19 +33,12 @@ const KinesisList = () => {
       });
   }, [region]);
 
-  const columnDefs = [
-    { headerName: 'Stream Name', field: 'streamName', filter: true, sortable: true, checkboxSelection: true },
-    { headerName: 'Stream ARN', field: 'streamARN', filter: true, sortable: true },
-    { headerName: 'Stream Status', field: 'streamStatus', filter: true, sortable: true },
-    { headerName: 'Shards', field: 'shards.length', filter: true, sortable: true }
+  const columns = [
+    { headerName: 'Stream Name', field: 'streamName', width: 200 },
+    { headerName: 'Stream ARN', field: 'streamARN', width: 300 },
+    { headerName: 'Stream Status', field: 'streamStatus', width: 150 },
+    { headerName: 'Shards', field: 'shards.length', width: 100 }
   ];
-
-  const defaultColDef = {
-    sortable: true,
-    filter: true,
-    resizable: true,
-    enableRowGroup: true,
-  };
 
   const handleCreate = async (streamName, shardCount) => {
     const response = await fetch(`/api/kinesis/create?streamName=${streamName}&shardCount=${shardCount}&region=${region}`, {
@@ -96,50 +88,20 @@ const KinesisList = () => {
       });
   };
 
-  const fetchStreamsFromAllRegions = async () => {
-    try {
-      const response = await fetch('/api/kinesis/listAllRegions');
-      const data = await response.json();
-      const formattedData = Object.keys(data).filter(key => key !== 'errors').map(key => ({
-        streamName: key,
-        ...data[key]
-      }));
-      setRowData(formattedData);
-      if (data.errors && Object.keys(data.errors).length > 0) {
-        const errorMessages = Object.entries(data.errors).map(([region, error]) => `Region ${region}: ${error}`).join(', ');
-        setMessage(`Fetched streams with errors: ${errorMessages}`);
-        setMessageType('warning');
-      } else {
-        setMessage('Fetched streams from all regions successfully.');
-        setMessageType('success');
-      }
-    } catch (error) {
-      setMessage(`Failed to fetch streams from all regions: ${error.message}`);
-      setMessageType('danger');
-    }
-  };
-
   return (
-    (<div>
+    <div>
       <h2>Kinesis Streams</h2>
       <RegionDropdown selectedRegion={region} onChange={(e) => setRegion(e.target.value)} />
       <CButton color="primary" onClick={() => setShowModal(true)}>Create Kinesis Stream</CButton>
       <CButton color="danger" onClick={() => setShowDeleteModal(true)} disabled={selectedRows.length === 0}>Delete Selected Streams</CButton>
-      <CButton color="info" onClick={fetchStreamsFromAllRegions}>Fetch Streams From All Regions</CButton>
       {message && <CAlert color={messageType}>{message}</CAlert>}
       <div className="ag-theme-alpine" style={{ height: 600, width: '100%' }}>
         <AgGridReact
-          columnDefs={columnDefs}
           rowData={rowData}
-          rowSelection={{
-            mode: 'multiRow'
-          }}
+          columnDefs={columns}
+          rowSelection="multiple"
           onSelectionChanged={(event) => setSelectedRows(event.api.getSelectedRows())}
-          pagination={true}
-          paginationPageSize={10}
-          domLayout='autoHeight'
-          defaultColDef={defaultColDef}
-          autoGroupColumnDef={{ headerName: 'Group', field: 'streamName', cellRenderer: 'agGroupCellRenderer', cellRendererParams: { checkbox: true } }}
+          modules={[ClientSideRowModelModule]}
         />
       </div>
       <KinesisModal
@@ -153,7 +115,7 @@ const KinesisList = () => {
         handleConfirm={handleDelete}
         selectedStreams={selectedRows}
       />
-    </div>)
+    </div>
   );
 };
 

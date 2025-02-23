@@ -35,9 +35,6 @@ const RdsClusters = () => {
         <AgGridReact
           columnDefs={columnDefs}
           rowData={rowData}
-          rowSelection={{
-            mode: 'multiRow'
-          }}
           pagination={true}
           paginationPageSize={10}
           defaultColDef={defaultColDef}

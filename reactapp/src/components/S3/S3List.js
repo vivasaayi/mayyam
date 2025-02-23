@@ -101,9 +101,6 @@ const S3List = () => {
         <AgGridReact
           columnDefs={columnDefs}
           rowData={rowData}
-          rowSelection={{
-            mode: 'multiRow'
-          }}
           onSelectionChanged={(event) => setSelectedRows(event.api.getSelectedRows())}
           pagination={true}
           paginationPageSize={10}

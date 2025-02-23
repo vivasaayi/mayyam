@@ -47,9 +47,6 @@ const RDSClustersTable = () => {
             <AgGridReact
                 rowData={clusters}
                 columnDefs={columnDefs}
-                rowSelection={{
-                    mode: 'multiRow'
-                }}
                 onSelectionChanged={onSelectionChanged}
             />
             <button onClick={handleScaleDown} disabled={selectedClusters.length === 0}>
