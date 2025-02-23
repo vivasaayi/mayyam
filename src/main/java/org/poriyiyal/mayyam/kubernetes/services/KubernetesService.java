@@ -45,6 +45,8 @@ import io.kubernetes.client.openapi.apis.StorageV1Api;
 import io.kubernetes.client.openapi.models.V1beta1CronJobList;
 import io.kubernetes.client.openapi.models.V1Namespace;
 import io.kubernetes.client.openapi.models.V1NamespaceList;
+import io.kubernetes.client.openapi.ApiException;
+import java.util.ArrayList;
 
 @Service
 public class KubernetesService {
@@ -222,7 +224,7 @@ public class KubernetesService {
     }
 
     private boolean checkPods(String namespace, String name, String searchDomain) throws Exception {
-        V1PodList podList = coreV1Api.listNamespacedPod(namespace, null, null, null, "metadata.ownerReferences[0].name=" + name, null, null, null, null, null, null);
+        V1PodList podList = coreV1Api.listNamespacedPod(namespace, null, null, null, "metadata.ownerReferences[0].name=" + name, null, null, null, null, null, false);
         for (V1Pod pod : podList.getItems()) {
             if (pod.getStatus().getPhase().equals("Running")) {
                 String podName = pod.getMetadata().getName();
@@ -335,5 +337,47 @@ public class KubernetesService {
         } catch (Exception e) {
             throw new RuntimeException("Error fetching namespaces: " + e.getMessage(), e);
         }
+    }
+
+    public List<Object> getPods(String namespace) throws ApiException {
+        V1PodList podList = coreV1Api.listNamespacedPod(namespace, null, null, null, null, null, null, null, null, null, false);
+        List<Object> pods = new ArrayList<>();
+        for (V1Pod pod : podList.getItems()) {
+            Map<String, Object> podInfo = new HashMap<>();
+            podInfo.put("name", pod.getMetadata().getName());
+            podInfo.put("status", pod.getStatus().getPhase());
+            pods.add(podInfo);
+        }
+        return pods;
+    }
+
+    public Object getPodDetails(String podName, String namespace) throws ApiException {
+        V1Pod pod = coreV1Api.readNamespacedPod(podName, namespace, null);
+        Map<String, Object> podDetails = new HashMap<>();
+        podDetails.put("name", pod.getMetadata().getName());
+        podDetails.put("namespace", pod.getMetadata().getNamespace());
+        podDetails.put("status", pod.getStatus().getPhase());
+        podDetails.put("containers", pod.getSpec().getContainers().stream().map(container -> {
+            Map<String, Object> containerDetails = new HashMap<>();
+            containerDetails.put("name", container.getName());
+            containerDetails.put("envVars", container.getEnv().stream().map(envVar -> {
+                Map<String, String> envVarDetails = new HashMap<>();
+                envVarDetails.put("name", envVar.getName());
+                envVarDetails.put("value", envVar.getValue());
+                return envVarDetails;
+            }).collect(Collectors.toList()));
+            containerDetails.put("volumes", pod.getSpec().getVolumes().stream().map(volume -> {
+                Map<String, String> volumeDetails = new HashMap<>();
+                volumeDetails.put("name", volume.getName());
+                if (volume.getHostPath() != null) {
+                    volumeDetails.put("mountPath", volume.getHostPath().getPath());
+                } else {
+                    volumeDetails.put("mountPath", "N/A");
+                }
+                return volumeDetails;
+            }).collect(Collectors.toList()));
+            return containerDetails;
+        }).collect(Collectors.toList()));
+        return podDetails;
     }
 }

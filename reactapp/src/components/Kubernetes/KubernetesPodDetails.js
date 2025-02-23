@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { CContainer, CTabs, CTabContent, CTabPane, CNav, CNavItem, CNavLink, CButton, CForm, CFormGroup, CLabel, CInput } from '@coreui/react';
+import { CContainer, CTabs, CTabContent, CTabPane, CNav, CNavItem, CNavLink, CButton, CForm, CFormLabel, CFormInput, CTabList, CTabPanel, CTab } from '@coreui/react';
 import { AgGridReact } from 'ag-grid-react';
-import 'ag-grid-community/styles/ag-grid.css';
-import 'ag-grid-community/styles/ag-theme-alpine.css';
+import { ClientSideRowModelModule } from 'ag-grid-community';
 import axios from 'axios';
 
 const KubernetesPodDetails = () => {
@@ -12,7 +11,7 @@ const KubernetesPodDetails = () => {
   const [podDetails, setPodDetails] = useState(null);
 
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
+    const urlParams = new URLSearchParams(window.location.hash.split('?')[1]);
     const podNameParam = urlParams.get('podName');
     const namespaceParam = urlParams.get('namespace');
     if (podNameParam) setPodName(podNameParam);
@@ -39,19 +38,17 @@ const KubernetesPodDetails = () => {
     return (
       <div>
         {/* Render parsed pod details here */}
-        <CTabs>
-          <CNav variant="tabs">
+        <CTabs activeItemKey={activeTab} onActiveTabChange={setActiveTab}>
+          <CTabList variant="tabs">
             {podDetails.containers.map((container, index) => (
-              <CNavItem key={index}>
-                <CNavLink active={activeTab === index} onClick={() => setActiveTab(index)}>
-                  {container.name}
-                </CNavLink>
-              </CNavItem>
+              <CTab key={index} itemKey={index}>
+                {container.name}
+              </CTab>
             ))}
-          </CNav>
+          </CTabList>
           <CTabContent>
             {podDetails.containers.map((container, index) => (
-              <CTabPane key={index} active={activeTab === index}>
+              <CTabPanel key={index} className="p-3" itemKey={index}>
                 <div className="ag-theme-alpine" style={{ height: 200, width: '100%' }}>
                   <h5>Env Vars</h5>
                   <AgGridReact
@@ -60,6 +57,7 @@ const KubernetesPodDetails = () => {
                       { headerName: 'Name', field: 'name' },
                       { headerName: 'Value', field: 'value' },
                     ]}
+                    modules={[ClientSideRowModelModule]}
                   />
                 </div>
                 <div className="ag-theme-alpine" style={{ height: 200, width: '100%' }}>
@@ -70,9 +68,10 @@ const KubernetesPodDetails = () => {
                       { headerName: 'Name', field: 'name' },
                       { headerName: 'Mount Path', field: 'mountPath' },
                     ]}
+                    modules={[ClientSideRowModelModule]}
                   />
                 </div>
-              </CTabPane>
+              </CTabPanel>
             ))}
           </CTabContent>
         </CTabs>
@@ -83,34 +82,22 @@ const KubernetesPodDetails = () => {
   return (
     <CContainer>
       <CForm>
-        <CFormGroup>
-          <CLabel htmlFor="podName">Pod Name</CLabel>
-          <CInput id="podName" value={podName} onChange={(e) => setPodName(e.target.value)} />
-        </CFormGroup>
-        <CFormGroup>
-          <CLabel htmlFor="namespace">Namespace</CLabel>
-          <CInput id="namespace" value={namespace} onChange={(e) => setNamespace(e.target.value)} />
-        </CFormGroup>
+        <CFormLabel htmlFor="podName">Pod Name</CFormLabel>
+        <CFormInput id="podName" value={podName} onChange={(e) => setPodName(e.target.value)} />
+        <CFormLabel htmlFor="namespace">Namespace</CFormLabel>
+        <CFormInput id="namespace" value={namespace} onChange={(e) => setNamespace(e.target.value)} />
         <CButton onClick={handleReload}>Reload</CButton>
       </CForm>
-      <CTabs>
-        <CNav variant="tabs">
-          <CNavItem>
-            <CNavLink active={activeTab === 0} onClick={() => setActiveTab(0)}>
-              Parsed Pod Details
-            </CNavLink>
-          </CNavItem>
-          <CNavItem>
-            <CNavLink active={activeTab === 1} onClick={() => setActiveTab(1)}>
-              Raw JSON
-            </CNavLink>
-          </CNavItem>
-        </CNav>
+      <CTabs activeItemKey={activeTab} onActiveTabChange={setActiveTab}>
+        <CTabList variant="tabs">
+          <CTab itemKey={0}>Parsed Pod Details</CTab>
+          <CTab itemKey={1}>Raw JSON</CTab>
+        </CTabList>
         <CTabContent>
-          <CTabPane active={activeTab === 0}>{renderParsedPodDetails()}</CTabPane>
-          <CTabPane active={activeTab === 1}>
+          <CTabPanel className="p-3" itemKey={0}>{renderParsedPodDetails()}</CTabPanel>
+          <CTabPanel className="p-3" itemKey={1}>
             <pre>{JSON.stringify(podDetails, null, 2)}</pre>
-          </CTabPane>
+          </CTabPanel>
         </CTabContent>
       </CTabs>
     </CContainer>

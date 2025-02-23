@@ -110,7 +110,28 @@ public class KubernetesController {
         }
     }
 
-    
+    @GetMapping("/pods")
+    public ResponseEntity<List<Object>> getPods(@RequestParam String namespace) {
+        try {
+            validateNamespace(namespace);
+            List<Object> pods = kubernetesService.getPods(namespace);
+            return ResponseEntity.ok(pods);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(null);
+        }
+    }
+
+    @GetMapping("/pod-details")
+    public ResponseEntity<Object> getPodDetails(@RequestParam String podName, @RequestParam String namespace) {
+        try {
+            validateNamespace(namespace);
+            Object podDetails = kubernetesService.getPodDetails(podName, namespace);
+            return ResponseEntity.ok(podDetails);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("Error: " + e.getMessage());
+        }
+    }
+
     @GetMapping("/namespaces")
     public ResponseEntity<List<String>> getNamespaces() {
         try {

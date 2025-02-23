@@ -1,30 +1,22 @@
 import React, { useEffect, useState } from 'react';
-import { CContainer, CButton, CFormSelect } from '@coreui/react';
-import { AgGridReact } from 'ag-grid-react';
-import { ClientSideRowModelModule } from 'ag-grid-community';
-
+import { CContainer, CFormSelect, CTabs, CTabList, CTab, CTabContent, CTabPanel } from '@coreui/react';
+import DeploymentsTab from './tabs/DeploymentsTab';
+import CronJobsTab from './tabs/CronJobsTab';
+import DaemonSetsTab from './tabs/DaemonSetsTab';
+import StatefulSetsTab from './tabs/StatefulSetsTab';
+import PvcsTab from './tabs/PvcsTab';
+import PvsTab from './tabs/PvsTab';
+import StorageClassesTab from './tabs/StorageClassesTab';
 import axios from 'axios';
 
 const KubernetesDashboard = () => {
-  const [deploymentsData, setDeploymentsData] = useState([]);
+  const [activeTab, setActiveTab] = useState('deployments');
   const [namespaces, setNamespaces] = useState([]);
   const [selectedNamespace, setSelectedNamespace] = useState('');
 
   useEffect(() => {
     fetchNamespaces();
   }, []);
-
-  useEffect(() => {
-    fetchDeployments();
-  }, [selectedNamespace]);
-
-  useEffect(() => {
-    console.log('Namespaces:', namespaces);
-  }, [namespaces]);
-
-  useEffect(() => {
-    console.log('Deployments Data:', deploymentsData);
-  }, [deploymentsData]);
 
   const fetchNamespaces = async () => {
     try {
@@ -36,38 +28,6 @@ const KubernetesDashboard = () => {
     }
   };
 
-  const fetchDeployments = async () => {
-    try {
-      const response = await axios.get(`/api/kubernetes/deployments?namespace=${selectedNamespace}`);
-      setDeploymentsData(response.data);
-    } catch (error) {
-      console.error('Error fetching deployments:', error);
-    }
-  };
-
-  const renderDeploymentsGrid = () => {
-    return (
-      <>
-        <div className="ag-theme-balham" style={{ height: 400, width: '100%' }}>
-          <AgGridReact
-            rowData={deploymentsData}
-            columnDefs={[
-              { headerName: 'Name', field: 'name' },
-              { headerName: 'Expected Replicas', field: 'expectedReplicas' },
-              { headerName: 'Pods Running', field: 'podsRunning' },
-              { headerName: 'Pods Pending', field: 'podsPending' },
-              { headerName: 'Pods Not Started', field: 'podsNotStarted' },
-              { headerName: 'Actions', field: 'actions' },
-            ]}
-            defaultColDef={{ flex: 1, minWidth: 100 }}
-            modules={[ClientSideRowModelModule]}
-          />
-        </div>
-        <CButton color="primary" style={{ marginTop: '10px' }}>Action Button</CButton>
-      </>
-    );
-  };
-
   return (
     <CContainer>
       <CFormSelect value={selectedNamespace} onChange={(e) => setSelectedNamespace(e.target.value)}>
@@ -77,8 +37,40 @@ const KubernetesDashboard = () => {
           </option>
         ))}
       </CFormSelect>
-      {renderDeploymentsGrid()}
-      {/* Add more grid rendering as needed */}
+      <CTabs activeItemKey={activeTab} onActiveTabChange={setActiveTab}>
+        <CTabList>
+          <CTab itemKey="deployments">Deployments</CTab>
+          <CTab itemKey="cronJobs">CronJobs</CTab>
+          <CTab itemKey="daemonSets">Daemon Sets</CTab>
+          <CTab itemKey="statefulSets">Stateful Sets</CTab>
+          <CTab itemKey="pvcs">PVCs</CTab>
+          <CTab itemKey="pvs">PVs</CTab>
+          <CTab itemKey="storageClasses">Storage Classes</CTab>
+        </CTabList>
+        <CTabContent>
+          <CTabPanel className="p-3" itemKey="deployments">
+            <DeploymentsTab namespace={selectedNamespace} />
+          </CTabPanel>
+          <CTabPanel className="p-3" itemKey="cronJobs">
+            <CronJobsTab namespace={selectedNamespace} />
+          </CTabPanel>
+          <CTabPanel className="p-3" itemKey="daemonSets">
+            <DaemonSetsTab namespace={selectedNamespace} />
+          </CTabPanel>
+          <CTabPanel className="p-3" itemKey="statefulSets">
+            <StatefulSetsTab namespace={selectedNamespace} />
+          </CTabPanel>
+          <CTabPanel className="p-3" itemKey="pvcs">
+            <PvcsTab namespace={selectedNamespace} />
+          </CTabPanel>
+          <CTabPanel className="p-3" itemKey="pvs">
+            <PvsTab namespace={selectedNamespace} />
+          </CTabPanel>
+          <CTabPanel className="p-3" itemKey="storageClasses">
+            <StorageClassesTab namespace={selectedNamespace} />
+          </CTabPanel>
+        </CTabContent>
+      </CTabs>
     </CContainer>
   );
 };
