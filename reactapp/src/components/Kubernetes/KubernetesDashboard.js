@@ -1,133 +1,86 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { CContainer, CButton, CFormSelect } from '@coreui/react';
 import { AgGridReact } from 'ag-grid-react';
-import 'ag-grid-community/styles/ag-grid.css';
-import 'ag-grid-community/styles/ag-theme-alpine.css';
-import { CButton, CAlert } from '@coreui/react';
-import KinesisModal from './KinesisModal';
-import DeleteConfirmationModal from './DeleteConfirmationModal';
-import RegionDropdown from '../RegionDropdown';
+import { ClientSideRowModelModule } from 'ag-grid-community';
 
-const KinesisList = () => {
-  const [rowData, setRowData] = useState([]);
-  const [showModal, setShowModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [message, setMessage] = useState('');
-  const [messageType, setMessageType] = useState('success');
-  const [selectedRows, setSelectedRows] = useState([]);
-  const [region, setRegion] = useState('us-west-2');
+import axios from 'axios';
+
+const KubernetesDashboard = () => {
+  const [deploymentsData, setDeploymentsData] = useState([]);
+  const [namespaces, setNamespaces] = useState([]);
+  const [selectedNamespace, setSelectedNamespace] = useState('');
 
   useEffect(() => {
-    fetch(`/api/kinesis/list?region=${region}`)
-      .then(response => response.json())
-      .then(data => {
-        const formattedData = Object.keys(data).map(key => ({
-          streamName: key,
-          ...data[key]
-        }));
-        setRowData(formattedData);
-      })
-      .catch(error => {
-        setMessage(`Failed to fetch streams: ${error.message}`);
-        setMessageType('danger');
-      });
-  }, [region]);
+    fetchNamespaces();
+  }, []);
 
-  const columnDefs = [
-    { headerName: 'Stream Name', field: 'streamName', filter: true, sortable: true, checkboxSelection: true },
-    { headerName: 'Stream ARN', field: 'streamARN', filter: true, sortable: true },
-    { headerName: 'Stream Status', field: 'streamStatus', filter: true, sortable: true },
-    { headerName: 'Shards', field: 'shards.length', filter: true, sortable: true }
-  ];
+  useEffect(() => {
+    fetchDeployments();
+  }, [selectedNamespace]);
 
-  const defaultColDef = {
-    sortable: true,
-    filter: true,
-    resizable: true,
-    enableRowGroup: true,
+  useEffect(() => {
+    console.log('Namespaces:', namespaces);
+  }, [namespaces]);
+
+  useEffect(() => {
+    console.log('Deployments Data:', deploymentsData);
+  }, [deploymentsData]);
+
+  const fetchNamespaces = async () => {
+    try {
+      const response = await axios.get('/api/kubernetes/namespaces');
+      setNamespaces(response.data);
+      setSelectedNamespace(response.data[0]);
+    } catch (error) {
+      console.error('Error fetching namespaces:', error);
+    }
   };
 
-  const handleCreate = async (streamName, shardCount) => {
-    const response = await fetch(`/api/kinesis/create?streamName=${streamName}&shardCount=${shardCount}&region=${region}`, {
-      method: 'POST'
-    });
-    const result = await response.text();
-    setMessage(result);
-    setMessageType('success');
-    setShowModal(false);
-    // Refresh the list after creating a new stream
-    fetch(`/api/kinesis/list?region=${region}`)
-      .then(response => response.json())
-      .then(data => {
-        const formattedData = Object.keys(data).map(key => ({
-          streamName: key,
-          ...data[key]
-        }));
-        setRowData(formattedData);
-      });
+  const fetchDeployments = async () => {
+    try {
+      const response = await axios.get(`/api/kubernetes/deployments?namespace=${selectedNamespace}`);
+      setDeploymentsData(response.data);
+    } catch (error) {
+      console.error('Error fetching deployments:', error);
+    }
   };
 
-  const handleDelete = async () => {
-    const streamNamesAndRegions = selectedRows.reduce((acc, row) => {
-      acc[row.streamName] = region;
-      return acc;
-    }, {});
-    const response = await fetch('/api/kinesis/deleteMultiple', {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(streamNamesAndRegions),
-    });
-    const result = await response.text();
-    setMessage(result);
-    setMessageType('success');
-    setShowDeleteModal(false);
-    // Refresh the list after deleting streams
-    fetch(`/api/kinesis/list?region=${region}`)
-      .then(response => response.json())
-      .then(data => {
-        const formattedData = Object.keys(data).map(key => ({
-          streamName: key,
-          ...data[key]
-        }));
-        setRowData(formattedData);
-      });
+  const renderDeploymentsGrid = () => {
+    return (
+      <>
+        <div className="ag-theme-balham" style={{ height: 400, width: '100%' }}>
+          <AgGridReact
+            rowData={deploymentsData}
+            columnDefs={[
+              { headerName: 'Name', field: 'name' },
+              { headerName: 'Expected Replicas', field: 'expectedReplicas' },
+              { headerName: 'Pods Running', field: 'podsRunning' },
+              { headerName: 'Pods Pending', field: 'podsPending' },
+              { headerName: 'Pods Not Started', field: 'podsNotStarted' },
+              { headerName: 'Actions', field: 'actions' },
+            ]}
+            defaultColDef={{ flex: 1, minWidth: 100 }}
+            modules={[ClientSideRowModelModule]}
+          />
+        </div>
+        <CButton color="primary" style={{ marginTop: '10px' }}>Action Button</CButton>
+      </>
+    );
   };
 
   return (
-    <div>
-      <h2>Kinesis Streams</h2>
-      <RegionDropdown selectedRegion={region} onChange={(e) => setRegion(e.target.value)} />
-      <CButton color="primary" onClick={() => setShowModal(true)}>Create Kinesis Stream</CButton>
-      <CButton color="danger" onClick={() => setShowDeleteModal(true)} disabled={selectedRows.length === 0}>Delete Selected Streams</CButton>
-      {message && <CAlert color={messageType}>{message}</CAlert>}
-      <div className="ag-theme-alpine" style={{ height: 600, width: '100%' }}>
-        <AgGridReact
-          columnDefs={columnDefs}
-          rowData={rowData}
-          rowSelection="multiple"
-          onSelectionChanged={(event) => setSelectedRows(event.api.getSelectedRows())}
-          pagination={true}
-          paginationPageSize={10}
-          domLayout='autoHeight'
-          defaultColDef={defaultColDef}
-          groupSelectsChildren={true}
-          autoGroupColumnDef={{ headerName: 'Group', field: 'streamName', cellRenderer: 'agGroupCellRenderer', cellRendererParams: { checkbox: true } }}
-        />
-      </div>
-      <KinesisModal
-        show={showModal}
-        handleClose={() => setShowModal(false)}
-        handleCreate={handleCreate}
-      />
-      <DeleteConfirmationModal
-        show={showDeleteModal}
-        handleClose={() => setShowDeleteModal(false)}
-        handleConfirm={handleDelete}
-        selectedStreams={selectedRows}
-      />
-    </div>
+    <CContainer>
+      <CFormSelect value={selectedNamespace} onChange={(e) => setSelectedNamespace(e.target.value)}>
+        {namespaces.map((namespace, index) => (
+          <option key={index} value={namespace}>
+            {namespace}
+          </option>
+        ))}
+      </CFormSelect>
+      {renderDeploymentsGrid()}
+      {/* Add more grid rendering as needed */}
+    </CContainer>
   );
 };
 
-export default KinesisList;
+export default KubernetesDashboard;

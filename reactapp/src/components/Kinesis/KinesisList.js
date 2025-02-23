@@ -5,8 +5,6 @@ import DeleteConfirmationModal from './DeleteConfirmationModal';
 import RegionDropdown from '../RegionDropdown';
 import { AgGridReact } from 'ag-grid-react';
 import { ClientSideRowModelModule } from 'ag-grid-community';
-import 'ag-grid-community/styles/ag-grid.css';
-import 'ag-grid-community/styles/ag-theme-alpine.css';
 
 const KinesisList = () => {
   const [rowData, setRowData] = useState([]);
@@ -95,7 +93,7 @@ const KinesisList = () => {
       <CButton color="primary" onClick={() => setShowModal(true)}>Create Kinesis Stream</CButton>
       <CButton color="danger" onClick={() => setShowDeleteModal(true)} disabled={selectedRows.length === 0}>Delete Selected Streams</CButton>
       {message && <CAlert color={messageType}>{message}</CAlert>}
-      <div className="ag-theme-alpine" style={{ height: 600, width: '100%' }}>
+      <div className="ag-theme-balham" style={{ height: '600px', width: '100%' }}>
         <AgGridReact
           rowData={rowData}
           columnDefs={columns}
