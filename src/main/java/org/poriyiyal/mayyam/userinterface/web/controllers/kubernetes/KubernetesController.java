@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/kubernetes")
@@ -21,17 +22,13 @@ public class KubernetesController {
     }
 
     @GetMapping("/checkSearchDomain")
-    public ResponseEntity<String> checkSearchDomain(@RequestParam String namespace, @RequestParam String searchDomain) {
+    public ResponseEntity<List<Map<String, String>>> checkSearchDomain(@RequestParam String namespace, @RequestParam String searchDomain) {
         try {
             validateNamespace(namespace);
-            boolean result = kubernetesService.checkSearchDomain(namespace, searchDomain);
-            if (result) {
-                return ResponseEntity.ok("Search domain matches.");
-            } else {
-                return ResponseEntity.ok("Search domain does not match.");
-            }
+            List<Map<String, String>> result = kubernetesService.checkSearchDomain(namespace, searchDomain);
+            return ResponseEntity.ok(result);
         } catch (Exception e) {
-            return ResponseEntity.status(500).body("Error: " + e.getMessage());
+            return ResponseEntity.status(500).body(null);
         }
     }
 

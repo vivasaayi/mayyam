@@ -1,6 +1,10 @@
-There is no CFormGroup, CInput in coreui.
+There is no CFormGroup, CInput, CLabel in coreui.
 
 For AGGrid, dont import the CSS. Deprecated in latest version.
+
+My React routes are here: reactapp/src/routes.js
+
+My coreUI react menu is here: /Users/rajanpanneerselvam/work/mayyam/reactapp/src/_nav.js
 
 Below is the working example for tabs
 <CTabs activeItemKey="profile">
@@ -27,3 +31,14 @@ Below is the working example for tabs
         </CTabPanel>
       </CTabContent>
     </CTabs>
+
+
+----
+For all teh components in /Users/rajanpanneerselvam/work/mayyam/reactapp/src,
+
+Can you ensure the AGGRids has,
+
+1. Colum Filtering
+2. Sorting
+3. Choose Columns
+4. Pagination

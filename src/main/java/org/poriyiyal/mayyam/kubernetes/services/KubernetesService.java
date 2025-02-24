@@ -4,12 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.apis.AppsV1Api;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
-import io.kubernetes.client.openapi.models.V1DaemonSet;
-import io.kubernetes.client.openapi.models.V1DaemonSetList;
-import io.kubernetes.client.openapi.models.V1Deployment;
-import io.kubernetes.client.openapi.models.V1DeploymentList;
-import io.kubernetes.client.openapi.models.V1Pod;
-import io.kubernetes.client.openapi.models.V1PodList;
+import io.kubernetes.client.openapi.models.*;
 import io.kubernetes.client.util.Config;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -37,19 +32,10 @@ import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import java.util.Arrays;
 
-import io.kubernetes.client.openapi.models.V1StatefulSetList;
-import io.kubernetes.client.openapi.models.V1PersistentVolumeClaimList;
-import io.kubernetes.client.openapi.models.V1PersistentVolumeList;
-import io.kubernetes.client.openapi.models.V1StorageClassList;
 import io.kubernetes.client.openapi.apis.BatchV1beta1Api;
 import io.kubernetes.client.openapi.apis.StorageV1Api;
-import io.kubernetes.client.openapi.models.V1beta1CronJobList;
-import io.kubernetes.client.openapi.models.V1Namespace;
-import io.kubernetes.client.openapi.models.V1NamespaceList;
 import io.kubernetes.client.openapi.ApiException;
 import java.util.ArrayList;
-import io.kubernetes.client.openapi.models.V1ServiceList;
-import io.kubernetes.client.openapi.models.CoreV1EventList;
 
 @Service
 public class KubernetesService {
@@ -199,45 +185,27 @@ public class KubernetesService {
         }
     }
 
-    public boolean checkSearchDomain(String namespace, String searchDomain) throws Exception {
-        boolean result = false;
-        result |= checkDeployments(namespace, searchDomain);
-        result |= checkDaemonSets(namespace, searchDomain);
+    public List<Map<String, String>> checkSearchDomain(String namespace, String searchDomain) throws Exception {
+        List<Map<String, String>> result = new ArrayList<>();
+        result.addAll(checkAllPods(namespace, searchDomain));
         return result;
     }
 
-    private boolean checkDeployments(String namespace, String searchDomain) throws Exception {
-        V1DeploymentList deploymentList = appsV1Api.listNamespacedDeployment(namespace, null, null, null, null, null, null, null, null, null, null);
-        for (V1Deployment deployment : deploymentList.getItems()) {
-            if (checkPods(namespace, deployment.getMetadata().getName(), searchDomain)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean checkDaemonSets(String namespace, String searchDomain) throws Exception {
-        V1DaemonSetList daemonSetList = appsV1Api.listNamespacedDaemonSet(namespace, null, null, null, null, null, null, null, null, null, null);
-        for (V1DaemonSet daemonSet : daemonSetList.getItems()) {
-            if (checkPods(namespace, daemonSet.getMetadata().getName(), searchDomain)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private boolean checkPods(String namespace, String name, String searchDomain) throws Exception {
-        V1PodList podList = coreV1Api.listNamespacedPod(namespace, null, null, null, "metadata.ownerReferences[0].name=" + name, null, null, null, null, null, false);
+    private List<Map<String, String>> checkAllPods(String namespace, String searchDomain) throws Exception {
+        List<Map<String, String>> result = new ArrayList<>();
+        V1PodList podList = coreV1Api.listNamespacedPod(namespace, null, null, null, null, null, null, null, null, null, false);
         for (V1Pod pod : podList.getItems()) {
             if (pod.getStatus().getPhase().equals("Running")) {
                 String podName = pod.getMetadata().getName();
                 String resolvConf = execCommand(namespace, podName, "cat /etc/resolv.conf");
-                if (parseResolvConf(resolvConf, searchDomain)) {
-                    return true;
-                }
+                String currentSearchDomain = parseResolvConf(resolvConf);
+                Map<String, String> podInfo = new HashMap<>();
+                podInfo.put("podName", podName);
+                podInfo.put("currentSearchDomain", currentSearchDomain);
+                result.add(podInfo);
             }
         }
-        return false;
+        return result;
     }
 
     private String execCommand(String namespace, String podName, String command) throws IOException {
@@ -248,19 +216,14 @@ public class KubernetesService {
         }
     }
 
-    private boolean parseResolvConf(String resolvConf, String searchDomain) {
+    private String parseResolvConf(String resolvConf) {
         String[] lines = resolvConf.split("\n");
         for (String line : lines) {
             if (line.startsWith("search")) {
-                String[] domains = line.split(" ");
-                for (String domain : domains) {
-                    if (domain.equals(searchDomain)) {
-                        return true;
-                    }
-                }
+                return line.substring(7).trim(); // Remove "search " prefix and trim
             }
         }
-        return false;
+        return "";
     }
 
     public List<Object> getDeployments(String namespace) throws Exception {

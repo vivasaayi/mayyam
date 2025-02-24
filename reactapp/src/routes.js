@@ -28,6 +28,8 @@ const GlobalClusterStatus = React.lazy(() => import('./components/RDS/GlobalClus
 const KubernetesDashboard = React.lazy(() => import('./components/Kubernetes/KubernetesDashboard'))
 const KubernetesPods = React.lazy(() => import('./components/Kubernetes/KubernetesPods'))
 const KubernetesPodDetails = React.lazy(() => import('./components/Kubernetes/KubernetesPodDetails'))
+const KubernetesTriaging = React.lazy(() => import('./components/Kubernetes/KubernetesTriaging'))
+const SearchDomainTab = React.lazy(() => import('./components/Kubernetes/SearchDomainTab'))
 
 const routes = [
   { path: '/', exact: true, name: 'Home' },
@@ -51,6 +53,8 @@ const routes = [
   { path: '/kubernetes-dashboard', name: 'Kubernetes Dashboard', element: KubernetesDashboard },
   { path: '/kubernetes-pods', name: 'Kubernetes Pods', element: KubernetesPods },
   { path: '/kubernetes-pod-details', name: 'Kubernetes Pod Details', element: KubernetesPodDetails },
+  { path: '/kubernetes/triaging', name: 'Kubernetes Triaging', element: KubernetesTriaging },
+  { path: '/kubernetes/search-domain', name: 'Search Domain Tab', element: SearchDomainTab },
 ]
 
 export default routes

@@ -105,6 +105,12 @@ const _nav = [
     to: '/kubernetes-pod-details',
     icon: <CIcon icon={cilChartPie} customClassName="nav-icon" />,
   },
+  {
+    component: CNavItem,
+    name: 'Kubernetes Triaging',
+    to: '/kubernetes/triaging',
+    icon: <CIcon icon={cilChartPie} customClassName="nav-icon" />,
+  },
 ];
 
 export default _nav;
