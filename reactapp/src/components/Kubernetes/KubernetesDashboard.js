@@ -49,25 +49,60 @@ const KubernetesDashboard = () => {
         </CTabList>
         <CTabContent>
           <CTabPanel className="p-3" itemKey="deployments">
-            <DeploymentsTab namespace={selectedNamespace} />
+            <DeploymentsTab namespace={selectedNamespace} 
+              defaultColDef={{ flex: 1, minWidth: 100, sortable: true, filter: true, resizable: true }}
+              pagination={true}
+              paginationPageSize={10}
+              sideBar={{ toolPanels: ['columns', 'filters'] }}
+            />
           </CTabPanel>
           <CTabPanel className="p-3" itemKey="cronJobs">
-            <CronJobsTab namespace={selectedNamespace} />
+            <CronJobsTab namespace={selectedNamespace} 
+              defaultColDef={{ flex: 1, minWidth: 100, sortable: true, filter: true, resizable: true }}
+              pagination={true}
+              paginationPageSize={10}
+              sideBar={{ toolPanels: ['columns', 'filters'] }}
+            />
           </CTabPanel>
           <CTabPanel className="p-3" itemKey="daemonSets">
-            <DaemonSetsTab namespace={selectedNamespace} />
+            <DaemonSetsTab namespace={selectedNamespace} 
+              defaultColDef={{ flex: 1, minWidth: 100, sortable: true, filter: true, resizable: true }}
+              pagination={true}
+              paginationPageSize={10}
+              sideBar={{ toolPanels: ['columns', 'filters'] }}
+            />
           </CTabPanel>
           <CTabPanel className="p-3" itemKey="statefulSets">
-            <StatefulSetsTab namespace={selectedNamespace} />
+            <StatefulSetsTab namespace={selectedNamespace} 
+              defaultColDef={{ flex: 1, minWidth: 100, sortable: true, filter: true, resizable: true }}
+              pagination={true}
+              paginationPageSize={10}
+              sideBar={{ toolPanels: ['columns', 'filters'] }}
+            />
           </CTabPanel>
           <CTabPanel className="p-3" itemKey="pvcs">
-            <PvcsTab namespace={selectedNamespace} />
+            <PvcsTab namespace={selectedNamespace} 
+              defaultColDef={{ flex: 1, minWidth: 100, sortable: true, filter: true, resizable: true }}
+              pagination={true}
+              paginationPageSize={10}
+              sideBar={{ toolPanels: ['columns', 'filters'] }}
+            />
           </CTabPanel>
           <CTabPanel className="p-3" itemKey="pvs">
-            <PvsTab namespace={selectedNamespace} />
+            <PvsTab namespace={selectedNamespace} 
+              defaultColDef={{ flex: 1, minWidth: 100, sortable: true, filter: true, resizable: true }}
+              pagination={true}
+              paginationPageSize={10}
+              sideBar={{ toolPanels: ['columns', 'filters'] }}
+            />
           </CTabPanel>
           <CTabPanel className="p-3" itemKey="storageClasses">
-            <StorageClassesTab namespace={selectedNamespace} />
+            <StorageClassesTab namespace={selectedNamespace} 
+              defaultColDef={{ flex: 1, minWidth: 100, sortable: true, filter: true, resizable: true }}
+              pagination={true}
+              paginationPageSize={10}
+              sideBar={{ toolPanels: ['columns', 'filters'] }}
+            />
           </CTabPanel>
         </CTabContent>
       </CTabs>

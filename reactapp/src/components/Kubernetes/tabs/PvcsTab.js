@@ -1,8 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { CButton } from '@coreui/react';
 import { AgGridReact } from 'ag-grid-react';
-import { ClientSideRowModelModule } from 'ag-grid-community';
 import axios from 'axios';
+import {
+  ClientSideRowModelModule,
+  DateFilterModule,
+  ModuleRegistry,
+  NumberFilterModule,
+  TextFilterModule,
+  ValidationModule,
+} from 'ag-grid-community';
+
+ModuleRegistry.registerModules([
+  ClientSideRowModelModule,
+  TextFilterModule,
+  NumberFilterModule,
+  DateFilterModule,
+  ValidationModule,
+]);
 
 const PvcsTab = ({ namespace }) => {
   const [pvcsData, setPvcsData] = useState([]);
@@ -40,7 +55,10 @@ const PvcsTab = ({ namespace }) => {
             { headerName: 'VolumeAttributesClass', field: 'volumeAttributesClass' },
             { headerName: 'Age', field: 'age' },
           ]}
-          defaultColDef={{ flex: 1, minWidth: 100 }}
+          defaultColDef={{ flex: 1, minWidth: 100, sortable: true, filter: true, resizable: true }}
+          pagination={true}
+          paginationPageSize={10}
+          sideBar={{ toolPanels: ['columns', 'filters'] }}
           modules={[ClientSideRowModelModule]}
         />
       </div>

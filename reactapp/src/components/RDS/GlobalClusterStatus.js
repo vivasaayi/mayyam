@@ -4,6 +4,9 @@ import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { CButton, CSpinner, CProgress } from '@coreui/react';
 import RegionDropdown from '../RegionDropdown';
+import { ClientSideRowModelModule, DateFilterModule, ModuleRegistry, NumberFilterModule, TextFilterModule, ValidationModule } from 'ag-grid-community';
+
+ModuleRegistry.registerModules([ClientSideRowModelModule, TextFilterModule, NumberFilterModule, DateFilterModule, ValidationModule]);
 
 const GlobalClusterStatus = () => {
   const [clusters, setClusters] = useState([]);
@@ -125,8 +128,11 @@ const GlobalClusterStatus = () => {
           <AgGridReact
             rowData={clusters}
             columnDefs={columns}
-            defaultColDef={{ flex: 1, minWidth: 150, resizable: true }}
+            defaultColDef={{ flex: 1, minWidth: 150, resizable: true, sortable: true, filter: true }}
             getRowStyle={getRowStyle}
+            pagination={true}
+            paginationPageSize={10}
+            sideBar={{ toolPanels: ['columns'] }}
           />
         </div>
       )}

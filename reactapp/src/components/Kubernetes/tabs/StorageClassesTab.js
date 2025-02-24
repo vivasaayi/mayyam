@@ -1,8 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { CButton } from '@coreui/react';
 import { AgGridReact } from 'ag-grid-react';
-import { ClientSideRowModelModule } from 'ag-grid-community';
 import axios from 'axios';
+import {
+  ClientSideRowModelModule,
+  DateFilterModule,
+  ModuleRegistry,
+  NumberFilterModule,
+  TextFilterModule,
+  ValidationModule,
+} from 'ag-grid-community';
+
+ModuleRegistry.registerModules([
+  ClientSideRowModelModule,
+  TextFilterModule,
+  NumberFilterModule,
+  DateFilterModule,
+  ValidationModule,
+]);
 
 const StorageClassesTab = ({ namespace }) => {
   const [storageClassesData, setStorageClassesData] = useState([]);
@@ -38,8 +53,11 @@ const StorageClassesTab = ({ namespace }) => {
             { headerName: 'Allow Volume Expansion', field: 'allowVolumeExpansion' },
             { headerName: 'Age', field: 'age' },
           ]}
-          defaultColDef={{ flex: 1, minWidth: 100 }}
-          modules={[ClientSideRowModelModule]}
+          defaultColDef={{ flex: 1, minWidth: 100, sortable: true, filter: true, resizable: true }}
+          pagination={true}
+          paginationPageSize={10}
+          sideBar={{ toolPanels: ['columns', 'filters'] }}
+          modules={[ClientSideRowModelModule, TextFilterModule, NumberFilterModule, DateFilterModule, ValidationModule]}
         />
       </div>
     </div>

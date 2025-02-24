@@ -47,6 +47,10 @@ const RDSClustersTable = () => {
             <AgGridReact
                 rowData={clusters}
                 columnDefs={columnDefs}
+                pagination={true}
+                paginationPageSize={10}
+                defaultColDef={{ sortable: true, filter: true, resizable: true }}
+                sideBar={{ toolPanels: ['columns'] }}
                 onSelectionChanged={onSelectionChanged}
             />
             <button onClick={handleScaleDown} disabled={selectedClusters.length === 0}>

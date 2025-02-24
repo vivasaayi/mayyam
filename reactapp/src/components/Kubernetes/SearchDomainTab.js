@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { CButton, CFormSelect } from '@coreui/react';
 import { AgGridReact } from 'ag-grid-react';
-import { ClientSideRowModelModule } from 'ag-grid-community';
+import { ClientSideRowModelModule, DateFilterModule, ModuleRegistry, NumberFilterModule, TextFilterModule, ValidationModule } from 'ag-grid-community';
 import axios from 'axios';
+
+ModuleRegistry.registerModules([ClientSideRowModelModule, TextFilterModule, NumberFilterModule, DateFilterModule, ValidationModule]);
 
 const SearchDomainTab = () => {
   const [namespaces, setNamespaces] = useState([]);
@@ -63,8 +65,11 @@ const SearchDomainTab = () => {
             { headerName: 'Pod Name', field: 'podName' },
             { headerName: 'Current Search Domain', field: 'currentSearchDomain' },
           ]}
-          defaultColDef={{ flex: 1, minWidth: 100 }}
-          modules={[ClientSideRowModelModule]}
+          defaultColDef={{ flex: 1, minWidth: 100, sortable: true, filter: true, resizable: true }}
+          pagination={true}
+          paginationPageSize={10}
+          sideBar={{ toolPanels: ['columns', 'filters'] }}
+          modules={[ClientSideRowModelModule, TextFilterModule, NumberFilterModule, DateFilterModule, ValidationModule]}
         />
       </div>
     </div>

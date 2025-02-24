@@ -38,6 +38,7 @@ const RdsClusters = () => {
           pagination={true}
           paginationPageSize={10}
           defaultColDef={defaultColDef}
+          sideBar={{ toolPanels: ['columns'] }}
         />
       </div>
     </div>)

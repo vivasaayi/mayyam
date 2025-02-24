@@ -42,3 +42,7 @@ Can you ensure the AGGRids has,
 2. Sorting
 3. Choose Columns
 4. Pagination
+
+import { ClientSideRowModelModule, DateFilterModule, ModuleRegistry, NumberFilterModule, TextFilterModule, ValidationModule, } from "ag-grid-community";
+
+ModuleRegistry.registerModules([ ClientSideRowModelModule, TextFilterModule, NumberFilterModule, DateFilterModule, ValidationModule ]);

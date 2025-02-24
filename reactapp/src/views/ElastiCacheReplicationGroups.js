@@ -3,6 +3,9 @@ import axios from 'axios'
 import { AgGridReact } from 'ag-grid-react'
 import 'ag-grid-community/styles/ag-grid.css'
 import 'ag-grid-community/styles/ag-theme-alpine.css'
+import { ClientSideRowModelModule, DateFilterModule, ModuleRegistry, NumberFilterModule, TextFilterModule, ValidationModule } from 'ag-grid-community';
+
+ModuleRegistry.registerModules([ClientSideRowModelModule, TextFilterModule, NumberFilterModule, DateFilterModule, ValidationModule]);
 
 const ElastiCacheReplicationGroups = () => {
   const [groups, setGroups] = useState([])
@@ -46,6 +49,8 @@ const ElastiCacheReplicationGroups = () => {
           columnDefs={columnDefs}
           pagination={true}
           paginationPageSize={10}
+          defaultColDef={{ sortable: true, filter: true, resizable: true }}
+          sideBar={{ toolPanels: ['columns'] }}
         />
       </div>
     </div>

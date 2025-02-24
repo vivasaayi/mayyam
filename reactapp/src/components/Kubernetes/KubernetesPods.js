@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { CContainer, CButton, CFormSelect } from '@coreui/react';
 import { AgGridReact } from 'ag-grid-react';
-import { ClientSideRowModelModule } from 'ag-grid-community';
+import { ClientSideRowModelModule, DateFilterModule, ModuleRegistry, NumberFilterModule, TextFilterModule, ValidationModule } from 'ag-grid-community';
 import axios from 'axios';
+
+ModuleRegistry.registerModules([ClientSideRowModelModule, TextFilterModule, NumberFilterModule, DateFilterModule, ValidationModule]);
 
 const KubernetesPods = () => {
   const [rowData, setRowData] = useState([]);
@@ -78,6 +80,10 @@ const KubernetesPods = () => {
             },
           ]}
           modules={[ClientSideRowModelModule]}
+          defaultColDef={{ flex: 1, minWidth: 100, sortable: true, filter: true, resizable: true }}
+          pagination={true}
+          paginationPageSize={10}
+          sideBar={{ toolPanels: ['columns', 'filters'] }}
         />
       </div>
       <CButton color="primary" style={{ marginTop: '10px' }}>Action Button</CButton>

@@ -5,6 +5,9 @@ import 'ag-grid-community/styles/ag-grid.css'
 import 'ag-grid-community/styles/ag-theme-alpine.css'
 import { CButton, CModal, CModalBody, CModalFooter, CModalHeader, CModalTitle, CForm, CFormLabel, CFormInput, CFormTextarea } from '@coreui/react'
 import yaml from 'js-yaml'
+import { ClientSideRowModelModule, DateFilterModule, ModuleRegistry, NumberFilterModule, TextFilterModule, ValidationModule } from 'ag-grid-community';
+
+ModuleRegistry.registerModules([ClientSideRowModelModule, TextFilterModule, NumberFilterModule, DateFilterModule, ValidationModule]);
 
 const ElastiCacheClusters = () => {
   const [clusters, setClusters] = useState([])
@@ -135,6 +138,8 @@ azMode: single-az
           columnDefs={columnDefs}
           pagination={true}
           paginationPageSize={10}
+          defaultColDef={{ sortable: true, filter: true, resizable: true }}
+          sideBar={{ toolPanels: ['columns'] }}
         />
       </div>
 

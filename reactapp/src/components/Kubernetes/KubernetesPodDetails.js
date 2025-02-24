@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { CContainer, CTabs, CTabContent, CTabPane, CNav, CNavItem, CNavLink, CButton, CForm, CFormLabel, CFormInput, CTabList, CTabPanel, CTab } from '@coreui/react';
 import { AgGridReact } from 'ag-grid-react';
-import { ClientSideRowModelModule } from 'ag-grid-community';
+import { ClientSideRowModelModule, DateFilterModule, ModuleRegistry, NumberFilterModule, TextFilterModule, ValidationModule } from 'ag-grid-community';
 import axios from 'axios';
+
+ModuleRegistry.registerModules([ClientSideRowModelModule, TextFilterModule, NumberFilterModule, DateFilterModule, ValidationModule]);
 
 const KubernetesPodDetails = () => {
   const [activeTab, setActiveTab] = useState(0);
@@ -89,6 +91,10 @@ const KubernetesPodDetails = () => {
                       { headerName: 'Value', field: 'value' },
                     ]}
                     modules={[ClientSideRowModelModule]}
+                    defaultColDef={{ flex: 1, minWidth: 100, sortable: true, filter: true, resizable: true }}
+                    pagination={true}
+                    paginationPageSize={10}
+                    sideBar={{ toolPanels: ['columns', 'filters'] }}
                   />
                 </div>
                 <div className="ag-theme-alpine" style={{ height: 200, width: '100%' }}>
@@ -100,6 +106,10 @@ const KubernetesPodDetails = () => {
                       { headerName: 'Mount Path', field: 'mountPath' },
                     ]}
                     modules={[ClientSideRowModelModule]}
+                    defaultColDef={{ flex: 1, minWidth: 100, sortable: true, filter: true, resizable: true }}
+                    pagination={true}
+                    paginationPageSize={10}
+                    sideBar={{ toolPanels: ['columns', 'filters'] }}
                   />
                 </div>
               </CTabPanel>
@@ -126,6 +136,10 @@ const KubernetesPodDetails = () => {
             },
           ]}
           modules={[ClientSideRowModelModule]}
+          defaultColDef={{ flex: 1, minWidth: 100, sortable: true, filter: true, resizable: true }}
+          pagination={true}
+          paginationPageSize={10}
+          sideBar={{ toolPanels: ['columns', 'filters'] }}
         />
       </div>
     );
@@ -146,6 +160,10 @@ const KubernetesPodDetails = () => {
             { headerName: 'Last Timestamp', field: 'lastTimestamp' },
           ]}
           modules={[ClientSideRowModelModule]}
+          defaultColDef={{ flex: 1, minWidth: 100, sortable: true, filter: true, resizable: true }}
+          pagination={true}
+          paginationPageSize={10}
+          sideBar={{ toolPanels: ['columns', 'filters'] }}
         />
       </div>
     );
