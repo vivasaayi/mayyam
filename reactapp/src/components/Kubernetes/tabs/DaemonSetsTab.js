@@ -6,6 +6,7 @@ import axios from 'axios';
 
 const DaemonSetsTab = ({ namespace }) => {
   const [daemonSetsData, setDaemonSetsData] = useState([]);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchDaemonSets();
@@ -15,14 +16,17 @@ const DaemonSetsTab = ({ namespace }) => {
     try {
       const response = await axios.get(`/api/kubernetes/daemonsets?namespace=${namespace}`);
       setDaemonSetsData(response.data);
+      setError(null);
     } catch (error) {
       console.error('Error fetching daemon sets:', error);
+      setError('Error fetching daemon sets');
     }
   };
 
   return (
     <div>
       <CButton color="primary" onClick={fetchDaemonSets}>Load</CButton>
+      {error && <div className="alert alert-danger">{error}</div>}
       <div className="ag-theme-balham" style={{ height: 400, width: '100%', marginTop: '10px' }}>
         <AgGridReact
           rowData={daemonSetsData}

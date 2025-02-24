@@ -6,6 +6,7 @@ import axios from 'axios';
 
 const PvsTab = ({ namespace }) => {
   const [pvsData, setPvsData] = useState([]);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchPvs();
@@ -15,14 +16,17 @@ const PvsTab = ({ namespace }) => {
     try {
       const response = await axios.get(`/api/kubernetes/pvs?namespace=${namespace}`);
       setPvsData(response.data);
+      setError(null);
     } catch (error) {
       console.error('Error fetching PVs:', error);
+      setError('Error fetching PVs');
     }
   };
 
   return (
     <div>
       <CButton color="primary" onClick={fetchPvs}>Load</CButton>
+      {error && <div className="alert alert-danger">{error}</div>}
       <div className="ag-theme-balham" style={{ height: 400, width: '100%', marginTop: '10px' }}>
         <AgGridReact
           rowData={pvsData}

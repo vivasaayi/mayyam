@@ -6,6 +6,7 @@ import axios from 'axios';
 
 const StatefulSetsTab = ({ namespace }) => {
   const [statefulSetsData, setStatefulSetsData] = useState([]);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchStatefulSets();
@@ -15,14 +16,17 @@ const StatefulSetsTab = ({ namespace }) => {
     try {
       const response = await axios.get(`/api/kubernetes/statefulsets?namespace=${namespace}`);
       setStatefulSetsData(response.data);
+      setError(null);
     } catch (error) {
       console.error('Error fetching stateful sets:', error);
+      setError('Error fetching stateful sets');
     }
   };
 
   return (
     <div>
       <CButton color="primary" onClick={fetchStatefulSets}>Load</CButton>
+      {error && <div className="alert alert-danger">{error}</div>}
       <div className="ag-theme-balham" style={{ height: 400, width: '100%', marginTop: '10px' }}>
         <AgGridReact
           rowData={statefulSetsData}

@@ -35,6 +35,7 @@ import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
+import java.util.Arrays;
 
 import io.kubernetes.client.openapi.models.V1StatefulSetList;
 import io.kubernetes.client.openapi.models.V1PersistentVolumeClaimList;
@@ -307,6 +308,17 @@ public class KubernetesService {
         return pvcList.getItems().stream().map(pvc -> {
             Map<String, Object> pvcMap = new HashMap<>();
             pvcMap.put("name", pvc.getMetadata().getName());
+            pvcMap.put("status", pvc.getStatus().getPhase());
+            pvcMap.put("volume", pvc.getSpec().getVolumeName());
+            if (pvc.getStatus() != null && pvc.getStatus().getCapacity() != null && pvc.getStatus().getCapacity().get("storage") != null) {
+                pvcMap.put("capacity", pvc.getStatus().getCapacity().get("storage").toString());
+            } else {
+                pvcMap.put("capacity", "N/A");
+            }
+            pvcMap.put("accessModes", pvc.getSpec().getAccessModes().toString());
+            pvcMap.put("storageClass", pvc.getSpec().getStorageClassName());
+            pvcMap.put("volumeAttributesClass", pvc.getSpec().getVolumeMode());
+            pvcMap.put("age", pvc.getMetadata().getCreationTimestamp().toString());
             return pvcMap;
         }).collect(Collectors.toList());
     }
@@ -325,41 +337,33 @@ public class KubernetesService {
         return storageClassList.getItems().stream().map(storageClass -> {
             Map<String, Object> storageClassMap = new HashMap<>();
             storageClassMap.put("name", storageClass.getMetadata().getName());
+            storageClassMap.put("provisioner", storageClass.getProvisioner());
+            storageClassMap.put("reclaimPolicy", storageClass.getReclaimPolicy());
+            storageClassMap.put("volumeBindingMode", storageClass.getVolumeBindingMode());
+            storageClassMap.put("allowVolumeExpansion", storageClass.getAllowVolumeExpansion());
+            storageClassMap.put("age", storageClass.getMetadata().getCreationTimestamp().toString());
             return storageClassMap;
         }).collect(Collectors.toList());
     }
 
-    public List<String> getNamespaces() {
-        try {
-            V1NamespaceList namespaceList = coreV1Api.listNamespace(null, null, null, null, null, null, null, null, null, null);
-            return namespaceList.getItems().stream()
-                    .map(V1Namespace::getMetadata)
-                    .map(metadata -> metadata.getName())
-                    .collect(Collectors.toList());
-        } catch (Exception e) {
-            throw new RuntimeException("Error fetching namespaces: " + e.getMessage(), e);
-        }
+    public List<String> getNamespaces() throws Exception {
+        V1NamespaceList namespaceList = coreV1Api.listNamespace(null, null, null, null, null, null, null, null, null, null);
+        return namespaceList.getItems().stream()
+                .map(V1Namespace::getMetadata)
+                .map(metadata -> metadata.getName())
+                .collect(Collectors.toList());
     }
 
     public List<Object> getPods(String namespace) throws ApiException {
-        try {
-            V1PodList podList = coreV1Api.listNamespacedPod(namespace, null, null, null, null, null, null, null, null, null, false);
-            List<Object> pods = new ArrayList<>();
-            for (V1Pod pod : podList.getItems()) {
-                Map<String, Object> podInfo = new HashMap<>();
-                podInfo.put("name", pod.getMetadata().getName());
-                podInfo.put("status", pod.getStatus().getPhase());
-                pods.add(podInfo);
-            }
-            return pods;
-        } catch (ApiException e) {
-            if (e.getCode() == 400 && e.getResponseBody().contains("invalid continue token")) {
-                logger.error("Invalid continue token: {}", e.getResponseBody());
-            } else {
-                logger.error("Error fetching pods: {}", e.getMessage());
-            }
-            throw e;
+        V1PodList podList = coreV1Api.listNamespacedPod(namespace, null, null, null, null, null, null, null, null, null, false);
+        List<Object> pods = new ArrayList<>();
+        for (V1Pod pod : podList.getItems()) {
+            Map<String, Object> podInfo = new HashMap<>();
+            podInfo.put("name", pod.getMetadata().getName());
+            podInfo.put("status", pod.getStatus().getPhase());
+            pods.add(podInfo);
         }
+        return pods;
     }
 
     public Object getPodDetails(String podName, String namespace) throws ApiException {

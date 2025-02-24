@@ -6,6 +6,7 @@ import axios from 'axios';
 
 const DeploymentsTab = ({ namespace }) => {
   const [deploymentsData, setDeploymentsData] = useState([]);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchDeployments();
@@ -15,14 +16,17 @@ const DeploymentsTab = ({ namespace }) => {
     try {
       const response = await axios.get(`/api/kubernetes/deployments?namespace=${namespace}`);
       setDeploymentsData(response.data);
+      setError(null);
     } catch (error) {
       console.error('Error fetching deployments:', error);
+      setError('Error fetching deployments');
     }
   };
 
   return (
     <div>
       <CButton color="primary" onClick={fetchDeployments}>Load</CButton>
+      {error && <div className="alert alert-danger">{error}</div>}
       <div className="ag-theme-balham" style={{ height: 400, width: '100%', marginTop: '10px' }}>
         <AgGridReact
           rowData={deploymentsData}

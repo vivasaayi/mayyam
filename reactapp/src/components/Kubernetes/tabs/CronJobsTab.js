@@ -6,6 +6,7 @@ import axios from 'axios';
 
 const CronJobsTab = ({ namespace }) => {
   const [cronJobsData, setCronJobsData] = useState([]);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchCronJobs();
@@ -15,14 +16,17 @@ const CronJobsTab = ({ namespace }) => {
     try {
       const response = await axios.get(`/api/kubernetes/cronjobs?namespace=${namespace}`);
       setCronJobsData(response.data);
+      setError(null);
     } catch (error) {
       console.error('Error fetching cron jobs:', error);
+      setError('Error fetching cron jobs');
     }
   };
 
   return (
     <div>
       <CButton color="primary" onClick={fetchCronJobs}>Load</CButton>
+      {error && <div className="alert alert-danger">{error}</div>}
       <div className="ag-theme-balham" style={{ height: 400, width: '100%', marginTop: '10px' }}>
         <AgGridReact
           rowData={cronJobsData}
