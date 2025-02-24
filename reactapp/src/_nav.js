@@ -87,6 +87,30 @@ const _nav = [
     to: '/global-cluster-status',
     icon: <CIcon icon={cilChartPie} customClassName="nav-icon" />,
   },
+  {
+    component: CNavItem,
+    name: 'Kubernetes Dashboard',
+    to: '/kubernetes-dashboard',
+    icon: <CIcon icon={cilChartPie} customClassName="nav-icon" />,
+  },
+  {
+    component: CNavItem,
+    name: 'Kubernetes Pods',
+    to: '/kubernetes-pods',
+    icon: <CIcon icon={cilChartPie} customClassName="nav-icon" />,
+  },
+  {
+    component: CNavItem,
+    name: 'Kubernetes Pod Details',
+    to: '/kubernetes-pod-details',
+    icon: <CIcon icon={cilChartPie} customClassName="nav-icon" />,
+  },
+  {
+    component: CNavItem,
+    name: 'Kubernetes Triaging',
+    to: '/kubernetes/triaging',
+    icon: <CIcon icon={cilChartPie} customClassName="nav-icon" />,
+  },
 ];
 
 export default _nav;

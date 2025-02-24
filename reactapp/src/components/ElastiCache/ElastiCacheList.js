@@ -83,7 +83,7 @@ const ElastiCacheList = () => {
   };
 
   return (
-    <div>
+    (<div>
       <h2>ElastiCache Clusters</h2>
       <RegionDropdown selectedRegion={selectedRegion} onChange={handleRegionChange} />
       <CButton color="primary" onClick={() => setShowModal(true)}>Create ElastiCache Cluster</CButton>
@@ -93,13 +93,11 @@ const ElastiCacheList = () => {
         <AgGridReact
           columnDefs={columnDefs}
           rowData={rowData}
-          rowSelection="multiple"
           onSelectionChanged={(event) => setSelectedRows(event.api.getSelectedRows())}
           pagination={true}
           paginationPageSize={10}
           domLayout='autoHeight'
           defaultColDef={defaultColDef}
-          groupSelectsChildren={true}
           autoGroupColumnDef={{ headerName: 'Group', field: 'cacheClusterId', cellRenderer: 'agGroupCellRenderer', cellRendererParams: { checkbox: true } }}
         />
       </div>
@@ -114,7 +112,7 @@ const ElastiCacheList = () => {
         handleConfirm={handleDelete}
         selectedStreams={selectedRows}
       />
-    </div>
+    </div>)
   );
 };
 

@@ -90,7 +90,7 @@ const S3List = () => {
   };
 
   return (
-    <div>
+    (<div>
       <h2>S3 Buckets</h2>
       <RegionDropdown selectedRegion={region} onChange={(e) => setRegion(e.target.value)} />
       <CButton color="primary" onClick={() => setShowModal(true)}>Create S3 Bucket</CButton>
@@ -101,13 +101,11 @@ const S3List = () => {
         <AgGridReact
           columnDefs={columnDefs}
           rowData={rowData}
-          rowSelection="multiple"
           onSelectionChanged={(event) => setSelectedRows(event.api.getSelectedRows())}
           pagination={true}
           paginationPageSize={10}
           domLayout='autoHeight'
           defaultColDef={defaultColDef}
-          groupSelectsChildren={true}
           autoGroupColumnDef={{ headerName: 'Group', field: 'bucketName', cellRenderer: 'agGroupCellRenderer', cellRendererParams: { checkbox: true } }}
         />
       </div>
@@ -122,7 +120,7 @@ const S3List = () => {
         handleConfirm={handleDelete}
         selectedStreams={selectedRows}
       />
-    </div>
+    </div>)
   );
 };
 

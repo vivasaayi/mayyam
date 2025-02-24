@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { AgGridReact } from 'ag-grid-react';
-import 'ag-grid-community/styles/ag-grid.css';
-import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { CButton, CAlert } from '@coreui/react';
 import KinesisModal from './KinesisModal';
 import DeleteConfirmationModal from './DeleteConfirmationModal';
 import RegionDropdown from '../RegionDropdown';
+import { AgGridReact } from 'ag-grid-react';
+import { ClientSideRowModelModule } from 'ag-grid-community';
 
 const KinesisList = () => {
   const [rowData, setRowData] = useState([]);
@@ -32,19 +31,12 @@ const KinesisList = () => {
       });
   }, [region]);
 
-  const columnDefs = [
-    { headerName: 'Stream Name', field: 'streamName', filter: true, sortable: true, checkboxSelection: true },
-    { headerName: 'Stream ARN', field: 'streamARN', filter: true, sortable: true },
-    { headerName: 'Stream Status', field: 'streamStatus', filter: true, sortable: true },
-    { headerName: 'Shards', field: 'shards.length', filter: true, sortable: true }
+  const columns = [
+    { headerName: 'Stream Name', field: 'streamName', width: 200 },
+    { headerName: 'Stream ARN', field: 'streamARN', width: 300 },
+    { headerName: 'Stream Status', field: 'streamStatus', width: 150 },
+    { headerName: 'Shards', field: 'shards.length', width: 100 }
   ];
-
-  const defaultColDef = {
-    sortable: true,
-    filter: true,
-    resizable: true,
-    enableRowGroup: true,
-  };
 
   const handleCreate = async (streamName, shardCount) => {
     const response = await fetch(`/api/kinesis/create?streamName=${streamName}&shardCount=${shardCount}&region=${region}`, {
@@ -101,18 +93,13 @@ const KinesisList = () => {
       <CButton color="primary" onClick={() => setShowModal(true)}>Create Kinesis Stream</CButton>
       <CButton color="danger" onClick={() => setShowDeleteModal(true)} disabled={selectedRows.length === 0}>Delete Selected Streams</CButton>
       {message && <CAlert color={messageType}>{message}</CAlert>}
-      <div className="ag-theme-alpine" style={{ height: 600, width: '100%' }}>
+      <div className="ag-theme-balham" style={{ height: '600px', width: '100%' }}>
         <AgGridReact
-          columnDefs={columnDefs}
           rowData={rowData}
+          columnDefs={columns}
           rowSelection="multiple"
           onSelectionChanged={(event) => setSelectedRows(event.api.getSelectedRows())}
-          pagination={true}
-          paginationPageSize={10}
-          domLayout='autoHeight'
-          defaultColDef={defaultColDef}
-          groupSelectsChildren={true}
-          autoGroupColumnDef={{ headerName: 'Group', field: 'streamName', cellRenderer: 'agGroupCellRenderer', cellRendererParams: { checkbox: true } }}
+          modules={[ClientSideRowModelModule]}
         />
       </div>
       <KinesisModal

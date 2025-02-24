@@ -28,20 +28,20 @@ const RdsClusters = () => {
   };
 
   return (
-    <div>
+    (<div>
       <h2>RDS Clusters</h2>
       <RegionDropdown selectedRegion={region} onChange={e => setRegion(e.target.value)} />
       <div className="ag-theme-alpine" style={{ height: 600, width: '100%' }}>
         <AgGridReact
           columnDefs={columnDefs}
           rowData={rowData}
-          rowSelection="multiple"
           pagination={true}
           paginationPageSize={10}
           defaultColDef={defaultColDef}
+          sideBar={{ toolPanels: ['columns'] }}
         />
       </div>
-    </div>
+    </div>)
   );
 };
 

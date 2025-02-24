@@ -165,6 +165,18 @@
             <artifactId>regions</artifactId>
             <version>2.20.0</version> <!-- Use the latest version available -->
         </dependency>
+        
+        <!-- Elasticsearch High Level REST Client -->
+        <dependency>
+            <groupId>org.elasticsearch.client</groupId>
+            <artifactId>elasticsearch-rest-high-level-client</artifactId>
+            <version>7.10.2</version>
+        </dependency>
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+            <version>1.30</version>
+        </dependency>
     </dependencies>
 
     <build>
