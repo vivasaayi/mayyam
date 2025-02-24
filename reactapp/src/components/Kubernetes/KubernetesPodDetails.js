@@ -9,6 +9,9 @@ const KubernetesPodDetails = () => {
   const [podName, setPodName] = useState('');
   const [namespace, setNamespace] = useState('');
   const [podDetails, setPodDetails] = useState(null);
+  const [podStatus, setPodStatus] = useState(null);
+  const [podEvents, setPodEvents] = useState([]);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.hash.split('?')[1]);
@@ -16,21 +19,49 @@ const KubernetesPodDetails = () => {
     const namespaceParam = urlParams.get('namespace');
     if (podNameParam) setPodName(podNameParam);
     if (namespaceParam) setNamespace(namespaceParam);
-    // Fetch pod details based on query params
+    // Fetch pod details, status, and events based on query params
     fetchPodDetails(podNameParam, namespaceParam);
+    fetchPodStatus(podNameParam, namespaceParam);
+    fetchPodEvents(podNameParam, namespaceParam);
   }, []);
 
   const fetchPodDetails = async (podName, namespace) => {
     try {
       const response = await axios.get(`/api/kubernetes/pod-details?podName=${podName}&namespace=${namespace}`);
       setPodDetails(response.data);
+      setError(null);
     } catch (error) {
       console.error('Error fetching pod details:', error);
+      setError('Error fetching pod details');
+    }
+  };
+
+  const fetchPodStatus = async (podName, namespace) => {
+    try {
+      const response = await axios.get(`/api/kubernetes/pod-status?podName=${podName}&namespace=${namespace}`);
+      setPodStatus(response.data);
+      setError(null);
+    } catch (error) {
+      console.error('Error fetching pod status:', error);
+      setError('Error fetching pod status');
+    }
+  };
+
+  const fetchPodEvents = async (podName, namespace) => {
+    try {
+      const response = await axios.get(`/api/kubernetes/pod-events?podName=${podName}&namespace=${namespace}`);
+      setPodEvents(response.data);
+      setError(null);
+    } catch (error) {
+      console.error('Error fetching pod events:', error);
+      setError('Error fetching pod events');
     }
   };
 
   const handleReload = () => {
     fetchPodDetails(podName, namespace);
+    fetchPodStatus(podName, namespace);
+    fetchPodEvents(podName, namespace);
   };
 
   const renderParsedPodDetails = () => {
@@ -79,6 +110,47 @@ const KubernetesPodDetails = () => {
     );
   };
 
+  const renderPodStatus = () => {
+    if (!podStatus) return null;
+    return (
+      <div className="ag-theme-alpine" style={{ height: 200, width: '100%' }}>
+        <h5>Pod Status</h5>
+        <AgGridReact
+          rowData={[podStatus]}
+          columnDefs={[
+            { headerName: 'Phase', field: 'phase' },
+            { 
+              headerName: 'Conditions', 
+              field: 'conditions', 
+              valueFormatter: (params) => JSON.stringify(params.value) 
+            },
+          ]}
+          modules={[ClientSideRowModelModule]}
+        />
+      </div>
+    );
+  };
+
+  const renderPodEvents = () => {
+    if (!podEvents.length) return null;
+    return (
+      <div className="ag-theme-alpine" style={{ height: 200, width: '100%' }}>
+        <h5>Pod Events</h5>
+        <AgGridReact
+          rowData={podEvents}
+          columnDefs={[
+            { headerName: 'Type', field: 'type' },
+            { headerName: 'Reason', field: 'reason' },
+            { headerName: 'Message', field: 'message' },
+            { headerName: 'First Timestamp', field: 'firstTimestamp' },
+            { headerName: 'Last Timestamp', field: 'lastTimestamp' },
+          ]}
+          modules={[ClientSideRowModelModule]}
+        />
+      </div>
+    );
+  };
+
   return (
     <CContainer>
       <CForm>
@@ -88,14 +160,19 @@ const KubernetesPodDetails = () => {
         <CFormInput id="namespace" value={namespace} onChange={(e) => setNamespace(e.target.value)} />
         <CButton onClick={handleReload}>Reload</CButton>
       </CForm>
+      {error && <div className="alert alert-danger">{error}</div>}
       <CTabs activeItemKey={activeTab} onActiveTabChange={setActiveTab}>
         <CTabList variant="tabs">
           <CTab itemKey={0}>Parsed Pod Details</CTab>
-          <CTab itemKey={1}>Raw JSON</CTab>
+          <CTab itemKey={1}>Pod Status</CTab>
+          <CTab itemKey={2}>Pod Events</CTab>
+          <CTab itemKey={3}>Raw JSON</CTab>
         </CTabList>
         <CTabContent>
           <CTabPanel className="p-3" itemKey={0}>{renderParsedPodDetails()}</CTabPanel>
-          <CTabPanel className="p-3" itemKey={1}>
+          <CTabPanel className="p-3" itemKey={1}>{renderPodStatus()}</CTabPanel>
+          <CTabPanel className="p-3" itemKey={2}>{renderPodEvents()}</CTabPanel>
+          <CTabPanel className="p-3" itemKey={3}>
             <pre>{JSON.stringify(podDetails, null, 2)}</pre>
           </CTabPanel>
         </CTabContent>

@@ -132,11 +132,44 @@ public class KubernetesController {
         }
     }
 
+    @GetMapping("/pod-events")
+    public ResponseEntity<List<Object>> getPodEvents(@RequestParam String podName, @RequestParam String namespace) {
+        try {
+            validateNamespace(namespace);
+            List<Object> podEvents = kubernetesService.getPodEvents(podName, namespace);
+            return ResponseEntity.ok(podEvents);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(null);
+        }
+    }
+
+    @GetMapping("/pod-status")
+    public ResponseEntity<Object> getPodStatus(@RequestParam String podName, @RequestParam String namespace) {
+        try {
+            validateNamespace(namespace);
+            Object podStatus = kubernetesService.getPodStatus(podName, namespace);
+            return ResponseEntity.ok(podStatus);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("Error: " + e.getMessage());
+        }
+    }
+
     @GetMapping("/namespaces")
     public ResponseEntity<List<String>> getNamespaces() {
         try {
             List<String> namespaces = kubernetesService.getNamespaces();
             return ResponseEntity.ok(namespaces);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(null);
+        }
+    }
+
+    @GetMapping("/services")
+    public ResponseEntity<List<Object>> getServices(@RequestParam String namespace) {
+        try {
+            validateNamespace(namespace);
+            List<Object> services = kubernetesService.getServices(namespace);
+            return ResponseEntity.ok(services);
         } catch (Exception e) {
             return ResponseEntity.status(500).body(null);
         }

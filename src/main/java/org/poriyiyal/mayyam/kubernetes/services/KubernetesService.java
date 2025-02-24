@@ -47,6 +47,8 @@ import io.kubernetes.client.openapi.models.V1Namespace;
 import io.kubernetes.client.openapi.models.V1NamespaceList;
 import io.kubernetes.client.openapi.ApiException;
 import java.util.ArrayList;
+import io.kubernetes.client.openapi.models.V1ServiceList;
+import io.kubernetes.client.openapi.models.CoreV1EventList;
 
 @Service
 public class KubernetesService {
@@ -340,15 +342,24 @@ public class KubernetesService {
     }
 
     public List<Object> getPods(String namespace) throws ApiException {
-        V1PodList podList = coreV1Api.listNamespacedPod(namespace, null, null, null, null, null, null, null, null, null, false);
-        List<Object> pods = new ArrayList<>();
-        for (V1Pod pod : podList.getItems()) {
-            Map<String, Object> podInfo = new HashMap<>();
-            podInfo.put("name", pod.getMetadata().getName());
-            podInfo.put("status", pod.getStatus().getPhase());
-            pods.add(podInfo);
+        try {
+            V1PodList podList = coreV1Api.listNamespacedPod(namespace, null, null, null, null, null, null, null, null, null, false);
+            List<Object> pods = new ArrayList<>();
+            for (V1Pod pod : podList.getItems()) {
+                Map<String, Object> podInfo = new HashMap<>();
+                podInfo.put("name", pod.getMetadata().getName());
+                podInfo.put("status", pod.getStatus().getPhase());
+                pods.add(podInfo);
+            }
+            return pods;
+        } catch (ApiException e) {
+            if (e.getCode() == 400 && e.getResponseBody().contains("invalid continue token")) {
+                logger.error("Invalid continue token: {}", e.getResponseBody());
+            } else {
+                logger.error("Error fetching pods: {}", e.getMessage());
+            }
+            throw e;
         }
-        return pods;
     }
 
     public Object getPodDetails(String podName, String namespace) throws ApiException {
@@ -379,5 +390,70 @@ public class KubernetesService {
             return containerDetails;
         }).collect(Collectors.toList()));
         return podDetails;
+    }
+
+    public List<Object> getServices(String namespace) throws ApiException {
+        V1ServiceList serviceList = coreV1Api.listNamespacedService(namespace, null, null, null, null, null, null, null, null, null, false);
+        return serviceList.getItems().stream().map(service -> {
+            Map<String, Object> serviceMap = new HashMap<>();
+            serviceMap.put("name", service.getMetadata().getName());
+            serviceMap.put("type", service.getSpec().getType());
+            serviceMap.put("clusterIP", service.getSpec().getClusterIP());
+            return serviceMap;
+        }).collect(Collectors.toList());
+    }
+
+    public List<Object> getPodEvents(String podName, String namespace) throws ApiException {
+        try {
+            return fetchPodEvents(podName, namespace, null);
+        } catch (ApiException e) {
+            if (e.getCode() == 400 && e.getResponseBody().contains("invalid continue token")) {
+                logger.error("Invalid continue token: {}", e.getResponseBody());
+                // Retry without the continue token
+                return fetchPodEvents(podName, namespace, null);
+            } else {
+                logger.error("Error fetching pod events: {}", e.getMessage());
+                throw e;
+            }
+        }
+    }
+
+    private List<Object> fetchPodEvents(String podName, String namespace, String continueToken) throws ApiException {
+        CoreV1EventList eventList = coreV1Api.listNamespacedEvent(
+            namespace, 
+            null, 
+            null, 
+            continueToken, 
+            "involvedObject.name=" + podName, 
+            null, 
+            null, 
+            null, 
+            null, 
+            null, 
+            false
+        );
+        return eventList.getItems().stream().map(event -> {
+            Map<String, Object> eventMap = new HashMap<>();
+            eventMap.put("type", event.getType());
+            eventMap.put("reason", event.getReason());
+            eventMap.put("message", event.getMessage());
+            eventMap.put("firstTimestamp", event.getFirstTimestamp());
+            eventMap.put("lastTimestamp", event.getLastTimestamp());
+            return eventMap;
+        }).collect(Collectors.toList());
+    }
+
+    public Object getPodStatus(String podName, String namespace) throws ApiException {
+        V1Pod pod = coreV1Api.readNamespacedPod(podName, namespace, null);
+        Map<String, Object> statusMap = new HashMap<>();
+        statusMap.put("phase", pod.getStatus().getPhase());
+        statusMap.put("conditions", pod.getStatus().getConditions().stream().map(condition -> {
+            Map<String, Object> conditionMap = new HashMap<>();
+            conditionMap.put("type", condition.getType());
+            conditionMap.put("status", condition.getStatus());
+            conditionMap.put("lastTransitionTime", condition.getLastTransitionTime());
+            return conditionMap;
+        }).collect(Collectors.toList()));
+        return statusMap;
     }
 }

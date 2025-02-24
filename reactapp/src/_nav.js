@@ -96,18 +96,6 @@ const _nav = [
   {
     component: CNavItem,
     name: 'Kubernetes Pods',
-    to: '/kubernetes/pods',
-    icon: 'cil-speedometer',
-  },
-  {
-    component: CNavItem,
-    name: 'Kubernetes Pod Details',
-    to: '/kubernetes/pod-details',
-    icon: 'cil-speedometer',
-  },
-  {
-    component: CNavItem,
-    name: 'Kubernetes Pods',
     to: '/kubernetes-pods',
     icon: <CIcon icon={cilChartPie} customClassName="nav-icon" />,
   },
