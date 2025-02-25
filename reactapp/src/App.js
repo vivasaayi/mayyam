@@ -50,23 +50,13 @@ const App = () => {
           </div>
         }
       >
-        <CContainer>
           <Routes>
-            {/* <Route path="/elasticache-clusters" component={ElastiCacheClusters} />
-            <Route path="/elasticache-replication-groups" component={ElastiCacheReplicationGroups} /> */}
-            {/* <Route path="/kinesis/list" component={KinesisStreams} /> */}
-            {/* <Route path="/sqs/list" component={SQSQueues} /> */}
-            {/* <Route path="/dynamodb/list" component={DynamoDBTables} /> */}
-            {/* <Route path="/s3/list" component={S3List} /> */}
             <Route path="/rds-clusters" component={RdsClusters} />
-            {/* <Route path="/rds-clusterstable" component={RdsClustersTable} /> */}
             <Route path="/rds-instances" component={RdsInstances} />
             <Route exact path="/rds-clusters" name="Rds Clusters" element={<RdsClusters />} />
-            {/* <Route exact path="/rds-clusters-table" name="RDS Clusters Table" element={<RDSClustersTable />} /> */}
             <Route exact path="/dynamodb" name="DynamoDb List" element={<DynamoDbList />} />
             <Route path="*" name="Home" element={<DefaultLayout />} />
           </Routes>
-        </CContainer>
       </Suspense>
     </HashRouter>
   )

@@ -31,6 +31,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import java.util.Arrays;
+import java.util.concurrent.Future;
 
 import io.kubernetes.client.openapi.apis.BatchV1beta1Api;
 import io.kubernetes.client.openapi.apis.StorageV1Api;
@@ -47,6 +48,7 @@ public class KubernetesService {
     private final AppsV1Api appsV1Api;
     private final BatchV1beta1Api batchV1beta1Api;
     private final StorageV1Api storageV1Api;
+    private final ExecutorService threadPool = Executors.newFixedThreadPool(10);
 
     public KubernetesService(OpenSearchService openSearchService) throws IOException {
         this.openSearchService = openSearchService;
@@ -194,17 +196,26 @@ public class KubernetesService {
     private List<Map<String, String>> checkAllPods(String namespace, String searchDomain) throws Exception {
         List<Map<String, String>> result = new ArrayList<>();
         V1PodList podList = coreV1Api.listNamespacedPod(namespace, null, null, null, null, null, null, null, null, null, false);
+        List<Future<Map<String, String>>> futures = new ArrayList<>();
+
         for (V1Pod pod : podList.getItems()) {
             if (pod.getStatus().getPhase().equals("Running")) {
-                String podName = pod.getMetadata().getName();
-                String resolvConf = execCommand(namespace, podName, "cat /etc/resolv.conf");
-                String currentSearchDomain = parseResolvConf(resolvConf);
-                Map<String, String> podInfo = new HashMap<>();
-                podInfo.put("podName", podName);
-                podInfo.put("currentSearchDomain", currentSearchDomain);
-                result.add(podInfo);
+                futures.add(threadPool.submit(() -> {
+                    String podName = pod.getMetadata().getName();
+                    String resolvConf = execCommand(namespace, podName, "cat /etc/resolv.conf");
+                    String currentSearchDomain = parseResolvConf(resolvConf);
+                    Map<String, String> podInfo = new HashMap<>();
+                    podInfo.put("podName", podName);
+                    podInfo.put("currentSearchDomain", currentSearchDomain);
+                    return podInfo;
+                }));
             }
         }
+
+        for (Future<Map<String, String>> future : futures) {
+            result.add(future.get());
+        }
+
         return result;
     }
 
