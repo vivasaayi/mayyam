@@ -1,22 +1,14 @@
 package org.poriyiyal.mayyam.kubernetes.services;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.apis.AppsV1Api;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
 import io.kubernetes.client.openapi.models.*;
 import io.kubernetes.client.util.Config;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
-import okhttp3.WebSocket;
-import okhttp3.WebSocketListener;
-import okio.ByteString;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
-import org.poriyiyal.mayyam.opensearch.OpenSearchService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -26,32 +18,34 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
-import java.util.Arrays;
-import java.util.concurrent.Future;
 
 import io.kubernetes.client.openapi.apis.BatchV1beta1Api;
 import io.kubernetes.client.openapi.apis.StorageV1Api;
 import io.kubernetes.client.openapi.ApiException;
-import java.util.ArrayList;
+
+// Add the missing import
+
 
 @Service
 public class KubernetesService {
     private static final Logger logger = LoggerFactory.getLogger(KubernetesService.class);
     private final ExecutorService executorService = Executors.newCachedThreadPool();
+
     private final Map<String, String> fieldsConfig = new HashMap<>();
-    private final OpenSearchService openSearchService;
     private final CoreV1Api coreV1Api;
     private final AppsV1Api appsV1Api;
     private final BatchV1beta1Api batchV1beta1Api;
     private final StorageV1Api storageV1Api;
-    private final ExecutorService threadPool = Executors.newFixedThreadPool(10);
 
-    public KubernetesService(OpenSearchService openSearchService) throws IOException {
-        this.openSearchService = openSearchService;
+    private final DeploymentsService deploymentsService;
+    private final PodsService podsService;
+
+    public KubernetesService(DeploymentsService deploymentsService, PodsService podsService) throws IOException {
+        this.deploymentsService = deploymentsService;
+        this.podsService = podsService;
         loadFieldsConfig();
         ApiClient client;
         String kubeConfigPath = System.getenv("KUBECONFIG_PATH");
@@ -79,175 +73,6 @@ public class KubernetesService {
         } catch (IOException e) {
             logger.error("Error loading fields config: {}", e.getMessage());
         }
-    }
-
-    public void initialize() throws Exception {
-        CoreV1Api api = new CoreV1Api();
-        V1PodList list = api.listPodForAllNamespaces(
-                null, null, null, null, null,
-                null, null, null, null, null);
-        for (V1Pod item : list.getItems()) {
-            followPodLogs(api, item);
-        }
-    }
-
-    private void followPodLogs(CoreV1Api api, V1Pod pod) {
-        executorService.submit(() -> {
-            try {
-                String namespace = pod.getMetadata().getNamespace();
-                String podName = pod.getMetadata().getName();
-                String containerName = pod.getSpec().getContainers().get(0).getName();
-
-                OkHttpClient httpClient = new OkHttpClient();
-                Request request = new Request.Builder()
-                        .url(api.getApiClient().getBasePath() + "/api/v1/namespaces/" + namespace + "/pods/" + podName + "/log?container=" + containerName + "&follow=true")
-                        .build();
-
-                httpClient.newWebSocket(request, new WebSocketListener() {
-                    @Override
-                    public void onMessage(WebSocket webSocket, String text) {
-                        parseAndStoreLog(text);
-                    }
-
-                    @Override
-                    public void onMessage(WebSocket webSocket, ByteString bytes) {
-                        parseAndStoreLog(bytes.utf8());
-                    }
-
-                    @Override
-                    public void onFailure(WebSocket webSocket, Throwable t, Response response) {
-                        logger.error("Error following logs for pod {}: {}", podName, t.getMessage());
-                    }
-                });
-            } catch (Exception e) {
-                logger.error("Error following logs for pod {}: {}", pod.getMetadata().getName(), e.getMessage());
-            }
-        });
-    }
-
-    @SuppressWarnings("unchecked")
-    private void parseAndStoreLog(String log) {
-        try {
-            Map<String, Object> parsedLog = new HashMap<>();
-            if (isJson(log)) {
-                Map<String, Object> logMap = new ObjectMapper().readValue(log, Map.class);
-                for (Map.Entry<String, String> entry : fieldsConfig.entrySet()) {
-                    String fieldName = entry.getKey();
-                    String fieldType = entry.getValue();
-                    Object value = logMap.get(fieldName);
-                    if (value != null) {
-                        parsedLog.put(fieldName, convertValue(value, fieldType));
-                    }
-                }
-            } else {
-                // Handle non-JSON log
-                // Example: Split log by lines and process each line
-            }
-            // Push parsed logs to OpenSearch
-            openSearchService.bulkIndex("logs", List.of(parsedLog));
-        } catch (Exception e) {
-            logger.error("Error parsing log: {}", e.getMessage());
-        }
-    }
-
-    private Object convertValue(Object value, String fieldType) {
-        switch (fieldType.toLowerCase()) {
-            case "string":
-                return value.toString();
-            case "integer":
-                return Integer.parseInt(value.toString());
-            case "double":
-                return Double.parseDouble(value.toString());
-            case "boolean":
-                return Boolean.parseBoolean(value.toString());
-            default:
-                return value;
-        }
-    }
-
-    private boolean isJson(String log) {
-        try {
-            new ObjectMapper().readTree(log);
-            return true;
-        } catch (IOException e) {
-            return false;
-        }
-    }
-
-    public void getDeployments() {
-        // Implement method to get deployments
-        // Example: Use Kubernetes API to list deployments
-        try {
-            V1DeploymentList deploymentList = appsV1Api.listNamespacedDeployment("default", null, false, null, null, null, null, null, null, 0, false);
-            for (V1Deployment deployment : deploymentList.getItems()) {
-                logger.info("Deployment: {}", deployment.getMetadata().getName());
-            }
-        } catch (Exception e) {
-            logger.error("Error getting deployments: {}", e.getMessage());
-        }
-    }
-
-    public List<Map<String, String>> checkSearchDomain(String namespace, String searchDomain) throws Exception {
-        List<Map<String, String>> result = new ArrayList<>();
-        result.addAll(checkAllPods(namespace, searchDomain));
-        return result;
-    }
-
-    private List<Map<String, String>> checkAllPods(String namespace, String searchDomain) throws Exception {
-        List<Map<String, String>> result = new ArrayList<>();
-        V1PodList podList = coreV1Api.listNamespacedPod(namespace, null, null, null, null, null, null, null, null, null, false);
-        List<Future<Map<String, String>>> futures = new ArrayList<>();
-
-        for (V1Pod pod : podList.getItems()) {
-            if (pod.getStatus().getPhase().equals("Running")) {
-                futures.add(threadPool.submit(() -> {
-                    String podName = pod.getMetadata().getName();
-                    String resolvConf = execCommand(namespace, podName, "cat /etc/resolv.conf");
-                    String currentSearchDomain = parseResolvConf(resolvConf);
-                    Map<String, String> podInfo = new HashMap<>();
-                    podInfo.put("podName", podName);
-                    podInfo.put("currentSearchDomain", currentSearchDomain);
-                    return podInfo;
-                }));
-            }
-        }
-
-        for (Future<Map<String, String>> future : futures) {
-            result.add(future.get());
-        }
-
-        return result;
-    }
-
-    private String execCommand(String namespace, String podName, String command) throws IOException {
-        ProcessBuilder processBuilder = new ProcessBuilder("kubectl", "exec", "-n", namespace, podName, "--", "sh", "-c", command);
-        Process process = processBuilder.start();
-        try (Scanner scanner = new Scanner(process.getInputStream()).useDelimiter("\\A")) {
-            return scanner.hasNext() ? scanner.next() : "";
-        }
-    }
-
-    private String parseResolvConf(String resolvConf) {
-        String[] lines = resolvConf.split("\n");
-        for (String line : lines) {
-            if (line.startsWith("search")) {
-                return line.substring(7).trim(); // Remove "search " prefix and trim
-            }
-        }
-        return "";
-    }
-
-    public List<Object> getDeployments(String namespace) throws Exception {
-        V1DeploymentList deploymentList = appsV1Api.listNamespacedDeployment(namespace, null, null, null, null, null, null, null, null, null, null);
-        return deploymentList.getItems().stream().map(deployment -> {
-            Map<String, Object> deploymentMap = new HashMap<>();
-            deploymentMap.put("name", deployment.getMetadata().getName());
-            deploymentMap.put("expectedReplicas", deployment.getSpec().getReplicas());
-            deploymentMap.put("podsRunning", deployment.getStatus().getReadyReplicas());
-            deploymentMap.put("podsPending", deployment.getStatus().getUnavailableReplicas());
-            deploymentMap.put("podsNotStarted", deployment.getStatus().getReplicas() - deployment.getStatus().getReadyReplicas());
-            return deploymentMap;
-        }).collect(Collectors.toList());
     }
 
     public List<Object> getCronJobs(String namespace) throws Exception {
@@ -328,48 +153,6 @@ public class KubernetesService {
                 .collect(Collectors.toList());
     }
 
-    public List<Object> getPods(String namespace) throws ApiException {
-        V1PodList podList = coreV1Api.listNamespacedPod(namespace, null, null, null, null, null, null, null, null, null, false);
-        List<Object> pods = new ArrayList<>();
-        for (V1Pod pod : podList.getItems()) {
-            Map<String, Object> podInfo = new HashMap<>();
-            podInfo.put("name", pod.getMetadata().getName());
-            podInfo.put("status", pod.getStatus().getPhase());
-            pods.add(podInfo);
-        }
-        return pods;
-    }
-
-    public Object getPodDetails(String podName, String namespace) throws ApiException {
-        V1Pod pod = coreV1Api.readNamespacedPod(podName, namespace, null);
-        Map<String, Object> podDetails = new HashMap<>();
-        podDetails.put("name", pod.getMetadata().getName());
-        podDetails.put("namespace", pod.getMetadata().getNamespace());
-        podDetails.put("status", pod.getStatus().getPhase());
-        podDetails.put("containers", pod.getSpec().getContainers().stream().map(container -> {
-            Map<String, Object> containerDetails = new HashMap<>();
-            containerDetails.put("name", container.getName());
-            containerDetails.put("envVars", container.getEnv().stream().map(envVar -> {
-                Map<String, String> envVarDetails = new HashMap<>();
-                envVarDetails.put("name", envVar.getName());
-                envVarDetails.put("value", envVar.getValue());
-                return envVarDetails;
-            }).collect(Collectors.toList()));
-            containerDetails.put("volumes", pod.getSpec().getVolumes().stream().map(volume -> {
-                Map<String, String> volumeDetails = new HashMap<>();
-                volumeDetails.put("name", volume.getName());
-                if (volume.getHostPath() != null) {
-                    volumeDetails.put("mountPath", volume.getHostPath().getPath());
-                } else {
-                    volumeDetails.put("mountPath", "N/A");
-                }
-                return volumeDetails;
-            }).collect(Collectors.toList()));
-            return containerDetails;
-        }).collect(Collectors.toList()));
-        return podDetails;
-    }
-
     public List<Object> getServices(String namespace) throws ApiException {
         V1ServiceList serviceList = coreV1Api.listNamespacedService(namespace, null, null, null, null, null, null, null, null, null, false);
         return serviceList.getItems().stream().map(service -> {
@@ -381,57 +164,28 @@ public class KubernetesService {
         }).collect(Collectors.toList());
     }
 
-    public List<Object> getPodEvents(String podName, String namespace) throws ApiException {
-        try {
-            return fetchPodEvents(podName, namespace, null);
-        } catch (ApiException e) {
-            if (e.getCode() == 400 && e.getResponseBody().contains("invalid continue token")) {
-                logger.error("Invalid continue token: {}", e.getResponseBody());
-                // Retry without the continue token
-                return fetchPodEvents(podName, namespace, null);
-            } else {
-                logger.error("Error fetching pod events: {}", e.getMessage());
-                throw e;
-            }
-        }
+    public List<Object> getDeployments(String namespace) throws Exception {
+        return deploymentsService.getDeployments(appsV1Api, namespace);
     }
 
-    private List<Object> fetchPodEvents(String podName, String namespace, String continueToken) throws ApiException {
-        CoreV1EventList eventList = coreV1Api.listNamespacedEvent(
-            namespace, 
-            null, 
-            null, 
-            continueToken, 
-            "involvedObject.name=" + podName, 
-            null, 
-            null, 
-            null, 
-            null, 
-            null, 
-            false
-        );
-        return eventList.getItems().stream().map(event -> {
-            Map<String, Object> eventMap = new HashMap<>();
-            eventMap.put("type", event.getType());
-            eventMap.put("reason", event.getReason());
-            eventMap.put("message", event.getMessage());
-            eventMap.put("firstTimestamp", event.getFirstTimestamp());
-            eventMap.put("lastTimestamp", event.getLastTimestamp());
-            return eventMap;
-        }).collect(Collectors.toList());
+    public List<Object> getPods(String namespace) throws Exception {
+        return podsService.getPods(coreV1Api, namespace);
+    }
+
+
+    public List<Map<String, String>> checkSearchDomain(String namespace, String searchDomain) throws Exception {
+        return podsService.checkSearchDomain(coreV1Api, namespace, searchDomain);
+    }
+
+    public Object getPodDetails(String podName, String namespace) throws ApiException {
+        return podsService.getPodDetails(coreV1Api, podName, namespace);
+    }
+
+    public List<Object> getPodEvents(String podName, String namespace) throws ApiException {
+        return podsService.getPodEvents(coreV1Api, podName, namespace);
     }
 
     public Object getPodStatus(String podName, String namespace) throws ApiException {
-        V1Pod pod = coreV1Api.readNamespacedPod(podName, namespace, null);
-        Map<String, Object> statusMap = new HashMap<>();
-        statusMap.put("phase", pod.getStatus().getPhase());
-        statusMap.put("conditions", pod.getStatus().getConditions().stream().map(condition -> {
-            Map<String, Object> conditionMap = new HashMap<>();
-            conditionMap.put("type", condition.getType());
-            conditionMap.put("status", condition.getStatus());
-            conditionMap.put("lastTransitionTime", condition.getLastTransitionTime());
-            return conditionMap;
-        }).collect(Collectors.toList()));
-        return statusMap;
+        return podsService.getPodStatus(coreV1Api, podName, namespace);
     }
 }

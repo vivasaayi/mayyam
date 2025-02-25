@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { AgGridReact } from 'ag-grid-react';
-import 'ag-grid-community/styles/ag-grid.css';
-import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { CButton } from '@coreui/react';
 import RegionDropdown from '../RegionDropdown';
+
+// Import AG Grid modules
+import { ClientSideRowModelModule, DateFilterModule, ModuleRegistry, NumberFilterModule, TextFilterModule, ValidationModule } from "ag-grid-community";
+
+// Register AG Grid modules
+ModuleRegistry.registerModules([ClientSideRowModelModule, TextFilterModule, NumberFilterModule, DateFilterModule, ValidationModule]);
 
 const TablesWithReplication = () => {
   const [rowData, setRowData] = useState([]);
@@ -18,9 +22,9 @@ const TablesWithReplication = () => {
   }, [region]);
 
   const columnDefs = [
-    { headerName: 'Table Name', field: 'tableName', filter: true, sortable: true },
-    { headerName: 'Status', field: 'status', filter: true, sortable: true },
-    { headerName: 'Replicas', field: 'replicas', filter: true, sortable: true }
+    { headerName: 'Table Name', field: 'tableName', filter: 'agTextColumnFilter', sortable: true },
+    { headerName: 'Status', field: 'status', filter: 'agTextColumnFilter', sortable: true },
+    { headerName: 'Replicas', field: 'replicas', filter: 'agNumberColumnFilter', sortable: true }
   ];
 
   const defaultColDef = {
@@ -65,6 +69,7 @@ const TablesWithReplication = () => {
           paginationPageSize={10}
           domLayout='autoHeight'
           defaultColDef={defaultColDef}
+          modules={[ClientSideRowModelModule, TextFilterModule, NumberFilterModule, DateFilterModule, ValidationModule]}
         />
       </div>
     </div>

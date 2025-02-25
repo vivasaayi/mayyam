@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { AgGridReact } from 'ag-grid-react';
-import 'ag-grid-community/styles/ag-grid.css';
-import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { CAlert } from '@coreui/react';
 import RegionDropdown from '../RegionDropdown';
+
+// Import AG Grid modules
+import { ClientSideRowModelModule, DateFilterModule, ModuleRegistry, NumberFilterModule, TextFilterModule, ValidationModule } from "ag-grid-community";
+
+// Register AG Grid modules
+ModuleRegistry.registerModules([ClientSideRowModelModule, TextFilterModule, NumberFilterModule, DateFilterModule, ValidationModule]);
 
 const DynamoDbTablesWithoutPITR = () => {
   const [rowData, setRowData] = useState([]);
@@ -24,8 +28,8 @@ const DynamoDbTablesWithoutPITR = () => {
   }, [region]);
 
   const columnDefs = [
-    { headerName: 'Table Name', field: 'tableName', filter: true, sortable: true },
-    { headerName: 'Status', field: 'tableStatus', filter: true, sortable: true }
+    { headerName: 'Table Name', field: 'tableName', filter: 'agTextColumnFilter', sortable: true, checkboxSelection: true },
+    { headerName: 'Status', field: 'tableStatus', filter: 'agTextColumnFilter', sortable: true }
   ];
 
   const defaultColDef = {
@@ -48,6 +52,8 @@ const DynamoDbTablesWithoutPITR = () => {
           paginationPageSize={10}
           domLayout='autoHeight'
           defaultColDef={defaultColDef}
+          modules={[ClientSideRowModelModule, TextFilterModule, NumberFilterModule, DateFilterModule, ValidationModule]}
+          rowSelection="multiple"
         />
       </div>
     </div>

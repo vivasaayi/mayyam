@@ -5,6 +5,12 @@ import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { CButton } from '@coreui/react';
 import RegionDropdown from '../RegionDropdown';
 
+// Import AG Grid modules
+import { ClientSideRowModelModule, DateFilterModule, ModuleRegistry, NumberFilterModule, TextFilterModule, ValidationModule } from "ag-grid-community";
+
+// Register AG Grid modules
+ModuleRegistry.registerModules([ClientSideRowModelModule, TextFilterModule, NumberFilterModule, DateFilterModule, ValidationModule]);
+
 const TablesWithoutReplication = () => {
   const [rowData, setRowData] = useState([]);
   const [region, setRegion] = useState('us-west-2');
@@ -18,8 +24,8 @@ const TablesWithoutReplication = () => {
   }, [region]);
 
   const columnDefs = [
-    { headerName: 'Table Name', field: 'tableName', filter: true, sortable: true },
-    { headerName: 'Status', field: 'status', filter: true, sortable: true }
+    { headerName: 'Table Name', field: 'tableName', filter: 'agTextColumnFilter', sortable: true },
+    { headerName: 'Status', field: 'status', filter: 'agTextColumnFilter', sortable: true }
   ];
 
   const defaultColDef = {
@@ -63,6 +69,7 @@ const TablesWithoutReplication = () => {
           paginationPageSize={10}
           domLayout='autoHeight'
           defaultColDef={defaultColDef}
+          modules={[ClientSideRowModelModule, TextFilterModule, NumberFilterModule, DateFilterModule, ValidationModule]}
         />
       </div>
     </div>

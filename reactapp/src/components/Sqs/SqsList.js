@@ -1,11 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { AgGridReact } from 'ag-grid-react';
-import 'ag-grid-community/styles/ag-grid.css';
-import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { CButton, CAlert } from '@coreui/react';
 import SqsModal from './SqsModal';
 import DeleteConfirmationModal from './DeleteConfirmationModal';
 import RegionDropdown from '../RegionDropdown';
+
+// Import AG Grid modules
+import { 
+  ModuleRegistry, AllCommunityModule
+ } from "ag-grid-community";
+
+// Register AG Grid modules
+ModuleRegistry.registerModules([AllCommunityModule]);
 
 const SqsList = () => {
   const [rowData, setRowData] = useState([]);
@@ -33,17 +39,10 @@ const SqsList = () => {
   }, [region]);
 
   const columnDefs = [
-    { headerName: 'Queue Name', field: 'queueName', filter: true, sortable: true, checkboxSelection: true },
-    { headerName: 'Queue URL', field: 'queueUrl', filter: true, sortable: true },
-    { headerName: 'Attributes', field: 'attributes', filter: true, sortable: true }
+    { headerName: 'Queue Name', field: 'queueName'},
+    { headerName: 'Queue URL', field: 'queueUrl'},
+    { headerName: 'Attributes', field: 'attributes'}
   ];
-
-  const defaultColDef = {
-    sortable: true,
-    filter: true,
-    resizable: true,
-    enableRowGroup: true,
-  };
 
   const handleCreate = async (queueName) => {
     const response = await fetch(`/api/sqs/create?queueName=${queueName}&region=${region}`, {
@@ -92,7 +91,7 @@ const SqsList = () => {
   };
 
   return (
-    (<div>
+    <div>
       <h2>SQS Queues</h2>
       <RegionDropdown selectedRegion={region} onChange={(e) => setRegion(e.target.value)} />
       <CButton color="primary" onClick={() => setShowModal(true)}>Create SQS Queue</CButton>
@@ -103,11 +102,6 @@ const SqsList = () => {
           columnDefs={columnDefs}
           rowData={rowData}
           onSelectionChanged={(event) => setSelectedRows(event.api.getSelectedRows())}
-          pagination={true}
-          paginationPageSize={10}
-          domLayout='autoHeight'
-          defaultColDef={defaultColDef}
-          autoGroupColumnDef={{ headerName: 'Group', field: 'queueName', cellRenderer: 'agGroupCellRenderer', cellRendererParams: { checkbox: true } }}
         />
       </div>
       <SqsModal
@@ -121,7 +115,7 @@ const SqsList = () => {
         handleConfirm={handleDelete}
         selectedStreams={selectedRows}
       />
-    </div>)
+    </div>
   );
 };
 

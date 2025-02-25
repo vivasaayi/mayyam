@@ -43,6 +43,13 @@ Can you ensure the AGGRids has,
 3. Choose Columns
 4. Pagination
 
+For AG Grid, the correct implementation is,
+Remove the CSS
+import 'ag-grid-community/styles/ag-grid.css';
+import 'ag-grid-community/styles/ag-theme-alpine.css';
+
 import { ClientSideRowModelModule, DateFilterModule, ModuleRegistry, NumberFilterModule, TextFilterModule, ValidationModule, } from "ag-grid-community";
 
 ModuleRegistry.registerModules([ ClientSideRowModelModule, TextFilterModule, NumberFilterModule, DateFilterModule, ValidationModule ]);
+
+Pass the modules to AGGrid
