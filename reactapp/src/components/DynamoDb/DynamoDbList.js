@@ -127,11 +127,11 @@ const DynamoDbList = () => {
         <AgGridReact
           columnDefs={columnDefs}
           rowData={rowData}
-          // onSelectionChanged={(event) => setSelectedRows(event.api.getSelectedRows())}
-          // pagination={true}
-          // paginationPageSize={10}
-          // domLayout='autoHeight'
-          // defaultColDef={defaultColDef}
+          onSelectionChanged={(event) => setSelectedRows(event.api.getSelectedRows())}
+          pagination={true}
+          paginationPageSize={10}
+          domLayout='autoHeight'
+          defaultColDef={defaultColDef}
           modules={[AllCommunityModule]}
           rowSelection={rowSelection}
         />
