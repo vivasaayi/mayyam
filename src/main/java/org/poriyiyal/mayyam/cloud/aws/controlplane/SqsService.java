@@ -4,6 +4,8 @@ import org.springframework.stereotype.Service;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -13,11 +15,14 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
 import java.util.stream.Collectors;
 
 @Service
 public class SqsService extends BaseAwsService {
 
+    private static final Logger logger = LoggerFactory.getLogger(SqsService.class);
     private final ConcurrentMap<Region, SqsClient> clientCache = new ConcurrentHashMap<>();
 
     private SqsClient getSqsClient(String region) {
@@ -68,9 +73,28 @@ public class SqsService extends BaseAwsService {
             SqsClient sqsClient = getSqsClient(region);
             ListQueuesResponse response = sqsClient.listQueues();
             return response.queueUrls().stream()
-                    .collect(Collectors.toMap(queueUrl -> queueUrl, queueUrl -> queueUrl));
+                    .collect(Collectors.toMap(
+                            queueUrl -> queueUrl.substring(queueUrl.lastIndexOf('/') + 1),
+                            queueUrl -> queueUrl
+                    ));
         } catch (SqsException e) {
             System.err.println("Failed to list queues: " + e.getMessage());
+            throw e;
+        }
+    }
+
+    public String getQueueStatus(String region, String queueUrl) {
+        try {
+            SqsClient sqsClient = getSqsClient(region);
+            GetQueueAttributesRequest request = GetQueueAttributesRequest.builder()
+                    .queueUrl(queueUrl)
+                    .attributeNames(QueueAttributeName.QUEUE_ARN)
+                    .build();
+            GetQueueAttributesResponse response = sqsClient.getQueueAttributes(request);
+            // Assuming the queue is active if it has an ARN
+            return response.attributes().containsKey(QueueAttributeName.QUEUE_ARN) ? "Active" : "Inactive";
+        } catch (SqsException e) {
+            System.err.println("Failed to get queue status: " + e.getMessage());
             throw e;
         }
     }
@@ -194,6 +218,44 @@ public class SqsService extends BaseAwsService {
             System.err.println("Failed to list queues: " + e.getMessage());
             e.printStackTrace();
             return List.of();
+        }
+    }
+
+    public Map<String, Map<String, String>> listQueuesWithStatus(String region) {
+        ExecutorService executorService = Executors.newFixedThreadPool(5);
+        try {
+            logger.debug("Fetching SQS client for region: {}", region);
+            SqsClient sqsClient = getSqsClient(region);
+            logger.debug("Listing queues in region: {}", region);
+            ListQueuesResponse response = sqsClient.listQueues();
+            List<CompletableFuture<Map.Entry<String, Map<String, String>>>> futures = response.queueUrls().stream()
+                    .map(queueUrl -> CompletableFuture.supplyAsync(() -> {
+                        String queueName = queueUrl.substring(queueUrl.lastIndexOf('/') + 1);
+                        logger.debug("Fetching status for queue: {}", queueName);
+                        Map<String, String> details = new HashMap<>();
+                        details.put("queueUrl", queueUrl);
+                        details.put("status", getQueueStatus(region, queueUrl));
+                        return Map.entry(queueName, details);
+                    }, executorService))
+                    .collect(Collectors.toList());
+
+            Map<String, Map<String, String>> result = new HashMap<>();
+            for (CompletableFuture<Map.Entry<String, Map<String, String>>> future : futures) {
+                try {
+                    Map.Entry<String, Map<String, String>> entry = future.get();
+                    result.put(entry.getKey(), entry.getValue());
+                    logger.debug("Queue status fetched: {} - {}", entry.getKey(), entry.getValue().get("status"));
+                } catch (InterruptedException | ExecutionException e) {
+                    logger.error("Error retrieving queue status: {}", e.getMessage());
+                }
+            }
+            logger.debug("Completed listing queues with status in region: {}", region);
+            return result;
+        } catch (SqsException e) {
+            logger.error("Failed to list queues with status: {}", e.getMessage());
+            throw e;
+        } finally {
+            executorService.shutdown();
         }
     }
 }

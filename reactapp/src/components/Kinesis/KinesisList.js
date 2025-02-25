@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { AgGridReact } from 'ag-grid-react';
 import { CButton, CAlert } from '@coreui/react';
 import KinesisModal from './KinesisModal';
 import DeleteConfirmationModal from './DeleteConfirmationModal';
 import RegionDropdown from '../RegionDropdown';
-import { AgGridReact } from 'ag-grid-react';
-import { ClientSideRowModelModule } from 'ag-grid-community';
+import { ModuleRegistry, AllCommunityModule } from "ag-grid-community";
+ModuleRegistry.registerModules([AllCommunityModule]);
 
 const KinesisList = () => {
   const [rowData, setRowData] = useState([]);
@@ -31,12 +32,23 @@ const KinesisList = () => {
       });
   }, [region]);
 
-  const columns = [
-    { headerName: 'Stream Name', field: 'streamName', width: 200 },
-    { headerName: 'Stream ARN', field: 'streamARN', width: 300 },
-    { headerName: 'Stream Status', field: 'streamStatus', width: 150 },
-    { headerName: 'Shards', field: 'shards.length', width: 100 }
+  const columnDefs = [
+    { headerName: 'Stream Name', field: 'streamName', filter: 'agTextColumnFilter', sortable: true },
+    { headerName: 'Stream ARN', field: 'streamARN', filter: 'agTextColumnFilter', sortable: true },
+    { headerName: 'Stream Status', field: 'streamStatus', filter: 'agTextColumnFilter', sortable: true },
+    { headerName: 'Shards', field: 'shards.length', filter: 'agNumberColumnFilter', sortable: true }
   ];
+
+  const defaultColDef = useMemo(() => ({
+    flex: 1,
+    minWidth: 100,
+  }), []);
+
+  const rowSelection = useMemo(() => {
+    return {
+      mode: "multiRow",
+    };
+  }, []);
 
   const handleCreate = async (streamName, shardCount) => {
     const response = await fetch(`/api/kinesis/create?streamName=${streamName}&shardCount=${shardCount}&region=${region}`, {
@@ -46,7 +58,6 @@ const KinesisList = () => {
     setMessage(result);
     setMessageType('success');
     setShowModal(false);
-    // Refresh the list after creating a new stream
     fetch(`/api/kinesis/list?region=${region}`)
       .then(response => response.json())
       .then(data => {
@@ -74,7 +85,6 @@ const KinesisList = () => {
     setMessage(result);
     setMessageType('success');
     setShowDeleteModal(false);
-    // Refresh the list after deleting streams
     fetch(`/api/kinesis/list?region=${region}`)
       .then(response => response.json())
       .then(data => {
@@ -93,13 +103,17 @@ const KinesisList = () => {
       <CButton color="primary" onClick={() => setShowModal(true)}>Create Kinesis Stream</CButton>
       <CButton color="danger" onClick={() => setShowDeleteModal(true)} disabled={selectedRows.length === 0}>Delete Selected Streams</CButton>
       {message && <CAlert color={messageType}>{message}</CAlert>}
-      <div className="ag-theme-balham" style={{ height: '600px', width: '100%' }}>
+      <div className="ag-theme-alpine" style={{ height: 600, width: '100%' }}>
         <AgGridReact
+          columnDefs={columnDefs}
           rowData={rowData}
-          columnDefs={columns}
-          rowSelection="multiple"
           onSelectionChanged={(event) => setSelectedRows(event.api.getSelectedRows())}
-          modules={[ClientSideRowModelModule]}
+          pagination={true}
+          paginationPageSize={10}
+          domLayout='autoHeight'
+          defaultColDef={defaultColDef}
+          modules={[AllCommunityModule]}
+          rowSelection={rowSelection}
         />
       </div>
       <KinesisModal

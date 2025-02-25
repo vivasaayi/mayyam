@@ -38,14 +38,14 @@ public class SqsController {
     }
 
     @DeleteMapping("/deleteMultiple")
-    public ResponseEntity<String> deleteMultipleQueues(@RequestBody Map<String, String> queueUrlsAndRegions) {
+    public ResponseEntity<String> deleteMultipleQueues(@RequestParam String region, @RequestBody List<String> queueUrls) {
         try {
-            for (Map.Entry<String, String> entry : queueUrlsAndRegions.entrySet()) {
-                sqsService.deleteQueue(entry.getValue(), entry.getKey());
+            for (String queueUrl : queueUrls) {
+                sqsService.deleteQueue(region, queueUrl);
             }
-            return ResponseEntity.ok("Queues deleted successfully");
+            return ResponseEntity.ok("Queues deleted successfully in region: " + region);
         } catch (Exception e) {
-            return ResponseEntity.status(500).body("Failed to delete queues: " + e.getMessage());
+            return ResponseEntity.status(500).body("Failed to delete queues in region: " + e.getMessage());
         }
     }
 
@@ -53,6 +53,15 @@ public class SqsController {
     public ResponseEntity<Map<String, String>> listQueues(@RequestParam String region) {
         try {
             return ResponseEntity.ok(sqsService.listQueues(region));
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body(null);
+        }
+    }
+
+    @GetMapping("/listWithStatus")
+    public ResponseEntity<Map<String, Map<String, String>>> listQueuesWithStatus(@RequestParam String region) {
+        try {
+            return ResponseEntity.ok(sqsService.listQueuesWithStatus(region));
         } catch (Exception e) {
             return ResponseEntity.status(500).body(null);
         }

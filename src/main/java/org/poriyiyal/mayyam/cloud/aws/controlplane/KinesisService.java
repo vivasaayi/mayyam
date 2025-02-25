@@ -12,6 +12,12 @@ import java.util.Collections;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.List;
+import java.util.HashMap;
 
 @Service
 public class KinesisService extends BaseAwsService {
@@ -81,27 +87,40 @@ public class KinesisService extends BaseAwsService {
     }
 
     public Map<String, StreamDescription> listStreams(String region) {
+        ExecutorService executorService = Executors.newFixedThreadPool(5);
         try {
             KinesisClient kinesisClient = getKinesisClient(region);
-            return kinesisClient.listStreamsPaginator().stream()
-            .flatMap(response -> response.streamNames().stream())
-            .parallel()
-            .collect(Collectors.toMap(
-                streamName -> streamName,
-                streamName -> {
+            List<CompletableFuture<Map.Entry<String, StreamDescription>>> futures = kinesisClient.listStreamsPaginator().stream()
+                .flatMap(response -> response.streamNames().stream())
+                .map(streamName -> CompletableFuture.supplyAsync(() -> {
                     try {
-                        return describeStream(region, streamName);
+                        return Map.entry(streamName, describeStream(region, streamName));
                     } catch (Exception e) {
                         System.err.println("Failed to describe stream: " + streamName + " - " + e.getMessage());
                         e.printStackTrace();
                         return null;
                     }
+                }, executorService))
+                .collect(Collectors.toList());
+
+            Map<String, StreamDescription> result = new HashMap<>();
+            for (CompletableFuture<Map.Entry<String, StreamDescription>> future : futures) {
+                try {
+                    Map.Entry<String, StreamDescription> entry = future.get();
+                    if (entry != null) {
+                        result.put(entry.getKey(), entry.getValue());
+                    }
+                } catch (InterruptedException | ExecutionException e) {
+                    System.err.println("Error retrieving stream description: " + e.getMessage());
                 }
-            ));
+            }
+            return result;
         } catch (Exception e) {
             System.err.println("Failed to list streams: " + e.getMessage());
             e.printStackTrace();
             return Collections.emptyMap();
+        } finally {
+            executorService.shutdown();
         }
     }
 

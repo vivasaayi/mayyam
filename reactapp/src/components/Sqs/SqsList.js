@@ -23,12 +23,13 @@ const SqsList = () => {
   const [region, setRegion] = useState('us-west-2');
 
   useEffect(() => {
-    fetch(`/api/sqs/list?region=${region}`)
+    fetch(`/api/sqs/listWithStatus?region=${region}`)
       .then(response => response.json())
       .then(data => {
-        const formattedData = Object.keys(data).map(key => ({
-          queueUrl: key,
-          ...data[key]
+        const formattedData = Object.entries(data).map(([queueName, details]) => ({
+          queueName,
+          queueUrl: details.queueUrl,
+          status: details.status
         }));
         setRowData(formattedData);
       })
@@ -39,10 +40,20 @@ const SqsList = () => {
   }, [region]);
 
   const columnDefs = [
-    { headerName: 'Queue Name', field: 'queueName'},
-    { headerName: 'Queue URL', field: 'queueUrl'},
-    { headerName: 'Attributes', field: 'attributes'}
+    { headerName: 'Queue Name', field: 'queueName', filter: 'agTextColumnFilter', sortable: true },
+    { headerName: 'Queue URL', field: 'queueUrl', filter: 'agTextColumnFilter', sortable: true },
+    { headerName: 'Status', field: 'status', filter: 'agTextColumnFilter', sortable: true },
+    { headerName: 'Attributes', field: 'attributes', filter: 'agTextColumnFilter', sortable: true }
   ];
+
+  const defaultColDef = useMemo(() => ({
+    flex: 1,
+    minWidth: 100,
+  }), []);
+
+  const rowSelection = useMemo(() => ({
+    mode: 'multiRow',
+  }), []);
 
   const handleCreate = async (queueName) => {
     const response = await fetch(`/api/sqs/create?queueName=${queueName}&region=${region}`, {
@@ -50,41 +61,41 @@ const SqsList = () => {
     });
     const result = await response.text();
     setMessage(result);
+    setMessageType('success');
     setShowModal(false);
     // Refresh the list after creating a new queue
-    fetch(`/api/sqs/list?region=${region}`)
+    fetch(`/api/sqs/listWithStatus?region=${region}`)
       .then(response => response.json())
       .then(data => {
-        const formattedData = Object.keys(data).map(key => ({
-          queueUrl: key,
-          ...data[key]
+        const formattedData = Object.entries(data).map(([queueName, details]) => ({
+          queueName,
+          queueUrl: details.queueUrl,
+          status: details.status
         }));
         setRowData(formattedData);
       });
   };
 
   const handleDelete = async () => {
-    const queueUrlsAndRegions = selectedRows.reduce((acc, row) => {
-      acc[row.queueUrl] = region;
-      return acc;
-    }, {});
-    const response = await fetch('/api/sqs/deleteMultiple', {
+    const queueUrls = selectedRows.map(row => row.queueUrl);
+    const response = await fetch(`/api/sqs/deleteMultiple?region=${region}`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(queueUrlsAndRegions),
+      body: JSON.stringify(queueUrls),
     });
     const result = await response.text();
     setMessage(result);
+    setMessageType('success');
     setShowDeleteModal(false);
-    // Refresh the list after deleting queues
-    fetch(`/api/sqs/list?region=${region}`)
+    fetch(`/api/sqs/listWithStatus?region=${region}`)
       .then(response => response.json())
       .then(data => {
-        const formattedData = Object.keys(data).map(key => ({
-          queueUrl: key,
-          ...data[key]
+        const formattedData = Object.entries(data).map(([queueName, details]) => ({
+          queueName,
+          queueUrl: details.queueUrl,
+          status: details.status
         }));
         setRowData(formattedData);
       });
@@ -102,6 +113,12 @@ const SqsList = () => {
           columnDefs={columnDefs}
           rowData={rowData}
           onSelectionChanged={(event) => setSelectedRows(event.api.getSelectedRows())}
+          pagination={true}
+          paginationPageSize={10}
+          domLayout='autoHeight'
+          defaultColDef={defaultColDef}
+          modules={[AllCommunityModule]}
+          rowSelection={rowSelection}
         />
       </div>
       <SqsModal
@@ -114,6 +131,7 @@ const SqsList = () => {
         handleClose={() => setShowDeleteModal(false)}
         handleConfirm={handleDelete}
         selectedStreams={selectedRows}
+        message={`Are you sure you want to delete the following queues? ${selectedRows.map(row => row.queueUrl).join(', ')}`}
       />
     </div>
   );

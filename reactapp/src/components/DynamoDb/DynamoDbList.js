@@ -79,22 +79,18 @@ const DynamoDbList = () => {
 
   const handleDelete = async () => {
     try {
-      const tableNamesAndRegions = selectedRows.reduce((acc, row) => {
-        acc[row.tableName] = region;
-        return acc;
-      }, {});
-      const response = await fetch('/api/dynamodb/deleteMultiple', {
+      const tableNames = selectedRows.map(row => row.tableName);
+      const response = await fetch(`/api/dynamodb/deleteMultiple?region=${region}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(tableNamesAndRegions),
+        body: JSON.stringify(tableNames),
       });
       const result = await response.text();
       setMessage(result);
       setMessageType('success');
       setShowDeleteModal(false);
-      // Refresh the list after deleting tables
       fetch(`/api/dynamodb/list?region=${region}`)
         .then(response => response.json())
         .then(data => {
