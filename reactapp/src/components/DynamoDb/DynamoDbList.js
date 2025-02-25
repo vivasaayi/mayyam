@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import { CButton, CAlert } from '@coreui/react';
 import DynamoDbModal from './DynamoDbModal';
@@ -6,10 +6,10 @@ import DeleteConfirmationModal from './DeleteConfirmationModal';
 import RegionDropdown from '../RegionDropdown';
 
 // Import AG Grid modules
-import { ClientSideRowModelModule, DateFilterModule, ModuleRegistry, NumberFilterModule, TextFilterModule, ValidationModule } from "ag-grid-community";
+import { ModuleRegistry, AllCommunityModule } from "ag-grid-community";
 
 // Register AG Grid modules
-ModuleRegistry.registerModules([ClientSideRowModelModule, TextFilterModule, NumberFilterModule, DateFilterModule, ValidationModule]);
+ModuleRegistry.registerModules([AllCommunityModule]);
 
 const DynamoDbList = () => {
   const [rowData, setRowData] = useState([]);
@@ -33,18 +33,24 @@ const DynamoDbList = () => {
   }, [region]);
 
   const columnDefs = [
-    { headerName: 'Table Name', field: 'tableName', filter: 'agTextColumnFilter', sortable: true, checkboxSelection: true },
+    { headerName: 'Table Name', field: 'tableName', filter: 'agTextColumnFilter', sortable: true, },
     { headerName: 'Status', field: 'tableStatus', filter: 'agTextColumnFilter', sortable: true },
     { headerName: 'Item Count', field: 'itemCount', filter: 'agNumberColumnFilter', sortable: true },
     { headerName: 'Size (Bytes)', field: 'tableSizeBytes', filter: 'agNumberColumnFilter', sortable: true }
   ];
 
-  const defaultColDef = {
-    sortable: true,
-    filter: true,
-    resizable: true,
-    enableRowGroup: true,
-  };
+  const defaultColDef = useMemo(() => {
+    return {
+      flex: 1,
+      minWidth: 100,
+    };
+  }, []);
+
+  const rowSelection = useMemo(() => {
+    return {
+      mode: "multiRow",
+    };
+  }, []);
 
   const handleCreate = async (properties) => {
     try {
@@ -121,13 +127,13 @@ const DynamoDbList = () => {
         <AgGridReact
           columnDefs={columnDefs}
           rowData={rowData}
-          onSelectionChanged={(event) => setSelectedRows(event.api.getSelectedRows())}
-          pagination={true}
-          paginationPageSize={10}
-          domLayout='autoHeight'
-          defaultColDef={defaultColDef}
-          autoGroupColumnDef={{ headerName: 'Group', field: 'tableName', cellRenderer: 'agGroupCellRenderer', cellRendererParams: { checkbox: true } }}
-          modules={[ClientSideRowModelModule, TextFilterModule, NumberFilterModule, DateFilterModule, ValidationModule]}
+          // onSelectionChanged={(event) => setSelectedRows(event.api.getSelectedRows())}
+          // pagination={true}
+          // paginationPageSize={10}
+          // domLayout='autoHeight'
+          // defaultColDef={defaultColDef}
+          modules={[AllCommunityModule]}
+          rowSelection={rowSelection}
         />
       </div>
       <DynamoDbModal
