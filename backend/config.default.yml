@@ -1,0 +1,26 @@
+database:
+  postgres: []
+  mysql: []
+  redis: []
+  opensearch: []
+
+kafka:
+  clusters: []
+
+auth:
+  jwt_secret: "changeme_in_production"
+  jwt_expiration: 86400  # 24 hours in seconds
+  enable_local_auth: true
+  enable_token_auth: true
+  enable_saml: false
+  saml_metadata_url: null
+
+cloud:
+  aws: []
+  azure: []
+
+ai:
+  provider: "openai"
+  api_key: ""
+  model: "gpt-4o"
+  endpoint: null

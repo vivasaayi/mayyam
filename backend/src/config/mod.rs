@@ -1,0 +1,138 @@
+use serde::{Deserialize, Serialize};
+use std::env;
+use std::error::Error;
+use config::{Config as ConfigFile, File, Environment};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Config {
+    pub database: DatabaseConfig,
+    pub kafka: KafkaConfig,
+    pub auth: AuthConfig,
+    pub cloud: CloudConfig,
+    pub ai: AIConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DatabaseConfig {
+    pub postgres: Vec<PostgresConfig>,
+    pub mysql: Vec<MySQLConfig>,
+    pub redis: Vec<RedisConfig>,
+    pub opensearch: Vec<OpenSearchConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PostgresConfig {
+    pub name: String,
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub password: String,
+    pub database: String,
+    pub ssl_mode: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MySQLConfig {
+    pub name: String,
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub password: String,
+    pub database: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RedisConfig {
+    pub name: String,
+    pub host: String,
+    pub port: u16,
+    pub password: Option<String>,
+    pub cluster_mode: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenSearchConfig {
+    pub name: String,
+    pub hosts: Vec<String>,
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KafkaConfig {
+    pub clusters: Vec<KafkaClusterConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KafkaClusterConfig {
+    pub name: String,
+    pub bootstrap_servers: Vec<String>,
+    pub sasl_username: Option<String>,
+    pub sasl_password: Option<String>,
+    pub sasl_mechanism: Option<String>,
+    pub security_protocol: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthConfig {
+    pub jwt_secret: String,
+    pub jwt_expiration: u64,
+    pub enable_local_auth: bool,
+    pub enable_token_auth: bool,
+    pub enable_saml: bool,
+    pub saml_metadata_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CloudConfig {
+    pub aws: Vec<AwsConfig>,
+    pub azure: Vec<AzureConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AwsConfig {
+    pub name: String,
+    pub access_key_id: Option<String>,
+    pub secret_access_key: Option<String>,
+    pub region: String,
+    pub role_arn: Option<String>,
+    pub profile: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AzureConfig {
+    pub name: String,
+    pub tenant_id: String,
+    pub client_id: Option<String>,
+    pub client_secret: Option<String>,
+    pub subscription_id: String,
+    pub use_managed_identity: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AIConfig {
+    pub provider: String,
+    pub api_key: String,
+    pub model: String,
+    pub endpoint: Option<String>,
+}
+
+pub fn load_config() -> Result<Config, Box<dyn Error>> {
+    // Load .env file if it exists
+    dotenv::dotenv().ok();
+    
+    let config_path = env::var("CONFIG_FILE").unwrap_or_else(|_| "config".to_string());
+    
+    let config = ConfigFile::builder()
+        // Start with default settings
+        .add_source(File::with_name(&format!("{}.default", config_path)).required(false))
+        // Add config file settings
+        .add_source(File::with_name(&config_path).required(false))
+        // Add environment variables (with prefix MAYYAM_)
+        .add_source(Environment::with_prefix("MAYYAM").separator("__"))
+        .build()?;
+        
+    let config: Config = config.try_deserialize()?;
+    
+    Ok(config)
+}

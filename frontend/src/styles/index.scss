@@ -1,0 +1,73 @@
+// Main SCSS file for the Mayyam app
+
+// Override default variables before importing CoreUI
+$primary: #3a8dde;
+$secondary: #5c636a;
+$success: #2eb85c;
+$info: #39f;
+$warning: #f9b115;
+$danger: #e55353;
+
+// Import CoreUI styles
+@import "~@coreui/coreui/scss/coreui";
+
+// Custom styles
+.app-container {
+  display: flex;
+  flex-direction: row;
+  min-height: 100vh;
+}
+
+// Sidebar customization
+.sidebar {
+  min-height: 100vh;
+  
+  .sidebar-brand {
+    padding: 1rem;
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+}
+
+// Header customizations
+.header {
+  background-color: #fff;
+  border-bottom: 1px solid #d8dbe0;
+}
+
+// Dashboard card customizations
+.card {
+  margin-bottom: 1.5rem;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+  
+  .card-header {
+    font-weight: 500;
+  }
+}
+
+// Table styles for AG Grid
+.ag-theme-alpine {
+  --ag-foreground-color: #212529;
+  --ag-background-color: #fff;
+  --ag-header-foreground-color: #212529;
+  --ag-header-background-color: #f8f9fa;
+  --ag-odd-row-background-color: #fdfdfd;
+  
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+    
+  .ag-header {
+    border-bottom: 1px solid #dee2e6;
+  }
+  
+  .ag-row {
+    border-bottom: 1px solid #f3f3f3;
+  }
+}
+
+// Responsive adjustments
+@include media-breakpoint-down(md) {
+  .sidebar {
+    position: fixed;
+    z-index: 1030;
+  }
+}
