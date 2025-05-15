@@ -235,8 +235,8 @@ impl AwsService {
         // Apply credentials based on configuration
         let config = if let (Some(access_key), Some(secret_key)) = (&aws_config.access_key_id, &aws_config.secret_access_key) {
             // Use API key authentication
-            let creds = aws_types::credential_provider::SharedCredentialsProvider::new(
-                aws_types::credentials::Credentials::new(
+            let creds = aws_config::CredentialsProvider::new(
+                aws_types::Credentials::new(
                     access_key, 
                     secret_key, 
                     None, 

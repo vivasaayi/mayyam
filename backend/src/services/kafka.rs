@@ -199,7 +199,7 @@ impl KafkaService {
         let new_topic = NewTopic::new(
             &topic.name,
             topic.partitions,
-            TopicReplication::Fixed(topic.replication_factor),
+            TopicReplication::Fixed(topic.replication_factor as i32),
         );
         
         // Apply any topic configurations
@@ -315,7 +315,7 @@ impl KafkaService {
             Some(hdrs) => {
                 let mut owned_headers = OwnedHeaders::new();
                 for (key, value) in hdrs {
-                    owned_headers = owned_headers.add(key, value.as_bytes());
+                    owned_headers.add(key, value.as_bytes());
                 }
                 Some(owned_headers)
             },
