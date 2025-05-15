@@ -32,5 +32,59 @@ Front end is a react app, written in javascript, using CoreUI as the UI Framewor
 
 1. I prefer double quotes
 2. I dont prefer typescript
+3. I want the Controller -> Services -> Repository pattern everywhere. 
 
+--------------------------------
+Feature: Kuberntes Dashboard
 
+I want to be able to browse the Multiple Kuberntes Clusters.. Need the capability to select the available clusters
+
+Given a cluster, collect all the kubernetes resources, like, pods, services, deployments, cronjobs, storage classes, PVs, PVCs and all other resources. 
+
+Then in the UI, render reach resouce in a grid and using  AG Grid.
+
+--------------------------------
+AWS Cost Collector:
+I shoule be able to collect AWS Cost, given a day, and mumber of AWS accoutns fetch the cost from AWS accounts, 
+
+Then render in the UI React component
+
+--------------------------------
+
+EC2 and Redis Discovery:
+
+List all EC2 instances and Redis clusters using AWS SDK.
+
+Return results in structured JSON with instance name, ID, tags, region.
+
+On-Demand Analysis Flow:
+
+For any selected EC2 or Redis instance, fetch CloudWatch metrics for:
+
+CPUUtilization, NetworkIn, NetworkOut, DiskReadOps, etc.
+
+Fetch CloudWatch log group entries (e.g. system logs).
+
+Export metrics to:
+
+Local folder with path format: /exports/{service}/{instance_id}/YYYY/MM/DD/*.json
+
+(Optional) Upload to S3 bucket with same folder structure.
+
+Post all metric+log data to a configurable OpenAPI endpoint like /analyze/metrics.
+
+Scheduled/Batch Analysis Flow:
+
+Periodically scan CloudWatch metrics for all instances and auto-analyze.
+
+Include config-based throttling and retry logic.
+
+Configuration:
+
+All options (S3 upload toggle, export folder, endpoint URL, metric time range) should be driven by a config file (TOML/YAML/JSON).
+
+CLI & OpenAPI:
+
+Expose a CLI command like analyze instance <instance-id> and analyze redis <cluster-id>
+
+Expose OpenAPI endpoints to trigger the same flows

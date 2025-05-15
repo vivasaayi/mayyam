@@ -1,143 +1,141 @@
 use clap::Subcommand;
 use std::error::Error;
+use tracing::{info, error};
+
 use crate::config::Config;
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand)]
 pub enum K8sCommands {
-    /// List all configured Kubernetes clusters
+    /// List configured Kubernetes clusters
     List,
     
-    /// Get information about a Kubernetes cluster
-    Info {
-        /// Path to kubeconfig file
-        #[arg(short, long)]
-        kubeconfig: Option<String>,
-        
-        /// Context name in kubeconfig
-        #[arg(short, long)]
-        context: Option<String>,
-    },
+    /// Get clusters info
+    GetClusters,
     
-    /// List pods in the cluster
-    Pods {
-        /// Path to kubeconfig file
-        #[arg(short, long)]
-        kubeconfig: Option<String>,
-        
-        /// Context name in kubeconfig
+    /// Get pods in a namespace
+    GetPods {
+        /// Kubernetes context to use
         #[arg(short, long)]
         context: Option<String>,
         
-        /// Namespace to list pods in
+        /// Namespace to use
         #[arg(short, long, default_value = "default")]
         namespace: String,
         
-        /// Label selector for filtering
+        /// Label selector
         #[arg(short, long)]
         selector: Option<String>,
     },
     
-    /// List deployments in the cluster
-    Deployments {
-        /// Path to kubeconfig file
-        #[arg(short, long)]
-        kubeconfig: Option<String>,
-        
-        /// Context name in kubeconfig
+    /// Get services in a namespace
+    GetServices {
+        /// Kubernetes context to use
         #[arg(short, long)]
         context: Option<String>,
         
-        /// Namespace to list deployments in
+        /// Namespace to use
         #[arg(short, long, default_value = "default")]
         namespace: String,
+        
+        /// Label selector
+        #[arg(short, long)]
+        selector: Option<String>,
     },
     
-    /// Get pod logs
-    Logs {
-        /// Path to kubeconfig file
-        #[arg(short, long)]
-        kubeconfig: Option<String>,
-        
-        /// Context name in kubeconfig
+    /// Get deployments in a namespace
+    GetDeployments {
+        /// Kubernetes context to use
         #[arg(short, long)]
         context: Option<String>,
         
-        /// Pod name
-        #[arg(short, long)]
-        pod: String,
-        
-        /// Container name (if pod has multiple containers)
-        #[arg(short, long)]
-        container: Option<String>,
-        
-        /// Namespace where the pod is located
+        /// Namespace to use
         #[arg(short, long, default_value = "default")]
         namespace: String,
         
-        /// Number of tail lines to show
-        #[arg(long, default_value_t = 100)]
-        tail: i64,
-        
-        /// Follow the logs
+        /// Label selector
         #[arg(short, long)]
-        follow: bool,
+        selector: Option<String>,
+    },
+    
+    /// Describe a resource
+    Describe {
+        /// Resource type (pod, service, deployment, etc.)
+        #[arg(short, long)]
+        resource: String,
+        
+        /// Resource name
+        #[arg(short, long)]
+        name: String,
+        
+        /// Kubernetes context to use
+        #[arg(short, long)]
+        context: Option<String>,
+        
+        /// Namespace to use
+        #[arg(short, long, default_value = "default")]
+        namespace: String,
     },
 }
 
-pub async fn handle_command(command: K8sCommands, _config: &Config) -> Result<(), Box<dyn Error>> {
+pub async fn handle_command(command: K8sCommands, config: &Config) -> Result<(), Box<dyn Error>> {
     match command {
         K8sCommands::List => {
-            println!("Listing available Kubernetes contexts from default kubeconfig");
-            // Implementation will be added later
+            println!("Configured Kubernetes clusters:");
+            for cluster in &config.kubernetes.clusters {
+                println!("  - {}", cluster.name);
+            }
+            Ok(())
         },
-        K8sCommands::Info { kubeconfig, context } => {
-            println!("Getting Kubernetes cluster info");
-            if let Some(kc) = kubeconfig {
-                println!("Using kubeconfig: {}", kc);
-            }
-            if let Some(ctx) = context {
-                println!("Using context: {}", ctx);
-            }
-            // Implementation will be added later
+        
+        K8sCommands::GetClusters => {
+            println!("Kubernetes Clusters:");
+            println!("In a real implementation, this would get information about the Kubernetes clusters");
+            Ok(())
         },
-        K8sCommands::Pods { kubeconfig, context, namespace, selector } => {
-            println!("Listing pods in namespace: {}", namespace);
-            if let Some(kc) = kubeconfig {
-                println!("Using kubeconfig: {}", kc);
-            }
-            if let Some(ctx) = context {
-                println!("Using context: {}", ctx);
-            }
-            if let Some(sel) = selector {
+        
+        K8sCommands::GetPods { context, namespace, selector } => {
+            let ctx_str = context.as_deref().unwrap_or("default");
+            println!("Getting pods in namespace '{}' with context '{}'", namespace, ctx_str);
+            
+            if let Some(sel) = &selector {
                 println!("Using selector: {}", sel);
             }
-            // Implementation will be added later
+            
+            println!("In a real implementation, this would list Kubernetes pods");
+            Ok(())
         },
-        K8sCommands::Deployments { kubeconfig, context, namespace } => {
-            println!("Listing deployments in namespace: {}", namespace);
-            if let Some(kc) = kubeconfig {
-                println!("Using kubeconfig: {}", kc);
+        
+        K8sCommands::GetServices { context, namespace, selector } => {
+            let ctx_str = context.as_deref().unwrap_or("default");
+            println!("Getting services in namespace '{}' with context '{}'", namespace, ctx_str);
+            
+            if let Some(sel) = &selector {
+                println!("Using selector: {}", sel);
             }
-            if let Some(ctx) = context {
-                println!("Using context: {}", ctx);
-            }
-            // Implementation will be added later
+            
+            println!("In a real implementation, this would list Kubernetes services");
+            Ok(())
         },
-        K8sCommands::Logs { kubeconfig, context, pod, container, namespace, tail, follow } => {
-            println!("Getting logs for pod: {} in namespace: {}", pod, namespace);
-            if let Some(kc) = kubeconfig {
-                println!("Using kubeconfig: {}", kc);
+        
+        K8sCommands::GetDeployments { context, namespace, selector } => {
+            let ctx_str = context.as_deref().unwrap_or("default");
+            println!("Getting deployments in namespace '{}' with context '{}'", namespace, ctx_str);
+            
+            if let Some(sel) = &selector {
+                println!("Using selector: {}", sel);
             }
-            if let Some(ctx) = context {
-                println!("Using context: {}", ctx);
-            }
-            if let Some(cont) = container {
-                println!("Container: {}", cont);
-            }
-            println!("Tail: {}, Follow: {}", tail, follow);
-            // Implementation will be added later
+            
+            println!("In a real implementation, this would list Kubernetes deployments");
+            Ok(())
+        },
+        
+        K8sCommands::Describe { resource, name, context, namespace } => {
+            let ctx_str = context.as_deref().unwrap_or("default");
+            println!("Describing {} '{}' in namespace '{}' with context '{}'", 
+                    resource, name, namespace, ctx_str);
+            
+            println!("In a real implementation, this would describe the specified Kubernetes resource");
+            Ok(())
         },
     }
-    
-    Ok(())
 }

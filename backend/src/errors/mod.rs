@@ -1,80 +1,121 @@
 use actix_web::{HttpResponse, ResponseError};
-use serde::Serialize;
-use std::fmt;
+use sea_orm::DbErr;
 use thiserror::Error;
+use serde::{Serialize, Deserialize};
+use tracing::error;
 
 #[derive(Error, Debug)]
 pub enum AppError {
     #[error("Authentication error: {0}")]
     Auth(String),
-    
-    #[error("Authorization error: {0}")]
-    Authorization(String),
-    
+
+    #[error("Database error: {0}")]
+    Database(#[from] DbErr),
+
     #[error("Validation error: {0}")]
     Validation(String),
+
+    #[error("Not found: {0}")]
+    NotFound(String),
     
-    #[error("Database error: {0}")]
-    Database(String),
-    
-    #[error("Kafka error: {0}")]
-    Kafka(String),
-    
+    #[error("Configuration error: {0}")]
+    Config(String),
+
+    #[error("Integration error: {0}")]
+    Integration(String),
+
+    #[error("External service error: {0}")]
+    ExternalService(String),
+
     #[error("Cloud provider error: {0}")]
-    Cloud(String),
+    CloudProvider(String),
     
     #[error("Kubernetes error: {0}")]
     Kubernetes(String),
     
+    #[error("Kafka error: {0}")]
+    Kafka(String),
+
+    #[error("AI service error: {0}")]
+    AI(String),
+    
     #[error("Internal server error: {0}")]
     Internal(String),
-    
-    #[error("Not found: {0}")]
-    NotFound(String),
-    
-    #[error("API error: {0}")]
-    Api(String),
-}
-
-#[derive(Serialize)]
-struct ErrorResponse {
-    code: u16,
-    message: String,
-    error_type: String,
 }
 
 impl ResponseError for AppError {
     fn error_response(&self) -> HttpResponse {
-        let (status_code, error_type) = match self {
-            AppError::Auth(_) => (actix_web::http::StatusCode::UNAUTHORIZED, "AUTH_ERROR"),
-            AppError::Authorization(_) => (actix_web::http::StatusCode::FORBIDDEN, "AUTHORIZATION_ERROR"),
-            AppError::Validation(_) => (actix_web::http::StatusCode::BAD_REQUEST, "VALIDATION_ERROR"),
-            AppError::NotFound(_) => (actix_web::http::StatusCode::NOT_FOUND, "NOT_FOUND_ERROR"),
-            AppError::Database(_) => (actix_web::http::StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
-            AppError::Kafka(_) => (actix_web::http::StatusCode::INTERNAL_SERVER_ERROR, "KAFKA_ERROR"),
-            AppError::Cloud(_) => (actix_web::http::StatusCode::INTERNAL_SERVER_ERROR, "CLOUD_ERROR"),
-            AppError::Kubernetes(_) => (actix_web::http::StatusCode::INTERNAL_SERVER_ERROR, "KUBERNETES_ERROR"),
-            AppError::Internal(_) => (actix_web::http::StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR"),
-            AppError::Api(_) => (actix_web::http::StatusCode::BAD_REQUEST, "API_ERROR"),
-        };
-        
-        let error_response = ErrorResponse {
-            code: status_code.as_u16(),
-            message: self.to_string(),
-            error_type: error_type.to_string(),
-        };
-        
-        HttpResponse::build(status_code).json(error_response)
+        match self {
+            AppError::Auth(_) => {
+                HttpResponse::Unauthorized().json(ErrorResponse::new(self))
+            }
+            AppError::Validation(_) | AppError::Config(_) => {
+                HttpResponse::BadRequest().json(ErrorResponse::new(self))
+            }
+            AppError::NotFound(_) => {
+                HttpResponse::NotFound().json(ErrorResponse::new(self))
+            }
+            _ => HttpResponse::InternalServerError().json(ErrorResponse::new(self)),
+        }
     }
 }
 
-// Conversion from various error types to AppError
-impl From<sea_orm::DbErr> for AppError {
-    fn from(err: sea_orm::DbErr) -> Self {
-        AppError::Database(err.to_string())
+#[derive(Serialize, Deserialize)]
+struct ErrorResponse {
+    error: String,
+    message: String,
+}
+
+impl ErrorResponse {
+    fn new(error: &AppError) -> Self {
+        let error_type = match error {
+            AppError::Auth(_) => "AUTH_ERROR",
+            AppError::Database(_) => "DATABASE_ERROR",
+            AppError::Validation(_) => "VALIDATION_ERROR",
+            AppError::NotFound(_) => "NOT_FOUND",
+            AppError::Config(_) => "CONFIG_ERROR",
+            AppError::Integration(_) => "INTEGRATION_ERROR",
+            AppError::ExternalService(_) => "EXTERNAL_SERVICE_ERROR",
+            AppError::CloudProvider(_) => "CLOUD_PROVIDER_ERROR",
+            AppError::Kubernetes(_) => "KUBERNETES_ERROR",
+            AppError::Kafka(_) => "KAFKA_ERROR",
+            AppError::AI(_) => "AI_ERROR",
+            AppError::Internal(_) => "INTERNAL_SERVER_ERROR",
+        };
+
+        Self {
+            error: error_type.to_string(),
+            message: error.to_string(),
+        }
     }
 }
 
+// Common conversion implementations
+impl From<std::io::Error> for AppError {
+    fn from(err: std::io::Error) -> Self {
+        AppError::Internal(err.to_string())
+    }
+}
+
+impl From<serde_json::Error> for AppError {
+    fn from(err: serde_json::Error) -> Self {
+        AppError::Internal(err.to_string())
+    }
+}
+
+impl From<String> for AppError {
+    fn from(err: String) -> Self {
+        AppError::Internal(err)
+    }
+}
+
+impl From<&str> for AppError {
+    fn from(err: &str) -> Self {
+        AppError::Internal(err.to_string())
+    }
+}
+
+// Specific conversions for external libraries
 impl From<rdkafka::error::KafkaError> for AppError {
     fn from(err: rdkafka::error::KafkaError) -> Self {
         AppError::Kafka(err.to_string())
@@ -87,20 +128,14 @@ impl From<kube::Error> for AppError {
     }
 }
 
+impl From<reqwest::Error> for AppError {
+    fn from(err: reqwest::Error) -> Self {
+        AppError::ExternalService(err.to_string())
+    }
+}
+
 impl From<jsonwebtoken::errors::Error> for AppError {
     fn from(err: jsonwebtoken::errors::Error) -> Self {
         AppError::Auth(err.to_string())
-    }
-}
-
-impl From<reqwest::Error> for AppError {
-    fn from(err: reqwest::Error) -> Self {
-        AppError::Api(err.to_string())
-    }
-}
-
-impl From<anyhow::Error> for AppError {
-    fn from(err: anyhow::Error) -> Self {
-        AppError::Internal(err.to_string())
     }
 }

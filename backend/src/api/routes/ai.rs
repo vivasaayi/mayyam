@@ -1,13 +1,65 @@
-use actix_web::web;
+use actix_web::{web, HttpResponse};
+use crate::controllers::ai;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/api/ai")
-            .route("/chat", web::post().to(|| async { "Chat with AI assistant" }))
-            .route("/analyze-logs", web::post().to(|| async { "Analyze logs with AI" }))
-            .route("/analyze-metrics", web::post().to(|| async { "Analyze metrics with AI" }))
-            .route("/optimize-query", web::post().to(|| async { "Optimize SQL query with AI" }))
-            .route("/explain-kubernetes", web::post().to(|| async { "Explain Kubernetes resources with AI" }))
-            .route("/troubleshoot", web::post().to(|| async { "AI-assisted troubleshooting" }))
-    );
+    let scope = web::scope("/api/ai")
+        .route("/analyze", web::post().to(analyze_data))
+        .route("/generate", web::post().to(generate_content))
+        .route("/summary", web::post().to(generate_summary))
+        .route("/explain", web::post().to(explain_data))
+        .route("/chat", web::post().to(chat_completion));
+    
+    cfg.service(scope);
+}
+
+async fn analyze_data() -> HttpResponse {
+    HttpResponse::Ok().json(serde_json::json!({
+        "message": "This endpoint will analyze data using AI",
+        "analysis": {
+            "trends": [
+                {
+                    "name": "Increasing latency",
+                    "confidence": 0.95,
+                    "details": "System latency has increased by 23% over the last hour"
+                },
+                {
+                    "name": "Memory usage spike",
+                    "confidence": 0.87,
+                    "details": "Memory usage spiked at 2:15 PM"
+                }
+            ],
+            "recommendations": [
+                "Investigate database query performance",
+                "Consider scaling up the service"
+            ]
+        }
+    }))
+}
+
+async fn generate_content() -> HttpResponse {
+    HttpResponse::Ok().json(serde_json::json!({
+        "message": "This endpoint will generate content using AI",
+        "content": "Here is an example of AI-generated content based on your prompt."
+    }))
+}
+
+async fn generate_summary() -> HttpResponse {
+    HttpResponse::Ok().json(serde_json::json!({
+        "message": "This endpoint will generate a summary of data using AI",
+        "summary": "This system experienced increased load during peak hours (9AM-11AM). There were 3 error spikes during this period, with the longest lasting 12 minutes. Overall system health is good with 99.95% availability."
+    }))
+}
+
+async fn explain_data() -> HttpResponse {
+    HttpResponse::Ok().json(serde_json::json!({
+        "message": "This endpoint will explain complex data using AI",
+        "explanation": "The database latency increased because of a blocking query that was initiated at 10:15 AM. This query was accessing a table without proper indexing, causing full table scans. The issue resolved after the query completed at 10:27 AM."
+    }))
+}
+
+async fn chat_completion() -> HttpResponse {
+    HttpResponse::Ok().json(serde_json::json!({
+        "message": "This endpoint will provide chat completions using AI",
+        "response": "Based on the metrics you've shared, it appears that the system is experiencing unusual network latency. This could be due to increased traffic or a potential network issue. I recommend checking your network monitoring tools and recent configuration changes."
+    }))
 }

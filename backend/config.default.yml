@@ -1,26 +1,91 @@
 database:
-  postgres: []
-  mysql: []
-  redis: []
-  opensearch: []
+  url: "postgres://postgres:postgres@localhost:5432/mayyam"
+  max_connections: 10
+  min_connections: 2
+  connect_timeout: 10
+  acquire_timeout: 8
+  idle_timeout: 600
+  max_lifetime: 1800
+  enable_logging: true
+  postgres:
+    - name: main
+      host: localhost
+      port: 5432
+      username: postgres
+      password: postgres
+      database: mayyam
+      ssl_mode: disable
+  mysql:
+    - name: sample_mysql
+      host: localhost
+      port: 3306
+      username: root
+      password: mysql
+      database: sample
+  redis:
+    - name: cache
+      host: localhost
+      port: 6379
+      password: ""
+      cluster_mode: false
+  opensearch:
+    - name: logs
+      hosts:
+        - https://localhost:9200
+      username: admin
+      password: admin
 
 kafka:
-  clusters: []
+  clusters:
+    - name: local
+      bootstrap_servers:
+        - localhost:9092
+      security_protocol: PLAINTEXT
+    - name: secure_cluster
+      bootstrap_servers:
+        - secure-kafka:9093
+      sasl_username: user
+      sasl_password: password
+      sasl_mechanism: PLAIN
+      security_protocol: SASL_SSL
 
 auth:
-  jwt_secret: "changeme_in_production"
-  jwt_expiration: 86400  # 24 hours in seconds
+  jwt_secret: "change_this_to_a_secure_secret_in_production_environment"
+  jwt_expiration: 3600
   enable_local_auth: true
   enable_token_auth: true
   enable_saml: false
-  saml_metadata_url: null
+  saml_metadata_url: ""
+
+security:
+  encryption_key: "32-chars-long-key-for-encrypt-data" # Must be 32 bytes for AES-256
+
+kubernetes:
+  clusters: []
 
 cloud:
-  aws: []
-  azure: []
+  aws:
+    - name: default
+      region: us-west-2
+      profile: default
+    - name: prod
+      access_key_id: ""
+      secret_access_key: ""
+      region: us-east-1
+  azure:
+    - name: default
+      tenant_id: "your-tenant-id"
+      client_id: ""
+      client_secret: ""
+      subscription_id: "your-subscription-id"
+      use_managed_identity: false
 
 ai:
-  provider: "openai"
-  api_key: ""
-  model: "gpt-4o"
-  endpoint: null
+  provider: openai
+  api_key: "your-openai-api-key"
+  model: "gpt-4"
+  endpoint: "https://api.openai.com/v1"
+
+logging:
+  level: "info"
+  format: "json"

@@ -1,19 +1,20 @@
-use actix_web::web;
+use actix_web::{web, HttpResponse};
+use crate::controllers::kafka;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    cfg.service(
-        web::scope("/api/kafka")
-            .route("/clusters", web::get().to(|| async { "List Kafka clusters" }))
-            .route("/clusters", web::post().to(|| async { "Create Kafka cluster connection" }))
-            .route("/clusters/{id}", web::get().to(|| async { "Get Kafka cluster" }))
-            .route("/clusters/{id}/topics", web::get().to(|| async { "List topics" }))
-            .route("/clusters/{id}/topics", web::post().to(|| async { "Create topic" }))
-            .route("/clusters/{id}/topics/{topic}", web::get().to(|| async { "Get topic details" }))
-            .route("/clusters/{id}/topics/{topic}", web::delete().to(|| async { "Delete topic" }))
-            .route("/clusters/{id}/topics/{topic}/messages", web::get().to(|| async { "Consume messages" }))
-            .route("/clusters/{id}/topics/{topic}/messages", web::post().to(|| async { "Produce message" }))
-            .route("/clusters/{id}/consumer-groups", web::get().to(|| async { "List consumer groups" }))
-            .route("/clusters/{id}/consumer-groups/{group}", web::get().to(|| async { "Get consumer group details" }))
-            .route("/clusters/{id}/consumer-groups/{group}/offsets", web::post().to(|| async { "Reset consumer group offsets" }))
-    );
+    let scope = web::scope("/api/kafka")
+        .route("/clusters", web::get().to(kafka::list_clusters))
+        .route("/clusters", web::post().to(kafka::create_cluster))
+        .route("/clusters/{id}", web::get().to(kafka::get_cluster))
+        .route("/clusters/{id}/topics", web::get().to(kafka::list_topics))
+        .route("/clusters/{id}/topics", web::post().to(kafka::create_topic))
+        .route("/clusters/{id}/topics/{topic}", web::get().to(kafka::get_topic))
+        .route("/clusters/{id}/topics/{topic}", web::delete().to(kafka::delete_topic))
+        .route("/clusters/{id}/topics/{topic}/produce", web::post().to(kafka::produce_message))
+        .route("/clusters/{id}/topics/{topic}/consume", web::post().to(kafka::consume_messages))
+        .route("/clusters/{id}/consumer-groups", web::get().to(kafka::list_consumer_groups))
+        .route("/clusters/{id}/consumer-groups/{group}", web::get().to(kafka::get_consumer_group))
+        .route("/clusters/{id}/consumer-groups/{group}/reset", web::post().to(kafka::reset_offsets));
+    
+    cfg.service(scope);
 }

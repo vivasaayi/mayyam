@@ -1,80 +1,72 @@
 use actix_web::{web, HttpResponse, Responder};
-use jsonwebtoken::{encode, Header, EncodingKey};
+use tracing::{info, error};
+use std::sync::Arc;
 use chrono::{Utc, Duration};
+use jsonwebtoken::{encode, Header, EncodingKey};
+
+use crate::models::user::{CreateUserDto, LoginUserDto, AuthTokenResponse, UserResponse, Claims};
+use crate::services::user::UserService;
+use crate::config::Config;
 use crate::errors::AppError;
-use crate::middleware::auth::Claims;
-use crate::api::routes::auth::{LoginRequest, RegisterRequest, TokenResponse};
-use uuid::Uuid;
 
-pub async fn login(
-    login: web::Json<LoginRequest>,
-    config: web::Data<crate::config::Config>,
-) -> Result<impl Responder, AppError> {
-    // In a real application, verify the credentials against a database
-    // For now, we'll just create a token if the username is "admin" and password is "password"
-    
-    if login.username != "admin" || login.password != "password" {
-        return Err(AppError::Auth("Invalid username or password".to_string()));
+pub struct AuthController {
+    user_service: Arc<UserService>,
+    config: Config,
+}
+
+impl AuthController {
+    pub fn new(user_service: Arc<UserService>, config: Config) -> Self {
+        Self { user_service, config }
     }
     
-    let now = Utc::now();
-    let expiration = now + Duration::hours(24);
-    
-    let claims = Claims {
-        sub: login.username.clone(),
-        exp: expiration.timestamp() as usize,
-        iat: now.timestamp() as usize,
-        user_id: Uuid::new_v4().to_string(),
-        role: "admin".to_string(),
-    };
-    
-    let token = encode(
-        &Header::default(),
-        &claims,
-        &EncodingKey::from_secret(config.auth.jwt_secret.as_bytes()),
-    )
-    .map_err(|e| AppError::Auth(format!("Failed to generate token: {}", e)))?;
-    
-    Ok(HttpResponse::Ok().json(TokenResponse {
-        token,
-        token_type: "Bearer".to_string(),
-        expires_in: config.auth.jwt_expiration,
-    }))
-}
-
-pub async fn register(
-    _register: web::Json<RegisterRequest>,
-    _config: web::Data<crate::config::Config>,
-) -> Result<impl Responder, AppError> {
-    // In a real application, register the user in a database
-    // For now, we'll just return an error
-    
-    Err(AppError::Api("User registration not implemented yet".to_string()))
-}
-
-pub async fn refresh_token(
-    _config: web::Data<crate::config::Config>,
-    claims: Option<web::ReqData<Claims>>,
-) -> Result<impl Responder, AppError> {
-    if claims.is_none() {
-        return Err(AppError::Auth("No valid token provided".to_string()));
+    pub async fn login(&self, login_data: LoginUserDto) -> Result<AuthTokenResponse, AppError> {
+        // Verify credentials using the service layer
+        let user = match self.user_service.authenticate_user(&login_data).await? {
+            Some(user) => user,
+            None => return Err(AppError::Auth("Invalid username or password".to_string())),
+        };
+        
+        // Generate JWT token
+        let now = Utc::now();
+        let expiration = now + Duration::seconds(self.config.auth.jwt_expiration as i64);
+        
+        let claims = Claims {
+            sub: user.id,
+            username: user.username.clone(),
+            permissions: user.permissions.clone(),
+            is_admin: user.is_admin,
+            exp: expiration.timestamp(),
+            iat: now.timestamp(),
+        };
+        
+        let token = encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(self.config.auth.jwt_secret.as_bytes()),
+        )
+        .map_err(|e| {
+            error!("Failed to generate JWT token: {}", e);
+            AppError::Internal("Failed to generate authentication token".to_string())
+        })?;
+        
+        // Return token response
+        let user_response = UserResponse::from(user);
+        
+        Ok(AuthTokenResponse {
+            token,
+            token_type: "Bearer".to_string(),
+            expires_in: self.config.auth.jwt_expiration as i64,
+            user: user_response,
+        })
     }
     
-    // In a real application, we'd generate a new token based on the current user
-    // For now, we'll just return an error
-    
-    Err(AppError::Api("Token refresh not implemented yet".to_string()))
-}
-
-pub async fn get_current_user(
-    claims: Option<web::ReqData<Claims>>,
-) -> Result<impl Responder, AppError> {
-    match claims {
-        Some(user_claims) => {
-            Ok(HttpResponse::Ok().json(user_claims.into_inner()))
-        },
-        None => {
-            Err(AppError::Auth("No valid token provided".to_string()))
-        }
+    pub async fn register(&self, user_data: CreateUserDto) -> Result<UserResponse, AppError> {
+        // Create new user using the service layer
+        let user = self.user_service.create_user(&user_data).await?;
+        
+        // Convert to response
+        let user_response = UserResponse::from(user);
+        
+        Ok(user_response)
     }
 }

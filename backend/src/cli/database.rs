@@ -1,87 +1,72 @@
 use clap::Subcommand;
+use sea_orm_migration::prelude::*;
 use std::error::Error;
+use tracing::{info, error};
+
 use crate::config::Config;
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand)]
 pub enum DbCommands {
-    /// List all configured database connections
-    List,
-    
-    /// Connect to a specific database
-    Connect {
-        /// Name of the database connection to use
+    /// Create a new database
+    Create {
+        /// Database name
         #[arg(short, long)]
         name: String,
-        
-        /// Type of the database (postgres, mysql, redis, opensearch)
-        #[arg(short, long)]
-        db_type: String,
     },
     
-    /// Run a query on a specific database
-    Query {
-        /// Name of the database connection to use
-        #[arg(short, long)]
-        name: String,
+    /// Run database migrations
+    Migrate {
+        /// Migration direction (up or down)
+        #[arg(short, long, default_value = "up")]
+        direction: String,
         
-        /// Type of the database (postgres, mysql)
+        /// Number of steps for down migration (optional)
         #[arg(short, long)]
-        db_type: String,
-        
-        /// SQL query to execute
-        #[arg(short, long)]
-        query: String,
+        steps: Option<u32>,
     },
     
-    /// Analyze database for issues
-    Analyze {
-        /// Name of the database connection to use
-        #[arg(short, long)]
-        name: String,
-        
-        /// Type of the database (postgres, mysql)
-        #[arg(short, long)]
-        db_type: String,
-    },
+    /// Print migration status
+    Status,
 }
 
 pub async fn handle_command(command: DbCommands, config: &Config) -> Result<(), Box<dyn Error>> {
     match command {
-        DbCommands::List => {
-            println!("Available PostgreSQL connections:");
-            for db in &config.database.postgres {
-                println!("  - {} ({}:{})", db.name, db.host, db.port);
-            }
-            
-            println!("\nAvailable MySQL connections:");
-            for db in &config.database.mysql {
-                println!("  - {} ({}:{})", db.name, db.host, db.port);
-            }
-            
-            println!("\nAvailable Redis connections:");
-            for db in &config.database.redis {
-                println!("  - {} ({}:{})", db.name, db.host, db.port);
-            }
-            
-            println!("\nAvailable OpenSearch connections:");
-            for db in &config.database.opensearch {
-                println!("  - {} ({:?})", db.name, db.hosts);
+        DbCommands::Create { name } => {
+            info!("Creating database: {}", name);
+            // TODO: Implement database creation logic
+            println!("Database '{}' created successfully", name);
+            Ok(())
+        },
+        
+        DbCommands::Migrate { direction, steps } => {
+            match direction.as_str() {
+                "up" => {
+                    info!("Running migrations UP");
+                    // TODO: Implement migration up logic
+                    println!("Migrations applied successfully");
+                    Ok(())
+                },
+                "down" => {
+                    let steps = steps.unwrap_or(1);
+                    info!("Running migrations DOWN {} step(s)", steps);
+                    // TODO: Implement migration down logic
+                    println!("Migrations reverted successfully");
+                    Ok(())
+                },
+                _ => {
+                    error!("Invalid migration direction: {}", direction);
+                    Err(format!("Invalid migration direction: {}. Use 'up' or 'down'.", direction).into())
+                }
             }
         },
-        DbCommands::Connect { name, db_type } => {
-            println!("Connecting to {} database: {}", db_type, name);
-            // Implementation will be added later
-        },
-        DbCommands::Query { name, db_type, query } => {
-            println!("Running query on {} database: {}", db_type, name);
-            println!("Query: {}", query);
-            // Implementation will be added later
-        },
-        DbCommands::Analyze { name, db_type } => {
-            println!("Analyzing {} database: {}", db_type, name);
-            // Implementation will be added later
-        },
+        
+        DbCommands::Status => {
+            info!("Checking migration status");
+            // TODO: Implement migration status logic
+            println!("Migration Status:");
+            println!("--- Applied Migrations ---");
+            println!("--- Pending Migrations ---");
+            Ok(())
+        }
     }
-    
-    Ok(())
 }

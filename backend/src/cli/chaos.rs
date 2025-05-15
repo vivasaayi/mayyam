@@ -1,92 +1,114 @@
 use clap::Subcommand;
 use std::error::Error;
+use tracing::{info, error};
+
 use crate::config::Config;
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand)]
 pub enum ChaosCommands {
     /// List available chaos experiments
     List,
     
-    /// Run a predefined chaos experiment
-    Run {
-        /// Name of the experiment to run
-        #[arg(short, long)]
-        name: String,
-        
-        /// Target infrastructure (e.g., k8s cluster name, cloud account)
+    /// Run a network chaos experiment
+    Network {
+        /// Target hostname or IP
         #[arg(short, long)]
         target: String,
         
-        /// Duration of the experiment in seconds
-        #[arg(short, long, default_value_t = 60)]
-        duration: u64,
+        /// Type of network chaos (latency, loss, corruption)
+        #[arg(short, long)]
+        chaos_type: String,
         
-        /// Dry run (plan only, don't execute)
-        #[arg(long)]
-        dry_run: bool,
+        /// Duration of the chaos in seconds
+        #[arg(short, long, default_value_t = 60)]
+        duration: u32,
+        
+        /// Intensity of the chaos (percentage or ms)
+        #[arg(short, long)]
+        intensity: String,
     },
     
-    /// Create a new chaos experiment template
-    Create {
-        /// Name of the experiment
-        #[arg(short, long)]
-        name: String,
-        
-        /// Type of the experiment (e.g., pod-kill, network-delay, cpu-stress)
-        #[arg(short, long)]
-        experiment_type: String,
-        
-        /// Target selector (e.g., label selector for Kubernetes)
+    /// Run a process chaos experiment
+    Process {
+        /// Target process name or PID
         #[arg(short, long)]
         target: String,
         
-        /// Duration in seconds
+        /// Type of process chaos (kill, stop, cpu-load)
+        #[arg(short, long)]
+        chaos_type: String,
+        
+        /// Duration of the chaos in seconds
         #[arg(short, long, default_value_t = 60)]
-        duration: u64,
+        duration: u32,
     },
     
-    /// Show experiment history
-    History {
-        /// Limit the number of history entries
-        #[arg(short, long, default_value_t = 10)]
-        limit: u32,
+    /// Run a disk I/O chaos experiment
+    Disk {
+        /// Target mount point or directory
+        #[arg(short, long)]
+        target: String,
+        
+        /// Type of disk chaos (latency, error, fill)
+        #[arg(short, long)]
+        chaos_type: String,
+        
+        /// Duration of the chaos in seconds
+        #[arg(short, long, default_value_t = 60)]
+        duration: u32,
+        
+        /// Intensity of the chaos (percentage or ms)
+        #[arg(short, long)]
+        intensity: String,
     },
 }
 
-pub async fn handle_command(command: ChaosCommands, _config: &Config) -> Result<(), Box<dyn Error>> {
+pub async fn handle_command(command: ChaosCommands, config: &Config) -> Result<(), Box<dyn Error>> {
     match command {
         ChaosCommands::List => {
             println!("Available chaos experiments:");
-            println!("  - pod-kill: Kills specified pods");
-            println!("  - network-delay: Introduces network latency");
-            println!("  - network-loss: Causes packet loss in the network");
-            println!("  - cpu-stress: Generates CPU load");
-            println!("  - memory-stress: Consumes memory resources");
-            println!("  - disk-fill: Fills disk space");
-            println!("  - aws-ec2-stop: Stops EC2 instances");
-            println!("  - aws-az-outage: Simulates AZ outage");
-            // Implementation will be added later
+            println!("1. Network Chaos:");
+            println!("   - latency: Add latency to network requests");
+            println!("   - loss: Drop packets");
+            println!("   - corruption: Corrupt packets");
+            println!("\n2. Process Chaos:");
+            println!("   - kill: Kill a process");
+            println!("   - stop: Stop/pause a process");
+            println!("   - cpu-load: Generate CPU load");
+            println!("\n3. Disk Chaos:");
+            println!("   - latency: Add latency to disk I/O");
+            println!("   - error: Inject disk I/O errors");
+            println!("   - fill: Fill disk space");
+            Ok(())
         },
-        ChaosCommands::Run { name, target, duration, dry_run } => {
-            if dry_run {
-                println!("DRY RUN: Would execute chaos experiment '{}' on target '{}' for {} seconds", 
-                    name, target, duration);
-            } else {
-                println!("Running chaos experiment '{}' on target '{}' for {} seconds", 
-                    name, target, duration);
-            }
-            // Implementation will be added later
+        
+        ChaosCommands::Network { target, chaos_type, duration, intensity } => {
+            println!("Running network chaos experiment:");
+            println!("Target: {}", target);
+            println!("Type: {}", chaos_type);
+            println!("Duration: {} seconds", duration);
+            println!("Intensity: {}", intensity);
+            println!("\nIn a real implementation, this would run a network chaos experiment");
+            Ok(())
         },
-        ChaosCommands::Create { name, experiment_type, target, duration } => {
-            println!("Creating chaos experiment '{}' of type '{}' targeting '{}' with duration {} seconds",
-                name, experiment_type, target, duration);
-            // Implementation will be added later
+        
+        ChaosCommands::Process { target, chaos_type, duration } => {
+            println!("Running process chaos experiment:");
+            println!("Target: {}", target);
+            println!("Type: {}", chaos_type);
+            println!("Duration: {} seconds", duration);
+            println!("\nIn a real implementation, this would run a process chaos experiment");
+            Ok(())
         },
-        ChaosCommands::History { limit } => {
-            println!("Showing last {} chaos experiments", limit);
-            // Implementation will be added later
+        
+        ChaosCommands::Disk { target, chaos_type, duration, intensity } => {
+            println!("Running disk chaos experiment:");
+            println!("Target: {}", target);
+            println!("Type: {}", chaos_type);
+            println!("Duration: {} seconds", duration);
+            println!("Intensity: {}", intensity);
+            println!("\nIn a real implementation, this would run a disk chaos experiment");
+            Ok(())
         },
     }
-    
-    Ok(())
 }

@@ -1,10 +1,12 @@
 use clap::Subcommand;
 use std::error::Error;
+use tracing::{info, error};
+
 use crate::config::Config;
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand)]
 pub enum CloudCommands {
-    /// List all configured cloud providers
+    /// List configured cloud providers
     List,
     
     /// AWS specific commands
@@ -20,74 +22,44 @@ pub enum CloudCommands {
     },
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand)]
 pub enum AwsCommands {
+    /// List AWS regions
+    Regions,
+    
     /// List EC2 instances
-    ListEc2 {
-        /// Name of the AWS configuration to use
+    Ec2 {
+        /// AWS region
         #[arg(short, long)]
-        config: String,
-        
-        /// Filter by region (defaults to config region)
-        #[arg(short, long)]
-        region: Option<String>,
+        region: String,
     },
     
     /// List S3 buckets
-    ListS3 {
-        /// Name of the AWS configuration to use
-        #[arg(short, long)]
-        config: String,
-    },
+    S3,
     
-    /// Get CloudWatch metrics
-    CloudWatch {
-        /// Name of the AWS configuration to use
+    /// List RDS instances
+    Rds {
+        /// AWS region
         #[arg(short, long)]
-        config: String,
-        
-        /// Namespace for the metrics
-        #[arg(short, long)]
-        namespace: String,
-        
-        /// Metric name
-        #[arg(short, long)]
-        metric: String,
-        
-        /// Period in seconds
-        #[arg(short, long, default_value_t = 300)]
-        period: i64,
-        
-        /// Start time offset in minutes (from now)
-        #[arg(long, default_value_t = 60)]
-        start_offset: i64,
-        
-        /// End time offset in minutes (from now)
-        #[arg(long, default_value_t = 0)]
-        end_offset: i64,
+        region: String,
     },
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand)]
 pub enum AzureCommands {
-    /// List virtual machines
-    ListVms {
-        /// Name of the Azure configuration to use
-        #[arg(short, long)]
-        config: String,
-        
-        /// Resource group to filter by
+    /// List Azure regions
+    Regions,
+    
+    /// List Azure VMs
+    Vms {
+        /// Resource group
         #[arg(short, long)]
         resource_group: Option<String>,
     },
     
-    /// List storage accounts
-    ListStorage {
-        /// Name of the Azure configuration to use
-        #[arg(short, long)]
-        config: String,
-        
-        /// Resource group to filter by
+    /// List Azure storage accounts
+    Storage {
+        /// Resource group
         #[arg(short, long)]
         resource_group: Option<String>,
     },
@@ -96,56 +68,91 @@ pub enum AzureCommands {
 pub async fn handle_command(command: CloudCommands, config: &Config) -> Result<(), Box<dyn Error>> {
     match command {
         CloudCommands::List => {
-            println!("Available AWS configurations:");
-            for aws_config in &config.cloud.aws {
-                println!("  - {} (region: {})", aws_config.name, aws_config.region);
+            println!("Configured Cloud Providers:");
+            
+            if !config.aws.profiles.is_empty() {
+                println!("AWS:");
+                for profile in &config.aws.profiles {
+                    println!("  - {} ({})", profile.name, profile.region);
+                }
             }
             
-            println!("\nAvailable Azure configurations:");
-            for azure_config in &config.cloud.azure {
-                println!("  - {} (subscription: {})", azure_config.name, azure_config.subscription_id);
+            if !config.azure.subscriptions.is_empty() {
+                println!("Azure:");
+                for subscription in &config.azure.subscriptions {
+                    println!("  - {} ({})", subscription.name, subscription.subscription_id);
+                }
             }
+            
+            Ok(())
         },
+        
         CloudCommands::Aws { command } => {
             match command {
-                AwsCommands::ListEc2 { config: config_name, region } => {
-                    println!("Listing EC2 instances for AWS config: {}", config_name);
-                    if let Some(r) = region {
-                        println!("Region filter: {}", r);
-                    }
-                    // Implementation will be added later
+                AwsCommands::Regions => {
+                    println!("AWS Regions:");
+                    // In a real implementation, we would fetch actual AWS regions
+                    println!("  - us-east-1 (N. Virginia)");
+                    println!("  - us-east-2 (Ohio)");
+                    println!("  - us-west-1 (N. California)");
+                    println!("  - us-west-2 (Oregon)");
+                    // ...more regions
+                    Ok(())
                 },
-                AwsCommands::ListS3 { config: config_name } => {
-                    println!("Listing S3 buckets for AWS config: {}", config_name);
-                    // Implementation will be added later
+                
+                AwsCommands::Ec2 { region } => {
+                    println!("EC2 Instances in region {}:", region);
+                    println!("In a real implementation, this would list EC2 instances in the specified region");
+                    Ok(())
                 },
-                AwsCommands::CloudWatch { config: config_name, namespace, metric, period, start_offset, end_offset } => {
-                    println!("Getting CloudWatch metrics for AWS config: {}", config_name);
-                    println!("Namespace: {}, Metric: {}, Period: {}s", namespace, metric, period);
-                    println!("Time range: -{} minutes to -{} minutes from now", start_offset, end_offset);
-                    // Implementation will be added later
+                
+                AwsCommands::S3 => {
+                    println!("S3 Buckets:");
+                    println!("In a real implementation, this would list S3 buckets");
+                    Ok(())
+                },
+                
+                AwsCommands::Rds { region } => {
+                    println!("RDS Instances in region {}:", region);
+                    println!("In a real implementation, this would list RDS instances in the specified region");
+                    Ok(())
                 },
             }
         },
+        
         CloudCommands::Azure { command } => {
             match command {
-                AzureCommands::ListVms { config: config_name, resource_group } => {
-                    println!("Listing VMs for Azure config: {}", config_name);
-                    if let Some(rg) = resource_group {
-                        println!("Resource group filter: {}", rg);
-                    }
-                    // Implementation will be added later
+                AzureCommands::Regions => {
+                    println!("Azure Regions:");
+                    // In a real implementation, we would fetch actual Azure regions
+                    println!("  - eastus (East US)");
+                    println!("  - eastus2 (East US 2)");
+                    println!("  - westus (West US)");
+                    println!("  - westus2 (West US 2)");
+                    // ...more regions
+                    Ok(())
                 },
-                AzureCommands::ListStorage { config: config_name, resource_group } => {
-                    println!("Listing storage accounts for Azure config: {}", config_name);
+                
+                AzureCommands::Vms { resource_group } => {
                     if let Some(rg) = resource_group {
-                        println!("Resource group filter: {}", rg);
+                        println!("Azure VMs in resource group {}:", rg);
+                    } else {
+                        println!("Azure VMs in all resource groups:");
                     }
-                    // Implementation will be added later
+                    println!("In a real implementation, this would list Azure VMs");
+                    Ok(())
+                },
+                
+                AzureCommands::Storage { resource_group } => {
+                    if let Some(rg) = resource_group {
+                        println!("Azure Storage Accounts in resource group {}:", rg);
+                    } else {
+                        println!("Azure Storage Accounts in all resource groups:");
+                    }
+                    println!("In a real implementation, this would list Azure Storage Accounts");
+                    Ok(())
                 },
             }
         },
     }
-    
-    Ok(())
 }
