@@ -16,6 +16,7 @@ mod utils;
 #[derive(Parser)]
 #[command(name = "mayyam")]
 #[command(about = "A comprehensive toolbox for DevOps and SRE engineers", long_about = None)]
+#[command(disable_help_flag = true)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,

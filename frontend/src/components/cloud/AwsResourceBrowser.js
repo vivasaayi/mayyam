@@ -15,7 +15,7 @@ import {
   Col,
   Badge,
 } from "reactstrap";
-import { Spinner } from "../common/Spinner";
+import Spinner from "../common/Spinner";
 import api from "../../services/api";
 import AwsResourceDetails from "./AwsResourceDetails";
 

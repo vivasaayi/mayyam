@@ -20,7 +20,7 @@ import {
   Input
 } from "reactstrap";
 import classnames from "classnames";
-import { Spinner } from "../common/Spinner";
+import Spinner from "../common/Spinner";
 import api from "../../services/api";
 import ReactJson from "react-json-view";
 
