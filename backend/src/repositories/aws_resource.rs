@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait,
-    IntoActiveModel, ModelTrait, Order, QueryFilter, QueryOrder, QuerySelect, QueryTrait, Set,
+    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, IntoActiveModel, ModelTrait, Order, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait, Set
 };
 use chrono::Utc;
 use uuid::Uuid;
@@ -46,7 +45,7 @@ impl AwsResourceRepository {
         let model = active_model
             .insert(&self.db)
             .await
-            .map_err(|e| AppError::Database(format!("Failed to create AWS resource: {}", e)))?;
+            .map_err(|e| AppError::Database(e))?;
 
         info!("AWS resource created: {}", model.id);
         Ok(model)
@@ -57,7 +56,7 @@ impl AwsResourceRepository {
         let aws_resource = AwsResource::find_by_id(id)
             .one(&self.db)
             .await
-            .map_err(|e| AppError::Database(format!("Failed to find AWS resource: {}", e)))?
+            .map_err(|e| AppError::Database(e))?
             .ok_or_else(|| AppError::NotFound(format!("AWS resource with ID {} not found", id)))?;
 
         let now = Utc::now();
@@ -78,7 +77,7 @@ impl AwsResourceRepository {
         let updated_model = active_model
             .update(&self.db)
             .await
-            .map_err(|e| AppError::Database(format!("Failed to update AWS resource: {}", e)))?;
+            .map_err(|e| AppError::Database(e))?;
 
         info!("AWS resource updated: {}", updated_model.id);
         Ok(updated_model)
@@ -89,7 +88,7 @@ impl AwsResourceRepository {
         let resource = AwsResource::find_by_id(id)
             .one(&self.db)
             .await
-            .map_err(|e| AppError::Database(format!("Failed to find AWS resource: {}", e)))?;
+            .map_err(|e| AppError::Database(e))?;
 
         Ok(resource)
     }
@@ -100,7 +99,7 @@ impl AwsResourceRepository {
             .filter(aws_resource::Column::Arn.eq(arn))
             .one(&self.db)
             .await
-            .map_err(|e| AppError::Database(format!("Failed to find AWS resource by ARN: {}", e)))?;
+            .map_err(|e| AppError::Database(e))?;
 
         Ok(resource)
     }
@@ -121,10 +120,7 @@ impl AwsResourceRepository {
             .all(&self.db)
             .await
             .map_err(|e| {
-                AppError::Database(format!(
-                    "Failed to find AWS resources by account and type: {}",
-                    e
-                ))
+                AppError::Database(e)
             })?;
 
         Ok(resources)
@@ -169,7 +165,7 @@ impl AwsResourceRepository {
             .filter(condition.clone())
             .count(&self.db)
             .await
-            .map_err(|e| AppError::Database(format!("Failed to count AWS resources: {}", e)))?;
+            .map_err(|e| AppError::Database(e))?;
         
         // Then fetch the requested page
         let resources = AwsResource::find()
@@ -179,7 +175,7 @@ impl AwsResourceRepository {
             .offset(Some(page * page_size))
             .all(&self.db)
             .await
-            .map_err(|e| AppError::Database(format!("Failed to search AWS resources: {}", e)))?;
+            .map_err(|e| AppError::Database(e))?;
         
         let total_pages = (total as f64 / page_size as f64).ceil() as u64;
         
@@ -197,7 +193,7 @@ impl AwsResourceRepository {
         let res = AwsResource::delete_by_id(id)
             .exec(&self.db)
             .await
-            .map_err(|e| AppError::Database(format!("Failed to delete AWS resource: {}", e)))?;
+            .map_err(|e| AppError::Database(e))?;
 
         if res.rows_affected == 0 {
             return Err(AppError::NotFound(format!(
@@ -219,7 +215,7 @@ impl AwsResourceRepository {
         let aws_resource = AwsResource::find_by_id(id)
             .one(&self.db)
             .await
-            .map_err(|e| AppError::Database(format!("Failed to find AWS resource: {}", e)))?
+            .map_err(|e| AppError::Database(e))?
             .ok_or_else(|| AppError::NotFound(format!("AWS resource with ID {} not found", id)))?;
 
         let now = Utc::now();
@@ -232,7 +228,7 @@ impl AwsResourceRepository {
         let updated_model = active_model
             .update(&self.db)
             .await
-            .map_err(|e| AppError::Database(format!("Failed to update AWS resource data: {}", e)))?;
+            .map_err(|e| AppError::Database(e))?;
 
         info!("AWS resource data updated: {}", updated_model.id);
         Ok(updated_model)

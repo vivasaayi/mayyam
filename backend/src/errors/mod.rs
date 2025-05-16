@@ -18,6 +18,12 @@ pub enum AppError {
     #[error("Not found: {0}")]
     NotFound(String),
     
+    #[error("Conflict: {0}")]
+    Conflict(String),
+    
+    #[error("Bad request: {0}")]
+    BadRequest(String),
+    
     #[error("Configuration error: {0}")]
     Config(String),
 
@@ -49,11 +55,14 @@ impl ResponseError for AppError {
             AppError::Auth(_) => {
                 HttpResponse::Unauthorized().json(ErrorResponse::new(self))
             }
-            AppError::Validation(_) | AppError::Config(_) => {
+            AppError::Validation(_) | AppError::Config(_) | AppError::BadRequest(_) => {
                 HttpResponse::BadRequest().json(ErrorResponse::new(self))
             }
             AppError::NotFound(_) => {
                 HttpResponse::NotFound().json(ErrorResponse::new(self))
+            }
+            AppError::Conflict(_) => {
+                HttpResponse::Conflict().json(ErrorResponse::new(self))
             }
             _ => HttpResponse::InternalServerError().json(ErrorResponse::new(self)),
         }
@@ -73,6 +82,8 @@ impl ErrorResponse {
             AppError::Database(_) => "DATABASE_ERROR",
             AppError::Validation(_) => "VALIDATION_ERROR",
             AppError::NotFound(_) => "NOT_FOUND",
+            AppError::Conflict(_) => "CONFLICT_ERROR",
+            AppError::BadRequest(_) => "BAD_REQUEST",
             AppError::Config(_) => "CONFIG_ERROR",
             AppError::Integration(_) => "INTEGRATION_ERROR",
             AppError::ExternalService(_) => "EXTERNAL_SERVICE_ERROR",

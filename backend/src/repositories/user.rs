@@ -1,8 +1,7 @@
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, Set, ActiveModelTrait};
+use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, Set, ActiveModelTrait, PaginatorTrait, QuerySelect};
 use uuid::Uuid;
 use chrono::Utc;
 use bcrypt::{hash, verify, DEFAULT_COST};
-use tracing::{info, error};
 
 use crate::models::user::{self, Entity as User, Model as UserModel, ActiveModel as UserActiveModel};
 use crate::models::user::{CreateUserDto, LoginUserDto, UpdateUserDto};
@@ -71,8 +70,8 @@ impl UserRepository {
             is_active: Set(true),
             is_admin: Set(user_data.is_admin.unwrap_or(false)),
             permissions: Set(user_data.permissions.clone().unwrap_or_else(|| vec!["user".to_string()])),
-            created_at: Set(Utc::now()),
-            updated_at: Set(Utc::now()),
+            created_at: Set(Utc::now().naive_utc()),
+            updated_at: Set(Utc::now().naive_utc()),
             last_login: Set(None),
         };
         
@@ -95,8 +94,8 @@ impl UserRepository {
         if is_valid {
             // Update last login time
             let mut user_active: UserActiveModel = user.clone().into();
-            user_active.last_login = Set(Some(Utc::now()));
-            user_active.updated_at = Set(Utc::now());
+            user_active.last_login = Set(Some(Utc::now().naive_utc()));
+            user_active.updated_at = Set(Utc::now().naive_utc());
             
             let updated_user = user_active.update(&self.db).await.map_err(AppError::Database)?;
             
@@ -149,7 +148,7 @@ impl UserRepository {
             user_active.permissions = Set(permissions.clone());
         }
         
-        user_active.updated_at = Set(Utc::now());
+        user_active.updated_at = Set(Utc::now().naive_utc());
         
         let updated_user = user_active.update(&self.db).await.map_err(AppError::Database)?;
         

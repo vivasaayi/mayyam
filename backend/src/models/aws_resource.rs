@@ -15,9 +15,9 @@ pub struct Model {
     pub resource_id: String,
     pub arn: String,
     pub name: Option<String>,
-    #[sea_orm(column_type = "JsonBinary")]
+    #[sea_orm(column_type = "Json")]
     pub tags: serde_json::Value,
-    #[sea_orm(column_type = "JsonBinary")]
+    #[sea_orm(column_type = "Json")]
     pub resource_data: serde_json::Value,
     #[sea_orm(column_type = "Timestamp")]
     pub created_at: DateTime<Utc>,

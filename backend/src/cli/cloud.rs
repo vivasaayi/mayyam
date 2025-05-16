@@ -1,6 +1,5 @@
 use clap::Subcommand;
 use std::error::Error;
-use tracing::{info, error};
 
 use crate::config::Config;
 
@@ -70,16 +69,16 @@ pub async fn handle_command(command: CloudCommands, config: &Config) -> Result<(
         CloudCommands::List => {
             println!("Configured Cloud Providers:");
             
-            if !config.aws.profiles.is_empty() {
+            if !config.cloud.aws.is_empty() {
                 println!("AWS:");
-                for profile in &config.aws.profiles {
+                for profile in &config.cloud.aws {
                     println!("  - {} ({})", profile.name, profile.region);
                 }
             }
             
-            if !config.azure.subscriptions.is_empty() {
+            if !config.cloud.azure.is_empty() {
                 println!("Azure:");
-                for subscription in &config.azure.subscriptions {
+                for subscription in &config.cloud.azure {
                     println!("  - {} ({})", subscription.name, subscription.subscription_id);
                 }
             }

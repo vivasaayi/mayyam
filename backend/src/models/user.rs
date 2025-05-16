@@ -1,6 +1,7 @@
-use sea_orm::entity::prelude::*;
+use sea_orm::{entity::prelude::*, ActiveValue};
+use sea_orm::ActiveValue::Set;
 use serde::{Deserialize, Serialize};
-use chrono::prelude::*;
+use chrono::{DateTime, Utc, NaiveDateTime};
 use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
@@ -17,14 +18,14 @@ pub struct Model {
     pub last_name: Option<String>,
     pub is_active: bool,
     pub is_admin: bool,
-    #[sea_orm(column_type = "JsonBinary")]
+    #[sea_orm(column_type = "Json")]
     pub permissions: Vec<String>,
     #[sea_orm(column_type = "Timestamp")]
-    pub created_at: DateTime<Utc>,
+    pub created_at: NaiveDateTime,
     #[sea_orm(column_type = "Timestamp")]
-    pub updated_at: DateTime<Utc>,
+    pub updated_at: NaiveDateTime,
     #[sea_orm(column_type = "Timestamp", nullable)]
-    pub last_login: Option<DateTime<Utc>>,
+    pub last_login: Option<NaiveDateTime>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -32,22 +33,26 @@ pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {
     // Before save hook - set timestamps
-    fn before_save(mut self, insert: bool) -> Result<Self, DbErr> {
-        if insert {
-            self.id = Set(Uuid::new_v4());
-            self.created_at = Set(Utc::now());
-            self.updated_at = Set(Utc::now());
-            self.is_active = Set(true);
+    //fn before_save(mut self) -> Result<Self, DbErr> {
+        // if insert {
+        //     self.id = Set(Uuid::new_v4());
+        //     self.created_at = Set(Utc::now().naive_utc());
+        //     self.updated_at = Set(Utc::now().naive_utc());
+        //     self.is_active = Set(true);
             
-            if self.permissions.as_ref().unwrap_or(&Set(vec![])).is_unchanged() {
-                self.permissions = Set(vec!["user".to_string()]);
-            }
-        } else {
-            self.updated_at = Set(Utc::now());
-        }
+        //     // Check if permissions field is unchanged and set default if needed
+        //     match &self.permissions {
+        //         ActiveValue::Unchanged(_) | ActiveValue::NotSet => {
+        //             self.permissions = Set(vec!["user".to_string()]);
+        //         }
+        //         _ => {}
+        //     }
+        // } else {
+        //     self.updated_at = Set(Utc::now().naive_utc());
+        // }
         
-        Ok(self)
-    }
+       // Ok(self)
+    //}
 }
 
 // Dto for user creation
@@ -101,8 +106,8 @@ pub struct UserResponse {
     pub is_active: bool,
     pub is_admin: bool,
     pub permissions: Vec<String>,
-    pub created_at: DateTime<Utc>,
-    pub last_login: Option<DateTime<Utc>>,
+    pub created_at: NaiveDateTime,
+    pub last_login: Option<NaiveDateTime>,
 }
 
 impl From<Model> for UserResponse {
@@ -123,7 +128,7 @@ impl From<Model> for UserResponse {
 }
 
 // JWT claims structure
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
     pub sub: Uuid, // user id
     pub username: String,

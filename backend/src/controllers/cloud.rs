@@ -3,11 +3,11 @@ use crate::errors::AppError;
 use crate::middleware::auth::Claims;
 use std::sync::Arc;
 use uuid::Uuid;
-use tracing::{info, error};
+use tracing::info;
 use chrono::Utc;
 
 use crate::services::aws::{
-    AwsService, AwsControlPlane, AwsDataPlane, AwsCostService, CloudWatchService,
+    AwsControlPlane, AwsDataPlane, AwsCostService, CloudWatchService,
     ResourceSyncRequest, S3GetObjectRequest, S3PutObjectRequest,
     DynamoDBGetItemRequest, DynamoDBPutItemRequest, DynamoDBQueryRequest,
     SqsSendMessageRequest, SqsReceiveMessageRequest, KinesisPutRecordRequest,
@@ -469,7 +469,7 @@ pub async fn schedule_metrics_collection(
     cloudwatch_service: web::Data<Arc<CloudWatchService>>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let (profile, region, resource_type, resource_id) = path.into_inner();
+    let (_profile, _region, resource_type, resource_id) = path.into_inner();
     let body = req.into_inner();
     
     // Get interval in seconds
@@ -525,10 +525,12 @@ pub async fn schedule_metrics_collection(
         .and_then(|v| v.as_str())
         .map(String::from);
     
-    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
-    
     // Create a request with relative time (it will be recalculated at each run)
     let now = Utc::now();
+    
+    // Clone the values before moving them to prevent the "move" error
+    let resource_id_clone = resource_id.clone();
+    let resource_type_clone = resource_type.clone();
     
     let request = CloudWatchMetricsRequest {
         resource_id,
@@ -549,8 +551,8 @@ pub async fn schedule_metrics_collection(
         "message": "Scheduled metrics collection",
         "job_id": job_id,
         "interval_seconds": interval_seconds,
-        "resource_id": resource_id,
-        "resource_type": resource_type
+        "resource_id": resource_id_clone,
+        "resource_type": resource_type_clone
     })))
 }
 

@@ -10,6 +10,8 @@ pub struct Config {
     pub auth: AuthConfig,
     pub cloud: CloudConfig,
     pub ai: AIConfig,
+    pub security: SecurityConfig,
+    pub kubernetes: KubernetesConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,6 +83,7 @@ pub struct AuthConfig {
     pub enable_token_auth: bool,
     pub enable_saml: bool,
     pub saml_metadata_url: Option<String>,
+    pub encryption_key: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -117,6 +120,26 @@ pub struct AIConfig {
     pub endpoint: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SecurityConfig {
+    pub encryption_key: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KubernetesConfig {
+    pub clusters: Vec<KubernetesClusterConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KubernetesClusterConfig {
+    pub name: String,
+    pub context: String,
+    pub config_path: Option<String>,
+    pub api_url: Option<String>,
+    pub ca_cert: Option<String>,
+    pub token: Option<String>,
+}
+
 pub fn load_config() -> Result<Config, Box<dyn Error>> {
     // Load .env file if it exists
     dotenv::dotenv().ok();
@@ -132,7 +155,12 @@ pub fn load_config() -> Result<Config, Box<dyn Error>> {
         .add_source(Environment::with_prefix("MAYYAM").separator("__"))
         .build()?;
         
-    let config: Config = config.try_deserialize()?;
+    let mut config: Config = config.try_deserialize()?;
+    
+    // Ensure kubernetes configuration exists even if not in config file
+    if config.kubernetes.clusters.is_empty() {
+        println!("Warning: No Kubernetes clusters configured. Add them to your config file.");
+    }
     
     Ok(config)
 }

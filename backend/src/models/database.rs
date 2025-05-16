@@ -1,6 +1,7 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Deserialize, Serialize)]
 #[sea_orm(table_name = "database_connections")]
@@ -232,4 +233,23 @@ pub struct ConnectionStats {
     pub ssl_in_use: bool,
     pub server_encoding: String,
     pub server_version: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct StorageMetrics {
+    pub total_bytes: i64,
+    pub user_data_bytes: i64,
+    pub index_bytes: i64,
+    pub free_space_bytes: i64,
+    pub growth_rate: f64, // Daily growth rate as a decimal (e.g., 0.02 for 2%)
+    pub estimate_days_until_full: Option<f64>,
+    pub top_tables_by_size: HashMap<String, i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ComputeMetrics {
+    pub cpu_usage: f64, // Estimated CPU usage as a decimal (e.g., 2.5 for 2.5 vCPUs)
+    pub memory_usage_bytes: i64,
+    pub active_connections: i32,
+    pub uptime_seconds: f64,
 }

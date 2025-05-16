@@ -1,16 +1,13 @@
 use actix_web::{
-    dev::{Service, ServiceRequest, ServiceResponse, Transform},
-    error::{InternalError, Error},
-    http::{header::{HeaderValue, AUTHORIZATION}, StatusCode},
-    HttpMessage, HttpResponse, web,
+    dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
+    error::Error,
+    HttpMessage,
 };
 use futures_util::future::{ready, Ready, LocalBoxFuture};
 use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm, EncodingKey, encode, Header};
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc, Duration};
-use std::rc::Rc;
-use std::task::{Context, Poll};
-use tracing::{info, error, warn};
+use chrono::{Utc, Duration};
+use tracing::error;
 
 use crate::config::Config;
 use crate::errors::AppError;
@@ -173,13 +170,13 @@ pub fn generate_token(
     )
     .map_err(|e| {
         error!("Failed to generate JWT token: {}", e);
-        AppError::InternalServerError("Failed to generate authentication token".to_string())
+        AppError::Internal("Failed to generate authentication token".to_string())
     })
 }
 
 pub fn validate_token(token: &str, config: &Config) -> Result<Claims, AppError> {
     let jwt_secret = &config.auth.jwt_secret;
-    let mut validation = Validation::new(Algorithm::HS256);
+    let validation = Validation::new(Algorithm::HS256);
     
     let token_data = decode::<Claims>(
         token,
@@ -188,7 +185,7 @@ pub fn validate_token(token: &str, config: &Config) -> Result<Claims, AppError> 
     )
     .map_err(|e| {
         error!("JWT validation error: {}", e);
-        AppError::Unauthorized("Invalid token".to_string())
+        AppError::Auth("Invalid token".to_string())
     })?;
     
     Ok(token_data.claims)

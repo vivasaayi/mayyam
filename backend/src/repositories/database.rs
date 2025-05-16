@@ -1,12 +1,12 @@
 use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, Set, ActiveModelTrait};
 use uuid::Uuid;
 use chrono::Utc;
-use tracing::{info, error};
 use aes_gcm::{
     Aes256Gcm,
-    aead::{Aead, KeyInit, OsRng},
+    aead::{Aead, KeyInit},
     Nonce
 };
+use rand::{rngs::OsRng, RngCore};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 
 use crate::models::database::{self, Entity as DbConnection, Model as DbConnectionModel, ActiveModel as DbConnectionActiveModel};
@@ -115,7 +115,7 @@ impl DatabaseRepository {
         // Encrypt password if provided
         let encrypted_password = match &connection_data.password {
             Some(pwd) if !pwd.is_empty() => Some(self.encrypt_password(pwd)?),
-            _ => connection.password_encrypted,
+            _ => connection.password_encrypted.clone(),
         };
         
         let mut conn_active: DbConnectionActiveModel = connection.into();
@@ -171,20 +171,21 @@ impl DatabaseRepository {
     fn encrypt_password(&self, password: &str) -> Result<String, AppError> {
         let encryption_key = self.config.security.encryption_key.as_bytes();
         if encryption_key.len() != 32 {
-            return Err(AppError::ConfigurationError("Invalid encryption key length".to_string()));
+            return Err(AppError::Config("Invalid encryption key length".to_string()));
         }
         
         // Create cipher
         let cipher = Aes256Gcm::new_from_slice(encryption_key)
-            .map_err(|e| AppError::InternalServerError(format!("Encryption error: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Encryption error: {}", e)))?;
         
         // Generate random nonce
-        let nonce_bytes = Aes256Gcm::generate_nonce(&mut OsRng);
+        let mut nonce_bytes = [0u8; 12]; // AES-GCM uses 12-byte nonces
+        OsRng.fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from_slice(&nonce_bytes);
         
         // Encrypt
         let ciphertext = cipher.encrypt(nonce, password.as_bytes())
-            .map_err(|e| AppError::InternalServerError(format!("Encryption error: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Encryption error: {}", e)))?;
         
         // Combine nonce + ciphertext and encode with base64
         let mut combined = nonce_bytes.to_vec();
@@ -197,15 +198,15 @@ impl DatabaseRepository {
     pub fn decrypt_password(&self, encrypted: &str) -> Result<String, AppError> {
         let encryption_key = self.config.security.encryption_key.as_bytes();
         if encryption_key.len() != 32 {
-            return Err(AppError::ConfigurationError("Invalid encryption key length".to_string()));
+            return Err(AppError::Config("Invalid encryption key length".to_string()));
         }
         
         // Decode base64
         let data = BASE64.decode(encrypted)
-            .map_err(|e| AppError::InternalServerError(format!("Base64 decoding error: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Base64 decoding error: {}", e)))?;
         
         if data.len() < 12 { // nonce is 12 bytes
-            return Err(AppError::InternalServerError("Invalid encrypted data".to_string()));
+            return Err(AppError::Internal("Invalid encrypted data".to_string()));
         }
         
         // Split nonce and ciphertext
@@ -214,13 +215,13 @@ impl DatabaseRepository {
         
         // Create cipher
         let cipher = Aes256Gcm::new_from_slice(encryption_key)
-            .map_err(|e| AppError::InternalServerError(format!("Encryption error: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Encryption error: {}", e)))?;
         
         // Decrypt
         let plaintext = cipher.decrypt(nonce, ciphertext)
-            .map_err(|e| AppError::InternalServerError(format!("Decryption error: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Decryption error: {}", e)))?;
         
         String::from_utf8(plaintext)
-            .map_err(|e| AppError::InternalServerError(format!("UTF-8 decoding error: {}", e)))
+            .map_err(|e| AppError::Internal(format!("UTF-8 decoding error: {}", e)))
     }
 }

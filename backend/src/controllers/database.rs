@@ -1,13 +1,10 @@
 use actix_web::{web, HttpResponse, Responder};
 use sea_orm::DatabaseConnection;
-use serde_json::Value;
-use tracing::{info, warn, error};
 
 use crate::config::Config;
 use crate::errors::AppError;
 use crate::models::database::{
-    DatabaseQueryRequest, DatabaseQueryResponse, DatabaseAnalysis,
-    CreateDatabaseConnectionRequest, ConnectionTestResult
+    DatabaseQueryRequest, CreateDatabaseConnectionRequest
 };
 use crate::services::database::DatabaseService;
 use crate::repositories::database::DatabaseRepository;
@@ -17,7 +14,7 @@ pub async fn execute_query(
     query_req: web::Json<DatabaseQueryRequest>,
     db_pool: web::Data<DatabaseConnection>,
     config: web::Data<Config>,
-    claims: web::ReqData<Claims>,
+    _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let db_service = DatabaseService::new(config.get_ref().clone());
     let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
@@ -40,17 +37,20 @@ pub async fn analyze_database(
     path: web::Path<String>,
     db_pool: web::Data<DatabaseConnection>,
     config: web::Data<Config>,
-    claims: web::ReqData<Claims>,
+    _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let db_service = DatabaseService::new(config.get_ref().clone());
     let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
 
-    // Get the database connection details
-    let conn = db_repo.find_by_id(&path.into_inner()).await?
+    // Get the database connection details to check if it exists
+    let conn_model = db_repo.find_by_id(&path.into_inner()).await?
         .ok_or_else(|| AppError::NotFound("Database connection not found".to_string()))?;
+    
+    // Log that we're analyzing the connection for debugging purposes
+    tracing::info!("Analyzing database connection: {}", conn_model.name);
 
-    // Perform comprehensive database analysis
-    let analysis = db_service.analyze_database(db_pool.as_ref()).await?;
+    // Use the new analyze_connection method
+    let analysis = db_service.analyze_connection(&conn_model).await?;
 
     Ok(HttpResponse::Ok().json(analysis))
 }
@@ -58,7 +58,7 @@ pub async fn analyze_database(
 pub async fn list_connections(
     db_pool: web::Data<DatabaseConnection>,
     config: web::Data<Config>,
-    claims: web::ReqData<Claims>,
+    _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
     let connections = db_repo.find_all().await?;
@@ -70,7 +70,7 @@ pub async fn get_connection(
     path: web::Path<String>,
     db_pool: web::Data<DatabaseConnection>,
     config: web::Data<Config>,
-    claims: web::ReqData<Claims>,
+    _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
     
@@ -99,7 +99,7 @@ pub async fn update_connection(
     connection: web::Json<CreateDatabaseConnectionRequest>,
     db_pool: web::Data<DatabaseConnection>,
     config: web::Data<Config>,
-    claims: web::ReqData<Claims>,
+    _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
     
@@ -113,7 +113,7 @@ pub async fn delete_connection(
     path: web::Path<String>,
     db_pool: web::Data<DatabaseConnection>,
     config: web::Data<Config>,
-    claims: web::ReqData<Claims>,
+    _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
     
@@ -127,7 +127,7 @@ pub async fn test_connection(
     path: web::Path<String>,
     db_pool: web::Data<DatabaseConnection>,
     config: web::Data<Config>,
-    claims: web::ReqData<Claims>,
+    _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let db_service = DatabaseService::new(config.get_ref().clone());
     let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
@@ -146,7 +146,7 @@ pub async fn get_schema(
     path: web::Path<String>,
     db_pool: web::Data<DatabaseConnection>,
     config: web::Data<Config>,
-    claims: web::ReqData<Claims>,
+    _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let db_service = DatabaseService::new(config.get_ref().clone());
     let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());

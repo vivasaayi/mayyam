@@ -9,7 +9,7 @@ pub struct Model {
     pub id: String,
     pub name: String,
     pub cluster_type: String, // kafka, kubernetes, aws, azure, etc.
-    #[sea_orm(column_type = "JsonBinary")]
+    #[sea_orm(column_type = "Json")]
     pub config: Json,
     pub created_by: String,
     pub created_at: DateTime<Utc>,

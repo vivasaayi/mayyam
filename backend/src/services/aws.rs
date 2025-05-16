@@ -4,7 +4,6 @@ use tracing::{info, error, debug};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use chrono::{Utc, DateTime};
-use aws_config::BehaviorVersion;
 use aws_sdk_ec2::Client as Ec2Client;
 use aws_sdk_s3::Client as S3Client;
 use aws_sdk_rds::Client as RdsClient;
@@ -219,7 +218,7 @@ impl AwsService {
                 .cloned(),
             None => aws_configs.first().cloned(),
         }.ok_or_else(|| {
-            AppError::Configuration(format!("AWS configuration not found for profile: {:?}", profile))
+            AppError::Config(format!("AWS configuration not found for profile: {:?}", profile))
         })?;
         
         Ok(aws_config)
@@ -229,23 +228,21 @@ impl AwsService {
     pub async fn load_aws_sdk_config(&self, profile: Option<&str>, region: &str) -> Result<aws_config::SdkConfig, AppError> {
         let aws_config = self.get_aws_config(profile, region).await?;
         
-        let config_builder = aws_config::defaults(BehaviorVersion::latest())
+        let config_builder = aws_config::from_env()
             .region(aws_types::region::Region::new(region.to_string()));
         
         // Apply credentials based on configuration
         let config = if let (Some(access_key), Some(secret_key)) = (&aws_config.access_key_id, &aws_config.secret_access_key) {
             // Use API key authentication
-            let creds = aws_config::CredentialsProvider::new(
-                aws_types::Credentials::new(
-                    access_key, 
-                    secret_key, 
-                    None, 
-                    None, 
-                    "mayyam",
-                )
+            let credentials_provider = aws_sdk_s3::config::Credentials::new(
+                access_key, 
+                secret_key,
+                None,
+                None,
+                "static-credentials"
             );
-            config_builder.credentials_provider(creds).load().await
-        } else if let Some(profile_name) = aws_config.profile {
+            config_builder.credentials_provider(credentials_provider).load().await
+        } else if let Some(profile_name) = &aws_config.profile {
             // Use named profile
             let provider = aws_config::profile::ProfileFileCredentialsProvider::builder()
                 .profile_name(profile_name)
@@ -604,7 +601,7 @@ impl AwsControlPlane {
                         details: None,
                     });
                     total_resources += instances.len();
-                    Ok(())
+                    Ok(()) as Result<(), AppError>
                 },
                 "S3Bucket" => {
                     let buckets = self.sync_s3_buckets(account_id, profile, region).await?;
@@ -615,7 +612,7 @@ impl AwsControlPlane {
                         details: None,
                     });
                     total_resources += buckets.len();
-                    Ok(())
+                    Ok(()) as Result<(), AppError>
                 },
                 "RdsInstance" => {
                     let instances = self.sync_rds_instances(account_id, profile, region).await?;
@@ -626,7 +623,7 @@ impl AwsControlPlane {
                         details: None,
                     });
                     total_resources += instances.len();
-                    Ok(())
+                    Ok(()) as Result<(), AppError>
                 },
                 "DynamoDbTable" => {
                     let tables = self.sync_dynamodb_tables(account_id, profile, region).await?;
@@ -637,7 +634,7 @@ impl AwsControlPlane {
                         details: None,
                     });
                     total_resources += tables.len();
-                    Ok(())
+                    Ok(()) as Result<(), AppError>
                 },
                 "ElasticacheCluster" => {
                     // Create a CloudWatchService and use it to sync ElastiCache clusters
@@ -650,7 +647,7 @@ impl AwsControlPlane {
                         details: None,
                     });
                     total_resources += clusters.len();
-                    Ok(())
+                    Ok(()) as Result<(), AppError>
                 },
                 _ => {
                     summary.push(ResourceTypeSyncSummary {
@@ -659,7 +656,7 @@ impl AwsControlPlane {
                         status: "skipped".to_string(),
                         details: Some("Resource type not supported".to_string()),
                     });
-                    Ok(())
+                    Ok(()) as Result<(), AppError>
                 },
             };
             
@@ -1184,20 +1181,20 @@ impl CloudWatchService {
         
         // Create directory structure
         create_dir_all(&export_dir)
-            .map_err(|e| AppError::IO(format!("Failed to create export directory: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Failed to create export directory: {}", e)))?;
         
         let file_name = format!("metrics_{}.json", now.format("%H%M%S"));
         let file_path = export_dir.join(&file_name);
         
         // Create and write to file
         let mut file = File::create(&file_path)
-            .map_err(|e| AppError::IO(format!("Failed to create metrics file: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Failed to create metrics file: {}", e)))?;
         
         let json = serde_json::to_string_pretty(metrics)
-            .map_err(|e| AppError::Serialization(format!("Failed to serialize metrics: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Failed to serialize metrics: {}", e)))?;
         
         file.write_all(json.as_bytes())
-            .map_err(|e| AppError::IO(format!("Failed to write metrics to file: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Failed to write metrics to file: {}", e)))?;
         
         info!("Exported metrics to file: {:?}", file_path);
         
@@ -1320,20 +1317,20 @@ impl CloudWatchService {
         
         // Create directory structure
         create_dir_all(&export_dir)
-            .map_err(|e| AppError::IO(format!("Failed to create export directory: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Failed to create export directory: {}", e)))?;
         
         let file_name = format!("logs_{}.json", now.format("%H%M%S"));
         let file_path = export_dir.join(&file_name);
         
         // Create and write to file
         let mut file = File::create(&file_path)
-            .map_err(|e| AppError::IO(format!("Failed to create logs file: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Failed to create logs file: {}", e)))?;
         
         let json = serde_json::to_string_pretty(events)
-            .map_err(|e| AppError::Serialization(format!("Failed to serialize logs: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Failed to serialize logs: {}", e)))?;
         
         file.write_all(json.as_bytes())
-            .map_err(|e| AppError::IO(format!("Failed to write logs to file: {}", e)))?;
+            .map_err(|e| AppError::Internal(format!("Failed to write logs to file: {}", e)))?;
         
         info!("Exported logs to file: {:?}", file_path);
         
