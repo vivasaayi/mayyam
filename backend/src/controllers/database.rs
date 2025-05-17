@@ -20,7 +20,9 @@ pub async fn execute_query(
     let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
 
     // Get the database connection details
-    let conn = db_repo.find_by_id(&query_req.connection_id).await?
+    let conn_id = uuid::Uuid::parse_str(&query_req.connection_id)
+        .map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let conn = db_repo.find_by_id(conn_id).await?
         .ok_or_else(|| AppError::NotFound(format!("Database connection not found: {}", query_req.connection_id)))?;
 
     // Execute the query with analysis if requested
@@ -43,7 +45,9 @@ pub async fn analyze_database(
     let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
 
     // Get the database connection details to check if it exists
-    let conn_model = db_repo.find_by_id(&path.into_inner()).await?
+    let conn_id = uuid::Uuid::parse_str(&path.into_inner())
+        .map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let conn_model = db_repo.find_by_id(conn_id).await?
         .ok_or_else(|| AppError::NotFound("Database connection not found".to_string()))?;
     
     // Log that we're analyzing the connection for debugging purposes
@@ -74,7 +78,9 @@ pub async fn get_connection(
 ) -> Result<impl Responder, AppError> {
     let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
     
-    let connection = db_repo.find_by_id(&path.into_inner()).await?
+    let conn_id = uuid::Uuid::parse_str(&path.into_inner())
+        .map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let connection = db_repo.find_by_id(conn_id).await?
         .ok_or_else(|| AppError::NotFound("Database connection not found".to_string()))?;
     
     Ok(HttpResponse::Ok().json(connection))
@@ -89,7 +95,9 @@ pub async fn create_connection(
     let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
     
     // Create the database connection
-    let new_connection = db_repo.create(&connection, &claims.sub).await?;
+    let user_id = uuid::Uuid::parse_str(&claims.sub)
+        .map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let new_connection = db_repo.create(&connection, user_id).await?;
     
     Ok(HttpResponse::Created().json(new_connection))
 }
@@ -104,7 +112,9 @@ pub async fn update_connection(
     let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
     
     // Update the database connection
-    let updated_connection = db_repo.update(&path.into_inner(), &connection).await?;
+    let conn_id = uuid::Uuid::parse_str(&path.into_inner())
+        .map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let updated_connection = db_repo.update(conn_id, &connection).await?;
     
     Ok(HttpResponse::Ok().json(updated_connection))
 }
@@ -118,7 +128,9 @@ pub async fn delete_connection(
     let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
     
     // Delete the database connection
-    db_repo.delete(&path.into_inner()).await?;
+    let conn_id = uuid::Uuid::parse_str(&path.into_inner())
+        .map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    db_repo.delete(conn_id).await?;
     
     Ok(HttpResponse::NoContent().finish())
 }
@@ -133,7 +145,9 @@ pub async fn test_connection(
     let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
 
     // Get the database connection details
-    let conn = db_repo.find_by_id(&path.into_inner()).await?
+    let conn_id = uuid::Uuid::parse_str(&path.into_inner())
+        .map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let conn = db_repo.find_by_id(conn_id).await?
         .ok_or_else(|| AppError::NotFound("Database connection not found".to_string()))?;
 
     // Test the connection
@@ -152,7 +166,9 @@ pub async fn get_schema(
     let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
 
     // Get the database connection details
-    let conn = db_repo.find_by_id(&path.into_inner()).await?
+    let conn_id = uuid::Uuid::parse_str(&path.into_inner())
+        .map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let conn = db_repo.find_by_id(conn_id).await?
         .ok_or_else(|| AppError::NotFound("Database connection not found".to_string()))?;
 
     // Get the database schema

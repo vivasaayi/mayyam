@@ -11,6 +11,10 @@ $danger: #e55353;
 // Import CoreUI styles
 @import "~@coreui/coreui/scss/coreui";
 
+// Import custom component styles
+@import "./workflow-grid.scss";
+@import "./analysis.scss";
+
 // Custom styles
 .app-container {
   display: flex;
@@ -69,5 +73,461 @@ $danger: #e55353;
   .sidebar {
     position: fixed;
     z-index: 1030;
+  }
+}
+
+// Analysis UI styles
+.analysis-content {
+  h1, h2, h3 {
+    margin-top: 1.5rem;
+    margin-bottom: 1rem;
+  }
+  
+  h1:first-child {
+    margin-top: 0;
+  }
+  
+  ul, ol {
+    margin-bottom: 1rem;
+  }
+  
+  // Tables in markdown
+  table {
+    width: 100%;
+    margin-bottom: 1rem;
+    border-collapse: collapse;
+    
+    th, td {
+      padding: 0.5rem;
+      border: 1px solid #dee2e6;
+    }
+    
+    th {
+      background-color: #f8f9fa;
+    }
+    
+    tr:nth-child(even) {
+      background-color: #f9f9f9;
+    }
+  }
+}
+
+// Question history styling
+.question-history {
+  .question-path {
+    font-size: 0.9rem;
+    
+    .breadcrumb-item {
+      max-width: 200px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+}
+
+// Related questions styling
+.related-questions-card {
+  .follow-up-question {
+    transition: all 0.2s ease;
+    cursor: pointer;
+    
+    &:hover {
+      background-color: #f8f9fa;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    
+    .question-icon {
+      width: 40px;
+      height: 40px;
+      background-color: rgba($primary, 0.1);
+      border-radius: 50%;
+    }
+  }
+}
+
+// Related questions grid styling
+.related-questions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 1rem;
+  
+  .related-question-card {
+    height: 100%;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    
+    &:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    
+    .card-body {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      
+      h6 {
+        margin-bottom: auto;
+        padding-bottom: 0.75rem;
+      }
+    }
+  }
+}
+
+// Related questions panel with visual flow
+.related-questions-panel {
+  margin-top: 1.5rem;
+  
+  .related-questions-flow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    
+    .question-card {
+      flex: 1 1 300px;
+      position: relative;
+      padding: 1.25rem;
+      border: 1px solid #dee2e6;
+      border-radius: 0.5rem;
+      background-color: #fff;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      flex-direction: column;
+      
+      &:hover {
+        background-color: #f8f9fa;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        border-color: $primary;
+      }
+      
+      .question-number {
+        position: absolute;
+        top: -10px;
+        left: -10px;
+        width: 30px;
+        height: 30px;
+        background-color: $primary;
+        color: #fff;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        z-index: 1;
+      }
+      
+      .question-text {
+        font-size: 1rem;
+        margin-bottom: 1rem;
+        flex: 1;
+      }
+      
+      .question-action {
+        align-self: flex-end;
+        text-align: center;
+      }
+      
+      .question-arrow {
+        position: absolute;
+        right: -8px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: $primary;
+        font-size: 1.2rem;
+        z-index: 1;
+        
+        @include media-breakpoint-down(md) {
+          display: none;
+        }
+      }
+      
+      &:last-child {
+        .question-arrow {
+          display: none;
+        }
+      }
+    }
+  }
+}
+
+// Analysis history flow styling
+.analysis-flow-chart {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1rem 0;
+  
+  .analysis-node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 400px;
+    margin-bottom: 1rem;
+    position: relative;
+    
+    .node-number {
+      width: 30px;
+      height: 30px;
+      background-color: $primary;
+      color: #fff;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+    }
+    
+    .node-content {
+      width: 100%;
+      padding: 1rem;
+      border: 1px solid #dee2e6;
+      border-radius: 0.5rem;
+      background-color: #fff;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      
+      &:hover {
+        background-color: #f8f9fa;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      }
+      
+      .node-title {
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+      }
+      
+      .node-timestamp {
+        font-size: 0.8rem;
+        color: $text-muted;
+      }
+    }
+    
+    .node-connector {
+      height: 30px;
+      margin-top: 0.5rem;
+      color: $primary;
+      
+      .fa-arrow-down {
+        animation: pulse 1.5s infinite;
+      }
+    }
+    
+    &.active {
+      .node-content {
+        border-color: $primary;
+        background-color: rgba($primary, 0.05);
+        box-shadow: 0 0 0 2px rgba($primary, 0.25);
+      }
+    }
+  }
+}
+
+@keyframes pulse {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(5px);
+    opacity: 0.7;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+// 5-Why Summary styling
+// Add proper cursor style for clickable elements
+.cursor-pointer {
+  cursor: pointer !important;
+}
+
+.five-why-summary {
+  .summary-journey {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+    
+    .journey-start, .journey-end {
+      flex: 1;
+      padding: 1rem;
+      border-radius: 0.5rem;
+      
+      h6 {
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+      }
+      
+      p {
+        margin-bottom: 0;
+      }
+    }
+    
+    .journey-start {
+      background-color: rgba($warning, 0.1);
+      border-left: 4px solid $warning;
+    }
+    
+    .journey-end {
+      background-color: rgba($success, 0.1);
+      border-left: 4px solid $success;
+    }
+    
+    .journey-path {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0 1rem;
+      color: $primary;
+      
+      i {
+        font-size: 1.2rem;
+      }
+    }
+  }
+  
+  .analysis-timeline {
+    .timeline-container {
+      position: relative;
+      padding-left: 30px;
+      margin-bottom: 2rem;
+      
+      &:before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 15px;
+        width: 2px;
+        height: 100%;
+        background-color: #e9ecef;
+      }
+    }
+    
+    .timeline-item {
+      position: relative;
+      margin-bottom: 1.5rem;
+      
+      .timeline-marker {
+        position: absolute;
+        left: -30px;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background-color: $primary;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        z-index: 2;
+      }
+      
+      .timeline-content {
+        background-color: white;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        border-left: 3px solid $primary;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        
+        h6 {
+          margin-bottom: 0.5rem;
+          color: $primary;
+        }
+      }
+    }
+  }
+  
+  .summary-actions {
+    background-color: #f8f9fa;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    
+    h6 {
+      font-weight: 600;
+      margin-bottom: 1rem;
+    }
+    
+    ul {
+      margin-bottom: 1.5rem;
+    }
+  }
+}
+
+// Analysis card styling
+.analysis-card {
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+  
+  .card-header {
+    background-color: #f8f9fa;
+  }
+  
+  // Highlight blocks in the analysis
+  blockquote {
+    padding: 0.75rem;
+    border-left: 4px solid $primary;
+    background-color: rgba($primary, 0.05);
+    margin-bottom: 1rem;
+  }
+  
+  // Code blocks
+  pre {
+    background-color: #f8f9fa;
+    padding: 1rem;
+    border-radius: 0.25rem;
+    overflow-x: auto;
+  }
+}
+
+// Five why progress styling
+.five-why-progress {
+  .progress-step {
+    position: absolute;
+    transform: translateX(-50%);
+    text-align: center;
+    
+    .step-number {
+      width: 25px;
+      height: 25px;
+      border-radius: 50%;
+      background-color: #f8f9fa;
+      border: 2px solid #dee2e6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto;
+      font-weight: bold;
+      font-size: 0.8rem;
+      transition: all 0.3s ease;
+    }
+    
+    .step-label {
+      font-size: 0.75rem;
+      color: $text-muted;
+      margin-top: 0.25rem;
+      white-space: nowrap;
+    }
+    
+    &.active {
+      .step-number {
+        background-color: $primary;
+        border-color: $primary;
+        color: white;
+      }
+      
+      .step-label {
+        color: $primary;
+        font-weight: 500;
+      }
+    }
   }
 }

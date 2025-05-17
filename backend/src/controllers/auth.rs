@@ -4,7 +4,8 @@ use std::sync::Arc;
 use chrono::{Utc, Duration};
 use jsonwebtoken::{encode, Header, EncodingKey};
 
-use crate::models::user::{CreateUserDto, LoginUserDto, AuthTokenResponse, UserResponse, Claims};
+use crate::models::user::{CreateUserDto, LoginUserDto, AuthTokenResponse, UserResponse};
+use crate::middleware::auth::Claims;
 use crate::services::user::UserService;
 use crate::config::Config;
 use crate::errors::AppError;
@@ -31,10 +32,10 @@ impl AuthController {
         let expiration = now + Duration::seconds(self.config.auth.jwt_expiration as i64);
         
         let claims = Claims {
-            sub: user.id,
+            sub: user.id.to_string(),
             username: user.username.clone(),
-            permissions: user.permissions.clone(),
-            is_admin: user.is_admin,
+            email: Some(user.email.clone()),
+            roles: user.permissions.clone(),
             exp: expiration.timestamp(),
             iat: now.timestamp(),
         };

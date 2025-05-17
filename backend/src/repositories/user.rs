@@ -67,11 +67,10 @@ impl UserRepository {
             password_hash: Set(password_hash),
             first_name: Set(user_data.first_name.clone()),
             last_name: Set(user_data.last_name.clone()),
-            is_active: Set(true),
-            is_admin: Set(user_data.is_admin.unwrap_or(false)),
-            permissions: Set(user_data.permissions.clone().unwrap_or_else(|| vec!["user".to_string()])),
-            created_at: Set(Utc::now().naive_utc()),
-            updated_at: Set(Utc::now().naive_utc()),
+            active: Set(true),
+            roles: Set("".to_string()),
+            created_at: Set(Utc::now()),
+            updated_at: Set(Utc::now()),
             last_login: Set(None),
         };
         
@@ -94,10 +93,20 @@ impl UserRepository {
         if is_valid {
             // Update last login time
             let mut user_active: UserActiveModel = user.clone().into();
-            user_active.last_login = Set(Some(Utc::now().naive_utc()));
-            user_active.updated_at = Set(Utc::now().naive_utc());
+            user_active.last_login = Set(Some(Utc::now()));
+            user_active.updated_at = Set(Utc::now());
             
             let updated_user = user_active.update(&self.db).await.map_err(AppError::Database)?;
+            
+            // Convert roles string to permissions array if needed
+            if updated_user.permissions.is_empty() && !updated_user.roles.is_empty() {
+                let roles: Vec<String> = updated_user.roles.split(',').map(|s| s.trim().to_string()).collect();
+                // We can't update permissions here directly, so we'll return the user with converted roles
+                return Ok(Some(UserModel {
+                    permissions: roles,
+                    ..updated_user
+                }));
+            }
             
             Ok(Some(updated_user))
         } else {
@@ -137,18 +146,10 @@ impl UserRepository {
         }
         
         if let Some(is_active) = user_data.is_active {
-            user_active.is_active = Set(is_active);
+            user_active.active = Set(is_active);
         }
         
-        if let Some(is_admin) = user_data.is_admin {
-            user_active.is_admin = Set(is_admin);
-        }
-        
-        if let Some(permissions) = &user_data.permissions {
-            user_active.permissions = Set(permissions.clone());
-        }
-        
-        user_active.updated_at = Set(Utc::now().naive_utc());
+        user_active.updated_at = Set(Utc::now());
         
         let updated_user = user_active.update(&self.db).await.map_err(AppError::Database)?;
         

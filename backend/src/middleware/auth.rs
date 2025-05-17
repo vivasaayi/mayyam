@@ -106,9 +106,9 @@ where
                     ) {
                         Ok(data) => data,
                         Err(err) => {
-                            error!("JWT validation error: {:?}", err);
+                            error!("JWT validation error for path {}: {:?}", path, err);
                             return Box::pin(async move {
-                                Err(AppError::Auth("Invalid token".to_string()).into())
+                                Err(AppError::Auth(format!("Invalid token: {}", err)).into())
                             });
                         }
                     };
@@ -116,6 +116,7 @@ where
                     // Check token expiration
                     let now = Utc::now().timestamp();
                     if token_data.claims.exp < now {
+                        error!("Token expired for path {}: exp={}, now={}", path, token_data.claims.exp, now);
                         return Box::pin(async move {
                             Err(AppError::Auth("Token expired".to_string()).into())
                         });

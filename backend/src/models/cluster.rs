@@ -1,17 +1,18 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Deserialize, Serialize)]
 #[sea_orm(table_name = "clusters")]
 pub struct Model {
     #[sea_orm(primary_key)]
-    pub id: String,
+    pub id: Uuid,
     pub name: String,
     pub cluster_type: String, // kafka, kubernetes, aws, azure, etc.
     #[sea_orm(column_type = "Json")]
     pub config: Json,
-    pub created_by: String,
+    pub created_by: Uuid,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub last_connected_at: Option<DateTime<Utc>>,

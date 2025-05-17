@@ -119,7 +119,8 @@ impl KafkaService {
     // Get a Kafka cluster configuration by ID or name
     pub async fn get_cluster(&self, id: &str, config: &crate::config::Config) -> Result<KafkaClusterConfig, AppError> {
         // First try to find as a stored cluster in the database
-        let stored_cluster = self.cluster_repository.find_by_id(id).await?;
+        let cluster_id = Uuid::parse_str(id).map_err(|e| AppError::Internal(format!("Invalid UUID: {}", e)))?;
+        let stored_cluster = self.cluster_repository.find_by_id(cluster_id).await?;
         if let Some(cluster) = stored_cluster {
             // Convert from stored cluster to KafkaClusterConfig
             // This would require appropriate conversions

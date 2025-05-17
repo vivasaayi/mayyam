@@ -31,9 +31,14 @@ const Login = () => {
     setIsLoading(true);
     
     try {
-      await login(username, password);
-      navigate("/dashboard");
+      const success = await login({ username, password });
+      if (success) {
+        navigate("/dashboard");
+      } else {
+        setError("Failed to login. Please check your credentials.");
+      }
     } catch (err) {
+      console.error("Login error:", err);
       setError(err.response?.data?.message || "Failed to login. Please check your credentials.");
     } finally {
       setIsLoading(false);

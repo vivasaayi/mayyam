@@ -23,7 +23,7 @@ impl DatabaseRepository {
         Self { db, config }
     }
 
-    pub async fn find_by_id(&self, id: &str) -> Result<Option<DbConnectionModel>, AppError> {
+    pub async fn find_by_id(&self, id: Uuid) -> Result<Option<DbConnectionModel>, AppError> {
         let connection = DbConnection::find_by_id(id)
             .one(&self.db)
             .await
@@ -61,7 +61,7 @@ impl DatabaseRepository {
         Ok(connections)
     }
     
-    pub async fn create(&self, connection_data: &database::CreateDatabaseConnectionRequest, user_id: &str) -> Result<DbConnectionModel, AppError> {
+    pub async fn create(&self, connection_data: &database::CreateDatabaseConnectionRequest, user_id: Uuid) -> Result<DbConnectionModel, AppError> {
         // Check if connection name already exists
         if let Some(_) = self.find_by_name(&connection_data.name).await? {
             return Err(AppError::Conflict(format!("Connection with name '{}' already exists", connection_data.name)));
@@ -77,7 +77,7 @@ impl DatabaseRepository {
         
         // Create new connection
         let connection = DbConnectionActiveModel {
-            id: Set(Uuid::new_v4().to_string()),
+            id: Set(Uuid::new_v4()),
             name: Set(connection_data.name.clone()),
             connection_type: Set(connection_data.connection_type.clone()),
             host: Set(connection_data.host.clone()),
@@ -87,7 +87,7 @@ impl DatabaseRepository {
             database_name: Set(connection_data.database_name.clone()),
             ssl_mode: Set(connection_data.ssl_mode.clone()),
             cluster_mode: Set(connection_data.cluster_mode),
-            created_by: Set(user_id.to_string()),
+            created_by: Set(user_id),
             created_at: Set(now),
             updated_at: Set(now),
             last_connected_at: Set(None),
@@ -99,7 +99,7 @@ impl DatabaseRepository {
         Ok(connection)
     }
     
-    pub async fn update(&self, id: &str, connection_data: &database::CreateDatabaseConnectionRequest) -> Result<DbConnectionModel, AppError> {
+    pub async fn update(&self, id: Uuid, connection_data: &database::CreateDatabaseConnectionRequest) -> Result<DbConnectionModel, AppError> {
         let connection = match self.find_by_id(id).await? {
             Some(conn) => conn,
             None => return Err(AppError::NotFound(format!("Database connection not found with ID: {}", id))),
@@ -135,7 +135,7 @@ impl DatabaseRepository {
         Ok(updated_conn)
     }
     
-    pub async fn delete(&self, id: &str) -> Result<(), AppError> {
+    pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         let connection = match self.find_by_id(id).await? {
             Some(conn) => conn,
             None => return Err(AppError::NotFound(format!("Database connection not found with ID: {}", id))),
@@ -147,7 +147,7 @@ impl DatabaseRepository {
         Ok(())
     }
     
-    pub async fn update_connection_status(&self, id: &str, status: &str) -> Result<DbConnectionModel, AppError> {
+    pub async fn update_connection_status(&self, id: Uuid, status: &str) -> Result<DbConnectionModel, AppError> {
         let connection = match self.find_by_id(id).await? {
             Some(conn) => conn,
             None => return Err(AppError::NotFound(format!("Database connection not found with ID: {}", id))),

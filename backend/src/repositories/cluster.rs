@@ -18,7 +18,7 @@ impl ClusterRepository {
         Self { db, config }
     }
 
-    pub async fn find_by_id(&self, id: &str) -> Result<Option<ClusterModel>, AppError> {
+    pub async fn find_by_id(&self, id: Uuid) -> Result<Option<ClusterModel>, AppError> {
         let cluster = Cluster::find_by_id(id)
             .one(&self.db)
             .await
@@ -74,11 +74,11 @@ impl ClusterRepository {
         let now = Utc::now();
         
         let cluster = ClusterActiveModel {
-            id: Set(Uuid::new_v4().to_string()),
+            id: Set(Uuid::new_v4()),
             name: Set(request.name.clone()),
             cluster_type: Set("kafka".to_string()),
             config: Set(config),
-            created_by: Set(user_id.to_string()),
+            created_by: Set(Uuid::parse_str(user_id).map_err(|e| AppError::Internal(format!("Invalid UUID: {}", e)))?),
             created_at: Set(now),
             updated_at: Set(now),
             last_connected_at: Set(None),
@@ -110,11 +110,11 @@ impl ClusterRepository {
         let now = Utc::now();
         
         let cluster = ClusterActiveModel {
-            id: Set(Uuid::new_v4().to_string()),
+            id: Set(Uuid::new_v4()),
             name: Set(request.name.clone()),
             cluster_type: Set("kubernetes".to_string()),
             config: Set(config),
-            created_by: Set(user_id.to_string()),
+            created_by: Set(Uuid::parse_str(user_id).map_err(|e| AppError::Internal(format!("Invalid UUID: {}", e)))?),
             created_at: Set(now),
             updated_at: Set(now),
             last_connected_at: Set(None),
@@ -141,11 +141,11 @@ impl ClusterRepository {
         let now = Utc::now();
         
         let cluster = ClusterActiveModel {
-            id: Set(Uuid::new_v4().to_string()),
+            id: Set(Uuid::new_v4()),
             name: Set(request.name.clone()),
             cluster_type: Set(request.cloud_type.clone()),
             config: Set(request.config.clone()),
-            created_by: Set(user_id.to_string()),
+            created_by: Set(Uuid::parse_str(user_id).map_err(|e| AppError::Internal(format!("Invalid UUID: {}", e)))?),
             created_at: Set(now),
             updated_at: Set(now),
             last_connected_at: Set(None),
@@ -157,7 +157,7 @@ impl ClusterRepository {
         Ok(cluster)
     }
     
-    pub async fn update(&self, id: &str, name: &str, config: serde_json::Value) -> Result<ClusterModel, AppError> {
+    pub async fn update(&self, id: Uuid, name: &str, config: serde_json::Value) -> Result<ClusterModel, AppError> {
         let cluster = match self.find_by_id(id).await? {
             Some(cluster) => cluster,
             None => return Err(AppError::NotFound(format!("Cluster not found with ID: {}", id))),
@@ -180,7 +180,7 @@ impl ClusterRepository {
         Ok(updated_cluster)
     }
     
-    pub async fn delete(&self, id: &str) -> Result<(), AppError> {
+    pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         let cluster = match self.find_by_id(id).await? {
             Some(cluster) => cluster,
             None => return Err(AppError::NotFound(format!("Cluster not found with ID: {}", id))),
@@ -192,7 +192,7 @@ impl ClusterRepository {
         Ok(())
     }
     
-    pub async fn update_cluster_status(&self, id: &str, status: &str) -> Result<ClusterModel, AppError> {
+    pub async fn update_cluster_status(&self, id: Uuid, status: &str) -> Result<ClusterModel, AppError> {
         let cluster = match self.find_by_id(id).await? {
             Some(cluster) => cluster,
             None => return Err(AppError::NotFound(format!("Cluster not found with ID: {}", id))),

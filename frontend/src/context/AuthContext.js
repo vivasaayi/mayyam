@@ -29,6 +29,7 @@ export const AuthProvider = ({ children }) => {
             setToken(storedToken);
           } else {
             // Token expired, clean up
+            console.warn("Token has expired, logging out");
             logout();
           }
         } catch (error) {

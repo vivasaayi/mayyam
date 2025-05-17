@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::controllers::auth::AuthController;
 use crate::models::user::{LoginUserDto, CreateUserDto};
-use crate::models::user::Claims;
+use crate::middleware::auth::Claims;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LoginRequest {
@@ -90,10 +90,10 @@ async fn get_profile(
     if let Some(claims) = req.extensions().get::<Claims>().cloned() {
         // Create a user info response directly from claims
         let user_info = UserInfo {
-            id: claims.sub.to_string(),
+            id: claims.sub.clone(),
             username: claims.username,
-            email: String::new(), // Using empty string as we don't have email in these claims
-            roles: claims.permissions, // Using permissions as roles
+            email: claims.email.unwrap_or_else(|| String::new()),
+            roles: claims.roles, // Using roles from Claims
             first_name: None,
             last_name: None,
         };

@@ -2,12 +2,13 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
+use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Deserialize, Serialize)]
 #[sea_orm(table_name = "database_connections")]
 pub struct Model {
     #[sea_orm(primary_key)]
-    pub id: String,
+    pub id: Uuid,
     pub name: String,
     pub connection_type: String, // postgres, mysql, redis, opensearch
     pub host: String,
@@ -17,7 +18,7 @@ pub struct Model {
     pub database_name: Option<String>,
     pub ssl_mode: Option<String>,
     pub cluster_mode: Option<bool>,
-    pub created_by: String,
+    pub created_by: Uuid,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub last_connected_at: Option<DateTime<Utc>>,

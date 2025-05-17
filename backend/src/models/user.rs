@@ -1,7 +1,7 @@
 use sea_orm::{entity::prelude::*, ActiveValue};
 use sea_orm::ActiveValue::Set;
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc, NaiveDateTime};
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
@@ -16,16 +16,20 @@ pub struct Model {
     pub password_hash: String,
     pub first_name: Option<String>,
     pub last_name: Option<String>,
-    pub is_active: bool,
-    pub is_admin: bool,
-    #[sea_orm(column_type = "Json")]
+    pub active: bool, // Matches database schema 'active' column
+    #[sea_orm(column_type = "Text")]
+    pub roles: String, // Matches database schema 'roles' column
+    #[sea_orm(column_type = "TimestampWithTimeZone")]
+    pub created_at: DateTime<Utc>,
+    #[sea_orm(column_type = "TimestampWithTimeZone")]
+    pub updated_at: DateTime<Utc>,
+    #[sea_orm(column_type = "TimestampWithTimeZone", nullable)]
+    pub last_login: Option<DateTime<Utc>>,
+    
+    // Adding permissions as transient field derived from roles
+    #[sea_orm(ignore)]
+    #[serde(skip_deserializing)]
     pub permissions: Vec<String>,
-    #[sea_orm(column_type = "Timestamp")]
-    pub created_at: NaiveDateTime,
-    #[sea_orm(column_type = "Timestamp")]
-    pub updated_at: NaiveDateTime,
-    #[sea_orm(column_type = "Timestamp", nullable)]
-    pub last_login: Option<NaiveDateTime>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -106,8 +110,8 @@ pub struct UserResponse {
     pub is_active: bool,
     pub is_admin: bool,
     pub permissions: Vec<String>,
-    pub created_at: NaiveDateTime,
-    pub last_login: Option<NaiveDateTime>,
+    pub created_at: DateTime<Utc>,
+    pub last_login: Option<DateTime<Utc>>,
 }
 
 impl From<Model> for UserResponse {
@@ -118,8 +122,8 @@ impl From<Model> for UserResponse {
             email: user.email,
             first_name: user.first_name,
             last_name: user.last_name,
-            is_active: user.is_active,
-            is_admin: user.is_admin,
+            is_active: user.active,
+            is_admin: false,
             permissions: user.permissions,
             created_at: user.created_at,
             last_login: user.last_login,

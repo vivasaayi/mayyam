@@ -12,10 +12,12 @@ import {
   CNavTitle,
   CSidebarToggler
 } from "@coreui/react";
+import { Link } from "react-router-dom";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
+import { Outlet } from "react-router-dom";
 
-const AppLayout = ({ children }) => {
+const AppLayout = () => {
   const [sidebarVisible, setSidebarVisible] = React.useState(true);
   const { logout, user } = useAuth();
   const navigate = useNavigate();
@@ -34,28 +36,31 @@ const AppLayout = ({ children }) => {
         <CSidebarBrand>Mayyam</CSidebarBrand>
         <CSidebarNav>
           <CNavTitle>Features</CNavTitle>
-          <CNavItem href="/dashboard">
-            <CNavLink to="/dashboard">Dashboard</CNavLink>
+          <CNavItem>
+            <Link to="/dashboard" className="nav-link">Dashboard</Link>
           </CNavItem>
-          <CNavItem href="/databases">
-            <CNavLink to="/databases">Databases</CNavLink>
+          <CNavItem>
+            <Link to="/databases" className="nav-link">Databases</Link>
           </CNavItem>
-          <CNavItem href="/kafka">
-            <CNavLink to="/kafka">Kafka</CNavLink>
+          <CNavItem>
+            <Link to="/kafka" className="nav-link">Kafka</Link>
           </CNavItem>
-          <CNavItem href="/cloud">
-            <CNavLink to="/cloud">Cloud</CNavLink>
+          <CNavItem>
+            <Link to="/cloud" className="nav-link">Cloud</Link>
           </CNavItem>
-          <CNavItem href="/kubernetes">
-            <CNavLink to="/kubernetes">Kubernetes</CNavLink>
+          <CNavItem>
+            <Link to="/kubernetes" className="nav-link">Kubernetes</Link>
           </CNavItem>
-          <CNavItem href="/chaos">
-            <CNavLink to="/chaos">Chaos Engineering</CNavLink>
+          <CNavItem>
+            <Link to="/chaos" className="nav-link">Chaos Engineering</Link>
           </CNavItem>
 
           <CNavTitle>Settings</CNavTitle>
-          <CNavItem href="/settings">
-            <CNavLink to="/settings">Settings</CNavLink>
+          <CNavItem>
+            <Link to="/settings" className="nav-link">Settings</Link>
+          </CNavItem>
+          <CNavItem>
+            <Link to="/debug" className="nav-link">Debug</Link>
           </CNavItem>
         </CSidebarNav>
         <CSidebarToggler 
@@ -78,9 +83,9 @@ const AppLayout = ({ children }) => {
             <CHeaderNav className="ms-auto">
               {user && (
                 <CNavItem>
-                  <CNavLink onClick={handleLogout} style={{ cursor: "pointer" }}>
+                  <span onClick={handleLogout} className="nav-link" style={{ cursor: "pointer" }}>
                     Logout
-                  </CNavLink>
+                  </span>
                 </CNavItem>
               )}
             </CHeaderNav>
@@ -88,7 +93,9 @@ const AppLayout = ({ children }) => {
         </CHeader>
 
         <div className="body flex-grow-1 px-3 py-3">
-          <CContainer fluid>{children}</CContainer>
+          <CContainer fluid>
+            <Outlet />
+          </CContainer>
         </div>
       </div>
     </div>

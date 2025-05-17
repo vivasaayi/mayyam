@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { AgGridReact } from "ag-grid-react";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
@@ -20,9 +21,11 @@ import api from "../../services/api";
 import AwsResourceDetails from "./AwsResourceDetails";
 
 const AwsResourceBrowser = () => {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [resources, setResources] = useState([]);
   const [totalResources, setTotalResources] = useState(0);
+  const [error, setError] = useState(null);
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(10);
   const [filter, setFilter] = useState({
@@ -151,18 +154,27 @@ const AwsResourceBrowser = () => {
       field: "id",
       sortable: false,
       filter: false,
-      width: 120,
+      width: 180,
       cellRenderer: (params) => {
+        const resource = params.data;
         return (
-          <div>
+          <div className="d-flex gap-2">
             <Button 
               color="primary" 
               size="sm" 
-              onClick={() => viewResourceDetails(params.data)}
-              style={{ marginRight: "5px" }}
+              onClick={() => viewResourceDetails(resource)}
             >
-              View
+              <i className="fa fa-eye me-1"></i>View
             </Button>
+            {resource.resource_type === "RdsInstance" && (
+              <Button
+                color="success"
+                size="sm"
+                onClick={() => navigate(`/rds-analysis/${resource.id}`)}
+              >
+                <i className="fa fa-chart-line me-1"></i>Analyze
+              </Button>
+            )}
           </div>
         );
       }
@@ -186,6 +198,7 @@ const AwsResourceBrowser = () => {
   
   const fetchResources = async () => {
     setLoading(true);
+    setError(null);
     try {
       const queryParams = new URLSearchParams();
       
@@ -210,7 +223,12 @@ const AwsResourceBrowser = () => {
       }
     } catch (error) {
       console.error("Error fetching AWS resources:", error);
-      // Handle error appropriately
+      setError(error.response?.data?.message || error.message || "Failed to fetch AWS resources");
+      setResources([]);
+      setTotalResources(0);
+      if (gridApi) {
+        gridApi.setRowData([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -238,6 +256,7 @@ const AwsResourceBrowser = () => {
   
   const syncResources = async () => {
     setLoading(true);
+    setError(null);
     try {
       const syncRequest = {
         account_id: filter.account_id || "default",
@@ -251,7 +270,7 @@ const AwsResourceBrowser = () => {
       fetchResources();
     } catch (error) {
       console.error("Error syncing AWS resources:", error);
-      // Handle error appropriately
+      setError(error.response?.data?.message || error.message || "Failed to sync AWS resources");
     } finally {
       setLoading(false);
     }
@@ -269,9 +288,14 @@ const AwsResourceBrowser = () => {
           </div>
         </CardHeader>
         <CardBody>
-          <Form onSubmit={applyFilters}>
-            <Row>
-              <Col md={2}>
+          {error && (
+            <div className="alert alert-danger" role="alert">
+              <strong>Error:</strong> {error}
+            </div>
+          )}
+          <Form onSubmit={applyFilters} className="mb-4">
+            <Row className="g-3">
+              <Col lg={2} md={4} sm={6}>
                 <FormGroup>
                   <Label for="account_id">Account ID</Label>
                   <Input
@@ -284,7 +308,7 @@ const AwsResourceBrowser = () => {
                   />
                 </FormGroup>
               </Col>
-              <Col md={2}>
+              <Col lg={2} md={4} sm={6}>
                 <FormGroup>
                   <Label for="profile">Profile</Label>
                   <Input
@@ -297,7 +321,7 @@ const AwsResourceBrowser = () => {
                   />
                 </FormGroup>
               </Col>
-              <Col md={2}>
+              <Col lg={2} md={4} sm={6}>
                 <FormGroup>
                   <Label for="region">Region</Label>
                   <Input
@@ -310,7 +334,7 @@ const AwsResourceBrowser = () => {
                   />
                 </FormGroup>
               </Col>
-              <Col md={3}>
+              <Col lg={3} md={6} sm={6}>
                 <FormGroup>
                   <Label for="resource_type">Resource Type</Label>
                   <Input
@@ -334,7 +358,7 @@ const AwsResourceBrowser = () => {
               </Col>
               <Col md={3} className="d-flex align-items-end">
                 <FormGroup className="mb-0">
-                  <Button type="submit" color="primary" className="mr-2" disabled={loading}>
+                  <Button type="submit" color="primary" className="me-2" disabled={loading}>
                     Apply Filters
                   </Button>
                   <Button 

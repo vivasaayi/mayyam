@@ -1,5 +1,6 @@
 use actix_web::{web, HttpResponse};
 use crate::controllers::ai;
+use crate::middleware::auth::Claims;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     let scope = web::scope("/api/ai")
@@ -7,7 +8,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .route("/generate", web::post().to(generate_content))
         .route("/summary", web::post().to(generate_summary))
         .route("/explain", web::post().to(explain_data))
-        .route("/chat", web::post().to(chat_completion));
+        .route("/chat", web::post().to(chat_completion))
+        .route("/analyze/rds/{id}/{workflow}", web::get().to(ai::analyze_rds_instance))
+        .route("/analyze/rds/question", web::post().to(ai::answer_rds_question));
     
     cfg.service(scope);
 }
