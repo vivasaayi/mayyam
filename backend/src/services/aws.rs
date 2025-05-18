@@ -753,6 +753,144 @@ impl AwsControlPlane {
         Ok(tables)
     }
 
+    // Sync Kinesis streams - backward compatible version
+    pub async fn sync_kinesis_streams(&self, account_id: &str, profile: Option<&str>, region: &str) -> Result<Vec<AwsResourceModel>, AppError> {
+        self.sync_kinesis_streams_with_auth(account_id, profile, region, None).await
+    }
+    
+    // Sync Kinesis streams with authentication
+    pub async fn sync_kinesis_streams_with_auth(&self, account_id: &str, profile: Option<&str>, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<Vec<AwsResourceModel>, AppError> {
+        let client = self.aws_service.create_kinesis_client_with_auth(profile, region, account_auth).await?;
+        self.sync_kinesis_streams_with_client(account_id, profile, region, client).await
+    }
+    
+    // Sync Kinesis streams with provided client
+    pub async fn sync_kinesis_streams_with_client(&self, account_id: &str, profile: Option<&str>, region: &str, client: KinesisClient) -> Result<Vec<AwsResourceModel>, AppError> {
+        let repo = &self.aws_service.aws_resource_repo;
+        
+        // In a real implementation, this would call list_streams and describe_stream
+        
+        let mut streams = Vec::new();
+        
+        // Sample Kinesis stream
+        let stream_data = json!({
+            "stream_name": "sample-data-stream",
+            "stream_arn": format!("arn:aws:kinesis:{}:{}:stream/sample-data-stream", region, account_id),
+            "stream_status": "ACTIVE",
+            "retention_period_hours": 24,
+            "stream_creation_timestamp": "2023-04-10T09:15:00Z",
+            "shard_count": 2,
+            "encryption_type": "NONE"
+        });
+        
+        let kinesis = AwsResourceDto {
+            id: None,
+            account_id: account_id.to_string(),
+            profile: profile.map(|p| p.to_string()),
+            region: region.to_string(),
+            resource_type: AwsResourceType::KinesisStream.to_string(),
+            resource_id: "sample-data-stream".to_string(),
+            arn: format!("arn:aws:kinesis:{}:{}:stream/sample-data-stream", region, account_id),
+            name: Some("Sample Data Stream".to_string()),
+            tags: json!({"Name": "Sample Data Stream", "Environment": "Development", "Service": "Analytics"}),
+            resource_data: stream_data,
+        };
+        
+        // Save to database
+        let saved_stream = match repo.find_by_arn(&kinesis.arn).await? {
+            Some(existing) => repo.update(existing.id, &kinesis).await?,
+            None => repo.create(&kinesis).await?,
+        };
+        streams.push(saved_stream);
+        
+        Ok(streams)
+    }
+    
+    // Sync SQS queues - backward compatible version
+    pub async fn sync_sqs_queues(&self, account_id: &str, profile: Option<&str>, region: &str) -> Result<Vec<AwsResourceModel>, AppError> {
+        self.sync_sqs_queues_with_auth(account_id, profile, region, None).await
+    }
+    
+    // Sync SQS queues with authentication
+    pub async fn sync_sqs_queues_with_auth(&self, account_id: &str, profile: Option<&str>, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<Vec<AwsResourceModel>, AppError> {
+        let client = self.aws_service.create_sqs_client_with_auth(profile, region, account_auth).await?;
+        self.sync_sqs_queues_with_client(account_id, profile, region, client).await
+    }
+    
+    // Sync SQS queues with provided client
+    pub async fn sync_sqs_queues_with_client(&self, account_id: &str, profile: Option<&str>, region: &str, client: SqsClient) -> Result<Vec<AwsResourceModel>, AppError> {
+        let repo = &self.aws_service.aws_resource_repo;
+        
+        // In a real implementation, this would call list_queues and get_queue_attributes
+        
+        let mut queues = Vec::new();
+        
+        // Sample standard queue
+        let standard_queue_data = json!({
+            "queue_url": format!("https://sqs.{}.amazonaws.com/{}/sample-standard-queue", region, account_id),
+            "queue_type": "Standard",
+            "visibility_timeout": 30,
+            "message_retention_period": 345600,
+            "delay_seconds": 0,
+            "receive_message_wait_time_seconds": 0,
+            "created_timestamp": "2023-04-15T14:30:00Z"
+        });
+        
+        let standard_queue = AwsResourceDto {
+            id: None,
+            account_id: account_id.to_string(),
+            profile: profile.map(|p| p.to_string()),
+            region: region.to_string(),
+            resource_type: AwsResourceType::SqsQueue.to_string(),
+            resource_id: "sample-standard-queue".to_string(),
+            arn: format!("arn:aws:sqs:{}:{}:sample-standard-queue", region, account_id),
+            name: Some("Sample Standard Queue".to_string()),
+            tags: json!({"Name": "Sample Standard Queue", "Environment": "Development"}),
+            resource_data: standard_queue_data,
+        };
+        
+        // Sample FIFO queue
+        let fifo_queue_data = json!({
+            "queue_url": format!("https://sqs.{}.amazonaws.com/{}/sample-fifo-queue.fifo", region, account_id),
+            "queue_type": "FIFO",
+            "visibility_timeout": 60,
+            "message_retention_period": 86400,
+            "delay_seconds": 0,
+            "receive_message_wait_time_seconds": 20,
+            "fifo_queue": true,
+            "content_based_deduplication": true,
+            "created_timestamp": "2023-04-15T15:45:00Z"
+        });
+        
+        let fifo_queue = AwsResourceDto {
+            id: None,
+            account_id: account_id.to_string(),
+            profile: profile.map(|p| p.to_string()),
+            region: region.to_string(),
+            resource_type: AwsResourceType::SqsQueue.to_string(),
+            resource_id: "sample-fifo-queue.fifo".to_string(),
+            arn: format!("arn:aws:sqs:{}:{}:sample-fifo-queue.fifo", region, account_id),
+            name: Some("Sample FIFO Queue".to_string()),
+            tags: json!({"Name": "Sample FIFO Queue", "Environment": "Production", "DeduplicationMethod": "ContentBased"}),
+            resource_data: fifo_queue_data,
+        };
+        
+        // Save to database
+        let saved_standard_queue = match repo.find_by_arn(&standard_queue.arn).await? {
+            Some(existing) => repo.update(existing.id, &standard_queue).await?,
+            None => repo.create(&standard_queue).await?,
+        };
+        queues.push(saved_standard_queue);
+        
+        let saved_fifo_queue = match repo.find_by_arn(&fifo_queue.arn).await? {
+            Some(existing) => repo.update(existing.id, &fifo_queue).await?,
+            None => repo.create(&fifo_queue).await?,
+        };
+        queues.push(saved_fifo_queue);
+        
+        Ok(queues)
+    }
+
     // Sync all resources for an account and region
     pub async fn sync_resources(&self, request: &ResourceSyncRequest) -> Result<ResourceSyncResponse, AppError> {
         let account_id = &request.account_id;
@@ -770,6 +908,8 @@ impl AwsControlPlane {
                 AwsResourceType::S3Bucket.to_string(),
                 AwsResourceType::RdsInstance.to_string(),
                 AwsResourceType::DynamoDbTable.to_string(),
+                AwsResourceType::KinesisStream.to_string(),
+                AwsResourceType::SqsQueue.to_string(),
                 AwsResourceType::ElasticacheCluster.to_string(),
             ],
         };
@@ -821,6 +961,28 @@ impl AwsControlPlane {
                         details: None,
                     });
                     total_resources += tables.len();
+                    Ok(()) as Result<(), AppError>
+                },
+                "KinesisStream" => {
+                    let streams = self.sync_kinesis_streams_with_auth(account_id, profile, region, Some(&account_auth)).await?;
+                    summary.push(ResourceTypeSyncSummary {
+                        resource_type: AwsResourceType::KinesisStream.to_string(),
+                        count: streams.len(),
+                        status: "success".to_string(),
+                        details: None,
+                    });
+                    total_resources += streams.len();
+                    Ok(()) as Result<(), AppError>
+                },
+                "SqsQueue" => {
+                    let queues = self.sync_sqs_queues_with_auth(account_id, profile, region, Some(&account_auth)).await?;
+                    summary.push(ResourceTypeSyncSummary {
+                        resource_type: AwsResourceType::SqsQueue.to_string(),
+                        count: queues.len(),
+                        status: "success".to_string(),
+                        details: None,
+                    });
+                    total_resources += queues.len();
                     Ok(()) as Result<(), AppError>
                 },
                 "ElasticacheCluster" => {
