@@ -1,10 +1,11 @@
 import React, { useState } from "react";
 import { 
-  Row, Col, Nav, NavItem, NavLink, TabContent, TabPane
+  Row, Col, Nav, NavItem, NavLink, TabContent, TabPane, Card, CardBody, Button
 } from "reactstrap";
 import classnames from "classnames";
 import PageHeader from "../components/layout/PageHeader";
 import AwsResourceBrowser from "../components/cloud/AwsResourceBrowser";
+import AwsAccountManagement from "../components/cloud/AwsAccountManagement";
 
 const Cloud = () => {
   const [activeTab, setActiveTab] = useState("aws");
@@ -51,6 +52,11 @@ const Cloud = () => {
       
       <TabContent activeTab={activeTab}>
         <TabPane tabId="aws">
+          <Row className="mb-4">
+            <Col>
+              <AwsAccountManagement />
+            </Col>
+          </Row>
           <Row>
             <Col>
               <AwsResourceBrowser />

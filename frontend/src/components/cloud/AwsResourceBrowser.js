@@ -17,7 +17,7 @@ import {
   Badge,
 } from "reactstrap";
 import Spinner from "../common/Spinner";
-import api from "../../services/api";
+import api, { getAwsAccounts } from "../../services/api";
 import AwsResourceDetails from "./AwsResourceDetails";
 
 const AwsResourceBrowser = () => {
@@ -36,6 +36,8 @@ const AwsResourceBrowser = () => {
     tag_key: "",
     tag_value: "",
   });
+  const [accounts, setAccounts] = useState([]);
+  const [accountsLoading, setAccountsLoading] = useState(false);
   
   const [gridApi, setGridApi] = useState(null);
   const [gridColumnApi, setGridColumnApi] = useState(null);
@@ -191,6 +193,23 @@ const AwsResourceBrowser = () => {
     setGridColumnApi(params.columnApi);
   }, []);
   
+  // Load AWS accounts on component mount
+  useEffect(() => {
+    const fetchAccounts = async () => {
+      try {
+        setAccountsLoading(true);
+        const data = await getAwsAccounts();
+        setAccounts(data);
+      } catch (error) {
+        console.error("Error fetching AWS accounts:", error);
+      } finally {
+        setAccountsLoading(false);
+      }
+    };
+    
+    fetchAccounts();
+  }, []);
+  
   // Load resources on initial render or when filter/pagination changes
   useEffect(() => {
     fetchResources();
@@ -234,8 +253,7 @@ const AwsResourceBrowser = () => {
     }
   };
   
-  const handleFilterChange = (e) => {
-    const { name, value } = e.target;
+  const handleFilterChange = (name, value) => {
     setFilter(prevFilter => ({
       ...prevFilter,
       [name]: value
@@ -258,14 +276,14 @@ const AwsResourceBrowser = () => {
     setLoading(true);
     setError(null);
     try {
-      const syncRequest = {
-        account_id: filter.account_id || "default",
-        profile: filter.profile || null,
-        region: filter.region || "us-east-1",
-        resource_types: filter.resource_type ? [filter.resource_type] : null
-      };
+      if (filter.account_id) {
+        // Sync a specific account
+        await api.post(`/api/aws/accounts/${filter.account_id}/sync`);
+      } else {
+        // Sync all accounts or use legacy sync
+        await api.post('/api/aws/accounts/sync');
+      }
       
-      await api.post('/api/aws/sync', syncRequest);
       // After sync, refresh the resources
       fetchResources();
     } catch (error) {
@@ -280,11 +298,25 @@ const AwsResourceBrowser = () => {
     <div className="animated fadeIn">
       <Card>
         <CardHeader>
-          <i className="fa fa-cloud"></i> AWS Resources
-          <div className="card-header-actions">
-            <Button color="primary" onClick={syncResources} disabled={loading}>
-              <i className="fa fa-sync"></i> Sync Resources
-            </Button>
+          <div className="d-flex justify-content-between align-items-center">
+            <div>
+              <i className="fa fa-cloud"></i> AWS Resources
+            </div>
+            <div>
+              <Button color="primary" onClick={syncResources} disabled={loading || accountsLoading} className="d-flex align-items-center">
+                {loading ? (
+                  <>
+                    <Spinner size="sm" className="me-1" />
+                    <span>Syncing...</span>
+                  </>
+                ) : (
+                  <>
+                    <i className="fa fa-sync me-1"></i> 
+                    <span>Sync Resources</span>
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardBody>
@@ -299,13 +331,20 @@ const AwsResourceBrowser = () => {
                 <FormGroup>
                   <Label for="account_id">Account ID</Label>
                   <Input
-                    type="text"
+                    type="select"
                     name="account_id"
                     id="account_id"
                     value={filter.account_id}
-                    onChange={handleFilterChange}
-                    placeholder="Account ID"
-                  />
+                    onChange={(e) => handleFilterChange(e.target.name, e.target.value)}
+                    disabled={accountsLoading}
+                  >
+                    <option value="">Select Account</option>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.account_id}>
+                        {account.account_name} ({account.account_id})
+                      </option>
+                    ))}
+                  </Input>
                 </FormGroup>
               </Col>
               <Col lg={2} md={4} sm={6}>
@@ -316,7 +355,7 @@ const AwsResourceBrowser = () => {
                     name="profile"
                     id="profile"
                     value={filter.profile}
-                    onChange={handleFilterChange}
+                    onChange={(e) => handleFilterChange(e.target.name, e.target.value)}
                     placeholder="Profile"
                   />
                 </FormGroup>
@@ -329,7 +368,7 @@ const AwsResourceBrowser = () => {
                     name="region"
                     id="region"
                     value={filter.region}
-                    onChange={handleFilterChange}
+                    onChange={(e) => handleFilterChange(e.target.name, e.target.value)}
                     placeholder="Region"
                   />
                 </FormGroup>
@@ -342,7 +381,7 @@ const AwsResourceBrowser = () => {
                     name="resource_type"
                     id="resource_type"
                     value={filter.resource_type}
-                    onChange={handleFilterChange}
+                    onChange={(e) => handleFilterChange(e.target.name, e.target.value)}
                   >
                     <option value="">All Types</option>
                     <option value="EC2Instance">EC2 Instances</option>
