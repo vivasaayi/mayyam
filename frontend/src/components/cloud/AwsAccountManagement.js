@@ -186,7 +186,34 @@ const AwsAccountManagement = () => {
       fetchAccounts();
     } catch (err) {
       console.error("Error syncing AWS account:", err);
-      setError("Failed to sync resources from AWS account. Please try again.");
+      
+      // Provide more specific error messages for common failures
+      if (err.response?.data?.error === "CONFIG_ERROR") {
+        const message = err.response?.data?.message || "Configuration error";
+        
+        // Handle profile not found errors with more helpful message
+        if (message.includes("AWS configuration not found for profile")) {
+          const profileName = message.match(/profile: Some\("([^"]+)"\)/) || 
+                            message.match(/profile: "([^"]+)"/) ||
+                            ["", "unknown"];
+          
+          setError(
+            <>
+              <p><strong>AWS Profile Not Found:</strong> "{profileName[1]}"</p>
+              <p>Please check that:</p>
+              <ol>
+                <li>This profile exists in your AWS credentials file (~/.aws/credentials)</li>
+                <li>The profile name is spelled correctly (case-sensitive)</li>
+                <li>The application has access to your AWS credentials directory</li>
+              </ol>
+            </>
+          );
+        } else {
+          setError(`AWS configuration error: ${message}`);
+        }
+      } else {
+        setError("Failed to sync resources from AWS account. Please try again.");
+      }
     } finally {
       setSyncLoading(false);
     }
@@ -204,11 +231,39 @@ const AwsAccountManagement = () => {
       // Sync each account one by one
       let totalResourcesCount = 0;
       for (const account of accounts) {
-        const response = await syncAwsAccountResources(account.id);
-        totalResourcesCount += (response.total_resources || 0);
+        try {
+          const response = await syncAwsAccountResources(account.id);
+          totalResourcesCount += (response.total_resources || 0);
+        } catch (err) {
+          console.error(`Error syncing AWS account ${account.account_id}:`, err);
+          // Continue with other accounts but keep track of the error
+          if (!window.syncErrors) window.syncErrors = [];
+          window.syncErrors.push({
+            account: account.account_name,
+            error: err.response?.data?.message || err.message || "Unknown error"
+          });
+        }
       }
       
-      setSuccess(`Successfully synced ${totalResourcesCount} resources from all AWS accounts!`);
+      if (window.syncErrors && window.syncErrors.length > 0) {
+        // Create an error message with details of all accounts that failed
+        const errorMessages = window.syncErrors.map(e => 
+          `• ${e.account}: ${e.error}`
+        ).join("\n");
+        
+        setError(
+          <>
+            <p><strong>Some accounts failed to sync:</strong></p>
+            <pre style={{ whiteSpace: 'pre-wrap', maxHeight: '150px', overflow: 'auto', background: '#f8f9fa', padding: '8px', borderRadius: '4px' }}>
+              {errorMessages}
+            </pre>
+            <p>Successfully synced resources from other accounts.</p>
+          </>
+        );
+        window.syncErrors = []; // Clear errors for next time
+      } else {
+        setSuccess(`Successfully synced ${totalResourcesCount} resources from all AWS accounts!`);
+      }
       
       // Refresh accounts list to show updated last_synced_at
       fetchAccounts();
@@ -527,7 +582,8 @@ const AwsAccountManagement = () => {
                     onChange={handleInputChange}
                   />
                   <small className="text-muted">
-                    Optional profile name from AWS credentials file
+                    Optional profile name from AWS credentials file (~/.aws/credentials). 
+                    Must exactly match a profile in your credentials file (case-sensitive).
                   </small>
                 </FormGroup>
               </Col>

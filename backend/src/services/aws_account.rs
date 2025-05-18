@@ -107,26 +107,46 @@ impl AwsAccountService {
         let account = self.repo.get_by_id(id).await?
             .ok_or_else(|| AppError::NotFound(format!("AWS account with ID {} not found", id)))?;
         
-        // Create a sync request
+        // Create a sync request with all available authentication information
         let sync_request = ResourceSyncRequest {
             account_id: account.account_id.clone(),
             profile: account.profile.clone(),
             region: account.default_region.clone(),
             resource_types: None, // Sync all resource types
+            // Add authentication information directly to the request
+            // These will be available as fallbacks if the profile doesn't exist
+            use_role: account.use_role,
+            role_arn: account.role_arn.clone(),
+            external_id: account.external_id.clone(),
+            access_key_id: account.access_key_id.clone(),
+            secret_access_key: account.secret_access_key.clone(),
         };
 
+        // Log the sync attempt with account details for better debugging
+        info!("Attempting to sync resources for AWS account {} (id: {}) with profile: {:?}, region: {}, auth_method: {}", 
+               account.account_id, id, account.profile, account.default_region, 
+               if account.use_role { "IAM Role" } else { "Access Key" });
+
         // Call the AWS control plane to sync resources
-        let response = self.aws_control_plane.sync_resources(&sync_request).await?;
-        
-        // Update the last synced timestamp
-        self.repo.update_last_synced(id).await?;
-        
-        info!("Synced resources for AWS account {}: {} resources", account.account_id, response.total_resources);
-        
-        Ok(SyncResponse {
-            success: true,
-            count: response.total_resources,
-            message: format!("Successfully synced {} resources", response.total_resources),
-        })
+        match self.aws_control_plane.sync_resources(&sync_request).await {
+            Ok(response) => {
+                // Update the last synced timestamp
+                self.repo.update_last_synced(id).await?;
+                
+                info!("Successfully synced resources for AWS account {}: {} resources", 
+                       account.account_id, response.total_resources);
+                
+                Ok(SyncResponse {
+                    success: true,
+                    count: response.total_resources,
+                    message: format!("Successfully synced {} resources", response.total_resources),
+                })
+            },
+            Err(err) => {
+                error!("Failed to sync resources for AWS account {} (id: {}): {:?}", 
+                       account.account_id, id, err);
+                Err(err)
+            }
+        }
     }
 }
