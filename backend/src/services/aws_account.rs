@@ -32,7 +32,15 @@ impl AwsAccountService {
         let account = self.repo.get_by_id(id).await?
             .ok_or_else(|| AppError::NotFound(format!("AWS account with ID {} not found", id)))?;
         
-        Ok(AwsAccountDto::from(account))
+        // Create a DTO with access key ID for editing purposes
+        let mut dto = AwsAccountDto::from(account.clone());
+        
+        // Include access key ID when fetching a specific account for editing
+        if !account.use_role {
+            dto.access_key_id = account.access_key_id.clone();
+        }
+        
+        Ok(dto)
     }
 
     /// Create a new AWS account
@@ -59,14 +67,20 @@ impl AwsAccountService {
 
     /// Update an existing AWS account
     pub async fn update_account(&self, id: Uuid, dto: AwsAccountUpdateDto) -> Result<AwsAccountDto, AppError> {
-        // Validate credentials similar to create
-        if !dto.use_role && (dto.access_key_id.is_none()) {
-            return Err(AppError::Validation(
-                "Access key ID is required when not using a role".to_string()
-            ));
-        }
-
-        if dto.use_role && dto.role_arn.is_none() {
+        // Get the current account to have access to existing values
+        let current_account = self.repo.get_by_id(id).await?
+            .ok_or_else(|| AppError::NotFound(format!("AWS account with ID {} not found", id)))?;
+            
+        // Validate based on authentication method
+        if !dto.use_role {
+            // When using access key authentication, access key ID is required
+            if dto.access_key_id.is_none() || dto.access_key_id.as_ref().map_or(true, |k| k.is_empty()) {
+                return Err(AppError::Validation(
+                    "Access key ID is required when not using a role".to_string()
+                ));
+            }
+        } else if dto.role_arn.is_none() || dto.role_arn.as_ref().map_or(true, |r| r.is_empty()) {
+            // When using role authentication, role ARN is required
             return Err(AppError::Validation(
                 "Role ARN is required when using a role".to_string()
             ));

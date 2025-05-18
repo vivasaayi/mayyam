@@ -97,6 +97,8 @@ pub struct AwsAccountDto {
     pub role_arn: Option<String>,
     pub external_id: Option<String>,
     pub has_access_key: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub access_key_id: Option<String>,
     pub last_synced_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -146,6 +148,7 @@ impl From<DomainModel> for AwsAccountDto {
             role_arn: model.role_arn,
             external_id: model.external_id,
             has_access_key: model.access_key_id.is_some(),
+            access_key_id: None, // Initially None, set only when needed for editing
             last_synced_at: model.last_synced_at,
             created_at: model.created_at,
             updated_at: model.updated_at,

@@ -24,6 +24,7 @@ import Spinner from "../common/Spinner";
 
 import { 
   getAwsAccounts, 
+  getAwsAccountById,
   createAwsAccount, 
   updateAwsAccount, 
   deleteAwsAccount, 
@@ -75,12 +76,57 @@ const AwsAccountManagement = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    // Validate the form
+    if (!currentAccount.account_id || !currentAccount.account_name || !currentAccount.default_region) {
+      setError("Please fill in all required fields.");
+      return;
+    }
+    
+    // Additional validation for auth method
+    if (currentAccount.use_role && !currentAccount.role_arn) {
+      setError("IAM Role ARN is required when using role authentication.");
+      return;
+    }
+    
+    // When using access key authentication
+    if (!currentAccount.use_role) {
+      // New account - always require access key ID and secret
+      if (!editMode && (!currentAccount.access_key_id || !currentAccount.secret_access_key)) {
+        setError("Both Access Key ID and Secret Access Key are required for new accounts.");
+        return;
+      }
+      
+      // Existing account - always require access key ID
+      if (editMode && !currentAccount.access_key_id) {
+        setError("Access Key ID is required when using access key authentication.");
+        return;
+      }
+    }
+    
     try {
       setLoading(true);
       setError(null);
       
       if (editMode) {
-        await updateAwsAccount(currentAccount.id, currentAccount);
+        // Create a copy of the current account for update
+        const accountData = { ...currentAccount };
+        
+        // Perform some client-side validation for editing
+        if (!accountData.use_role && !accountData.access_key_id) {
+          setError("Access Key ID is required when using access key authentication.");
+          setLoading(false);
+          return;
+        }
+        
+        // If the secret key is empty in edit mode, remove it from the request
+        // to keep the existing one in the database
+        if (!accountData.secret_access_key) {
+          delete accountData.secret_access_key;
+        }
+        
+        console.log("Updating account with data:", accountData);
+        
+        await updateAwsAccount(currentAccount.id, accountData);
         setSuccess("AWS account updated successfully!");
       } else {
         await createAwsAccount(currentAccount);
@@ -94,7 +140,7 @@ const AwsAccountManagement = () => {
       toggleModal();
     } catch (err) {
       console.error("Error saving AWS account:", err);
-      setError("Failed to save AWS account. Please check your inputs and try again.");
+      setError(err.response?.data?.message || "Failed to save AWS account. Please check your inputs and try again.");
     } finally {
       setLoading(false);
     }
@@ -102,7 +148,11 @@ const AwsAccountManagement = () => {
 
   // Handle account deletion
   const handleDelete = async (accountId) => {
-    if (!window.confirm("Are you sure you want to delete this AWS account? This action cannot be undone.")) {
+    const account = accounts.find(acc => acc.id === accountId);
+    if (!account) return;
+    
+    // Improved confirmation dialog with specific account details
+    if (!window.confirm(`Delete AWS account "${account.account_name}" (${account.account_id})?\n\nThis action cannot be undone and all associated resource data will be removed from Mayyam. Your actual AWS account and resources will not be affected.`)) {
       return;
     }
     
@@ -111,13 +161,13 @@ const AwsAccountManagement = () => {
       setError(null);
       
       await deleteAwsAccount(accountId);
-      setSuccess("AWS account deleted successfully!");
+      setSuccess(`AWS account "${account.account_name}" deleted successfully!`);
       
       // Refresh accounts list
       fetchAccounts();
     } catch (err) {
       console.error("Error deleting AWS account:", err);
-      setError("Failed to delete AWS account. Please try again.");
+      setError(`Failed to delete AWS account "${account.account_name}". Please try again.`);
     } finally {
       setLoading(false);
     }
@@ -130,7 +180,10 @@ const AwsAccountManagement = () => {
       setError(null);
       
       const response = await syncAwsAccountResources(accountId);
-      setSuccess(`Successfully synced ${response.count} resources from AWS account!`);
+      setSuccess(`Successfully synced ${response.total_resources || 0} resources from AWS account!`);
+      
+      // Refresh accounts list to show updated last_synced_at
+      fetchAccounts();
     } catch (err) {
       console.error("Error syncing AWS account:", err);
       setError("Failed to sync resources from AWS account. Please try again.");
@@ -152,10 +205,13 @@ const AwsAccountManagement = () => {
       let totalResourcesCount = 0;
       for (const account of accounts) {
         const response = await syncAwsAccountResources(account.id);
-        totalResourcesCount += response.count;
+        totalResourcesCount += (response.total_resources || 0);
       }
       
       setSuccess(`Successfully synced ${totalResourcesCount} resources from all AWS accounts!`);
+      
+      // Refresh accounts list to show updated last_synced_at
+      fetchAccounts();
     } catch (err) {
       console.error("Error syncing all AWS accounts:", err);
       setError("Failed to sync resources from AWS accounts. Please try again.");
@@ -184,10 +240,34 @@ const AwsAccountManagement = () => {
   };
   
   // Edit account
-  const handleEdit = (account) => {
-    setEditMode(true);
-    setCurrentAccount(account);
-    setModalOpen(true);
+  const handleEdit = async (account) => {
+    try {
+      setLoading(true);
+      
+      // Fetch the complete account details from the backend
+      const fullAccount = await getAwsAccountById(account.id);
+      
+      console.log("Fetched account details:", fullAccount);
+      
+      // Create a copy of the account object to avoid modifying the original
+      const accountCopy = {
+        ...fullAccount,
+        // Keep the access_key_id from the backend if available, otherwise fallback
+        access_key_id: fullAccount.access_key_id || "",
+        // Clear the secret key since we don't want to show it in the form
+        // The backend will keep the existing one if it's left blank
+        secret_access_key: ""
+      };
+      
+      setEditMode(true);
+      setCurrentAccount(accountCopy);
+      setModalOpen(true);
+    } catch (err) {
+      console.error("Error fetching account details:", err);
+      setError("Failed to load account details for editing. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
   
   // Handle input change
@@ -329,44 +409,56 @@ const AwsAccountManagement = () => {
                       )}
                     </td>
                     <td>
-                      <Button
-                        color="primary"
-                        size="sm"
-                        className="me-1"
-                        onClick={() => handleSync(account.id)}
-                        disabled={syncLoading}
-                        id={`sync-${account.id}`}
-                      >
-                        <i className="fas fa-sync-alt"></i>
-                      </Button>
-                      <UncontrolledTooltip target={`sync-${account.id}`}>
-                        Sync resources from this account
-                      </UncontrolledTooltip>
-                      
-                      <Button
-                        color="secondary"
-                        size="sm"
-                        className="me-1"
-                        onClick={() => handleEdit(account)}
-                        id={`edit-${account.id}`}
-                      >
-                        <i className="fas fa-pencil-alt"></i>
-                      </Button>
-                      <UncontrolledTooltip target={`edit-${account.id}`}>
-                        Edit account details
-                      </UncontrolledTooltip>
-                      
-                      <Button
-                        color="danger"
-                        size="sm"
-                        onClick={() => handleDelete(account.id)}
-                        id={`delete-${account.id}`}
-                      >
-                        <i className="fas fa-trash"></i>
-                      </Button>
-                      <UncontrolledTooltip target={`delete-${account.id}`}>
-                        Delete this account
-                      </UncontrolledTooltip>
+                      <div className="d-flex gap-2">
+                        {/* Text-based action links for better visibility */}
+                        <a 
+                          href="#" 
+                          className="text-primary"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handleSync(account.id);
+                          }}
+                          style={{ textDecoration: 'none', fontWeight: 'bold' }}
+                          id={`sync-${account.id}`}
+                        >
+                          Sync
+                        </a>
+                        <UncontrolledTooltip target={`sync-${account.id}`}>
+                          Sync resources from this account
+                        </UncontrolledTooltip>
+                        
+                        <a 
+                          href="#" 
+                          className="text-secondary"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handleEdit(account);
+                          }}
+                          style={{ textDecoration: 'none', fontWeight: 'bold' }}
+                          id={`edit-${account.id}`}
+                        >
+                          Edit
+                        </a>
+                        <UncontrolledTooltip target={`edit-${account.id}`}>
+                          Edit account details
+                        </UncontrolledTooltip>
+                        
+                        <a 
+                          href="#" 
+                          className="text-danger"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handleDelete(account.id);
+                          }}
+                          style={{ textDecoration: 'none', fontWeight: 'bold' }}
+                          id={`delete-${account.id}`}
+                        >
+                          Delete
+                        </a>
+                        <UncontrolledTooltip target={`delete-${account.id}`}>
+                          Delete this account
+                        </UncontrolledTooltip>
+                      </div>
                     </td>
                   </tr>
                 ))}
