@@ -12,6 +12,8 @@ mod models;
 mod repositories;
 mod services;
 mod utils;
+#[cfg(test)]
+mod tests;
 
 #[derive(Parser)]
 #[command(name = "mayyam")]

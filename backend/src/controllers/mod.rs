@@ -5,3 +5,4 @@ pub mod cloud;
 pub mod database;
 pub mod kafka;
 pub mod kubernetes;
+pub mod aws_account;

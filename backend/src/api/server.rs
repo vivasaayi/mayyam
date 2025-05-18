@@ -14,11 +14,13 @@ use crate::repositories::{
     database::DatabaseRepository,
     cluster::ClusterRepository,
     aws_resource::AwsResourceRepository,
+    aws_account::AwsAccountRepository,
 };
 use crate::services::{
     user::UserService,
     kafka::KafkaService,
     aws::{AwsService, AwsControlPlane, AwsDataPlane, AwsCostService, CloudWatchService},
+    aws_account::AwsAccountService,
 };
 use crate::controllers::{
     auth::AuthController,
@@ -38,6 +40,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     let database_repo = Arc::new(DatabaseRepository::new(db_connection.clone(), config.clone()));
     let cluster_repo = Arc::new(ClusterRepository::new(db_connection.clone(), config.clone()));
     let aws_resource_repo = Arc::new(AwsResourceRepository::new(db_connection.clone(), config.clone()));
+    let aws_account_repo = Arc::new(AwsAccountRepository::new(db_connection.clone()));
     
     // Initialize services
     let user_service = Arc::new(UserService::new(user_repo.clone()));
@@ -49,6 +52,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     let aws_data_plane = Arc::new(AwsDataPlane::new(aws_service.clone()));
     let aws_cost_service = Arc::new(AwsCostService::new(aws_service.clone()));
     let cloudwatch_service = Arc::new(CloudWatchService::new(aws_service.clone()));
+    let aws_account_service = Arc::new(AwsAccountService::new(aws_account_repo.clone(), aws_control_plane.clone()));
     
     // Initialize controllers
     let auth_controller = Arc::new(AuthController::new(user_service.clone(), config.clone()));
@@ -73,6 +77,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             .app_data(web::Data::new(database_repo.clone()))
             .app_data(web::Data::new(cluster_repo.clone()))
             .app_data(web::Data::new(aws_resource_repo.clone()))
+            .app_data(web::Data::new(aws_account_repo.clone()))
             // Services
             .app_data(web::Data::new(user_service.clone()))
             .app_data(web::Data::new(kafka_service.clone()))
@@ -81,6 +86,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             .app_data(web::Data::new(aws_data_plane.clone()))
             .app_data(web::Data::new(aws_cost_service.clone()))
             .app_data(web::Data::new(cloudwatch_service.clone()))
+            .app_data(web::Data::new(aws_account_service.clone()))
             // Controllers
             .app_data(web::Data::new(auth_controller.clone()))
             // Routes configuration

@@ -19,8 +19,16 @@ import {
   Badge,
   UncontrolledTooltip
 } from "reactstrap";
+
 import Spinner from "../common/Spinner";
-import api from "../../services/api";
+
+import { 
+  getAwsAccounts, 
+  createAwsAccount, 
+  updateAwsAccount, 
+  deleteAwsAccount, 
+  syncAwsAccountResources 
+} from "../../services/api";
 
 const AwsAccountManagement = () => {
   const [loading, setLoading] = useState(false);
@@ -53,8 +61,8 @@ const AwsAccountManagement = () => {
       setLoading(true);
       setError(null);
       
-      const response = await api.get('/api/aws/accounts');
-      setAccounts(response.data);
+      const accounts = await getAwsAccounts();
+      setAccounts(accounts);
     } catch (err) {
       console.error("Error fetching AWS accounts:", err);
       setError("Failed to fetch AWS accounts. Please try again.");
@@ -72,10 +80,10 @@ const AwsAccountManagement = () => {
       setError(null);
       
       if (editMode) {
-        await api.put(`/api/aws/accounts/${currentAccount.id}`, currentAccount);
+        await updateAwsAccount(currentAccount.id, currentAccount);
         setSuccess("AWS account updated successfully!");
       } else {
-        await api.post('/api/aws/accounts', currentAccount);
+        await createAwsAccount(currentAccount);
         setSuccess("AWS account added successfully!");
       }
       
@@ -102,7 +110,7 @@ const AwsAccountManagement = () => {
       setLoading(true);
       setError(null);
       
-      await api.delete(`/api/aws/accounts/${accountId}`);
+      await deleteAwsAccount(accountId);
       setSuccess("AWS account deleted successfully!");
       
       // Refresh accounts list
@@ -121,8 +129,8 @@ const AwsAccountManagement = () => {
       setSyncLoading(true);
       setError(null);
       
-      const response = await api.post(`/api/aws/accounts/${accountId}/sync`);
-      setSuccess(`Successfully synced ${response.data.count} resources from AWS account!`);
+      const response = await syncAwsAccountResources(accountId);
+      setSuccess(`Successfully synced ${response.count} resources from AWS account!`);
     } catch (err) {
       console.error("Error syncing AWS account:", err);
       setError("Failed to sync resources from AWS account. Please try again.");
@@ -137,8 +145,17 @@ const AwsAccountManagement = () => {
       setSyncLoading(true);
       setError(null);
       
-      const response = await api.post('/api/aws/accounts/sync');
-      setSuccess(`Successfully synced ${response.data.count} resources from all AWS accounts!`);
+      // Get all accounts first
+      const accounts = await getAwsAccounts();
+      
+      // Sync each account one by one
+      let totalResourcesCount = 0;
+      for (const account of accounts) {
+        const response = await syncAwsAccountResources(account.id);
+        totalResourcesCount += response.count;
+      }
+      
+      setSuccess(`Successfully synced ${totalResourcesCount} resources from all AWS accounts!`);
     } catch (err) {
       console.error("Error syncing all AWS accounts:", err);
       setError("Failed to sync resources from AWS accounts. Please try again.");

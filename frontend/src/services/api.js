@@ -114,4 +114,70 @@ export const askRdsQuestion = async (instanceId, question, workflow = null) => {
   }
 };
 
+// Fetch all AWS accounts
+export const getAwsAccounts = async () => {
+  try {
+    const response = await api.get('/api/aws/accounts');
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching AWS accounts:", error);
+    throw error;
+  }
+};
+
+// Get specific AWS account by ID
+export const getAwsAccountById = async (accountId) => {
+  try {
+    const response = await api.get(`/api/aws/accounts/${accountId}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error fetching AWS account ${accountId}:`, error);
+    throw error;
+  }
+};
+
+// Create a new AWS account
+export const createAwsAccount = async (accountData) => {
+  try {
+    const response = await api.post('/api/aws/accounts', accountData);
+    return response.data;
+  } catch (error) {
+    console.error("Error creating AWS account:", error);
+    throw error;
+  }
+};
+
+// Update an existing AWS account
+export const updateAwsAccount = async (accountId, accountData) => {
+  try {
+    const response = await api.put(`/api/aws/accounts/${accountId}`, accountData);
+    return response.data;
+  } catch (error) {
+    console.error(`Error updating AWS account ${accountId}:`, error);
+    throw error;
+  }
+};
+
+// Delete an AWS account
+export const deleteAwsAccount = async (accountId) => {
+  try {
+    const response = await api.delete(`/api/aws/accounts/${accountId}`);
+    return response.status === 204; // Return true if successfully deleted
+  } catch (error) {
+    console.error(`Error deleting AWS account ${accountId}:`, error);
+    throw error;
+  }
+};
+
+// Sync resources for an AWS account
+export const syncAwsAccountResources = async (accountId) => {
+  try {
+    const response = await api.post(`/api/aws/accounts/${accountId}/sync`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error syncing resources for AWS account ${accountId}:`, error);
+    throw error;
+  }
+};
+
 export default api;
