@@ -1,8 +1,8 @@
 use actix_web::{web, Scope};
 use crate::controllers::aws_account;
 
-pub fn configure(cfg: &mut web::ServiceConfig) {
-    let scope = web::scope("/api/aws/accounts")
+pub fn configure() -> Scope {
+    web::scope("/accounts")
         // List all AWS accounts
         .route("", web::get().to(aws_account::list_accounts))
         
@@ -19,7 +19,5 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .route("/{id}", web::delete().to(aws_account::delete_account))
         
         // Sync resources for an AWS account
-        .route("/{id}/sync", web::post().to(aws_account::sync_account_resources));
-
-    cfg.service(scope);
+        .route("/{id}/sync", web::post().to(aws_account::sync_account_resources))
 }

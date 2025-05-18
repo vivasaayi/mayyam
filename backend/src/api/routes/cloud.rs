@@ -1,5 +1,6 @@
 use actix_web::{web, HttpResponse};
 use crate::controllers::cloud;
+use crate::api::routes::aws_account;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     // General cloud provider routes
@@ -14,6 +15,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         // General resource search
         .route("/resources", web::get().to(cloud::search_aws_resources))
         .route("/resources/{id}", web::get().to(cloud::get_aws_resource))
+        
+        // Include AWS account management
+        .service(aws_account::configure())
         
         // EC2 instances
         .route("/accounts/{account_id}/regions/{region}/ec2", 
