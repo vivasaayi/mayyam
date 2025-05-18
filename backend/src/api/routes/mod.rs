@@ -19,5 +19,5 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     chaos::configure(cfg);
     ai::configure(cfg);
     graphql::configure(cfg);
-    cfg.service(aws_account::configure());
+    aws_account::configure(cfg);
 }
