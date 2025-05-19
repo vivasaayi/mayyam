@@ -20,4 +20,7 @@ pub fn configure() -> Scope {
         
         // Sync resources for an AWS account
         .route("/{id}/sync", web::post().to(aws_account::sync_account_resources))
+        
+        // Sync resources for all AWS accounts
+        .route("/sync", web::post().to(aws_account::sync_all_accounts_resources))
 }

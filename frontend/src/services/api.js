@@ -180,4 +180,15 @@ export const syncAwsAccountResources = async (accountId) => {
   }
 };
 
+// Sync resources for all AWS accounts
+export const syncAllAwsAccountResources = async () => {
+  try {
+    const response = await api.post('/api/aws/accounts/sync');
+    return response.data;
+  } catch (error) {
+    console.error('Error syncing resources for all AWS accounts:', error);
+    throw error;
+  }
+};
+
 export default api;

@@ -7,6 +7,7 @@ pub mod chaos;
 pub mod ai;
 pub mod graphql;
 pub mod aws_account;
+pub mod aws_analytics;
 
 use actix_web::web;
 
@@ -19,4 +20,6 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     chaos::configure(cfg);
     ai::configure(cfg);
     graphql::configure(cfg);
+    // Note: aws_account and aws_analytics are configured separately
+    // with dependency injection
 }

@@ -66,3 +66,12 @@ pub async fn sync_account_resources(
     let response = service.sync_account_resources(id.into_inner()).await?;
     Ok(HttpResponse::Ok().json(response))
 }
+
+/// Sync resources for all AWS accounts
+pub async fn sync_all_accounts_resources(
+    service: web::Data<Arc<AwsAccountService>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let response = service.sync_all_accounts_resources().await?;
+    Ok(HttpResponse::Ok().json(response))
+}

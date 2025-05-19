@@ -1,0 +1,287 @@
+use std::sync::Arc;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use aws_sdk_ec2::Client as Ec2Client;
+use crate::errors::AppError;
+use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel};
+use crate::models::aws_auth::AccountAuthInfo;
+use super::{AwsService, CloudWatchMetricsRequest, CloudWatchMetricsResult};
+use super::client_factory::AwsClientFactory;
+
+// EC2-specific types
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Ec2InstanceInfo {
+    pub instance_id: String,
+    pub instance_type: String,
+    pub state: String,
+    pub availability_zone: String,
+    pub public_ip: Option<String>,
+    pub private_ip: Option<String>,
+    pub launch_time: String,
+    pub vpc_id: Option<String>,
+    pub subnet_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Ec2LaunchInstanceRequest {
+    pub image_id: String,
+    pub instance_type: String,
+    pub min_count: i32,
+    pub max_count: i32,
+    pub subnet_id: Option<String>,
+    pub security_group_ids: Option<Vec<String>>,
+    pub key_name: Option<String>,
+    pub user_data: Option<String>,
+    pub tags: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Ec2SecurityGroupRule {
+    pub ip_protocol: String,
+    pub from_port: i32,
+    pub to_port: i32,
+    pub cidr_blocks: Vec<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Ec2SecurityGroupRequest {
+    pub group_name: String,
+    pub description: String,
+    pub vpc_id: String,
+    pub ingress_rules: Vec<Ec2SecurityGroupRule>,
+    pub egress_rules: Vec<Ec2SecurityGroupRule>,
+    pub tags: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Ec2VolumeRequest {
+    pub availability_zone: String,
+    pub volume_type: String,
+    pub size: i32,
+    pub iops: Option<i32>,
+    pub encrypted: Option<bool>,
+    pub tags: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Ec2InstanceVolumeModification {
+    pub instance_id: String,
+    pub volume_id: String,
+    pub device_name: String,
+    pub delete_on_termination: Option<bool>,
+}
+
+// Control plane implementation for EC2
+pub struct Ec2ControlPlane {
+    aws_service: Arc<AwsService>,
+}
+
+impl Ec2ControlPlane {
+    pub fn new(aws_service: Arc<AwsService>) -> Self {
+        Self { aws_service }
+    }
+
+    pub async fn sync_instances(&self, account_id: &str, profile: Option<&str>, region: &str) -> Result<Vec<AwsResourceModel>, AppError> {
+        self.sync_instances_with_auth(account_id, profile, region, None).await
+    }
+    
+    pub async fn sync_instances_with_auth(&self, account_id: &str, profile: Option<&str>, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<Vec<AwsResourceModel>, AppError> {
+        let client = self.aws_service.create_ec2_client_with_auth(profile, region, account_auth).await?;
+        self.sync_instances_with_client(account_id, profile, region, client).await
+    }
+    
+    async fn sync_instances_with_client(&self, account_id: &str, profile: Option<&str>, region: &str, client: Ec2Client) -> Result<Vec<AwsResourceModel>, AppError> {
+        // Implementation using the provided client
+        // For now returning sample data
+        let mut instances = Vec::new();
+        let instance = AwsResourceDto {
+            id: None,
+            account_id: account_id.to_string(),
+            profile: profile.map(|p| p.to_string()),
+            region: region.to_string(),
+            resource_type: "EC2Instance".to_string(),
+            resource_id: "i-0123456789abcdef0".to_string(),
+            arn: format!("arn:aws:ec2:{}:{}:instance/i-0123456789abcdef0", region, account_id),
+            name: Some("Sample EC2 Instance 1".to_string()),
+            tags: json!({"Name": "Sample EC2 Instance 1", "Environment": "Development"}),
+            resource_data: json!({
+                "instance_id": "i-0123456789abcdef0",
+                "instance_type": "t2.micro",
+                "state": "running",
+                "availability_zone": format!("{}a", region),
+                "public_ip": "203.0.113.1",
+                "private_ip": "10.0.0.1",
+                "launch_time": "2023-05-01T12:00:00Z",
+                "vpc_id": "vpc-0123abcd",
+                "subnet_id": "subnet-0123abcd"
+            }),
+        };
+        instances.push(instance);
+
+        Ok(instances.into_iter().map(|i| i.into()).collect())
+    }
+
+    pub async fn launch_instances(&self, profile: Option<&str>, region: &str, request: &Ec2LaunchInstanceRequest) -> Result<Vec<Ec2InstanceInfo>, AppError> {
+        let client = self.aws_service.create_ec2_client(profile, region).await?;
+        
+        // Mock implementation
+        Ok(vec![
+            Ec2InstanceInfo {
+                instance_id: "i-1234567890abcdef0".to_string(),
+                instance_type: request.instance_type.clone(),
+                state: "pending".to_string(),
+                availability_zone: format!("{}a", region),
+                public_ip: None,
+                private_ip: Some("172.31.16.100".to_string()),
+                launch_time: chrono::Utc::now().to_rfc3339(),
+                vpc_id: Some("vpc-1234567890abcdef0".to_string()),
+                subnet_id: request.subnet_id.clone(),
+            }
+        ])
+    }
+
+    pub async fn start_instances(&self, profile: Option<&str>, region: &str, instance_ids: &[String]) -> Result<Vec<(String, String)>, AppError> {
+        let client = self.aws_service.create_ec2_client(profile, region).await?;
+        
+        // Mock implementation returning instance ID and state pairs
+        Ok(instance_ids.iter().map(|id| (id.clone(), "starting".to_string())).collect())
+    }
+
+    pub async fn stop_instances(&self, profile: Option<&str>, region: &str, instance_ids: &[String], force: bool) -> Result<Vec<(String, String)>, AppError> {
+        let client = self.aws_service.create_ec2_client(profile, region).await?;
+        
+        // Mock implementation
+        Ok(instance_ids.iter().map(|id| (id.clone(), "stopping".to_string())).collect())
+    }
+
+    pub async fn terminate_instances(&self, profile: Option<&str>, region: &str, instance_ids: &[String]) -> Result<Vec<(String, String)>, AppError> {
+        let client = self.aws_service.create_ec2_client(profile, region).await?;
+        
+        // Mock implementation
+        Ok(instance_ids.iter().map(|id| (id.clone(), "shutting-down".to_string())).collect())
+    }
+
+    pub async fn describe_instances(&self, profile: Option<&str>, region: &str, instance_ids: Option<&[String]>) -> Result<Vec<Ec2InstanceInfo>, AppError> {
+        let client = self.aws_service.create_ec2_client(profile, region).await?;
+        
+        // Mock implementation
+        Ok(vec![
+            Ec2InstanceInfo {
+                instance_id: "i-1234567890abcdef0".to_string(),
+                instance_type: "t3.micro".to_string(),
+                state: "running".to_string(),
+                availability_zone: format!("{}a", region),
+                public_ip: Some("54.123.45.67".to_string()),
+                private_ip: Some("172.31.16.100".to_string()),
+                launch_time: "2023-07-01T12:00:00Z".to_string(),
+                vpc_id: Some("vpc-1234567890abcdef0".to_string()),
+                subnet_id: Some("subnet-1234567890abcdef0".to_string()),
+            }
+        ])
+    }
+
+    pub async fn create_security_group(&self, profile: Option<&str>, region: &str, request: &Ec2SecurityGroupRequest) -> Result<String, AppError> {
+        let client = self.aws_service.create_ec2_client(profile, region).await?;
+        
+        // Mock implementation returning security group ID
+        Ok("sg-1234567890abcdef0".to_string())
+    }
+
+    pub async fn create_volume(&self, profile: Option<&str>, region: &str, request: &Ec2VolumeRequest) -> Result<String, AppError> {
+        let client = self.aws_service.create_ec2_client(profile, region).await?;
+        
+        // Mock implementation returning volume ID
+        Ok("vol-1234567890abcdef0".to_string())
+    }
+
+    pub async fn attach_volume(&self, profile: Option<&str>, region: &str, modification: &Ec2InstanceVolumeModification) -> Result<(), AppError> {
+        let client = self.aws_service.create_ec2_client(profile, region).await?;
+        
+        // Mock implementation
+        Ok(())
+    }
+
+    pub async fn modify_instance_attribute(&self, profile: Option<&str>, region: &str, 
+        instance_id: &str,
+        attribute: &str,
+        value: &str) -> Result<(), AppError> {
+        
+        let client = self.aws_service.create_ec2_client(profile, region).await?;
+        
+        // Mock implementation
+        Ok(())
+    }
+}
+
+// Data plane implementation for EC2
+pub struct Ec2DataPlane {
+    aws_service: Arc<AwsService>,
+}
+
+impl Ec2DataPlane {
+    pub fn new(aws_service: Arc<AwsService>) -> Self {
+        Self { aws_service }
+    }
+
+    pub async fn get_instance_metrics(&self, request: &CloudWatchMetricsRequest) -> Result<CloudWatchMetricsResult, AppError> {
+        let client = self.aws_service.create_cloudwatch_client(None, &request.region).await?;
+        
+        // Mock implementation for EC2 metrics
+        Ok(CloudWatchMetricsResult {
+            resource_id: request.resource_id.clone(),
+            resource_type: request.resource_type.clone(),
+            metrics: vec![],
+        })
+    }
+
+    pub async fn get_instance_status(&self, profile: Option<&str>, region: &str, instance_id: &str) -> Result<serde_json::Value, AppError> {
+        let client = self.aws_service.create_ec2_client(profile, region).await?;
+        
+        // Mock implementation
+        let response = json!({
+            "instance_id": instance_id,
+            "instance_state": {
+                "code": 16,
+                "name": "running"
+            },
+            "system_status": {
+                "status": "ok",
+                "details": [{
+                    "name": "reachability",
+                    "status": "passed"
+                }]
+            },
+            "instance_status": {
+                "status": "ok",
+                "details": [{
+                    "name": "reachability",
+                    "status": "passed"
+                }]
+            }
+        });
+        
+        Ok(response)
+    }
+
+    pub async fn get_instance_console_output(&self, profile: Option<&str>, region: &str, instance_id: &str) -> Result<String, AppError> {
+        let client = self.aws_service.create_ec2_client(profile, region).await?;
+        
+        // Mock implementation
+        Ok("Console output would appear here...".to_string())
+    }
+
+    pub async fn monitor_instances(&self, profile: Option<&str>, region: &str, instance_ids: &[String]) -> Result<Vec<(String, bool)>, AppError> {
+        let client = self.aws_service.create_ec2_client(profile, region).await?;
+        
+        // Mock implementation returning instance ID and monitoring state
+        Ok(instance_ids.iter().map(|id| (id.clone(), true)).collect())
+    }
+
+    pub async fn unmonitor_instances(&self, profile: Option<&str>, region: &str, instance_ids: &[String]) -> Result<Vec<(String, bool)>, AppError> {
+        let client = self.aws_service.create_ec2_client(profile, region).await?;
+        
+        // Mock implementation returning instance ID and monitoring state
+        Ok(instance_ids.iter().map(|id| (id.clone(), false)).collect())
+    }
+}
