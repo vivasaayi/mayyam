@@ -3,14 +3,15 @@ use chrono::Utc;
 use tracing::info;
 use crate::errors::AppError;
 use crate::config::Config;
-use crate::services::aws::{self, AwsService, AwsDataPlane};
+use crate::services::aws::{self, AwsDataPlane, AwsService};
 use crate::models::aws_resource;
 use crate::repositories::aws_resource::AwsResourceRepository;
+use crate::services::aws::aws_types::cloud_watch;
 
 pub mod models {
     pub mod analytics {
         use chrono::Utc;
-        use serde::{Serialize, Deserialize};
+        use serde::{Deserialize, Serialize};
         
         #[derive(Debug, Serialize, Deserialize)]
         pub struct AwsResourceAnalysisRequest {
@@ -45,7 +46,7 @@ pub mod models {
     }
 
     pub mod resource_workflows {
-        use serde::{Serialize, Deserialize};
+        use serde::{Deserialize, Serialize};
 
         #[derive(Debug, Serialize, Deserialize)]
         pub enum ResourceAnalysisWorkflow {
@@ -438,7 +439,7 @@ impl AwsAnalyticsService {
         &self,
         _resource: &aws_resource::Model,  // Using _ prefix to indicate intentionally unused
         workflow: &ResourceAnalysisWorkflow,
-        metrics: &aws::CloudWatchMetricsResult,
+        metrics: &cloud_watch::CloudWatchMetricsResult,
     ) -> Result<String, AppError> {
         let mut analysis = String::new();
 
@@ -495,7 +496,7 @@ impl AwsAnalyticsService {
         &self,
         _resource: &aws_resource::Model,  // Using _ prefix to indicate intentionally unused
         workflow: &ResourceAnalysisWorkflow,
-        metrics: &aws::CloudWatchMetricsResult,
+        metrics: &cloud_watch::CloudWatchMetricsResult,
     ) -> Result<String, AppError> {
         let mut analysis = String::new();
 
@@ -545,7 +546,7 @@ impl AwsAnalyticsService {
         &self,
         _resource: &aws_resource::Model,  // Using _ prefix to indicate intentionally unused
         workflow: &ResourceAnalysisWorkflow,
-        metrics: &aws::CloudWatchMetricsResult,
+        metrics: &cloud_watch::CloudWatchMetricsResult,
     ) -> Result<String, AppError> {
         let mut analysis = String::new();
 
@@ -578,7 +579,7 @@ impl AwsAnalyticsService {
         &self,
         _resource: &aws_resource::Model,  // Using _ prefix to indicate intentionally unused
         workflow: &ResourceAnalysisWorkflow,
-        metrics: &aws::CloudWatchMetricsResult,
+        metrics: &cloud_watch::CloudWatchMetricsResult,
     ) -> Result<String, AppError> {
         let mut analysis = String::new();
 
@@ -615,7 +616,7 @@ impl AwsAnalyticsService {
         &self,
         _resource: &aws_resource::Model,  // Using _ prefix to indicate intentionally unused
         question: &str,
-        metrics: &aws::CloudWatchMetricsResult,
+        metrics: &cloud_watch::CloudWatchMetricsResult,
     ) -> Result<String, AppError> {
         let mut answer = String::new();
 
@@ -653,7 +654,7 @@ impl AwsAnalyticsService {
         &self,
         _resource: &aws_resource::Model,  // Using _ prefix to indicate intentionally unused
         question: &str,
-        metrics: &aws::CloudWatchMetricsResult,
+        metrics: &cloud_watch::CloudWatchMetricsResult,
     ) -> Result<String, AppError> {
         let mut answer = String::new();
 
@@ -690,7 +691,7 @@ impl AwsAnalyticsService {
         &self,
         resource: &aws_resource::Model,
         workflow: &ResourceAnalysisWorkflow,
-        metrics: &aws::CloudWatchMetricsResult,
+        metrics: &cloud_watch::CloudWatchMetricsResult,
     ) -> Result<String, AppError> {
         let mut analysis = String::new();
 
@@ -713,8 +714,8 @@ impl AwsAnalyticsService {
         resource_type: String,
         region: String,
         time_range: Option<String>,
-    ) -> aws::CloudWatchMetricsRequest {
-        aws::CloudWatchMetricsRequest {
+    ) -> cloud_watch::CloudWatchMetricsRequest {
+        cloud_watch::CloudWatchMetricsRequest {
             metrics: vec!["CPUUtilization", "MemoryUtilization", "NetworkIn", "NetworkOut"]
                 .into_iter()
                 .map(String::from)
@@ -734,13 +735,13 @@ impl AwsAnalyticsService {
     // Helper methods for metrics analysis
     fn find_metric<'a>(
         &self,
-        metrics: &'a aws::CloudWatchMetricsResult,
+        metrics: &'a cloud_watch::CloudWatchMetricsResult,
         name: &str
-    ) -> Option<&'a aws::CloudWatchMetricData> {
+    ) -> Option<&'a cloud_watch::CloudWatchMetricData> {
         metrics.metrics.iter().find(|m| m.metric_name == name)
     }
 
-    fn calculate_statistics(&self, datapoints: &[aws::CloudWatchDatapoint]) -> (f64, f64) {
+    fn calculate_statistics(&self, datapoints: &[cloud_watch::CloudWatchDatapoint]) -> (f64, f64) {
         if datapoints.is_empty() {
             return (0.0, 0.0);
         }
@@ -755,7 +756,7 @@ impl AwsAnalyticsService {
     fn analyze_network_metrics(
         &self,
         analysis: &mut String,
-        metrics: &aws::CloudWatchMetricsResult,
+        metrics: &cloud_watch::CloudWatchMetricsResult,
     ) {
         analysis.push_str("## Network Performance\n");
 
@@ -839,7 +840,7 @@ impl AwsAnalyticsService {
         &self,
         resource: &aws_resource::Model,
         workflow: &ResourceAnalysisWorkflow,
-        metrics: &aws::CloudWatchMetricsResult,
+        metrics: &cloud_watch::CloudWatchMetricsResult,
     ) -> Result<String, AppError> {
         let mut analysis = String::new();
 

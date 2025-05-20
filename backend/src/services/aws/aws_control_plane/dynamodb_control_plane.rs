@@ -1,99 +1,12 @@
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
-use serde_json::json;
 use aws_sdk_dynamodb::Client as DynamoDbClient;
+use serde_json::json;
 use crate::errors::AppError;
-use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel};
 use crate::models::aws_auth::AccountAuthInfo;
-use super::{AwsService, CloudWatchMetricsRequest, CloudWatchMetricsResult};
-use super::client_factory::AwsClientFactory;
-
-// DynamoDB-specific types
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DynamoDbTableInfo {
-    pub table_name: String,
-    pub status: String,
-    pub provisioned_throughput: DynamoDbProvisionedThroughput,
-    pub key_schema: Vec<DynamoDbKeySchema>,
-    pub attribute_definitions: Vec<DynamoDbAttributeDefinition>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DynamoDbProvisionedThroughput {
-    pub read_capacity_units: i64,
-    pub write_capacity_units: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DynamoDbKeySchema {
-    pub attribute_name: String,
-    pub key_type: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DynamoDbAttributeDefinition {
-    pub attribute_name: String,
-    pub attribute_type: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DynamoDBGetItemRequest {
-    pub table_name: String,
-    pub key: serde_json::Value,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DynamoDBPutItemRequest {
-    pub table_name: String,
-    pub item: serde_json::Value,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DynamoDBQueryRequest {
-    pub table_name: String,
-    pub key_condition_expression: String,
-    pub expression_attribute_values: serde_json::Value,
-    pub expression_attribute_names: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DynamoDBDeleteItemRequest {
-    pub table_name: String,
-    pub key: serde_json::Value,
-    pub condition_expression: Option<String>,
-    pub expression_attribute_names: Option<serde_json::Value>,
-    pub expression_attribute_values: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DynamoDBBatchGetItemRequest {
-    pub request_items: serde_json::Value,  // Map of table name to keys to get
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DynamoDBBatchWriteItemRequest {
-    pub request_items: serde_json::Value,  // Map of table name to write requests
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DynamoDBUpdateItemRequest {
-    pub table_name: String,
-    pub key: serde_json::Value,
-    pub update_expression: String,
-    pub condition_expression: Option<String>,
-    pub expression_attribute_names: Option<serde_json::Value>,
-    pub expression_attribute_values: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DynamoDBScanRequest {
-    pub table_name: String,
-    pub filter_expression: Option<String>,
-    pub expression_attribute_names: Option<serde_json::Value>,
-    pub expression_attribute_values: Option<serde_json::Value>,
-    pub limit: Option<i32>,
-    pub exclusive_start_key: Option<serde_json::Value>,
-}
+use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel};
+use crate::services::aws::aws_types::dynamodb::{DynamoDbAttributeDefinition, DynamoDbKeySchema, DynamoDbProvisionedThroughput, DynamoDbTableInfo};
+use crate::services::aws::client_factory::AwsClientFactory;
+use crate::services::AwsService;
 
 // Control plane implementation for DynamoDB
 pub struct DynamoDbControlPlane {
@@ -243,73 +156,5 @@ impl DynamoDbControlPlane {
                 }
             ],
         })
-    }
-}
-
-// Data plane implementation for DynamoDB
-pub struct DynamoDBDataPlane {
-    aws_service: Arc<AwsService>,
-}
-
-impl DynamoDBDataPlane {
-    pub fn new(aws_service: Arc<AwsService>) -> Self {
-        Self { aws_service }
-    }
-
-    pub async fn get_item(&self, profile: Option<&str>, region: &str, request: &DynamoDBGetItemRequest) -> Result<serde_json::Value, AppError> {
-        let client = self.aws_service.create_dynamodb_client(profile, region).await?;
-        
-        // In a real implementation, this would call get_item
-        let response = json!({
-            "Item": {
-                "id": {"S": "sample-id"},
-                "name": {"S": "Sample Item"},
-                "count": {"N": "42"}
-            }
-        });
-        
-        Ok(response)
-    }
-
-    pub async fn put_item(&self, profile: Option<&str>, region: &str, request: &DynamoDBPutItemRequest) -> Result<serde_json::Value, AppError> {
-        let client = self.aws_service.create_dynamodb_client(profile, region).await?;
-        
-        // In a real implementation, this would call put_item
-        let response = json!({
-            "ConsumedCapacity": {
-                "TableName": request.table_name,
-                "CapacityUnits": 1.0
-            }
-        });
-        
-        Ok(response)
-    }
-
-    pub async fn query(&self, profile: Option<&str>, region: &str, request: &DynamoDBQueryRequest) -> Result<serde_json::Value, AppError> {
-        let client = self.aws_service.create_dynamodb_client(profile, region).await?;
-        
-        // In a real implementation, this would call query
-        let response = json!({
-            "Items": [
-                {
-                    "id": {"S": "sample-id-1"},
-                    "name": {"S": "Sample Item 1"},
-                    "count": {"N": "42"}
-                },
-                {
-                    "id": {"S": "sample-id-2"},
-                    "name": {"S": "Sample Item 2"},
-                    "count": {"N": "43"}
-                }
-            ],
-            "Count": 2,
-            "ScannedCount": 2,
-            "ConsumedCapacity": {
-                "TableName": request.table_name,
-                "CapacityUnits": 0.5
-            }
-        });
-        
-        Ok(response)
     }
 }

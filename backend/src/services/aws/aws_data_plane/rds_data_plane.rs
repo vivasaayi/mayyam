@@ -1,7 +1,8 @@
 use std::sync::Arc;
 use crate::errors::AppError;
-use super::{AwsService, CloudWatchMetricsRequest, CloudWatchMetricsResult};
-use super::client_factory::AwsClientFactory;
+use crate::services::aws::aws_types::cloud_watch::{CloudWatchMetricsRequest, CloudWatchMetricsResult};
+use crate::services::aws::client_factory::AwsClientFactory;
+use crate::services::AwsService;
 
 // Data plane implementation for RDS
 pub struct RdsDataPlane {

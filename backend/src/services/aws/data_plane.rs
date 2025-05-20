@@ -1,8 +1,7 @@
 use std::sync::Arc;
-use tracing::info;
-use serde_json::json;
 use crate::errors::AppError;
-use crate::services::aws::{AwsService, CloudWatchMetricsRequest, CloudWatchMetricsResult};
+use crate::services::aws::AwsService;
+use crate::services::aws::aws_types::cloud_watch::{CloudWatchMetricsRequest, CloudWatchMetricsResult};
 use super::client_factory::AwsClientFactory;
 
 // Base data plane for AWS resources

@@ -2,23 +2,14 @@ use std::sync::Arc;
 
 use crate::errors::AppError;
 use crate::services::aws::aws_data_plane::sqs_data_plane::SqsDataPlane;
+use crate::services::aws::aws_types::dynamodb::{DynamoDBGetItemRequest, DynamoDBPutItemRequest, DynamoDBQueryRequest};
 use crate::services::aws::aws_types::sqs::{SqsReceiveMessageRequest, SqsSendMessageRequest};
 use crate::services::aws::AwsService;
-use crate::services::aws::s3::{
-    S3DataPlane,
-    S3GetObjectRequest,
-    S3PutObjectRequest,
-};
-use crate::services::aws::dynamodb::{
-    DynamoDBDataPlane,
-    DynamoDBGetItemRequest,
-    DynamoDBPutItemRequest,
-    DynamoDBQueryRequest,
-};
-use crate::services::aws::kinesis::{
-    KinesisDataPlane,
-    KinesisPutRecordRequest,
-};
+use crate::services::aws::aws_data_plane::s3_data_plane::S3DataPlane;
+use crate::services::aws::aws_data_plane::dynamodb_data_plane::DynamoDBDataPlane;
+use crate::services::aws::aws_types::kinesis::KinesisPutRecordRequest;
+use crate::services::aws::aws_data_plane::kinesis_data_plane::KinesisDataPlane;
+use crate::services::aws::aws_types::s3::{S3GetObjectRequest, S3PutObjectRequest};
 
 // Helper struct for AWS data plane operations
 pub struct AwsDataPlane {

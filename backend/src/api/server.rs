@@ -8,7 +8,7 @@ use sea_orm::DatabaseConnection;
 use crate::config::Config;
 use crate::api::routes;
 use crate::middleware::auth::AuthMiddleware;
-use crate::services::aws::s3::{self, S3DataPlane};
+use crate::services::aws::aws_control_plane::s3_control_plane::S3ControlPlane;
 use crate::utils::database;
 use crate::repositories::{
     aws_account::AwsAccountRepository,
@@ -18,7 +18,7 @@ use crate::repositories::{
     user::UserRepository,
 };
 use crate::services::{
-    aws::{AwsControlPlane, AwsCostService, AwsDataPlane, AwsService, CloudWatchService},
+    aws::{AwsControlPlane, AwsCostService, AwsDataPlane, AwsService},
     aws_account::AwsAccountService,
     aws_analytics::AwsAnalyticsService,
     kafka::KafkaService,
@@ -29,9 +29,14 @@ use crate::controllers::{
     aws_analytics::AwsAnalyticsController,
     // Import other controllers as needed
 };
+use crate::services::aws::aws_control_plane::dynamodb_control_plane::DynamoDbControlPlane;
+use crate::services::aws::aws_control_plane::kinesis_control_plane::KinesisControlPlane;
+use crate::services::aws::aws_control_plane::s3_control_plane;
 use crate::services::aws::aws_control_plane::sqs_control_plane::SqsControlPlane;
-use crate::services::aws::dynamodb::{DynamoDBDataPlane, DynamoDbControlPlane};
-use crate::services::aws::kinesis::{KinesisControlPlane, KinesisDataPlane};
+use crate::services::aws::aws_data_plane::cloudwatch_data_plane::CloudWatchService;
+use crate::services::aws::aws_data_plane::dynamodb_data_plane::DynamoDBDataPlane;
+use crate::services::aws::aws_data_plane::kinesis_data_plane::KinesisDataPlane;
+use crate::services::aws::aws_data_plane::s3_data_plane::S3DataPlane;
 use crate::services::aws::aws_data_plane::sqs_data_plane::SqsDataPlane;
 
 pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), Box<dyn Error>> {
@@ -73,7 +78,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     // Initialize other controllers here
 
     let s3_data_plane = Arc::new(S3DataPlane::new(aws_service.clone()));
-    let s3_control_plane = Arc::new(s3::S3ControlPlane::new(aws_service.clone()));
+    let s3_control_plane = Arc::new(s3_control_plane::S3ControlPlane::new(aws_service.clone()));
 
     let dynamodb_data_plane = Arc::new(DynamoDBDataPlane::new(aws_service.clone()));
     let dynamodb_control_plane = Arc::new(DynamoDbControlPlane::new(aws_service.clone()));

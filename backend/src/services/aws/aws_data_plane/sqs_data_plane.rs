@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use serde_json::json;
 use crate::errors::AppError;
-use crate::services::aws::{CloudWatchMetricsRequest, CloudWatchMetricsResult};
+use crate::services::aws::aws_types::cloud_watch::{CloudWatchMetricsRequest, CloudWatchMetricsResult};
 use crate::services::aws::aws_types::sqs::{SqsReceiveMessageRequest, SqsSendMessageRequest};
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::AwsService;

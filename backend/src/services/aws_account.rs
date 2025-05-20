@@ -1,11 +1,12 @@
 use std::sync::Arc;
 use uuid::Uuid;
-use tracing::{info, error};
+use tracing::{error, info};
 
-use crate::models::aws_account::{DomainModel, AwsAccountCreateDto, AwsAccountUpdateDto, AwsAccountDto, SyncResponse};
+use crate::models::aws_account::{AwsAccountCreateDto, AwsAccountDto, AwsAccountUpdateDto, DomainModel, SyncResponse};
 use crate::repositories::aws_account::AwsAccountRepository;
-use crate::services::aws::{AwsControlPlane, ResourceSyncRequest};
+use crate::services::aws::AwsControlPlane;
 use crate::errors::AppError;
+use crate::services::aws::aws_types::resource_sync::ResourceSyncRequest;
 
 /// Service for AWS account management
 ///

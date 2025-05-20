@@ -1,76 +1,12 @@
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
-use serde_json::json;
 use aws_sdk_ec2::Client as Ec2Client;
+use serde_json::json;
 use crate::errors::AppError;
-use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel};
 use crate::models::aws_auth::AccountAuthInfo;
-use super::{AwsService, CloudWatchMetricsRequest, CloudWatchMetricsResult};
-use super::client_factory::AwsClientFactory;
-
-// EC2-specific types
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Ec2InstanceInfo {
-    pub instance_id: String,
-    pub instance_type: String,
-    pub state: String,
-    pub availability_zone: String,
-    pub public_ip: Option<String>,
-    pub private_ip: Option<String>,
-    pub launch_time: String,
-    pub vpc_id: Option<String>,
-    pub subnet_id: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Ec2LaunchInstanceRequest {
-    pub image_id: String,
-    pub instance_type: String,
-    pub min_count: i32,
-    pub max_count: i32,
-    pub subnet_id: Option<String>,
-    pub security_group_ids: Option<Vec<String>>,
-    pub key_name: Option<String>,
-    pub user_data: Option<String>,
-    pub tags: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Ec2SecurityGroupRule {
-    pub ip_protocol: String,
-    pub from_port: i32,
-    pub to_port: i32,
-    pub cidr_blocks: Vec<String>,
-    pub description: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Ec2SecurityGroupRequest {
-    pub group_name: String,
-    pub description: String,
-    pub vpc_id: String,
-    pub ingress_rules: Vec<Ec2SecurityGroupRule>,
-    pub egress_rules: Vec<Ec2SecurityGroupRule>,
-    pub tags: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Ec2VolumeRequest {
-    pub availability_zone: String,
-    pub volume_type: String,
-    pub size: i32,
-    pub iops: Option<i32>,
-    pub encrypted: Option<bool>,
-    pub tags: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Ec2InstanceVolumeModification {
-    pub instance_id: String,
-    pub volume_id: String,
-    pub device_name: String,
-    pub delete_on_termination: Option<bool>,
-}
+use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel};
+use crate::services::aws::aws_types::ec2::{Ec2InstanceInfo, Ec2InstanceVolumeModification, Ec2LaunchInstanceRequest, Ec2SecurityGroupRequest, Ec2VolumeRequest};
+use crate::services::aws::client_factory::AwsClientFactory;
+use crate::services::AwsService;
 
 // Control plane implementation for EC2
 pub struct Ec2ControlPlane {
@@ -211,77 +147,5 @@ impl Ec2ControlPlane {
         
         // Mock implementation
         Ok(())
-    }
-}
-
-// Data plane implementation for EC2
-pub struct Ec2DataPlane {
-    aws_service: Arc<AwsService>,
-}
-
-impl Ec2DataPlane {
-    pub fn new(aws_service: Arc<AwsService>) -> Self {
-        Self { aws_service }
-    }
-
-    pub async fn get_instance_metrics(&self, request: &CloudWatchMetricsRequest) -> Result<CloudWatchMetricsResult, AppError> {
-        let client = self.aws_service.create_cloudwatch_client(None, &request.region).await?;
-        
-        // Mock implementation for EC2 metrics
-        Ok(CloudWatchMetricsResult {
-            resource_id: request.resource_id.clone(),
-            resource_type: request.resource_type.clone(),
-            metrics: vec![],
-        })
-    }
-
-    pub async fn get_instance_status(&self, profile: Option<&str>, region: &str, instance_id: &str) -> Result<serde_json::Value, AppError> {
-        let client = self.aws_service.create_ec2_client(profile, region).await?;
-        
-        // Mock implementation
-        let response = json!({
-            "instance_id": instance_id,
-            "instance_state": {
-                "code": 16,
-                "name": "running"
-            },
-            "system_status": {
-                "status": "ok",
-                "details": [{
-                    "name": "reachability",
-                    "status": "passed"
-                }]
-            },
-            "instance_status": {
-                "status": "ok",
-                "details": [{
-                    "name": "reachability",
-                    "status": "passed"
-                }]
-            }
-        });
-        
-        Ok(response)
-    }
-
-    pub async fn get_instance_console_output(&self, profile: Option<&str>, region: &str, instance_id: &str) -> Result<String, AppError> {
-        let client = self.aws_service.create_ec2_client(profile, region).await?;
-        
-        // Mock implementation
-        Ok("Console output would appear here...".to_string())
-    }
-
-    pub async fn monitor_instances(&self, profile: Option<&str>, region: &str, instance_ids: &[String]) -> Result<Vec<(String, bool)>, AppError> {
-        let client = self.aws_service.create_ec2_client(profile, region).await?;
-        
-        // Mock implementation returning instance ID and monitoring state
-        Ok(instance_ids.iter().map(|id| (id.clone(), true)).collect())
-    }
-
-    pub async fn unmonitor_instances(&self, profile: Option<&str>, region: &str, instance_ids: &[String]) -> Result<Vec<(String, bool)>, AppError> {
-        let client = self.aws_service.create_ec2_client(profile, region).await?;
-        
-        // Mock implementation returning instance ID and monitoring state
-        Ok(instance_ids.iter().map(|id| (id.clone(), false)).collect())
     }
 }

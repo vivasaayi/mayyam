@@ -2,22 +2,18 @@ use std::sync::Arc;
 use chrono::Utc;
 use crate::errors::AppError;
 use crate::models::aws_auth::AccountAuthInfo;
-use crate::models::aws_resource::{AwsResourceType, Model as AwsResourceModel, AwsResourceDto};
-use crate::services::aws::{
-    AwsService, 
-    ResourceSyncRequest, 
-    ResourceSyncResponse,
-    ResourceTypeSyncSummary,
-};
+use crate::models::aws_resource::{AwsResourceDto, AwsResourceType, Model as AwsResourceModel};
+use crate::services::aws::AwsService;
 
 // Import control planes from their respective modules
-use super::ec2::Ec2ControlPlane;
-use super::s3::S3ControlPlane;
+use crate::services::aws::aws_control_plane::ec2_control_plane::Ec2ControlPlane;
+use crate::services::aws::aws_control_plane::s3_control_plane::S3ControlPlane;
 use crate::services::aws::aws_control_plane::rds_control_plane::RdsControlPlane;
-use super::dynamodb::DynamoDbControlPlane;
-use super::kinesis::KinesisControlPlane;
+use crate::services::aws::aws_control_plane::dynamodb_control_plane::DynamoDbControlPlane;
+use crate::services::aws::aws_control_plane::kinesis_control_plane::KinesisControlPlane;
 use crate::services::aws::aws_control_plane::sqs_control_plane::SqsControlPlane;
-use super::elasticache::ElasticacheControlPlane;
+use crate::services::aws::aws_types::resource_sync::{ResourceSyncRequest, ResourceSyncResponse, ResourceTypeSyncSummary};
+use crate::services::aws::aws_control_plane::elasticache_control_plane::ElasticacheControlPlane;
 
 // Base control plane for AWS resources
 pub struct AwsControlPlane {

@@ -1,12 +1,10 @@
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
 use serde_json::json;
-use aws_sdk_elasticache::Client as ElasticacheClient;
 use crate::errors::AppError;
-use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel};
 use crate::models::aws_auth::AccountAuthInfo;
-use super::{AwsService, CloudWatchMetricsRequest, CloudWatchMetricsResult};
-use super::client_factory::AwsClientFactory;
+use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel};
+use crate::services::aws::client_factory::AwsClientFactory;
+use crate::services::AwsService;
 
 pub struct ElasticacheControlPlane {
     aws_service: Arc<AwsService>,
@@ -57,27 +55,5 @@ impl ElasticacheControlPlane {
         clusters.push(cluster);
 
         Ok(clusters.into_iter().map(|c| c.into()).collect())
-    }
-}
-
-pub struct ElasticacheDataPlane {
-    aws_service: Arc<AwsService>,
-}
-
-impl ElasticacheDataPlane {
-    pub fn new(aws_service: Arc<AwsService>) -> Self {
-        Self { aws_service }
-    }
-
-    pub async fn get_cluster_metrics(&self, request: &CloudWatchMetricsRequest) -> Result<CloudWatchMetricsResult, AppError> {
-        let client = self.aws_service.create_cloudwatch_client(None, &request.region).await?;
-        
-        // ElastiCache-specific metric collection logic would go here
-        // For now returning empty result
-        Ok(CloudWatchMetricsResult {
-            resource_id: request.resource_id.clone(),
-            resource_type: request.resource_type.clone(),
-            metrics: vec![],
-        })
     }
 }
