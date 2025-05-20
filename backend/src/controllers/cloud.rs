@@ -7,16 +7,16 @@ use tracing::info;
 use chrono::Utc;
 
 use crate::services::aws::{
-    AwsControlPlane, AwsDataPlane, AwsCostService, CloudWatchService,
-    ResourceSyncRequest,
-    CloudWatchMetricsRequest, CloudWatchLogsRequest,
+    AwsControlPlane, AwsCostService, AwsDataPlane, CloudWatchLogsRequest,
+    CloudWatchMetricsRequest,
+    CloudWatchService, ResourceSyncRequest,
 };
 use crate::models::aws_resource::{AwsResourceQuery, AwsResourceType};
+use crate::services::aws::aws_data_plane::sqs_data_plane::SqsDataPlane;
+use crate::services::aws::aws_types::sqs::{SqsReceiveMessageRequest, SqsSendMessageRequest};
 use crate::services::aws::dynamodb::{DynamoDBDataPlane, DynamoDBGetItemRequest, DynamoDBPutItemRequest, DynamoDBQueryRequest, DynamoDbControlPlane};
 use crate::services::aws::kinesis::{KinesisDataPlane, KinesisPutRecordRequest};
 use crate::services::aws::s3::{S3DataPlane, S3GetObjectRequest, S3PutObjectRequest};
-use crate::services::aws::sqs::{SqsDataPlane, SqsReceiveMessageRequest, SqsSendMessageRequest};
-
 // AWS Control Plane operations
 pub async fn sync_aws_resources(
     req: web::Json<ResourceSyncRequest>,

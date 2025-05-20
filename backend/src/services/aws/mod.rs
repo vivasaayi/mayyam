@@ -24,8 +24,12 @@ pub mod s3;
 pub mod rds;
 pub mod dynamodb;
 pub mod kinesis;
-pub mod sqs;
 pub mod sns;
 pub mod lambda;
 pub mod elasticache;
 pub mod opensearch;
+
+
+pub mod aws_types;
+pub mod aws_control_plane;
+pub mod aws_data_plane;

@@ -13,10 +13,10 @@ use crate::services::aws::{
 // Import control planes from their respective modules
 use super::ec2::Ec2ControlPlane;
 use super::s3::S3ControlPlane;
-use super::rds::RdsControlPlane;
+use crate::services::aws::aws_control_plane::rds_control_plane::RdsControlPlane;
 use super::dynamodb::DynamoDbControlPlane;
 use super::kinesis::KinesisControlPlane;
-use super::sqs::SqsControlPlane;
+use crate::services::aws::aws_control_plane::sqs_control_plane::SqsControlPlane;
 use super::elasticache::ElasticacheControlPlane;
 
 // Base control plane for AWS resources
@@ -126,7 +126,6 @@ impl AwsControlPlane {
                                 let _ = self.aws_service.aws_resource_repo.update(existing.id, &resource_dto).await;
                             },
                             _ => {
-                                // Create new resource
                                 let _ = self.aws_service.aws_resource_repo.create(&resource_dto).await;
                             }
                         }

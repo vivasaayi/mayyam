@@ -1,6 +1,6 @@
-use actix_web::{web, App, HttpServer, middleware::Logger};
+use actix_web::{middleware::Logger, web, App, HttpServer};
 use actix_cors::Cors;
-use tracing::{info, error};
+use tracing::{error, info};
 use std::error::Error;
 use std::sync::Arc;
 use sea_orm::DatabaseConnection;
@@ -11,27 +11,28 @@ use crate::middleware::auth::AuthMiddleware;
 use crate::services::aws::s3::{self, S3DataPlane};
 use crate::utils::database;
 use crate::repositories::{
-    user::UserRepository,
-    database::DatabaseRepository,
-    cluster::ClusterRepository,
-    aws_resource::AwsResourceRepository,
     aws_account::AwsAccountRepository,
+    aws_resource::AwsResourceRepository,
+    cluster::ClusterRepository,
+    database::DatabaseRepository,
+    user::UserRepository,
 };
 use crate::services::{
-    user::UserService,
-    kafka::KafkaService,
-    aws::{AwsService, AwsControlPlane, AwsDataPlane, AwsCostService, CloudWatchService},
+    aws::{AwsControlPlane, AwsCostService, AwsDataPlane, AwsService, CloudWatchService},
     aws_account::AwsAccountService,
     aws_analytics::AwsAnalyticsService,
+    kafka::KafkaService,
+    user::UserService,
 };
 use crate::controllers::{
     auth::AuthController,
     aws_analytics::AwsAnalyticsController,
     // Import other controllers as needed
 };
+use crate::services::aws::aws_control_plane::sqs_control_plane::SqsControlPlane;
 use crate::services::aws::dynamodb::{DynamoDBDataPlane, DynamoDbControlPlane};
 use crate::services::aws::kinesis::{KinesisControlPlane, KinesisDataPlane};
-use crate::services::aws::sqs::{SqsControlPlane, SqsDataPlane};
+use crate::services::aws::aws_data_plane::sqs_data_plane::SqsDataPlane;
 
 pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), Box<dyn Error>> {
     let addr = format!("{}:{}", host, port);

@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
 use crate::errors::AppError;
+use crate::services::aws::aws_data_plane::sqs_data_plane::SqsDataPlane;
+use crate::services::aws::aws_types::sqs::{SqsReceiveMessageRequest, SqsSendMessageRequest};
 use crate::services::aws::AwsService;
 use crate::services::aws::s3::{
     S3DataPlane,
@@ -12,11 +14,6 @@ use crate::services::aws::dynamodb::{
     DynamoDBGetItemRequest,
     DynamoDBPutItemRequest,
     DynamoDBQueryRequest,
-};
-use crate::services::aws::sqs::{
-    SqsDataPlane,
-    SqsSendMessageRequest,
-    SqsReceiveMessageRequest,
 };
 use crate::services::aws::kinesis::{
     KinesisDataPlane,
