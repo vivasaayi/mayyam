@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use chrono::Utc;
-use tracing::{debug, info};
+use tracing::info;
 use crate::errors::AppError;
 use crate::config::Config;
 use crate::services::aws::{self, AwsService, AwsDataPlane};
@@ -208,14 +208,18 @@ impl AwsAnalyticsService {
         resource_type: &str
     ) -> Result<AnalysisWorkflowInfo, AppError> {
         info!("Fetching workflows for resource type: '{}'", resource_type);
-        debug!("Attempting to match resource_type: '{}'", resource_type);
-
-        // For exact string comparison debugging
         info!("Resource type length: {}", resource_type.len());
         info!("Resource type bytes: {:?}", resource_type.as_bytes());
+        
+        // Add extra debug info to help diagnose resource type matching issues
+        info!("Attempting exact string comparison for resource type");
+        
+        // Normalize input resource type for comparison
+        let normalized_resource_type = resource_type.trim();
+        info!("Normalized resource type: '{}', length: {}", normalized_resource_type, normalized_resource_type.len());
 
-        let workflows = match resource_type {
-            "KinesisStream" => {
+        let workflows = match normalized_resource_type {
+            "KinesisStream" | "kinesisstream" | "kinesis_stream" | "kinesis-stream" | "Kinesis" | "kinesis" => {
                 info!("Matched KinesisStream resource type successfully");
                 vec![
                     ResourceAnalysisMetadata {
@@ -263,7 +267,11 @@ impl AwsAnalyticsService {
             },
             _ => {
                 info!("No matching resource type found for: '{}'", resource_type);
-                return Err(AppError::BadRequest(format!("Unsupported resource type: {}", resource_type)))
+                info!("Supported resource types include: KinesisStream, EC2Instance, S3Bucket, RdsInstance, DynamoDbTable, ElastiCache");
+                return Err(AppError::BadRequest(format!(
+                    "Unsupported resource type: {}. Please use one of the supported types: KinesisStream, EC2Instance, S3Bucket, RdsInstance, DynamoDbTable, ElastiCache", 
+                    resource_type
+                )))
             },
         };
 

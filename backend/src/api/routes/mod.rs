@@ -21,5 +21,6 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     ai::configure(cfg);
     graphql::configure(cfg);
     // Note: aws_account and aws_analytics are configured separately
-    // with dependency injection
+    // with dependency injection in server.rs to avoid route conflicts
+    // DO NOT configure aws_analytics here
 }

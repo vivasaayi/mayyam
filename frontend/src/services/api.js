@@ -131,13 +131,18 @@ export const getAwsAccounts = async () => {
 // Analyze any AWS resource
 export const analyzeAwsResource = async (resourceId, workflow, timeRange = null, additionalContext = null) => {
   try {
+    // Only include fields that are expected by the backend
     const payload = {
       resource_id: resourceId,
-      workflow: workflow,
-      time_range: timeRange,
-      additional_context: additionalContext
+      workflow: workflow
     };
     
+    // Only add time_range if it's provided
+    if (timeRange) {
+      payload.time_range = timeRange;
+    }
+    
+    console.log("Sending analyze request payload:", payload);
     const response = await api.post('/api/aws/analytics/analyze', payload);
     
     // Ensure the response has related questions

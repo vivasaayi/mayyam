@@ -53,7 +53,13 @@ const ResourceAnalysis = () => {
       const backendUrl = process.env.REACT_APP_API_URL || "http://localhost:8080";
       console.log(`Using backend URL: ${backendUrl}`);
       
-      const response = await fetchWithAuth(`/api/aws/analytics/workflows/${resourceType}`);
+      // Normalize resource type to consistent format
+      const normalizedResourceType = resourceType.trim();
+      console.log(`Normalized resource type: ${normalizedResourceType}`);
+      
+      // Make the API call
+      console.log(`Making request to: /api/aws/analytics/workflows/${normalizedResourceType}`);
+      const response = await fetchWithAuth(`/api/aws/analytics/workflows/${normalizedResourceType}`);
       console.log(`Workflow fetch response status: ${response.status}`);
       
       if (response.ok) {
@@ -74,7 +80,11 @@ const ResourceAnalysis = () => {
       }
     } catch (err) {
       console.error("Error fetching workflows:", err);
+      // Create a user-friendly error message
+      const friendlyError = `Unable to fetch analysis workflows for ${resourceType}. This may be due to an unsupported resource type or a server issue. Please try again or contact support if the issue persists.`;
       // Don't set error here as it's not critical and would override the main error state
+      // Instead show a notification or warning
+      setWorkflows([]);  // Reset workflows to empty array
     } finally {
       setWorkflowsLoading(false);
     }

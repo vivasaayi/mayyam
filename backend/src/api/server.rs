@@ -129,12 +129,17 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             .app_data(web::Data::new(kinesis_data_plane.clone()))
             .app_data(web::Data::new(kinesis_control_plane.clone()))
             // Middleware
-            // Routes configuration
-            .configure(routes::configure)
+            // Routes configuration - specify the order: analytics first, then general routes
             .configure(|cfg| {
-                info!("Explicitly registering AWS analytics routes");
+                info!("Registering route handlers in server.rs");
+                
+                // Explicitly register AWS analytics routes first to avoid route conflicts
+                info!("Registering AWS analytics routes with highest priority");
                 routes::aws_analytics::configure(cfg, aws_analytics_controller.clone());
-                info!("AWS analytics routes registered");
+                
+                // Skip aws_analytics configuration in the general routes to avoid duplicate route registrations
+                info!("Registering general routes");
+                routes::configure(cfg);
             })
             .service(web::resource("/health").to(|| async { "Mayyam API is running!" }))
     })
