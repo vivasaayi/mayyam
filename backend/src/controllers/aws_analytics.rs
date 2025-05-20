@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use actix_web::{web, HttpResponse, Responder};
 use tracing::{info, error, debug};
-use crate::services::aws_analytics::{
+use crate::services::analytics::aws_analytics::aws_analytics::{
     AwsAnalyticsService,
     models::analytics::{AwsResourceAnalysisRequest, AwsResourceAnalysisResponse, ResourceRelatedQuestionRequest},
     models::resource_workflows::AnalysisWorkflowInfo

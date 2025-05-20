@@ -20,7 +20,6 @@ use crate::repositories::{
 use crate::services::{
     aws::{AwsControlPlane, AwsCostService, AwsDataPlane, AwsService},
     aws_account::AwsAccountService,
-    aws_analytics::AwsAnalyticsService,
     kafka::KafkaService,
     user::UserService,
 };
@@ -29,6 +28,7 @@ use crate::controllers::{
     aws_analytics::AwsAnalyticsController,
     // Import other controllers as needed
 };
+use crate::services::analytics::aws_analytics::aws_analytics::AwsAnalyticsService;
 use crate::services::aws::aws_control_plane::dynamodb_control_plane::DynamoDbControlPlane;
 use crate::services::aws::aws_control_plane::kinesis_control_plane::KinesisControlPlane;
 use crate::services::aws::aws_control_plane::s3_control_plane;
