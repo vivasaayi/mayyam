@@ -10,3 +10,4 @@ pub mod opensearch_data_plane;
 pub mod lambda_data_plane;
 pub mod sns_data_plane;
 pub mod cloudwatch_data_plane;
+pub mod aws_cost_service;

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use serde_json::json;
 use crate::errors::AppError;
-use super::AwsService;
-use super::client_factory::AwsClientFactory;
+use crate::services::AwsService;
+use crate::services::aws::client_factory::AwsClientFactory;
 
 pub struct AwsCostService {
     aws_service: Arc<AwsService>,
