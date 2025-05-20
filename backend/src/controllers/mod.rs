@@ -6,3 +6,4 @@ pub mod database;
 pub mod kafka;
 pub mod kubernetes;
 pub mod aws_account;
+pub mod aws_analytics;

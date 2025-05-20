@@ -3,6 +3,8 @@ use sea_orm::DbErr;
 use thiserror::Error;
 use serde::{Serialize, Deserialize};
 use tracing::error;
+use aws_smithy_http::operation::error::BuildError;
+use aws_smithy_http::result::SdkError;
 
 #[derive(Error, Debug)]
 pub enum AppError {
@@ -148,5 +150,18 @@ impl From<reqwest::Error> for AppError {
 impl From<jsonwebtoken::errors::Error> for AppError {
     fn from(err: jsonwebtoken::errors::Error) -> Self {
         AppError::Auth(err.to_string())
+    }
+}
+
+// Generic AWS SDK error handling
+impl<E> From<SdkError<E>> for AppError {
+    fn from(err: SdkError<E>) -> Self {
+        AppError::CloudProvider(err.to_string())
+    }
+}
+
+impl From<BuildError> for AppError {
+    fn from(err: BuildError) -> Self {
+        AppError::CloudProvider(err.to_string())
     }
 }

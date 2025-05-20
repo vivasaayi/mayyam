@@ -18,6 +18,7 @@ const Profile = lazy(() => import("./pages/Profile"));
 const Debug = lazy(() => import("./pages/Debug"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const RDSAnalysis = lazy(() => import("./pages/RDSAnalysis"));
+const ResourceAnalysis = lazy(() => import("./pages/ResourceAnalysis"));
 
 const App = () => {
   const { isAuthenticated, isLoading } = useAuth();
@@ -42,6 +43,7 @@ const App = () => {
             <Route path="kafka/*" element={<Kafka />} />
             <Route path="cloud/*" element={<Cloud />} />
             <Route path="rds-analysis/:id" element={<RDSAnalysis />} />
+            <Route path="resource-analysis/:id" element={<ResourceAnalysis />} />
             <Route path="kubernetes/*" element={<Kubernetes />} />
             <Route path="chaos/*" element={<Chaos />} />
             <Route path="profile" element={<Profile />} />

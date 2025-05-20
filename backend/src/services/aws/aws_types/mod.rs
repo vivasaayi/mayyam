@@ -1,0 +1,12 @@
+pub mod rds;
+pub mod sqs;
+pub mod dynamodb;
+pub mod ec2;
+pub mod kinesis;
+pub mod s3;
+pub mod resource_sync;
+pub mod elasticache;
+pub mod opensearch;
+pub mod lambda;
+pub mod sns;
+pub mod cloud_watch;
