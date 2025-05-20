@@ -81,7 +81,7 @@ const RDSAnalysis = () => {
     const fetchRdsInstance = async () => {
       try {
         setLoading(true);
-        const response = await fetchWithAuth(`/api/cloud/aws/resources/${id}`);
+        const response = await fetchWithAuth(`/api/aws/resources/${id}`);
         if (response.ok) {
           const data = await response.json();
           setInstance(data);

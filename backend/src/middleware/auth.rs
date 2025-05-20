@@ -81,9 +81,19 @@ where
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let path = req.path().to_string();
+        let method = req.method().clone();
         
         // Skip auth for public paths
         if self.public_paths.iter().any(|p| path.starts_with(p)) {
+            let fut = self.service.call(req);
+            return Box::pin(async move {
+                let res = fut.await?;
+                Ok(res)
+            });
+        }
+        
+        // Skip auth for OPTIONS requests (CORS preflight)
+        if method == actix_web::http::Method::OPTIONS {
             let fut = self.service.call(req);
             return Box::pin(async move {
                 let res = fut.await?;

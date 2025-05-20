@@ -44,6 +44,34 @@ const AwsResourceBrowser = () => {
   const [selectedResource, setSelectedResource] = useState(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   
+  // Helper function to format resource types for display
+  const formatResourceType = (resourceType) => {
+    if (!resourceType) return '';
+    
+    // Handle special cases
+    switch (resourceType) {
+      case 'EC2Instance':
+        return 'EC2';
+      case 'RdsInstance':
+        return 'RDS';
+      case 'DynamoDbTable':
+        return 'DynamoDB';
+      case 'S3Bucket':
+        return 'S3';
+      case 'ElasticacheCluster':
+        return 'ElastiCache';
+      case 'SqsQueue':
+        return 'SQS';
+      case 'KinesisStream':
+        return 'Kinesis';
+      case 'LambdaFunction':
+        return 'Lambda';
+      default:
+        // For grid, return shorter names
+        return resourceType.replace(/([A-Z])/g, ' $1').trim();
+    }
+  };
+  
   // Define AG Grid column definitions
   const columnDefs = useMemo(() => [
     {
@@ -51,35 +79,56 @@ const AwsResourceBrowser = () => {
       field: "resource_type",
       filter: true,
       sortable: true,
-      width: 130,
+      width: 150,
       cellRenderer: (params) => {
         const resourceType = params.value;
         let badgeColor = "primary";
+        let icon = "cloud";
         
         switch(resourceType) {
           case "EC2Instance":
             badgeColor = "info";
+            icon = "server";
             break;
           case "S3Bucket":
             badgeColor = "success";
+            icon = "archive";
             break;
           case "RdsInstance":
             badgeColor = "warning";
+            icon = "database";
             break;
           case "DynamoDbTable":
             badgeColor = "danger";
+            icon = "table";
             break;
           case "KinesisStream":
             badgeColor = "dark";
+            icon = "stream";
             break;
           case "SqsQueue":
             badgeColor = "secondary";
+            icon = "exchange";
+            break;
+          case "ElasticacheCluster":
+            badgeColor = "info";
+            icon = "memory";
+            break;
+          case "LambdaFunction":
+            badgeColor = "primary";
+            icon = "code";
             break;
           default:
             badgeColor = "primary";
+            icon = "cloud";
         }
         
-        return <Badge color={badgeColor}>{resourceType}</Badge>;
+        return (
+          <Badge color={badgeColor}>
+            <i className={`fa fa-${icon} me-1`}></i>
+            {formatResourceType(resourceType)}
+          </Badge>
+        );
       }
     },
     {
@@ -156,7 +205,7 @@ const AwsResourceBrowser = () => {
       field: "id",
       sortable: false,
       filter: false,
-      width: 180,
+      width: 200,
       cellRenderer: (params) => {
         const resource = params.data;
         return (
@@ -168,15 +217,13 @@ const AwsResourceBrowser = () => {
             >
               <i className="fa fa-eye me-1"></i>View
             </Button>
-            {resource.resource_type === "RdsInstance" && (
-              <Button
-                color="success"
-                size="sm"
-                onClick={() => navigate(`/rds-analysis/${resource.id}`)}
-              >
-                <i className="fa fa-chart-line me-1"></i>Analyze
-              </Button>
-            )}
+            <Button
+              color="success"
+              size="sm"
+              onClick={() => navigate(`/resource-analysis/${resource.id}`)}
+            >
+              <i className="fa fa-chart-line me-1"></i>Analyze
+            </Button>
           </div>
         );
       }

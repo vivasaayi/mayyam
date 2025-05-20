@@ -266,7 +266,11 @@ const BaseAnalysis = ({
                   <Col md={3} key={key}>
                     <p>
                       <strong>{key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:</strong>{' '}
-                      {typeof value === 'boolean' ? (value ? 'Yes' : 'No') : (value || 'N/A')}
+                      {typeof value === 'boolean' 
+                        ? (value ? 'Yes' : 'No') 
+                        : (typeof value === 'object' && value !== null 
+                          ? JSON.stringify(value) 
+                          : (value || 'N/A'))}
                     </p>
                   </Col>
                 ))}

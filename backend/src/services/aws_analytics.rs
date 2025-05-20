@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use chrono::Utc;
-
+use tracing::{debug, info};
 use crate::errors::AppError;
 use crate::config::Config;
 use crate::services::aws::{self, AwsService, AwsDataPlane};
@@ -121,7 +121,7 @@ impl AwsAnalyticsService {
             .find_by_arn(&request.resource_id)
             .await?
             .ok_or_else(|| AppError::NotFound(format!(
-                "Resource {} not found", 
+                "Resource {} not found",
                 request.resource_id
             )))?;
 
@@ -170,6 +170,11 @@ impl AwsAnalyticsService {
                 &workflow,
                 &metrics
             ).await?,
+            "KinesisStream" => self.analyze_kinesis_stream(
+                &resource,
+                &workflow,
+                &metrics
+            ).await?,
             // Add other resource types...
             _ => return Err(AppError::BadRequest(format!(
                 "Unsupported resource type: {}",
@@ -202,91 +207,69 @@ impl AwsAnalyticsService {
         &self,
         resource_type: &str
     ) -> Result<AnalysisWorkflowInfo, AppError> {
+        info!("Fetching workflows for resource type: '{}'", resource_type);
+        debug!("Attempting to match resource_type: '{}'", resource_type);
+
+        // For exact string comparison debugging
+        info!("Resource type length: {}", resource_type.len());
+        info!("Resource type bytes: {:?}", resource_type.as_bytes());
+
         let workflows = match resource_type {
-            "EC2Instance" => vec![
-                ResourceAnalysisMetadata {
-                    workflow_id: "performance".to_string(),
-                    name: "Performance Analysis".to_string(),
-                    description: "Analyze CPU, memory, and network performance".to_string(),
-                    resource_type: resource_type.to_string(),
-                    required_permissions: vec!["cloudwatch:GetMetricData".to_string()],
-                    supported_formats: vec!["markdown".to_string(), "json".to_string()],
-                    estimated_duration: "1-2 minutes".to_string(),
-                },
-                ResourceAnalysisMetadata {
-                    workflow_id: "cost".to_string(),
-                    name: "Cost Analysis".to_string(),
-                    description: "Analyze instance costs and potential savings".to_string(),
-                    resource_type: resource_type.to_string(),
-                    required_permissions: vec!["cloudwatch:GetMetricData".to_string(), "ce:GetCostAndUsage".to_string()],
-                    supported_formats: vec!["markdown".to_string(), "json".to_string()],
-                    estimated_duration: "2-3 minutes".to_string(),
-                },
-            ],
-            "RdsInstance" => vec![
-                ResourceAnalysisMetadata {
-                    workflow_id: "performance".to_string(),
-                    name: "Performance Analysis".to_string(), 
-                    description: "Analyze database performance metrics and slow queries".to_string(),
-                    resource_type: resource_type.to_string(),
-                    required_permissions: vec!["cloudwatch:GetMetricData".to_string()],
-                    supported_formats: vec!["markdown".to_string(), "json".to_string()],
-                    estimated_duration: "2-3 minutes".to_string(),
-                },
-                ResourceAnalysisMetadata {
-                    workflow_id: "storage".to_string(),
-                    name: "Storage Analysis".to_string(),
-                    description: "Analyze storage usage, IOPS, and throughput".to_string(),
-                    resource_type: resource_type.to_string(),
-                    required_permissions: vec!["cloudwatch:GetMetricData".to_string()],
-                    supported_formats: vec!["markdown".to_string(), "json".to_string()],
-                    estimated_duration: "1-2 minutes".to_string(),
-                },
-            ],
-            "DynamoDbTable" => vec![
-                ResourceAnalysisMetadata {
-                    workflow_id: "performance".to_string(),
-                    name: "Performance Analysis".to_string(),
-                    description: "Analyze table performance, throttling, and latency".to_string(),
-                    resource_type: resource_type.to_string(),
-                    required_permissions: vec!["cloudwatch:GetMetricData".to_string()],
-                    supported_formats: vec!["markdown".to_string(), "json".to_string()],
-                    estimated_duration: "2-3 minutes".to_string(),
-                },
-                ResourceAnalysisMetadata {
-                    workflow_id: "cost".to_string(),
-                    name: "Cost Analysis".to_string(),
-                    description: "Analyze table costs and capacity planning".to_string(),
-                    resource_type: resource_type.to_string(),
-                    required_permissions: vec!["cloudwatch:GetMetricData".to_string(), "ce:GetCostAndUsage".to_string()],
-                    supported_formats: vec!["markdown".to_string(), "json".to_string()],
-                    estimated_duration: "2-3 minutes".to_string(),
-                },
-            ],
-            "ElasticacheCluster" => vec![
-                ResourceAnalysisMetadata {
-                    workflow_id: "performance".to_string(),
-                    name: "Performance Analysis".to_string(),
-                    description: "Analyze cache performance, hit rates, and latency".to_string(),
-                    resource_type: resource_type.to_string(),
-                    required_permissions: vec!["cloudwatch:GetMetricData".to_string()],
-                    supported_formats: vec!["markdown".to_string(), "json".to_string()],
-                    estimated_duration: "1-2 minutes".to_string(),
-                },
-                ResourceAnalysisMetadata {
-                    workflow_id: "memory".to_string(),
-                    name: "Memory Analysis".to_string(),
-                    description: "Analyze memory usage patterns and evictions".to_string(),
-                    resource_type: resource_type.to_string(),
-                    required_permissions: vec!["cloudwatch:GetMetricData".to_string()],
-                    supported_formats: vec!["markdown".to_string(), "json".to_string()],
-                    estimated_duration: "1-2 minutes".to_string(),
-                },
-            ],
-            _ => return Err(AppError::BadRequest(format!("Unsupported resource type: {}", resource_type))),
+            "KinesisStream" => {
+                info!("Matched KinesisStream resource type successfully");
+                vec![
+                    ResourceAnalysisMetadata {
+                        workflow_id: "performance".to_string(),
+                        name: "Stream Performance Analysis".to_string(),
+                        description: "Analyze stream throughput, latency, and records processing".to_string(),
+                        resource_type: resource_type.to_string(),
+                        required_permissions: vec!["cloudwatch:GetMetricData".to_string()],
+                        supported_formats: vec!["markdown".to_string(), "json".to_string()],
+                        estimated_duration: "1-2 minutes".to_string(),
+                    },
+                    ResourceAnalysisMetadata {
+                        workflow_id: "cost".to_string(),
+                        name: "Cost Analysis".to_string(),
+                        description: "Analyze stream costs and shard usage efficiency".to_string(),
+                        resource_type: resource_type.to_string(),
+                        required_permissions: vec!["cloudwatch:GetMetricData".to_string(), "ce:GetCostAndUsage".to_string()],
+                        supported_formats: vec!["markdown".to_string(), "json".to_string()],
+                        estimated_duration: "2-3 minutes".to_string(),
+                    },
+                ]
+            },
+            "EC2Instance" => {
+                info!("Matched resource type: EC2Instance");
+                vec![
+                    ResourceAnalysisMetadata {
+                        workflow_id: "performance".to_string(),
+                        name: "Performance Analysis".to_string(),
+                        description: "Analyze CPU, memory, and network performance".to_string(),
+                        resource_type: resource_type.to_string(),
+                        required_permissions: vec!["cloudwatch:GetMetricData".to_string()],
+                        supported_formats: vec!["markdown".to_string(), "json".to_string()],
+                        estimated_duration: "1-2 minutes".to_string(),
+                    },
+                    ResourceAnalysisMetadata {
+                        workflow_id: "cost".to_string(),
+                        name: "Cost Analysis".to_string(),
+                        description: "Analyze instance costs and potential savings".to_string(),
+                        resource_type: resource_type.to_string(),
+                        required_permissions: vec!["cloudwatch:GetMetricData".to_string(), "ce:GetCostAndUsage".to_string()],
+                        supported_formats: vec!["markdown".to_string(), "json".to_string()],
+                        estimated_duration: "2-3 minutes".to_string(),
+                    },
+                ]
+            },
+            _ => {
+                info!("No matching resource type found for: '{}'", resource_type);
+                return Err(AppError::BadRequest(format!("Unsupported resource type: {}", resource_type)))
+            },
         };
 
-        Ok(AnalysisWorkflowInfo {
+        info!("Successfully retrieved workflows for resource type: {}", resource_type);
+
+        let result = AnalysisWorkflowInfo {
             resource_type: resource_type.to_string(),
             workflows,
             common_questions: self.get_common_questions(resource_type),
@@ -294,7 +277,10 @@ impl AwsAnalyticsService {
                 "https://aws.amazon.com/blogs/architecture/category/{}/",
                 resource_type.to_lowercase()
             )),
-        })
+        };
+
+        info!("Returning analysis workflow info with {} workflows", result.workflows.len());
+        Ok(result)
     }
 
     pub async fn answer_resource_question(
@@ -369,11 +355,11 @@ impl AwsAnalyticsService {
         metrics: &aws::CloudWatchMetricsResult,
     ) -> Result<String, AppError> {
         let mut analysis = String::new();
-        
+
         match workflow {
             ResourceAnalysisWorkflow::Performance => {
                 analysis.push_str("# EC2 Instance Performance Analysis\n\n");
-                
+
                 // Analyze CPU metrics
                 if let Some(cpu_metric) = self.find_metric(metrics, "CPUUtilization") {
                     let (avg, max) = self.calculate_statistics(&cpu_metric.datapoints);
@@ -415,7 +401,7 @@ impl AwsAnalyticsService {
                 ));
             }
         }
-        
+
         Ok(analysis)
     }
 
@@ -426,11 +412,11 @@ impl AwsAnalyticsService {
         metrics: &aws::CloudWatchMetricsResult,
     ) -> Result<String, AppError> {
         let mut analysis = String::new();
-        
+
         match workflow {
             ResourceAnalysisWorkflow::Performance => {
                 analysis.push_str("# RDS Instance Performance Analysis\n\n");
-                
+
                 // CPU analysis
                 if let Some(cpu_metric) = self.find_metric(metrics, "CPUUtilization") {
                     let (avg, max) = self.calculate_statistics(&cpu_metric.datapoints);
@@ -439,7 +425,7 @@ impl AwsAnalyticsService {
                         avg, max
                     ));
                 }
-                
+
                 // Memory analysis
                 if let Some(mem_metric) = self.find_metric(metrics, "FreeableMemory") {
                     let (avg, _) = self.calculate_statistics(&mem_metric.datapoints);
@@ -451,7 +437,7 @@ impl AwsAnalyticsService {
             },
             ResourceAnalysisWorkflow::Storage => {
                 analysis.push_str("# RDS Storage Analysis\n\n");
-                
+
                 // Storage usage analysis
                 if let Some(storage_metric) = self.find_metric(metrics, "FreeStorageSpace") {
                     let (avg, _) = self.calculate_statistics(&storage_metric.datapoints);
@@ -465,7 +451,7 @@ impl AwsAnalyticsService {
                 "Unsupported workflow type for RDS instance".to_string()
             )),
         }
-        
+
         Ok(analysis)
     }
 
@@ -476,11 +462,11 @@ impl AwsAnalyticsService {
         metrics: &aws::CloudWatchMetricsResult,
     ) -> Result<String, AppError> {
         let mut analysis = String::new();
-        
+
         match workflow {
             ResourceAnalysisWorkflow::Performance => {
                 analysis.push_str("# DynamoDB Table Performance Analysis\n\n");
-                
+
                 // Analyze read/write capacity
                 if let Some(read_metric) = self.find_metric(metrics, "ConsumedReadCapacityUnits") {
                     let (avg, max) = self.calculate_statistics(&read_metric.datapoints);
@@ -498,7 +484,7 @@ impl AwsAnalyticsService {
                 "Unsupported workflow type for DynamoDB table".to_string()
             )),
         }
-        
+
         Ok(analysis)
     }
 
@@ -509,11 +495,11 @@ impl AwsAnalyticsService {
         metrics: &aws::CloudWatchMetricsResult,
     ) -> Result<String, AppError> {
         let mut analysis = String::new();
-        
+
         match workflow {
             ResourceAnalysisWorkflow::Performance => {
                 analysis.push_str("# ElastiCache Cluster Performance Analysis\n\n");
-                
+
                 // Cache hit rate analysis
                 if let Some(hits_metric) = self.find_metric(metrics, "CacheHits") {
                     if let Some(misses_metric) = self.find_metric(metrics, "CacheMisses") {
@@ -535,7 +521,7 @@ impl AwsAnalyticsService {
                 "Unsupported workflow type for ElastiCache cluster".to_string()
             )),
         }
-        
+
         Ok(analysis)
     }
 
@@ -546,10 +532,10 @@ impl AwsAnalyticsService {
         metrics: &aws::CloudWatchMetricsResult,
     ) -> Result<String, AppError> {
         let mut answer = String::new();
-        
+
         // Convert question to lowercase for easier matching
         let question = question.to_lowercase();
-        
+
         if question.contains("cpu") || question.contains("processor") {
             if let Some(cpu_metric) = self.find_metric(metrics, "CPUUtilization") {
                 let (avg, max) = self.calculate_statistics(&cpu_metric.datapoints);
@@ -559,7 +545,7 @@ impl AwsAnalyticsService {
                 ));
             }
         }
-        
+
         if question.contains("memory") || question.contains("ram") {
             if let Some(mem_metric) = self.find_metric(metrics, "MemoryUtilization") {
                 let (avg, max) = self.calculate_statistics(&mem_metric.datapoints);
@@ -569,11 +555,11 @@ impl AwsAnalyticsService {
                 ));
             }
         }
-        
+
         if answer.is_empty() {
             answer = "I apologize, but I don't have enough information to answer that specific question about the EC2 instance.".to_string();
         }
-        
+
         Ok(answer)
     }
 
@@ -584,9 +570,9 @@ impl AwsAnalyticsService {
         metrics: &aws::CloudWatchMetricsResult,
     ) -> Result<String, AppError> {
         let mut answer = String::new();
-        
+
         let question = question.to_lowercase();
-        
+
         if question.contains("cpu") {
             if let Some(cpu_metric) = self.find_metric(metrics, "CPUUtilization") {
                 let (avg, max) = self.calculate_statistics(&cpu_metric.datapoints);
@@ -596,7 +582,7 @@ impl AwsAnalyticsService {
                 ));
             }
         }
-        
+
         if question.contains("memory") || question.contains("ram") {
             if let Some(mem_metric) = self.find_metric(metrics, "FreeableMemory") {
                 let (avg, _) = self.calculate_statistics(&mem_metric.datapoints);
@@ -606,11 +592,11 @@ impl AwsAnalyticsService {
                 ));
             }
         }
-        
+
         if answer.is_empty() {
             answer = "I apologize, but I don't have enough information to answer that specific question about the RDS instance.".to_string();
         }
-        
+
         Ok(answer)
     }
 
@@ -621,7 +607,7 @@ impl AwsAnalyticsService {
         metrics: &aws::CloudWatchMetricsResult,
     ) -> Result<String, AppError> {
         let mut analysis = String::new();
-        
+
         match workflow {
             ResourceAnalysisWorkflow::Cost => {
                 analysis.push_str("# S3 Bucket Cost Analysis\n\n");
@@ -732,13 +718,19 @@ impl AwsAnalyticsService {
                 "Are there any evictions?".to_string(),
                 "What is the network bandwidth usage?".to_string(),
             ],
+            "KinesisStream" => vec![
+                "What is the consumer lag?".to_string(),
+                "How many records are being processed?".to_string(),
+                "Are there any throughput exceeded events?".to_string(),
+                "Do I need to increase my shard count?".to_string(),
+            ],
             _ => vec![],
         }
     }
 
     fn generate_related_questions(&self, resource_type: &str, workflow: &str) -> Vec<String> {
         let mut questions = self.get_common_questions(resource_type);
-        
+
         // Add workflow-specific questions
         match workflow.to_lowercase().as_str() {
             "performance" => questions.extend(vec![
@@ -755,6 +747,169 @@ impl AwsAnalyticsService {
         }
 
         questions
+    }
+
+    async fn analyze_kinesis_stream(
+        &self,
+        resource: &aws_resource::Model,
+        workflow: &ResourceAnalysisWorkflow,
+        metrics: &aws::CloudWatchMetricsResult,
+    ) -> Result<String, AppError> {
+        let mut analysis = String::new();
+
+        match workflow {
+            ResourceAnalysisWorkflow::Performance => {
+                analysis.push_str("# Kinesis Stream Performance Analysis\n\n");
+
+                // Add stream info
+                analysis.push_str(&format!("## Stream Information\n"));
+                analysis.push_str(&format!("- Stream: {}\n", resource.resource_id));
+                analysis.push_str(&format!("- ARN: {}\n", resource.arn));
+                analysis.push_str(&format!("- Region: {}\n\n", resource.region));
+
+                // Analyze GetRecords.IteratorAgeMilliseconds - measures how far behind the consumer is
+                if let Some(iterator_age) = self.find_metric(metrics, "GetRecords.IteratorAgeMilliseconds") {
+                    let (avg, max) = self.calculate_statistics(&iterator_age.datapoints);
+                    analysis.push_str(&format!(
+                        "## Consumer Lag\n- Average Iterator Age: {:.2} ms\n- Maximum Iterator Age: {:.2} ms\n\n",
+                        avg, max
+                    ));
+
+                    if max > 30000.0 {
+                        analysis.push_str("⚠️ **High Consumer Lag Detected**\n");
+                        analysis.push_str("Your consumers are falling behind processing the stream. Consider:\n");
+                        analysis.push_str("1. Increasing the number of consumer instances\n");
+                        analysis.push_str("2. Optimizing consumer code for faster processing\n");
+                        analysis.push_str("3. Increasing the resource allocation for consumers\n\n");
+                    }
+                }
+
+                // Analyze throughput
+                if let Some(incoming_records) = self.find_metric(metrics, "IncomingRecords") {
+                    let (avg, max) = self.calculate_statistics(&incoming_records.datapoints);
+                    analysis.push_str(&format!(
+                        "## Incoming Records\n- Average: {:.2} records/second\n- Peak: {:.2} records/second\n\n",
+                        avg, max
+                    ));
+                }
+
+                if let Some(incoming_bytes) = self.find_metric(metrics, "IncomingBytes") {
+                    let (avg, max) = self.calculate_statistics(&incoming_bytes.datapoints);
+                    analysis.push_str(&format!(
+                        "## Incoming Data\n- Average: {:.2} KB/s\n- Peak: {:.2} KB/s\n\n",
+                        avg / 1024.0, max / 1024.0
+                    ));
+                }
+
+                // Add shard metrics if available
+                if let Some(read_throughput) = self.find_metric(metrics, "ReadProvisionedThroughputExceeded") {
+                    let (avg, max) = self.calculate_statistics(&read_throughput.datapoints);
+                    if max > 0.0 {
+                        analysis.push_str("⚠️ **Throughput Exceeded**\n");
+                        analysis.push_str("Your stream has experienced throttling events. Consider:\n");
+                        analysis.push_str("1. Increasing the number of shards\n");
+                        analysis.push_str("2. Implementing a more even distribution of partition keys\n\n");
+                    } else {
+                        analysis.push_str("✅ **No Throughput Exceeded Events**\n");
+                        analysis.push_str("Your stream is handling the current load without throttling.\n\n");
+                    }
+                }
+
+                // Add recommendations section
+                analysis.push_str("## Recommendations\n");
+                analysis.push_str("1. Monitor the Iterator Age metric closely to ensure consumers keep up with producers\n");
+                analysis.push_str("2. Implement auto-scaling for consumers based on Iterator Age\n");
+                analysis.push_str("3. Consider Enhanced Fan-Out for high-throughput applications\n");
+                analysis.push_str("4. Review your shard count to ensure adequate capacity\n");
+            },
+            ResourceAnalysisWorkflow::Cost => {
+                analysis.push_str("# Kinesis Stream Cost Analysis\n\n");
+
+                // Add stream info
+                analysis.push_str(&format!("## Stream Information\n"));
+                analysis.push_str(&format!("- Stream: {}\n", resource.resource_id));
+                analysis.push_str(&format!("- ARN: {}\n", resource.arn));
+                analysis.push_str(&format!("- Region: {}\n\n", resource.region));
+
+                // Extract number of shards if available in resource data
+                let shard_count = resource.resource_data.get("ShardCount")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(1);
+
+                // Calculate estimated costs
+                let hourly_shard_cost = match resource.region.as_str() {
+                    "us-east-1" => 0.015,  // USD per shard hour
+                    "us-west-2" => 0.015,
+                    "eu-west-1" => 0.017,
+                    _ => 0.016,  // Average cost for other regions
+                };
+
+                let monthly_shard_cost = hourly_shard_cost * 24.0 * 30.0;
+                let total_monthly_cost = monthly_shard_cost * shard_count as f64;
+
+                analysis.push_str(&format!("## Cost Analysis\n"));
+                analysis.push_str(&format!("- Shard Count: {}\n", shard_count));
+                analysis.push_str(&format!("- Cost per Shard per Hour: ${:.4}\n", hourly_shard_cost));
+                analysis.push_str(&format!("- Estimated Monthly Cost: ${:.2}\n\n", total_monthly_cost));
+
+                // Add PUT payload units analysis if available
+                if let Some(incoming_bytes) = self.find_metric(metrics, "IncomingBytes") {
+                    let (avg_bytes, _) = self.calculate_statistics(&incoming_bytes.datapoints);
+                    let avg_bytes_per_month = avg_bytes * 60.0 * 60.0 * 24.0 * 30.0;
+                    let million_put_payload_units = avg_bytes_per_month / (1024.0 * 1024.0);
+
+                    // Cost per million PUT payload units (25KB = 1 PUT payload unit)
+                    let put_cost_per_million = 0.014;  // USD per million PUT payload units
+                    let put_cost = (million_put_payload_units / 25.0) * put_cost_per_million;
+
+                    analysis.push_str(&format!("## Data Transfer Costs\n"));
+                    analysis.push_str(&format!("- Estimated Monthly Data Transfer: {:.2} GB\n", avg_bytes_per_month / (1024.0 * 1024.0 * 1024.0)));
+                    analysis.push_str(&format!("- Estimated PUT Cost: ${:.2}\n\n", put_cost));
+
+                    analysis.push_str(&format!("## Total Estimated Monthly Cost\n"));
+                    analysis.push_str(&format!("- Shard Cost: ${:.2}\n", total_monthly_cost));
+                    analysis.push_str(&format!("- PUT Cost: ${:.2}\n", put_cost));
+                    analysis.push_str(&format!("- Total: ${:.2}\n\n", total_monthly_cost + put_cost));
+                }
+
+                // Add cost optimization recommendations
+                analysis.push_str("## Cost Optimization Recommendations\n");
+
+                if shard_count > 1 {
+                    // Check if shards are underutilized
+                    if let Some(incoming_records) = self.find_metric(metrics, "IncomingRecords") {
+                        let (avg_records, max_records) = self.calculate_statistics(&incoming_records.datapoints);
+
+                        // 1000 records per second per shard is a common threshold
+                        let max_capacity = shard_count as f64 * 1000.0;
+                        let utilization_pct = (max_records / max_capacity) * 100.0;
+
+                        if utilization_pct < 50.0 {
+                            analysis.push_str("1. **Consider Reducing Shard Count**\n");
+                            analysis.push_str(&format!("   - Current peak utilization: {:.1} % of capacity\n", utilization_pct));
+                            analysis.push_str(&format!("   - Potential savings: ${:.2} per month by reducing shards\n\n",
+                                                       total_monthly_cost * 0.5));
+                        }
+                    }
+                }
+
+                analysis.push_str("2. **Evaluate Enhanced Fan-Out Necessity**\n");
+                analysis.push_str("   - Enhanced Fan-Out costs $0.015 per consumer-shard hour\n");
+                analysis.push_str("   - Only use for applications requiring dedicated throughput\n\n");
+
+                analysis.push_str("3. **Consider Kinesis Analytics**\n");
+                analysis.push_str("   - For real-time analytics, Kinesis Analytics may be more cost-effective than maintaining multiple consumers\n\n");
+
+                analysis.push_str("4. **Review Data Retention Period**\n");
+                analysis.push_str("   - Extended retention beyond 24 hours costs $0.02 per shard per hour\n");
+                analysis.push_str("   - Only extend retention if absolutely necessary\n");
+            },
+            _ => return Err(AppError::BadRequest(
+                "Unsupported workflow type for Kinesis Stream".to_string()
+            )),
+        }
+
+        Ok(analysis)
     }
 
     fn generate_followup_questions(&self, resource_type: &str, original_question: &str) -> Vec<String> {

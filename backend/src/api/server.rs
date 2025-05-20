@@ -90,7 +90,10 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             .allow_any_origin()
             .allow_any_method()
             .allow_any_header()
+            .supports_credentials()
             .max_age(3600);
+            
+        info!("Configuring CORS with credentials support");
             
         App::new()
             .wrap(cors)
@@ -128,7 +131,11 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             // Middleware
             // Routes configuration
             .configure(routes::configure)
-            .configure(|cfg| routes::aws_analytics::configure(cfg, aws_analytics_controller.clone()))
+            .configure(|cfg| {
+                info!("Explicitly registering AWS analytics routes");
+                routes::aws_analytics::configure(cfg, aws_analytics_controller.clone());
+                info!("AWS analytics routes registered");
+            })
             .service(web::resource("/health").to(|| async { "Mayyam API is running!" }))
     })
     .bind(addr)?
