@@ -131,6 +131,14 @@ export const getAwsAccounts = async () => {
 // Analyze any AWS resource
 export const analyzeAwsResource = async (resourceId, workflow, timeRange = null, additionalContext = null) => {
   try {
+    if (!resourceId) {
+      throw new Error("Resource ID is required for analysis");
+    }
+    
+    if (!workflow) {
+      throw new Error("Workflow ID is required for resource analysis");
+    }
+    
     // Only include fields that are expected by the backend
     const payload = {
       resource_id: resourceId,
@@ -142,7 +150,7 @@ export const analyzeAwsResource = async (resourceId, workflow, timeRange = null,
       payload.time_range = timeRange;
     }
     
-    console.log("Sending analyze request payload:", payload);
+    console.log("Sending analyze request payload:", JSON.stringify(payload));
     const response = await api.post('/api/aws/analytics/analyze', payload);
     
     // Ensure the response has related questions
@@ -158,6 +166,16 @@ export const analyzeAwsResource = async (resourceId, workflow, timeRange = null,
     return response.data;
   } catch (error) {
     console.error("Error analyzing AWS resource:", error);
+    // Add additional logging for debugging
+    if (error.response) {
+      console.error("Response error data:", error.response.data);
+      console.error("Response status:", error.response.status);
+      console.error("Response headers:", error.response.headers);
+    } else if (error.request) {
+      console.error("Request was made but no response received:", error.request);
+    } else {
+      console.error("Error setting up request:", error.message);
+    }
     throw error;
   }
 };

@@ -265,6 +265,84 @@ impl AwsAnalyticsService {
                     },
                 ]
             },
+            "RdsInstance" | "rdsinstance" | "rds_instance" | "rds-instance" | "Rds" | "rds" => {
+                info!("Matched resource type: RdsInstance");
+                vec![
+                    ResourceAnalysisMetadata {
+                        workflow_id: "performance".to_string(),
+                        name: "Database Performance Analysis".to_string(),
+                        description: "Analyze database CPU, memory, and I/O performance".to_string(),
+                        resource_type: resource_type.to_string(),
+                        required_permissions: vec!["cloudwatch:GetMetricData".to_string()],
+                        supported_formats: vec!["markdown".to_string(), "json".to_string()],
+                        estimated_duration: "1-2 minutes".to_string(),
+                    },
+                    ResourceAnalysisMetadata {
+                        workflow_id: "cost".to_string(),
+                        name: "Database Cost Analysis".to_string(),
+                        description: "Analyze instance costs and potential savings".to_string(),
+                        resource_type: resource_type.to_string(),
+                        required_permissions: vec!["cloudwatch:GetMetricData".to_string(), "ce:GetCostAndUsage".to_string()],
+                        supported_formats: vec!["markdown".to_string(), "json".to_string()],
+                        estimated_duration: "2-3 minutes".to_string(),
+                    },
+                    ResourceAnalysisMetadata {
+                        workflow_id: "slow-queries".to_string(),
+                        name: "Slow Query Analysis".to_string(),
+                        description: "Analyze slow queries and database performance bottlenecks".to_string(),
+                        resource_type: resource_type.to_string(),
+                        required_permissions: vec!["cloudwatch:GetMetricData".to_string(), "rds:DescribeDBLogFiles".to_string()],
+                        supported_formats: vec!["markdown".to_string(), "json".to_string()],
+                        estimated_duration: "3-5 minutes".to_string(),
+                    },
+                ]
+            },
+            "S3Bucket" | "s3bucket" | "s3_bucket" | "s3-bucket" | "S3" | "s3" => {
+                info!("Matched resource type: S3Bucket");
+                vec![
+                    ResourceAnalysisMetadata {
+                        workflow_id: "storage-usage".to_string(),
+                        name: "Storage Usage Analysis".to_string(),
+                        description: "Analyze bucket size, object count, and storage class distribution".to_string(),
+                        resource_type: resource_type.to_string(),
+                        required_permissions: vec!["cloudwatch:GetMetricData".to_string(), "s3:ListBucket".to_string()],
+                        supported_formats: vec!["markdown".to_string(), "json".to_string()],
+                        estimated_duration: "1-2 minutes".to_string(),
+                    },
+                    ResourceAnalysisMetadata {
+                        workflow_id: "cost-optimization".to_string(),
+                        name: "Cost Optimization Analysis".to_string(),
+                        description: "Analyze storage costs and identify optimization opportunities".to_string(),
+                        resource_type: resource_type.to_string(),
+                        required_permissions: vec!["cloudwatch:GetMetricData".to_string(), "ce:GetCostAndUsage".to_string()],
+                        supported_formats: vec!["markdown".to_string(), "json".to_string()],
+                        estimated_duration: "2-3 minutes".to_string(),
+                    },
+                ]
+            },
+            "DynamoDbTable" | "dynamodbtable" | "dynamodb_table" | "dynamodb-table" | "DynamoDB" | "dynamodb" => {
+                info!("Matched resource type: DynamoDbTable");
+                vec![
+                    ResourceAnalysisMetadata {
+                        workflow_id: "performance".to_string(),
+                        name: "Table Performance Analysis".to_string(),
+                        description: "Analyze read/write capacity, throttling events, and latency".to_string(),
+                        resource_type: resource_type.to_string(),
+                        required_permissions: vec!["cloudwatch:GetMetricData".to_string(), "dynamodb:DescribeTable".to_string()],
+                        supported_formats: vec!["markdown".to_string(), "json".to_string()],
+                        estimated_duration: "1-2 minutes".to_string(),
+                    },
+                    ResourceAnalysisMetadata {
+                        workflow_id: "cost".to_string(),
+                        name: "Table Cost Analysis".to_string(),
+                        description: "Analyze table costs and capacity utilization".to_string(),
+                        resource_type: resource_type.to_string(),
+                        required_permissions: vec!["cloudwatch:GetMetricData".to_string(), "ce:GetCostAndUsage".to_string()],
+                        supported_formats: vec!["markdown".to_string(), "json".to_string()],
+                        estimated_duration: "2-3 minutes".to_string(),
+                    },
+                ]
+            },
             _ => {
                 info!("No matching resource type found for: '{}'", resource_type);
                 info!("Supported resource types include: KinesisStream, EC2Instance, S3Bucket, RdsInstance, DynamoDbTable, ElastiCache");

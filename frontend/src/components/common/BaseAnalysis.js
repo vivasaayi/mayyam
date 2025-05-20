@@ -181,6 +181,37 @@ const BaseAnalysis = ({
     <div>
       {error && <Alert color="danger">{error}</Alert>}
 
+      {/* Resource Details Card */}
+      {resource && (
+        <Card className="mb-4">
+          <CardHeader>
+            <h4 className="mb-0">
+              <i className="fas fa-cube mr-2"></i>
+              {resource.name || resource.identifier || "Resource"}
+            </h4>
+          </CardHeader>
+          <CardBody>
+            <Row>
+              {Object.entries(resource)
+                .filter(([key]) => !['id', 'name', 'identifier'].includes(key))
+                .map(([key, value]) => (
+                  <Col md={3} key={key}>
+                    <p>
+                      <strong>{key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:</strong>{' '}
+                      {typeof value === 'boolean' 
+                        ? (value ? 'Yes' : 'No') 
+                        : (typeof value === 'object' && value !== null 
+                          ? JSON.stringify(value) 
+                          : (value || 'N/A'))}
+                    </p>
+                  </Col>
+                ))}
+            </Row>
+          </CardBody>
+        </Card>
+      )}
+
+
       {/* Analysis Workflows - Now at the top of the page */}
       <Card className="mb-4">
         <CardHeader>
@@ -188,24 +219,32 @@ const BaseAnalysis = ({
         </CardHeader>
         <CardBody className="p-3">
           <div className="workflow-grid">
-            {workflows.map(workflow => (
-              <Button 
-                key={workflow.id}
-                color={selectedWorkflow === workflow.id ? "primary" : "light"}
-                className={`workflow-button p-3 mb-2 ${selectedWorkflow === workflow.id ? 'active' : ''}`}
-                onClick={() => onRunAnalysis(workflow.id)}
-              >
-                <div className="d-flex align-items-center">
-                  <div className="workflow-icon me-3">
-                    <i className={`fas ${workflow.icon} fa-2x`}></i>
-                  </div>
-                  <div className="workflow-content">
-                    <h6 className="mb-1">{workflow.name}</h6>
-                    <small>{workflow.description}</small>
-                  </div>
-                </div>
-              </Button>
-            ))}
+            {workflows && workflows.length > 0 ? (
+              workflows.map(workflow => (
+                workflow && workflow.id ? (
+                  <Button 
+                    key={workflow.id}
+                    color={selectedWorkflow === workflow.id ? "primary" : "light"}
+                    className={`workflow-button p-3 mb-2 ${selectedWorkflow === workflow.id ? 'active' : ''}`}
+                    onClick={() => onRunAnalysis(workflow.id)}
+                  >
+                    <div className="d-flex align-items-center">
+                      <div className="workflow-icon me-3">
+                        <i className={`fas ${workflow.icon || 'fa-cogs'} fa-2x`}></i>
+                      </div>
+                      <div className="workflow-content">
+                        <h6 className="mb-1">{workflow.name}</h6>
+                        <small>{workflow.description}</small>
+                      </div>
+                    </div>
+                  </Button>
+                ) : null
+              ))
+            ) : (
+              <Alert color="info">
+                No analysis workflows available for this resource type. Please try a different resource.
+              </Alert>
+            )}
           </div>
         </CardBody>
       </Card>
@@ -249,35 +288,7 @@ const BaseAnalysis = ({
         </Card>
       )}
 
-      {/* Resource Details Card */}
-      {resource && (
-        <Card className="mb-4">
-          <CardHeader>
-            <h4 className="mb-0">
-              <i className="fas fa-cube mr-2"></i>
-              {resource.name || resource.identifier || "Resource"}
-            </h4>
-          </CardHeader>
-          <CardBody>
-            <Row>
-              {Object.entries(resource)
-                .filter(([key]) => !['id', 'name', 'identifier'].includes(key))
-                .map(([key, value]) => (
-                  <Col md={3} key={key}>
-                    <p>
-                      <strong>{key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:</strong>{' '}
-                      {typeof value === 'boolean' 
-                        ? (value ? 'Yes' : 'No') 
-                        : (typeof value === 'object' && value !== null 
-                          ? JSON.stringify(value) 
-                          : (value || 'N/A'))}
-                    </p>
-                  </Col>
-                ))}
-            </Row>
-          </CardBody>
-        </Card>
-      )}
+      
 
       <Row>
         <Col md={12}>

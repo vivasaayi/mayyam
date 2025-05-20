@@ -65,7 +65,17 @@ const ResourceAnalysis = () => {
       if (response.ok) {
         const data = await response.json();
         console.log(`Workflows fetched successfully:`, data);
-        setWorkflows(data.workflows || []);
+        // Ensure workflow IDs are present and valid
+        const validWorkflows = (data.workflows || []).map(workflow => {
+          // If the workflow doesn't have an ID, use the workflow_id field or generate a unique ID
+          if (!workflow.id && workflow.workflow_id) {
+            workflow.id = workflow.workflow_id;
+          }
+          return workflow;
+        }).filter(workflow => workflow.id); // Only keep workflows with valid IDs
+        
+        console.log(`Valid workflows after processing:`, validWorkflows);
+        setWorkflows(validWorkflows);
       } else {
         console.error(`Failed to fetch workflows - Status: ${response.status}`);
         // Try to get more information from the response
@@ -98,6 +108,13 @@ const ResourceAnalysis = () => {
   }, [resource, initialQuestion]);
 
   const runAnalysis = async (workflowId) => {
+    // If workflowId is null, undefined, or an empty string, show an error
+    if (!workflowId) {
+      console.error("Cannot run analysis: Workflow ID is missing or invalid");
+      setError("Cannot run analysis: Please select a valid workflow");
+      return;
+    }
+    
     // If selecting the same workflow that's already active, do nothing
     if (workflowId === selectedWorkflow) {
       console.log(`Workflow ${workflowId} is already selected`);
@@ -116,6 +133,13 @@ const ResourceAnalysis = () => {
     setLoading(true);
     
     try {
+      // Validate inputs before making the API call
+      if (!resource || !resource.arn) {
+        throw new Error("Resource information is missing or invalid");
+      }
+      
+      console.log(`Running analysis with: Resource ARN=${resource.arn}, Workflow ID=${workflowId}`);
+      
       // Call our backend API for resource analysis
       const result = await analyzeAwsResource(resource.arn, workflowId);
       console.log("Analysis result received:", result);

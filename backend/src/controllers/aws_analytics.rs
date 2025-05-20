@@ -19,6 +19,7 @@ impl AwsAnalyticsController {
 
     pub async fn analyze_resource(&self, req: web::Json<AwsResourceAnalysisRequest>) -> Result<impl Responder, AppError> {
         info!("Received request to analyze resource: {:?}", req);
+        info!("Request body JSON: {}", serde_json::to_string(&req.0).unwrap_or_default());
         
         // Validate request fields
         if req.resource_id.trim().is_empty() {
