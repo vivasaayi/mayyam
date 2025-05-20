@@ -119,3 +119,41 @@ pub struct AwsResourcePage {
     pub page_size: u64,
     pub total_pages: u64,
 }
+
+impl From<AwsResourceDto> for Model {
+    fn from(dto: AwsResourceDto) -> Self {
+        let now = Utc::now();
+        Self {
+            id: dto.id.unwrap_or_else(Uuid::new_v4),
+            account_id: dto.account_id,
+            profile: dto.profile,
+            region: dto.region,
+            resource_type: dto.resource_type,
+            resource_id: dto.resource_id,
+            arn: dto.arn,
+            name: dto.name,
+            tags: dto.tags,
+            resource_data: dto.resource_data,
+            created_at: now,
+            updated_at: now,
+            last_refreshed: now,
+        }
+    }
+}
+
+impl From<Model> for AwsResourceDto {
+    fn from(model: Model) -> Self {
+        Self {
+            id: Some(model.id),
+            account_id: model.account_id,
+            profile: model.profile,
+            region: model.region,
+            resource_type: model.resource_type,
+            resource_id: model.resource_id,
+            arn: model.arn,
+            name: model.name,
+            tags: model.tags,
+            resource_data: model.resource_data,
+        }
+    }
+}

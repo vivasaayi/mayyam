@@ -38,7 +38,7 @@ const FiveWhySummary = ({ analysisResults, onExportResults }) => {
           <div className="summary-journey">
             <div className="journey-start">
               <h6>Initial Problem</h6>
-              <p>{initialProblem}</p>
+              <p>{typeof initialProblem === 'object' ? JSON.stringify(initialProblem) : initialProblem}</p>
             </div>
             <div className="journey-path">
               <i className="fas fa-arrow-right"></i>
@@ -47,7 +47,7 @@ const FiveWhySummary = ({ analysisResults, onExportResults }) => {
             </div>
             <div className="journey-end">
               <h6>Root Cause</h6>
-              <p>{rootCause}</p>
+              <p>{typeof rootCause === 'object' ? JSON.stringify(rootCause) : rootCause}</p>
             </div>
           </div>
           
@@ -59,10 +59,12 @@ const FiveWhySummary = ({ analysisResults, onExportResults }) => {
                 <div className="timeline-item" key={index}>
                   <div className="timeline-marker">{index + 1}</div>
                   <div className="timeline-content">
-                    <h6>{step.title}</h6>
+                    <h6>{typeof step.title === 'object' ? JSON.stringify(step.title) : step.title}</h6>
                     <p className="text-muted small">
                       {/* Extract first recommendation or finding if available */}
-                      {step.result.content.split('\n').slice(2, 3).join('').substring(0, 80)}...
+                      {typeof step.result.content === 'string' 
+                        ? step.result.content.split('\n').slice(2, 3).join('').substring(0, 80) + '...'
+                        : 'Content not available'}
                     </p>
                   </div>
                 </div>

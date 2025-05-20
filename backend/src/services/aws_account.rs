@@ -1,11 +1,12 @@
 use std::sync::Arc;
 use uuid::Uuid;
-use tracing::{info, error};
+use tracing::{error, info};
 
-use crate::models::aws_account::{DomainModel, AwsAccountCreateDto, AwsAccountUpdateDto, AwsAccountDto, SyncResponse};
+use crate::models::aws_account::{AwsAccountCreateDto, AwsAccountDto, AwsAccountUpdateDto, DomainModel, SyncResponse};
 use crate::repositories::aws_account::AwsAccountRepository;
-use crate::services::aws::{AwsControlPlane, ResourceSyncRequest};
+use crate::services::aws::AwsControlPlane;
 use crate::errors::AppError;
+use crate::services::aws::aws_types::resource_sync::ResourceSyncRequest;
 
 /// Service for AWS account management
 ///
@@ -148,5 +149,57 @@ impl AwsAccountService {
                 Err(err)
             }
         }
+    }
+    
+    /// Sync resources for all AWS accounts
+    pub async fn sync_all_accounts_resources(&self) -> Result<SyncResponse, AppError> {
+        // Get all accounts
+        let accounts = self.repo.get_all().await?;
+        
+        if accounts.is_empty() {
+            return Ok(SyncResponse {
+                success: true,
+                count: 0,
+                message: "No accounts found to sync".to_string(),
+            });
+        }
+        
+        info!("Starting sync for all {} AWS accounts", accounts.len());
+        
+        let mut total_resources = 0;
+        let mut failed_accounts = Vec::new();
+        
+        // Sync each account sequentially
+        for account in accounts {
+            match self.sync_account_resources(account.id).await {
+                Ok(response) => {
+                    total_resources += response.count;
+                },
+                Err(err) => {
+                    // Log error but continue with next account
+                    error!("Failed to sync AWS account {}: {:?}", account.account_id, err);
+                    failed_accounts.push(account.account_id.clone());
+                }
+            }
+        }
+        
+        // Create response message
+        let message = if failed_accounts.is_empty() {
+            format!("Successfully synced {} resources from all accounts", total_resources)
+        } else {
+            format!(
+                "Synced {} resources. Failed to sync accounts: {}",
+                total_resources,
+                failed_accounts.join(", ")
+            )
+        };
+        
+        info!("{}", message);
+        
+        Ok(SyncResponse {
+            success: failed_accounts.is_empty(),
+            count: total_resources,
+            message,
+        })
     }
 }

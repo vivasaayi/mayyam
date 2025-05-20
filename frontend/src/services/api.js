@@ -2,7 +2,7 @@ import axios from "axios";
 
 // Create axios instance with default config
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || "",
+  baseURL: process.env.REACT_APP_API_URL || "http://localhost:8080",
   headers: {
     "Content-Type": "application/json",
   },
@@ -40,6 +40,8 @@ api.interceptors.response.use(
 // Fetch with authentication included
 export const fetchWithAuth = async (url, options = {}) => {
   const token = localStorage.getItem("token");
+  const backendUrl = process.env.REACT_APP_API_URL || "http://localhost:8080";
+  const fullUrl = url.startsWith('http') ? url : `${backendUrl}${url}`;
   
   const headers = {
     ...options.headers,
@@ -49,7 +51,8 @@ export const fetchWithAuth = async (url, options = {}) => {
     headers["Authorization"] = `Bearer ${token}`;
   }
   
-  const response = await fetch(url, {
+  console.log(`Making request to: ${fullUrl}`);
+  const response = await fetch(fullUrl, {
     ...options,
     headers,
   });
@@ -125,6 +128,87 @@ export const getAwsAccounts = async () => {
   }
 };
 
+// Analyze any AWS resource
+export const analyzeAwsResource = async (resourceId, workflow, timeRange = null, additionalContext = null) => {
+  try {
+    if (!resourceId) {
+      throw new Error("Resource ID is required for analysis");
+    }
+    
+    if (!workflow) {
+      throw new Error("Workflow ID is required for resource analysis");
+    }
+    
+    // Only include fields that are expected by the backend
+    const payload = {
+      resource_id: resourceId,
+      workflow: workflow
+    };
+    
+    // Only add time_range if it's provided
+    if (timeRange) {
+      payload.time_range = timeRange;
+    }
+    
+    console.log("Sending analyze request payload:", JSON.stringify(payload));
+    const response = await api.post('/api/aws/analytics/analyze', payload);
+    
+    // Ensure the response has related questions
+    if (!response.data.related_questions || response.data.related_questions.length === 0) {
+      console.log("Adding default related questions to resource analysis response");
+      response.data.related_questions = [
+        "How can I optimize this resource?",
+        "What are the best practices for this resource type?",
+        "Are there any performance concerns I should address?"
+      ];
+    }
+    
+    return response.data;
+  } catch (error) {
+    console.error("Error analyzing AWS resource:", error);
+    // Add additional logging for debugging
+    if (error.response) {
+      console.error("Response error data:", error.response.data);
+      console.error("Response status:", error.response.status);
+      console.error("Response headers:", error.response.headers);
+    } else if (error.request) {
+      console.error("Request was made but no response received:", error.request);
+    } else {
+      console.error("Error setting up request:", error.message);
+    }
+    throw error;
+  }
+};
+
+// Ask a question about any AWS resource
+export const askAwsResourceQuestion = async (resourceId, question, workflow = null) => {
+  try {
+    console.log(`Asking question about AWS resource ${resourceId}: ${question}`);
+    const response = await api.post('/api/aws/analytics/question', {
+      resource_id: resourceId,
+      question: question,
+      workflow: workflow
+    });
+    
+    console.log("Question response received:", response.data);
+    
+    // Ensure the response has related questions
+    if (!response.data.related_questions || response.data.related_questions.length === 0) {
+      console.log("Adding default related questions to follow-up response");
+      response.data.related_questions = [
+        "How does this compare to similar resources?",
+        "What metrics should I monitor going forward?",
+        "How can I automate this optimization process?"
+      ];
+    }
+    
+    return response.data;
+  } catch (error) {
+    console.error("Error asking AWS resource question:", error);
+    throw error;
+  }
+};
+
 // Get specific AWS account by ID
 export const getAwsAccountById = async (accountId) => {
   try {
@@ -176,6 +260,17 @@ export const syncAwsAccountResources = async (accountId) => {
     return response.data;
   } catch (error) {
     console.error(`Error syncing resources for AWS account ${accountId}:`, error);
+    throw error;
+  }
+};
+
+// Sync resources for all AWS accounts
+export const syncAllAwsAccountResources = async () => {
+  try {
+    const response = await api.post('/api/aws/accounts/sync');
+    return response.data;
+  } catch (error) {
+    console.error('Error syncing resources for all AWS accounts:', error);
     throw error;
   }
 };

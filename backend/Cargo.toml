@@ -6,14 +6,6 @@ description = "A comprehensive toolbox for DevOps and SRE engineers"
 authors = ["Rajan Panneer Selvam"]
 license = "MIT"
 
-[[bin]]
-name = "mayyam-simple"
-path = "src/main_simple.rs"
-
-[[bin]]
-name = "simple"
-path = "src/bin/simple.rs"
-
 [dependencies]
 # Web framework
 actix-web = "4.4"
@@ -58,6 +50,7 @@ rdkafka = { version = "0.34", features = ["dynamic-linking"] }
 # AWS SDK
 aws-config = "0.55"
 aws-sdk-ec2 = "0.28"
+aws-smithy-http = "0.55"  # Added for AWS SDK core types
 aws-sdk-s3 = "0.28"
 aws-sdk-rds = "0.28"
 aws-sdk-dynamodb = "0.28"

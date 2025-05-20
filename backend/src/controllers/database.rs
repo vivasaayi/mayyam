@@ -9,6 +9,8 @@ use crate::models::database::{
 use crate::services::database::DatabaseService;
 use crate::repositories::database::DatabaseRepository;
 use crate::middleware::auth::Claims;
+use crate::services::analytics::mysql_analytics::mysql_analytics_service::MySqlAnalyticsService;
+use crate::services::analytics::postgres_analytics::postgres_analytics_service::PostgresAnalyticsService;
 
 pub async fn execute_query(
     query_req: web::Json<DatabaseQueryRequest>,
@@ -16,7 +18,8 @@ pub async fn execute_query(
     config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let db_service = DatabaseService::new(config.get_ref().clone());
+    // TODO: Update this method to handle postgresql and mysql
+    let db_service = MySqlAnalyticsService::new(config.get_ref().clone());
     let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
 
     // Get the database connection details
@@ -41,7 +44,8 @@ pub async fn analyze_database(
     config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let db_service = DatabaseService::new(config.get_ref().clone());
+    // ToDo: Update this method to handle postgresql and mysql
+    let db_service = PostgresAnalyticsService::new(config.get_ref().clone());
     let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
 
     // Get the database connection details to check if it exists

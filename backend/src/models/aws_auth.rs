@@ -1,5 +1,5 @@
 // Helper struct to pass authentication information when loading AWS SDK config
-use crate::services::aws::ResourceSyncRequest;
+use crate::services::aws::aws_types::resource_sync::ResourceSyncRequest;
 
 pub struct AccountAuthInfo {
     pub use_role: bool,

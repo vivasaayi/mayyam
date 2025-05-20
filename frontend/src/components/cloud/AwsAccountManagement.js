@@ -28,7 +28,8 @@ import {
   createAwsAccount, 
   updateAwsAccount, 
   deleteAwsAccount, 
-  syncAwsAccountResources 
+  syncAwsAccountResources,
+  syncAllAwsAccountResources
 } from "../../services/api";
 
 const AwsAccountManagement = () => {
@@ -180,7 +181,7 @@ const AwsAccountManagement = () => {
       setError(null);
       
       const response = await syncAwsAccountResources(accountId);
-      setSuccess(`Successfully synced ${response.total_resources || 0} resources from AWS account!`);
+      setSuccess(`Successfully synced ${response.count || 0} resources from AWS account!`);
       
       // Refresh accounts list to show updated last_synced_at
       fetchAccounts();
@@ -225,44 +226,19 @@ const AwsAccountManagement = () => {
       setSyncLoading(true);
       setError(null);
       
-      // Get all accounts first
-      const accounts = await getAwsAccounts();
+      // Use the new endpoint to sync all accounts in a single request
+      const response = await syncAllAwsAccountResources();
       
-      // Sync each account one by one
-      let totalResourcesCount = 0;
-      for (const account of accounts) {
-        try {
-          const response = await syncAwsAccountResources(account.id);
-          totalResourcesCount += (response.total_resources || 0);
-        } catch (err) {
-          console.error(`Error syncing AWS account ${account.account_id}:`, err);
-          // Continue with other accounts but keep track of the error
-          if (!window.syncErrors) window.syncErrors = [];
-          window.syncErrors.push({
-            account: account.account_name,
-            error: err.response?.data?.message || err.message || "Unknown error"
-          });
-        }
-      }
-      
-      if (window.syncErrors && window.syncErrors.length > 0) {
-        // Create an error message with details of all accounts that failed
-        const errorMessages = window.syncErrors.map(e => 
-          `• ${e.account}: ${e.error}`
-        ).join("\n");
-        
+      if (response.success) {
+        setSuccess(`Successfully synced ${response.count} resources from all AWS accounts!`);
+      } else {
+        // Handle partial success case
         setError(
           <>
             <p><strong>Some accounts failed to sync:</strong></p>
-            <pre style={{ whiteSpace: 'pre-wrap', maxHeight: '150px', overflow: 'auto', background: '#f8f9fa', padding: '8px', borderRadius: '4px' }}>
-              {errorMessages}
-            </pre>
-            <p>Successfully synced resources from other accounts.</p>
+            <p>{response.message}</p>
           </>
         );
-        window.syncErrors = []; // Clear errors for next time
-      } else {
-        setSuccess(`Successfully synced ${totalResourcesCount} resources from all AWS accounts!`);
       }
       
       // Refresh accounts list to show updated last_synced_at
