@@ -1,6 +1,5 @@
 pub mod sqs_data_plane;
 pub mod dynamodb_data_plane;
-pub mod cloud_watch_data_plane;
 pub mod rds_data_plane;
 pub mod ec2_data_plane;
 pub mod s3_data_plane;

@@ -135,10 +135,10 @@ impl AwsAnalyticsService {
         info!("Fetching workflows for resource type: '{}'", resource_type);
         info!("Resource type length: {}", resource_type.len());
         info!("Resource type bytes: {:?}", resource_type.as_bytes());
-        
+
         // Add extra debug info to help diagnose resource type matching issues
         info!("Attempting exact string comparison for resource type");
-        
+
         // Normalize input resource type for comparison
         let normalized_resource_type = resource_type.trim();
         info!("Normalized resource type: '{}', length: {}", normalized_resource_type, normalized_resource_type.len());
@@ -165,6 +165,15 @@ impl AwsAnalyticsService {
                         supported_formats: vec!["markdown".to_string(), "json".to_string()],
                         estimated_duration: "2-3 minutes".to_string(),
                     },
+                    ResourceAnalysisMetadata {
+                        workflow_id: "five-why".to_string(),
+                        name: "5 Why Analysis".to_string(),
+                        description: "Perform a 5 Why root cause analysis on this resource".to_string(),
+                        resource_type: resource_type.to_string(),
+                        required_permissions: vec!["cloudwatch:GetMetricData".to_string()],
+                        supported_formats: vec!["markdown".to_string()],
+                        estimated_duration: "5-10 minutes".to_string(),
+                    },
                 ]
             },
             "EC2Instance" => {
@@ -187,6 +196,15 @@ impl AwsAnalyticsService {
                         required_permissions: vec!["cloudwatch:GetMetricData".to_string(), "ce:GetCostAndUsage".to_string()],
                         supported_formats: vec!["markdown".to_string(), "json".to_string()],
                         estimated_duration: "2-3 minutes".to_string(),
+                    },
+                    ResourceAnalysisMetadata {
+                        workflow_id: "five-why".to_string(),
+                        name: "5 Why Analysis".to_string(),
+                        description: "Perform a 5 Why root cause analysis on this EC2 instance".to_string(),
+                        resource_type: resource_type.to_string(),
+                        required_permissions: vec!["cloudwatch:GetMetricData".to_string()],
+                        supported_formats: vec!["markdown".to_string()],
+                        estimated_duration: "5-10 minutes".to_string(),
                     },
                 ]
             },
@@ -220,6 +238,15 @@ impl AwsAnalyticsService {
                         supported_formats: vec!["markdown".to_string(), "json".to_string()],
                         estimated_duration: "3-5 minutes".to_string(),
                     },
+                    ResourceAnalysisMetadata {
+                        workflow_id: "five-why".to_string(),
+                        name: "5 Why Analysis".to_string(),
+                        description: "Perform a 5 Why root cause analysis on this database instance".to_string(),
+                        resource_type: resource_type.to_string(),
+                        required_permissions: vec!["cloudwatch:GetMetricData".to_string()],
+                        supported_formats: vec!["markdown".to_string()],
+                        estimated_duration: "5-10 minutes".to_string(),
+                    },
                 ]
             },
             "S3Bucket" | "s3bucket" | "s3_bucket" | "s3-bucket" | "S3" | "s3" => {
@@ -243,6 +270,15 @@ impl AwsAnalyticsService {
                         supported_formats: vec!["markdown".to_string(), "json".to_string()],
                         estimated_duration: "2-3 minutes".to_string(),
                     },
+                    ResourceAnalysisMetadata {
+                        workflow_id: "five-why".to_string(),
+                        name: "5 Why Analysis".to_string(),
+                        description: "Perform a 5 Why root cause analysis on this S3 bucket".to_string(),
+                        resource_type: resource_type.to_string(),
+                        required_permissions: vec!["cloudwatch:GetMetricData".to_string(), "s3:ListBucket".to_string()],
+                        supported_formats: vec!["markdown".to_string()],
+                        estimated_duration: "5-10 minutes".to_string(),
+                    },
                 ]
             },
             "DynamoDbTable" | "dynamodbtable" | "dynamodb_table" | "dynamodb-table" | "DynamoDB" | "dynamodb" => {
@@ -265,6 +301,15 @@ impl AwsAnalyticsService {
                         required_permissions: vec!["cloudwatch:GetMetricData".to_string(), "ce:GetCostAndUsage".to_string()],
                         supported_formats: vec!["markdown".to_string(), "json".to_string()],
                         estimated_duration: "2-3 minutes".to_string(),
+                    },
+                    ResourceAnalysisMetadata {
+                        workflow_id: "five-why".to_string(),
+                        name: "5 Why Analysis".to_string(),
+                        description: "Perform a 5 Why root cause analysis on this DynamoDB table".to_string(),
+                        resource_type: resource_type.to_string(),
+                        required_permissions: vec!["cloudwatch:GetMetricData".to_string(), "dynamodb:DescribeTable".to_string()],
+                        supported_formats: vec!["markdown".to_string()],
+                        estimated_duration: "5-10 minutes".to_string(),
                     },
                 ]
             },

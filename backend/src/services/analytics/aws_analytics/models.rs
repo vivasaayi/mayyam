@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 pub mod analytics {
     use chrono::Utc;
     use serde::{Deserialize, Serialize};
-    
+
     #[derive(Debug, Serialize, Deserialize)]
     pub struct AwsResourceAnalysisRequest {
         pub resource_id: String,
@@ -46,6 +46,7 @@ pub mod resource_workflows {
         Cost,
         Storage,
         Memory,
+        FiveWhy,
     }
 
     impl ResourceAnalysisWorkflow {
@@ -55,6 +56,7 @@ pub mod resource_workflows {
                 "cost" => Ok(Self::Cost),
                 "storage" => Ok(Self::Storage),
                 "memory" => Ok(Self::Memory),
+                "five-why" | "five_why" | "fivewhy" | "5why" | "5-why" => Ok(Self::FiveWhy),
                 _ => Err(format!("Unknown workflow type: {}", s)),
             }
         }
