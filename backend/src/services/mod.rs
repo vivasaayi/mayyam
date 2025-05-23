@@ -10,3 +10,5 @@ pub mod analytics;
 // Re-export commonly used services for backward compatibility
 pub use aws::AwsService;
 
+pub mod kubernetes;
+
