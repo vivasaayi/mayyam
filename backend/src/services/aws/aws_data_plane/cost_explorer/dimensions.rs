@@ -2,7 +2,7 @@ use serde_json::{json, Value};
 use tracing::{debug, error};
 use crate::errors::AppError;
 use super::base::AwsCostService;
-use aws_sdk_costexplorer::types::{DateInterval, Context, DimensionValues as AwsDimensionValues};
+use aws_sdk_costexplorer::types::{DateInterval, Context};
 
 pub trait DimensionValues {
     async fn get_dimension_values(
@@ -26,7 +26,7 @@ pub trait DimensionValues {
 impl DimensionValues for AwsCostService {
     async fn get_dimension_values(
         &self,
-        account_id: &str,
+        _account_id: &str,
         profile: Option<&str>,
         region: &str,
         dimension: &str,
@@ -51,13 +51,13 @@ impl DimensionValues for AwsCostService {
             Ok(resp) => resp,
             Err(e) => {
                 error!("Error getting dimension values: {:?}", e);
-                return Err(format!("Failed to get dimension values: {}", e).into());
+                return Err(AppError::ExternalService(format!("Failed to get dimension values: {}", e)));
             }
         };
         
         let mut result = json!({
             "dimension": dimension,
-            "account_id": account_id,
+            "account_id": _account_id,
             "values": []
         });
         
@@ -81,9 +81,9 @@ impl DimensionValues for AwsCostService {
 
     async fn get_available_dimensions(
         &self,
-        account_id: &str,
-        profile: Option<&str>,
-        region: &str,
+        _account_id: &str,
+        _profile: Option<&str>,
+        _region: &str,
     ) -> Result<Vec<String>, AppError> {
         // AWS Cost Explorer supports these standard dimensions
         Ok(vec![

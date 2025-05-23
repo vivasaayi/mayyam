@@ -56,7 +56,7 @@ impl CostForecasting for AwsCostService {
             Ok(resp) => resp,
             Err(e) => {
                 error!("Error getting cost forecast: {:?}", e);
-                return Err(format!("Failed to get cost forecast: {}", e).into());
+                return Err(AppError::ExternalService(format!("Failed to get cost forecast: {}", e)));
             }
         };
         
