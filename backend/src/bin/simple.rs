@@ -1,8 +1,7 @@
-use actix_web::{web, App, HttpServer, HttpResponse, Responder, middleware::Logger, http::header};
+use actix_web::{web, App, HttpServer, HttpResponse, Responder, middleware::Logger};
 use actix_cors::Cors;
 use serde_json::{self, json};
 use std::io;
-use std::collections::HashMap;
 
 async fn index() -> impl Responder {
     HttpResponse::Ok().body("Mayyam API Server")

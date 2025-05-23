@@ -10,7 +10,7 @@ mod client_factory;
 pub use service::AwsService;
 pub use control_plane::AwsControlPlane;
 pub use data_plane::AwsDataPlane;
-pub use aws_data_plane::aws_cost_service::AwsCostService;
+pub use aws_data_plane::cost_explorer::AwsCostService;
 pub mod aws_types;
 pub mod aws_control_plane;
 pub mod aws_data_plane;

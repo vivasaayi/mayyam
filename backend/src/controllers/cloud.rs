@@ -11,7 +11,7 @@ use crate::services::aws::{
 };
 use crate::models::aws_resource::{AwsResourceQuery, AwsResourceType};
 use crate::services::aws::aws_control_plane::dynamodb_control_plane::DynamoDbControlPlane;
-use crate::services::aws::aws_data_plane::cloudwatch_data_plane::CloudWatchService;
+use crate::services::aws::aws_data_plane::cloudwatch::CloudWatchService;
 use crate::services::aws::aws_data_plane::sqs_data_plane::SqsDataPlane;
 use crate::services::aws::aws_types::dynamodb::{DynamoDBGetItemRequest, DynamoDBPutItemRequest, DynamoDBQueryRequest};
 use crate::services::aws::aws_types::sqs::{SqsReceiveMessageRequest, SqsSendMessageRequest};
@@ -162,8 +162,9 @@ pub async fn get_aws_cost_and_usage(
     let profile = query_params.get("profile")
         .and_then(|v| v.as_str());
     
+    let group_by = None; // You can add group by options if needed
     let cost_data = aws_cost_service
-        .get_cost_and_usage(&account_id, profile, &region, start_date, end_date)
+        .get_cost_for_date(&account_id, profile, &region, start_date, group_by)
         .await?;
     
     Ok(HttpResponse::Ok().json(cost_data))

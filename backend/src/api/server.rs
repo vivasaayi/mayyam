@@ -33,7 +33,7 @@ use crate::services::aws::aws_control_plane::dynamodb_control_plane::DynamoDbCon
 use crate::services::aws::aws_control_plane::kinesis_control_plane::KinesisControlPlane;
 use crate::services::aws::aws_control_plane::s3_control_plane;
 use crate::services::aws::aws_control_plane::sqs_control_plane::SqsControlPlane;
-use crate::services::aws::aws_data_plane::cloudwatch_data_plane::CloudWatchService;
+use crate::services::aws::aws_data_plane::cloudwatch::CloudWatchService;
 use crate::services::aws::aws_data_plane::dynamodb_data_plane::DynamoDBDataPlane;
 use crate::services::aws::aws_data_plane::kinesis_data_plane::KinesisDataPlane;
 use crate::services::aws::aws_data_plane::s3_data_plane::S3DataPlane;
