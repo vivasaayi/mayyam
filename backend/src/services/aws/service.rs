@@ -2,6 +2,7 @@ use std::sync::Arc;
 use aws_config;
 use aws_types;
 use aws_sdk_cloudwatch::Client as CloudWatchClient;
+use aws_sdk_cloudwatchlogs::Client as CloudWatchLogsClient;
 use aws_sdk_costexplorer::Client as CostExplorerClient;
 use aws_sdk_ec2::Client as Ec2Client;
 use aws_sdk_s3::Client as S3Client;
@@ -169,6 +170,15 @@ impl AwsClientFactory for AwsService {
     async fn create_cloudwatch_client_with_auth(&self, profile: Option<&str>, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<CloudWatchClient, AppError> {
         let config = self.load_aws_sdk_config_with_auth(profile, region, account_auth).await?;
         Ok(CloudWatchClient::new(&config))
+    }
+    
+    async fn create_cloudwatch_logs_client(&self, profile: Option<&str>, region: &str) -> Result<CloudWatchLogsClient, AppError> {
+        self.create_cloudwatch_logs_client_with_auth(profile, region, None).await
+    }
+
+    async fn create_cloudwatch_logs_client_with_auth(&self, profile: Option<&str>, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<CloudWatchLogsClient, AppError> {
+        let config = self.load_aws_sdk_config_with_auth(profile, region, account_auth).await?;
+        Ok(CloudWatchLogsClient::new(&config))
     }
 
     async fn create_cost_explorer_client(&self, profile: Option<&str>, region: &str) -> Result<CostExplorerClient, AppError> {

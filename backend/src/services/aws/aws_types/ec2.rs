@@ -63,3 +63,9 @@ pub struct Ec2InstanceVolumeModification {
     pub device_name: String,
     pub delete_on_termination: Option<bool>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Tag {
+    pub key: Option<String>,
+    pub value: Option<String>,
+}

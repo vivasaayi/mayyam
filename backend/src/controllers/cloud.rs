@@ -7,11 +7,11 @@ use tracing::info;
 use chrono::Utc;
 
 use crate::services::aws::{
-    AwsControlPlane, AwsCostService, AwsDataPlane,
+    AwsControlPlane, AwsCostService,
 };
 use crate::models::aws_resource::{AwsResourceQuery, AwsResourceType};
-use crate::services::aws::aws_control_plane::dynamodb_control_plane::DynamoDbControlPlane;
-use crate::services::aws::aws_data_plane::cloudwatch_data_plane::CloudWatchService;
+use crate::services::aws::aws_data_plane::cloudwatch::{CloudWatchService, CloudWatchMetrics, CloudWatchLogs, CloudWatchLogsRequest, CloudWatchMetricsRequest};
+use crate::services::aws::aws_data_plane::cost_explorer::CostAndUsage;
 use crate::services::aws::aws_data_plane::sqs_data_plane::SqsDataPlane;
 use crate::services::aws::aws_types::dynamodb::{DynamoDBGetItemRequest, DynamoDBPutItemRequest, DynamoDBQueryRequest};
 use crate::services::aws::aws_types::sqs::{SqsReceiveMessageRequest, SqsSendMessageRequest};
@@ -20,7 +20,6 @@ use crate::services::aws::aws_types::kinesis::KinesisPutRecordRequest;
 use crate::services::aws::aws_data_plane::kinesis_data_plane::KinesisDataPlane;
 use crate::services::aws::aws_types::s3::{S3GetObjectRequest, S3PutObjectRequest};
 use crate::services::aws::aws_data_plane::s3_data_plane::S3DataPlane;
-use crate::services::aws::aws_types::cloud_watch::{CloudWatchLogsRequest, CloudWatchMetricsRequest};
 use crate::services::aws::aws_types::resource_sync::ResourceSyncRequest;
 
 // AWS Control Plane operations
@@ -150,20 +149,17 @@ pub async fn get_aws_cost_and_usage(
     let (account_id, region) = path.into_inner();
     let query_params = query.into_inner();
     
-    // Extract dates from query parameters
-    let start_date = query_params.get("start_date")
+    // Extract date from query parameters
+    let date = query_params.get("date")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| AppError::Validation("start_date parameter is required".to_string()))?;
-    
-    let end_date = query_params.get("end_date")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| AppError::Validation("end_date parameter is required".to_string()))?;
+        .ok_or_else(|| AppError::Validation("date parameter is required".to_string()))?;
     
     let profile = query_params.get("profile")
         .and_then(|v| v.as_str());
     
+    let group_by = None; // You can add group by options if needed
     let cost_data = aws_cost_service
-        .get_cost_and_usage(&account_id, profile, &region, start_date, end_date)
+        .get_cost_for_date(&account_id, profile, &region, date, group_by)
         .await?;
     
     Ok(HttpResponse::Ok().json(cost_data))
@@ -384,6 +380,7 @@ pub async fn get_cloudwatch_metrics(
         end_time,
     };
 
+    // Access the inner CloudWatchService and use the trait method
     let result = cloudwatch_service.get_metrics(profile_opt, &region, &request).await?;
     
     Ok(HttpResponse::Ok().json(result))
@@ -417,22 +414,6 @@ pub async fn get_cloudwatch_logs(
         .and_then(|v| v.as_str())
         .map(String::from);
     
-    // Export options
-    let export_path = query_params.get("export_path")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-    
-    let upload_to_s3 = query_params.get("upload_to_s3")
-        .and_then(|v| v.as_bool());
-    
-    let s3_bucket = query_params.get("s3_bucket")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-    
-    let post_to_url = query_params.get("post_to_url")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-    
     let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
     
     let request = CloudWatchLogsRequest {
@@ -440,13 +421,11 @@ pub async fn get_cloudwatch_logs(
         start_time,
         end_time,
         filter_pattern,
-        export_path,
-        upload_to_s3,
-        s3_bucket,
-        post_to_url,
+        limit: Some(1000), // Add a default limit
     };
     
-    let result = cloudwatch_service.as_ref().get_logs(profile_opt, &region, &request.log_group_name).await?;
+    // Access the inner CloudWatchService and use the trait method
+    let result = cloudwatch_service.get_logs(profile_opt, &region, &request.log_group_name).await?;
     
     Ok(HttpResponse::Ok().json(result))
 }
@@ -455,7 +434,7 @@ pub async fn get_cloudwatch_logs(
 pub async fn schedule_metrics_collection(
     path: web::Path<(String, String, String, String)>,
     req: web::Json<serde_json::Value>,
-    cloudwatch_service: web::Data<Arc<CloudWatchService>>,
+    _cloudwatch_service: web::Data<Arc<CloudWatchService>>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let (profile, region, resource_type, resource_id) = path.into_inner();
@@ -466,58 +445,15 @@ pub async fn schedule_metrics_collection(
         .and_then(|v| v.as_u64())
         .unwrap_or(300); // Default to 5 minutes
     
-    // Parse metrics
-    let metrics = match body.get("metrics") {
-        Some(m) if m.is_array() => {
-            m.as_array()
-                .unwrap()
-                .iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        },
-        _ => {
-            // Default metrics based on resource type
-            match resource_type.as_str() {
-                "EC2Instance" => vec![
-                    "CPUUtilization".to_string(),
-                    "NetworkIn".to_string(),
-                    "NetworkOut".to_string(),
-                ],
-                "ElasticacheCluster" => vec![
-                    "CPUUtilization".to_string(),
-                    "NetworkBytesIn".to_string(),
-                    "NetworkBytesOut".to_string(),
-                ],
-                _ => vec!["CPUUtilization".to_string()],
-            }
-        }
-    };
-    
-    // Period (in seconds)
-    let period = body.get("period")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(60) as i32;
-
-    let now = Utc::now();
-    
-    let request = CloudWatchMetricsRequest {
-        resource_id: resource_id.clone(),
-        resource_type: resource_type.clone(),
-        region,
-        metrics,
-        period,
-        start_time: now - chrono::Duration::minutes(10),
-        end_time: now,
-    };
-    
-    let result = cloudwatch_service.schedule_metrics_collection(&request, interval_seconds as i64).await?;
-    
+    // This functionality is not yet implemented
+    // Return a message indicating this
     Ok(HttpResponse::Ok().json(serde_json::json!({
-        "message": "Scheduled metrics collection",
-        "job_id": result,
+        "message": "Metrics collection scheduling is not yet implemented",
         "interval_seconds": interval_seconds,
         "resource_id": resource_id,
-        "resource_type": resource_type
+        "resource_type": resource_type,
+        "profile": profile,
+        "region": region
     })))
 }
 

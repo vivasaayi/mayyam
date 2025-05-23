@@ -38,16 +38,16 @@ const AwsResourceBrowser = () => {
   });
   const [accounts, setAccounts] = useState([]);
   const [accountsLoading, setAccountsLoading] = useState(false);
-  
+
   const [gridApi, setGridApi] = useState(null);
   const [gridColumnApi, setGridColumnApi] = useState(null);
   const [selectedResource, setSelectedResource] = useState(null);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
-  
+
   // Helper function to format resource types for display
   const formatResourceType = (resourceType) => {
     if (!resourceType) return '';
-    
+
     // Handle special cases
     switch (resourceType) {
       case 'EC2Instance':
@@ -71,7 +71,7 @@ const AwsResourceBrowser = () => {
         return resourceType.replace(/([A-Z])/g, ' $1').trim();
     }
   };
-  
+
   // Define AG Grid column definitions
   const columnDefs = useMemo(() => [
     {
@@ -84,7 +84,7 @@ const AwsResourceBrowser = () => {
         const resourceType = params.value;
         let badgeColor = "primary";
         let icon = "cloud";
-        
+
         switch(resourceType) {
           case "EC2Instance":
             badgeColor = "info";
@@ -122,7 +122,7 @@ const AwsResourceBrowser = () => {
             badgeColor = "primary";
             icon = "cloud";
         }
-        
+
         return (
           <Badge color={badgeColor}>
             <i className={`fa fa-${icon} me-1`}></i>
@@ -140,6 +140,34 @@ const AwsResourceBrowser = () => {
       cellRenderer: (params) => {
         const name = params.data.name || params.data.resource_id;
         return name;
+      }
+    },
+    {
+      headerName: "Actions",
+      field: "id",
+      sortable: false,
+      filter: false,
+      width: 200,
+      cellRenderer: (params) => {
+        const resource = params.data;
+        return (
+          <div className="d-flex gap-2">
+            <Button 
+              color="primary" 
+              size="sm" 
+              onClick={() => viewResourceDetails(resource)}
+            >
+              <i className="fa fa-eye me-1"></i>View
+            </Button>
+            <Button
+              color="success"
+              size="sm"
+              onClick={() => navigate(`/resource-analysis/${resource.id}`)}
+            >
+              <i className="fa fa-chart-line me-1"></i>Analyze
+            </Button>
+          </div>
+        );
       }
     },
     {
@@ -172,7 +200,7 @@ const AwsResourceBrowser = () => {
         if (!tags || Object.keys(tags).length === 0) {
           return <span className="text-muted">No tags</span>;
         }
-        
+
         return (
           <div style={{ maxHeight: "60px", overflow: "auto" }}>
             {Object.entries(tags).map(([key, value]) => (
@@ -200,46 +228,18 @@ const AwsResourceBrowser = () => {
         return date.toLocaleString();
       }
     },
-    {
-      headerName: "Actions",
-      field: "id",
-      sortable: false,
-      filter: false,
-      width: 200,
-      cellRenderer: (params) => {
-        const resource = params.data;
-        return (
-          <div className="d-flex gap-2">
-            <Button 
-              color="primary" 
-              size="sm" 
-              onClick={() => viewResourceDetails(resource)}
-            >
-              <i className="fa fa-eye me-1"></i>View
-            </Button>
-            <Button
-              color="success"
-              size="sm"
-              onClick={() => navigate(`/resource-analysis/${resource.id}`)}
-            >
-              <i className="fa fa-chart-line me-1"></i>Analyze
-            </Button>
-          </div>
-        );
-      }
-    },
   ], []);
-  
+
   const defaultColDef = useMemo(() => ({
     resizable: true,
   }), []);
-  
+
   // Grid ready event handler
   const onGridReady = useCallback((params) => {
     setGridApi(params.api);
     setGridColumnApi(params.columnApi);
   }, []);
-  
+
   // Load AWS accounts on component mount
   useEffect(() => {
     const fetchAccounts = async () => {
@@ -253,36 +253,36 @@ const AwsResourceBrowser = () => {
         setAccountsLoading(false);
       }
     };
-    
+
     fetchAccounts();
   }, []);
-  
+
   // Load resources on initial render or when filter/pagination changes
   useEffect(() => {
     fetchResources();
   }, [page, pageSize]);
-  
+
   const fetchResources = async () => {
     setLoading(true);
     setError(null);
     try {
       const queryParams = new URLSearchParams();
-      
+
       // Add filter parameters
       Object.entries(filter).forEach(([key, value]) => {
         if (value) {
           queryParams.append(key, value);
         }
       });
-      
+
       // Add pagination parameters
       queryParams.append('page', page);
       queryParams.append('page_size', pageSize);
-      
+
       const response = await api.get(`/api/aws/resources?${queryParams.toString()}`);
       setResources(response.data.resources);
       setTotalResources(response.data.total);
-      
+
       // If grid is ready, update row data
       if (gridApi) {
         gridApi.setRowData(response.data.resources);
@@ -299,26 +299,26 @@ const AwsResourceBrowser = () => {
       setLoading(false);
     }
   };
-  
+
   const handleFilterChange = (name, value) => {
     setFilter(prevFilter => ({
       ...prevFilter,
       [name]: value
     }));
   };
-  
+
   const applyFilters = (e) => {
     e.preventDefault();
     // Reset pagination when applying new filters
     setPage(0);
     fetchResources();
   };
-  
+
   const viewResourceDetails = (resource) => {
     setSelectedResource(resource);
     setDetailsModalOpen(true);
   };
-  
+
   const syncResources = async () => {
     setLoading(true);
     setError(null);
@@ -330,7 +330,7 @@ const AwsResourceBrowser = () => {
         // Sync all accounts or use legacy sync
         await api.post('/api/aws/accounts/sync');
       }
-      
+
       // After sync, refresh the resources
       fetchResources();
     } catch (error) {
@@ -340,7 +340,7 @@ const AwsResourceBrowser = () => {
       setLoading(false);
     }
   };
-  
+
   return (
     <div className="animated fadeIn">
       <Card>
@@ -468,13 +468,13 @@ const AwsResourceBrowser = () => {
               </Col>
             </Row>
           </Form>
-          
+
           {loading && <Spinner />}
-          
+
           <div className="mt-4">
             <p>Total Resources: {totalResources}</p>
           </div>
-          
+
           <div 
             className="ag-theme-alpine" 
             style={{ height: '600px', width: '100%' }}
@@ -493,7 +493,7 @@ const AwsResourceBrowser = () => {
           </div>
         </CardBody>
       </Card>
-      
+
       {/* Add the Resource Details Modal */}
       <AwsResourceDetails 
         resource={selectedResource}
