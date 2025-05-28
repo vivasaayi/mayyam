@@ -1,0 +1,361 @@
+.csv-comparer {
+  font-family: sans-serif;
+  padding: 20px;
+  max-width: 1200px;
+  margin: auto;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.csv-comparer h2 {
+  text-align: center;
+  color: #333;
+  margin-bottom: 20px;
+}
+
+.config-panel {
+  background-color: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.05);
+}
+
+.config-panel h4 {
+  margin-top: 0;
+  color: #555;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 10px;
+  margin-bottom: 15px;
+}
+
+.mode-selector {
+  margin-bottom: 20px;
+  display: flex;
+  gap: 20px;
+}
+
+.mode-selector label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.column-inputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.column-inputs div {
+  display: flex;
+  flex-direction: column;
+}
+
+.column-inputs label {
+  margin-bottom: 5px;
+  font-weight: bold;
+  color: #666;
+  font-size: 0.9em;
+}
+
+.column-inputs input[type=\"text\"] {
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1em;
+}
+
+.column-inputs input[type=\"text\"]:disabled {
+  background-color: #f0f0f0;
+  cursor: not-allowed;
+}
+
+.file-upload-section {
+  background-color: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.05);
+}
+
+.file-upload-section label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: bold;
+  color: #666;
+}
+
+.file-upload-section input[type=\"file\"] {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background-color: #fff;
+}
+
+.file-upload-section input[type=\"file\"]:disabled {
+  background-color: #f0f0f0;
+  cursor: not-allowed;
+}
+
+.file-upload-section p small {
+  display: block;
+  margin-top: 5px;
+  color: #777;
+}
+
+/* Styles for File Order Manager */
+.file-order-manager {
+  margin-top: 20px;
+  margin-bottom: 20px;
+  padding: 15px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background-color: #f9f9f9;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.file-order-manager h4 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  color: #333;
+  font-size: 1.1em;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 8px;
+}
+
+.file-order-list {
+  list-style-type: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+.file-order-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 5px; /* Adjusted padding */
+  border-bottom: 1px solid #eee;
+  background-color: #fff;
+  border-radius: 4px; /* Rounded corners for items */
+  margin-bottom: 5px; /* Space between items */
+}
+
+.file-order-list li:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.file-order-list span {
+  flex-grow: 1;
+  font-size: 0.95em;
+  color: #555;
+}
+
+.file-order-buttons button {
+  margin-left: 8px;
+  padding: 5px 10px; /* Slightly larger buttons */
+  font-size: 1em; /* Adjusted font size for arrows */
+  cursor: pointer;
+  border: 1px solid #ccc;
+  background-color: #f0f0f0; /* Lighter background */
+  color: #333;
+  border-radius: 4px;
+  transition: background-color 0.2s, box-shadow 0.2s;
+}
+
+.file-order-buttons button:hover {
+  background-color: #e9e9e9;
+  border-color: #bbb;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.file-order-buttons button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  background-color: #f5f5f5;
+}
+
+.file-summary {
+  margin-bottom: 20px;
+  padding: 10px;
+  background-color: #e9f5ff;
+  border: 1px solid #cce0ff;
+  border-radius: 4px;
+}
+
+.file-summary h4 {
+  margin-top: 0;
+  margin-bottom: 5px;
+  color: #0056b3;
+}
+
+.file-summary ul {
+  list-style-type: none;
+  padding-left: 0;
+  margin-bottom: 0;
+}
+
+.file-summary li {
+  font-size: 0.9em;
+  color: #333;
+}
+
+.csv-comparer button {
+  display: block;
+  width: 100%;
+  padding: 12px 20px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1.1em;
+  cursor: pointer;
+  transition: background-color 0.2s ease-in-out;
+  margin-bottom: 20px;
+}
+
+.csv-comparer button:hover {
+  background-color: #0056b3;
+}
+
+.csv-comparer button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.error-message {
+  color: #D8000C;
+  background-color: #FFD2D2;
+  border: 1px solid #D8000C;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.results-table-container {
+  margin-top: 20px;
+}
+
+.results-table-container h4 {
+  color: #333;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 10px;
+  margin-bottom: 15px;
+}
+
+.table-wrapper {
+  overflow-x: auto; /* Allows table to be scrollable horizontally if needed */
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.05);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th, td {
+  border: 1px solid #ddd;
+  padding: 10px;
+  text-align: left;
+  font-size: 0.9em;
+  white-space: nowrap; /* Prevents text wrapping in cells */
+}
+
+th {
+  background-color: #f0f0f0;
+  font-weight: bold;
+  color: #444;
+}
+
+tbody tr:nth-child(even) {
+  background-color: #f9f9f9;
+}
+
+tbody tr:hover {
+  background-color: #f1f1f1;
+}
+
+/* Highlighting styles */
+.added-value {
+  background-color: #d4edda; /* Light green */
+  color: #155724;
+}
+.deleted-value {
+  background-color: #f8d7da; /* Light red */
+  color: #721c24;
+  text-decoration: line-through;
+}
+.changed-value {
+  background-color: #fff3cd; /* Light yellow */
+  color: #856404;
+  font-weight: bold;
+}
+
+.legend {
+  margin-top: 15px;
+  padding: 10px;
+  background-color: #f0f0f0;
+  border-radius: 4px;
+}
+.legend h5 {
+  margin: 0 0 5px 0;
+  font-size: 0.9em;
+}
+.legend-item {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 3px;
+  margin-right: 10px;
+  font-size: 0.8em;
+}
+
+.transpose-option {
+  margin-top: 15px;
+  padding: 10px;
+  background-color: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 4px;
+}
+
+.transpose-option label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: normal; /* Override bold if it was inherited */
+  color: #333;
+  margin-bottom: 5px;
+}
+
+.transpose-option input[type="checkbox"] {
+  margin-top: 0; /* Align better with text */
+}
+
+.transpose-option small {
+  display: block;
+  color: #666;
+  font-size: 0.85em;
+  margin-left: 25px; /* Indent under the checkbox text */
+  line-height: 1.4;
+}
+
+/* Adjust table actions if they were present for the old transpose button */
+.table-actions {
+  margin-bottom: 15px;
+  display: flex;
+  justify-content: flex-end; /* Or flex-start */
+}
+
+.table-actions button {
+  padding: 8px 15px;
+  font-size: 0.9em;
+  /* background-color: #6c757d; */ /* Example for a different style button */
+}

@@ -5,7 +5,7 @@ mod api;
 mod cli;
 mod config;
 mod controllers;
-mod errors;
+pub mod errors;
 mod integrations;
 mod middleware;
 mod models;
