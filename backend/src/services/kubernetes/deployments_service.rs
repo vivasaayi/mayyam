@@ -1,5 +1,5 @@
 // filepath: /Users/rajanpanneerselvam/work/mayyam/backend/src/services/kubernetes/deployments_service.rs
-use kube::{Client, Api, ResourceExt};
+use kube::{Client, Api, ResourceExt}; // Added ResourceExt
 use kube::api::{ListParams, Patch, PatchParams, DeleteParams};
 use kube::config::{Kubeconfig, KubeConfigOptions, Config as KubeConfig};
 use k8s_openapi::api::apps::v1::Deployment;
@@ -12,6 +12,8 @@ use chrono::Utc;
 
 use crate::errors::AppError;
 use crate::models::cluster::KubernetesClusterConfig;
+// Use the PodInfo and convert_kube_pod_to_pod_info from the pods module
+use crate::services::kubernetes::pods::{PodInfo, convert_kube_pod_to_pod_info};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DeploymentInfo {
@@ -180,6 +182,55 @@ impl DeploymentsService {
             AppError::ExternalService(format!("Failed to restart deployment '{}' in namespace '{}': {}", name, namespace, e))
         })?;
         Ok(())
+    }
+
+    pub async fn get_pods_for_deployment(
+        &self,
+        cluster_config: &KubernetesClusterConfig,
+        namespace: &str,
+        deployment_name: &str,
+    ) -> Result<Vec<PodInfo>, AppError> {
+        let client = Self::get_kube_client(cluster_config).await?;
+        let deployment_api: Api<Deployment> = Api::namespaced(client.clone(), namespace);
+        let pod_api: Api<Pod> = Api::namespaced(client, namespace);
+
+        let deployment = deployment_api.get(deployment_name).await.map_err(|e| {
+            AppError::ExternalService(format!(
+                "Failed to get deployment '{}' in namespace '{}': {}",
+                deployment_name, namespace, e
+            ))
+        })?;
+
+        let label_selector_str = deployment.spec.as_ref()
+            .and_then(|spec| spec.selector.match_labels.as_ref()) // Ensure selector and match_labels exist
+            .map(|labels_map| {
+                labels_map.iter()
+                    .map(|(k, v)| format!("{}={}", k, v))
+                    .collect::<Vec<String>>()
+                    .join(",")
+            })
+            .unwrap_or_default(); // If no labels, selector is empty string
+
+        if label_selector_str.is_empty() {
+            // If the selector string is empty (e.g. deployment has no selector labels),
+            // then no pods will match. Return an empty list.
+            return Ok(vec![]);
+        }
+
+        let lp = ListParams::default().labels(&label_selector_str);
+        let pod_list = pod_api.list(&lp).await.map_err(|e| {
+            AppError::ExternalService(format!(
+                "Failed to list pods for deployment '{}' in namespace '{}' using selector '{}': {}",
+                deployment_name, namespace, label_selector_str, e
+            ))
+        })?;
+
+        // Use the public helper from the pods module
+        let pod_infos = pod_list.iter()
+            .map(|pod| convert_kube_pod_to_pod_info(pod, namespace))
+            .collect();
+
+        Ok(pod_infos)
     }
 
     pub async fn delete_all_pods_for_deployment(

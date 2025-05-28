@@ -39,6 +39,20 @@ use crate::services::aws::aws_data_plane::kinesis_data_plane::KinesisDataPlane;
 use crate::services::aws::aws_data_plane::s3_data_plane::S3DataPlane;
 use crate::services::aws::aws_data_plane::sqs_data_plane::SqsDataPlane;
 
+// Import Kubernetes Services
+use crate::services::kubernetes::{
+    deployments_service::DeploymentsService,
+    stateful_sets_service::StatefulSetsService,
+    daemon_sets::DaemonSetsService,
+    pods::PodService,
+    services_service::ServicesService as K8sServicesService, // Alias to avoid conflict with general 'Service'
+    nodes_service::NodesService,
+    namespaces_service::NamespacesService,
+    persistent_volume_claims_service::PersistentVolumeClaimsService,
+    persistent_volumes_service::PersistentVolumesService,
+};
+
+
 pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), Box<dyn Error>> {
     let addr = format!("{}:{}", host, port);
     
@@ -71,6 +85,17 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
         aws_data_plane.clone(),
         aws_resource_repo.clone(),
     ));
+
+    // Initialize Kubernetes Services
+    let deployments_service = Arc::new(DeploymentsService::new());
+    let stateful_sets_service = Arc::new(StatefulSetsService::new());
+    let daemon_sets_service = Arc::new(DaemonSetsService::new());
+    let pod_service = Arc::new(PodService::new());
+    let k8s_services_service = Arc::new(K8sServicesService::new());
+    let nodes_service = Arc::new(NodesService::new());
+    let namespaces_service = Arc::new(NamespacesService::new());
+    let persistent_volume_claims_service = Arc::new(PersistentVolumeClaimsService::new());
+    let persistent_volumes_service = Arc::new(PersistentVolumesService::new());
     
     // Initialize controllers
     let auth_controller = Arc::new(AuthController::new(user_service.clone(), config.clone()));
@@ -123,6 +148,16 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             .app_data(web::Data::new(cloudwatch_service.clone()))
             .app_data(web::Data::new(aws_account_service.clone()))
             .app_data(web::Data::new(aws_analytics_service.clone()))
+            // Kubernetes Services
+            .app_data(web::Data::new(deployments_service.clone()))
+            .app_data(web::Data::new(stateful_sets_service.clone()))
+            .app_data(web::Data::new(daemon_sets_service.clone()))
+            .app_data(web::Data::new(pod_service.clone()))
+            .app_data(web::Data::new(k8s_services_service.clone()))
+            .app_data(web::Data::new(nodes_service.clone()))
+            .app_data(web::Data::new(namespaces_service.clone()))
+            .app_data(web::Data::new(persistent_volume_claims_service.clone()))
+            .app_data(web::Data::new(persistent_volumes_service.clone()))
             // Controllers
             .app_data(web::Data::new(auth_controller.clone()))
             .app_data(web::Data::new(aws_analytics_controller.clone()))

@@ -12,6 +12,8 @@ use chrono::Utc;
 
 use crate::errors::AppError;
 use crate::models::cluster::KubernetesClusterConfig;
+// Use the PodInfo and convert_kube_pod_to_pod_info from the pods module
+use crate::services::kubernetes::pods::{PodInfo, convert_kube_pod_to_pod_info};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DaemonSetInfo {
@@ -146,6 +148,47 @@ impl DaemonSetsService {
         api.get(name).await.map_err(|e| {
             AppError::ExternalService(format!("Failed to get daemon set \'{}\' in namespace \'{}\': {}", name, namespace, e))
         })
+    }
+
+    pub async fn get_pods_for_daemon_set(
+        &self,
+        cluster_config: &KubernetesClusterConfig,
+        namespace: &str,
+        daemon_set_name: &str,
+    ) -> Result<Vec<PodInfo>, AppError> {
+        let client = Self::get_kube_client(cluster_config).await?;
+        let daemon_set_api: Api<DaemonSet> = Api::namespaced(client.clone(), namespace);
+        let pod_api: Api<Pod> = Api::namespaced(client, namespace);
+
+        let daemon_set = daemon_set_api.get(daemon_set_name).await.map_err(|e| {
+            AppError::ExternalService(format!(
+                "Failed to get daemon set '{}' in namespace '{}': {}",
+                daemon_set_name, namespace, e
+            ))
+        })?;
+
+        let selector = daemon_set.spec.as_ref().map(|spec| &spec.selector);
+        let label_selector_str = selector
+            .and_then(label_selector_to_string) // Use the existing helper
+            .unwrap_or_default();
+
+        if label_selector_str.is_empty() {
+            return Ok(vec![]); // No selector means no pods
+        }
+
+        let lp = ListParams::default().labels(&label_selector_str);
+        let pod_list = pod_api.list(&lp).await.map_err(|e| {
+            AppError::ExternalService(format!(
+                "Failed to list pods for daemon set '{}' in namespace '{}' using selector '{}': {}",
+                daemon_set_name, namespace, label_selector_str, e
+            ))
+        })?;
+
+        let pod_infos = pod_list.iter()
+            .map(|pod| convert_kube_pod_to_pod_info(pod, namespace)) // Use shared helper
+            .collect();
+
+        Ok(pod_infos)
     }
 
     pub async fn delete_daemon_set(
