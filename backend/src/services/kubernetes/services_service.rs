@@ -87,13 +87,16 @@ impl ServicesService {
                 k8s_ports.iter().map(|p| ServicePortInfo {
                     name: p.name.clone(),
                     port: p.port,
-                    target_port: p.target_port.as_ref().map(|tp| tp.to_string()),
+                    target_port: p.target_port.as_ref().map(|tp| match tp {
+                        k8s_openapi::apimachinery::pkg::util::intstr::IntOrString::Int(i) => i.to_string(),
+                        k8s_openapi::apimachinery::pkg::util::intstr::IntOrString::String(s) => s.clone(),
+                    }),
                     protocol: p.protocol.clone(),
                     node_port: p.node_port,
                 }).collect()
             });
             
-            let external_ips = spec.and_then(|s_spec| s_spec.external_i_ps.clone()).unwrap_or_default();
+            let external_ips = spec.and_then(|s_spec| s_spec.external_ips.clone()).unwrap_or_default();
 
             infos.push(ServiceInfo {
                 name,

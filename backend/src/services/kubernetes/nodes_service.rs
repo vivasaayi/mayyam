@@ -60,7 +60,7 @@ impl NodesService {
 
     fn get_node_status(node: &Node) -> String {
         if let Some(conditions) = &node.status.as_ref().and_then(|s| s.conditions.as_ref()) {
-            for condition in conditions {
+            for condition in &**conditions {
                 if condition.type_ == "Ready" {
                     return if condition.status == "True" { "Ready".to_string() } else { format!("NotReady ({})", condition.reason.as_deref().unwrap_or("Unknown")) };
                 }

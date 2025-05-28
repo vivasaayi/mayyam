@@ -113,8 +113,7 @@ impl StatefulSetsService {
             );
 
             let images = spec
-                .map(|s| &s.template.spec)
-                .flatten()
+                .and_then(|s| s.template.spec.as_ref())
                 .map(|pod_spec| {
                     pod_spec.containers.iter()
                         .filter_map(|c| c.image.clone())

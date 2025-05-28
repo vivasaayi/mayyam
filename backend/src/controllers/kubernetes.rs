@@ -12,17 +12,17 @@ use uuid::Uuid;
 async fn get_cluster_config_by_id(db: &DatabaseConnection, cluster_id_str: &str) -> Result<KubernetesClusterConfig, AppError> {
     let cluster_id = Uuid::parse_str(cluster_id_str).map_err(|_| AppError::BadRequest("Invalid cluster ID format".to_string()))?;
     
-    let cluster_model = ClusterModel::find_by_id(cluster_id)
+    let cluster_model = crate::models::cluster::Entity::find_by_id(cluster_id)
         .one(db)
         .await
-        .map_err(|e| AppError::DatabaseError(format!("Failed to fetch cluster: {}", e)))?
+        .map_err(AppError::Database)?
         .ok_or_else(|| AppError::NotFound(format!("Cluster with ID {} not found", cluster_id)))?;
 
     if cluster_model.cluster_type != "kubernetes" {
         return Err(AppError::BadRequest("Cluster is not a Kubernetes cluster".to_string()));
     }
 
-    serde_json::from_value(cluster_model.config).map_err(|e| AppError::InternalError(format!("Failed to parse cluster config: {}", e)))
+    serde_json::from_value(cluster_model.config).map_err(|e| AppError::Internal(format!("Failed to parse cluster config: {}", e)))
 }
 
 // === Cluster Management Controllers ===
@@ -30,11 +30,11 @@ pub async fn list_clusters_controller(
     _claims: web::ReqData<Claims>, 
     db: web::Data<Arc<DatabaseConnection>>
 ) -> Result<impl Responder, AppError> {
-    let clusters = ClusterModel::find()
+    let clusters = crate::models::cluster::Entity::find()
         .filter(crate::models::cluster::Column::ClusterType.eq("kubernetes"))
         .all(db.get_ref().as_ref())
         .await
-        .map_err(|e| AppError::DatabaseError(format!("Failed to list clusters: {}", e)))?;
+        .map_err(AppError::Database)?;
     Ok(HttpResponse::Ok().json(clusters))
 }
 
@@ -59,14 +59,14 @@ pub async fn create_cluster_controller(
         id: Set(Uuid::new_v4()),
         name: Set(new_cluster_info.name),
         cluster_type: Set("kubernetes".to_string()),
-        config: Set(serde_json::to_value(cluster_config).map_err(|e| AppError::InternalError(format!("Failed to serialize cluster config: {}", e)))?),
-        created_by: Set(*user_id.into_inner()),
+        config: Set(serde_json::to_value(cluster_config).map_err(|e| AppError::Internal(format!("Failed to serialize cluster config: {}", e)))?),
+        created_by: Set(user_id.into_inner()),
         created_at: Set(chrono::Utc::now()),
         updated_at: Set(chrono::Utc::now()),
         ..Default::default()
     };
 
-    let saved_cluster = new_cluster.insert(db.get_ref().as_ref()).await.map_err(|e| AppError::DatabaseError(format!("Failed to save cluster: {}", e)))?;
+    let saved_cluster = new_cluster.insert(db.get_ref().as_ref()).await.map_err(AppError::Database)?;
     Ok(HttpResponse::Created().json(saved_cluster))
 }
 
@@ -76,10 +76,10 @@ pub async fn get_cluster_controller(
     path: web::Path<String> 
 ) -> Result<impl Responder, AppError> {
     let cluster_id = path.into_inner();
-    let cluster_model = ClusterModel::find_by_id(Uuid::parse_str(&cluster_id).map_err(|_| AppError::BadRequest("Invalid cluster ID".to_string()))?)
+    let cluster_model = crate::models::cluster::Entity::find_by_id(Uuid::parse_str(&cluster_id).map_err(|_| AppError::BadRequest("Invalid cluster ID".to_string()))?)
         .one(db.get_ref().as_ref())
         .await
-        .map_err(|e| AppError::DatabaseError(format!("Failed to fetch cluster: {}", e)))?
+        .map_err(AppError::Database)?
         .ok_or_else(|| AppError::NotFound(format!("Cluster with ID {} not found", cluster_id)))?;
     Ok(HttpResponse::Ok().json(cluster_model))
 }
@@ -94,10 +94,10 @@ pub async fn update_cluster_controller(
     let cluster_id = Uuid::parse_str(&cluster_id_str).map_err(|_| AppError::BadRequest("Invalid cluster ID format".to_string()))?;
     let update_data = req.into_inner();
 
-    let mut active_cluster: crate::models::cluster::ActiveModel = ClusterModel::find_by_id(cluster_id)
+    let mut active_cluster: crate::models::cluster::ActiveModel = crate::models::cluster::Entity::find_by_id(cluster_id)
         .one(db.get_ref().as_ref())
         .await
-        .map_err(|e| AppError::DatabaseError(format!("Failed to fetch cluster for update: {}", e)))?
+        .map_err(AppError::Database)?
         .ok_or_else(|| AppError::NotFound(format!("Cluster with ID {} not found for update", cluster_id)))?
         .into();
 
@@ -112,10 +112,10 @@ pub async fn update_cluster_controller(
     };
 
     active_cluster.name = Set(update_data.name);
-    active_cluster.config = Set(serde_json::to_value(cluster_config).map_err(|e| AppError::InternalError(format!("Failed to serialize cluster config: {}", e)))?);
+    active_cluster.config = Set(serde_json::to_value(cluster_config).map_err(|e| AppError::Internal(format!("Failed to serialize cluster config: {}", e)))?);
     active_cluster.updated_at = Set(chrono::Utc::now());
 
-    let updated_cluster = active_cluster.update(db.get_ref().as_ref()).await.map_err(|e| AppError::DatabaseError(format!("Failed to update cluster: {}", e)))?;
+    let updated_cluster = active_cluster.update(db.get_ref().as_ref()).await.map_err(AppError::Database)?;
     Ok(HttpResponse::Ok().json(updated_cluster))
 }
 
@@ -127,10 +127,10 @@ pub async fn delete_cluster_controller(
     let cluster_id_str = path.into_inner();
     let cluster_id = Uuid::parse_str(&cluster_id_str).map_err(|_| AppError::BadRequest("Invalid cluster ID format".to_string()))?;
 
-    let delete_result = ClusterModel::delete_by_id(cluster_id)
+    let delete_result = crate::models::cluster::Entity::delete_by_id(cluster_id)
         .exec(db.get_ref().as_ref())
         .await
-        .map_err(|e| AppError::DatabaseError(format!("Failed to delete cluster: {}", e)))?;
+        .map_err(AppError::Database)?;
 
     if delete_result.rows_affected == 0 {
         return Err(AppError::NotFound(format!("Cluster with ID {} not found for deletion", cluster_id)));
