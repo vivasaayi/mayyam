@@ -1,4 +1,5 @@
 // This service will handle all API calls to your backend for Kubernetes data.
+import { fetchWithAuth } from './api'; // Import fetchWithAuth
 
 // Base URL for the backend API
 // Assuming the backend is running on port 8080 locally
@@ -6,109 +7,156 @@ const API_BASE_URL = 'http://localhost:8080/api/kubernetes';
 
 // Helper function to handle fetch responses
 const handleResponse = async (response) => {
+    // fetchWithAuth already handles 401 by redirecting to login
+    // We still need to check for other non-ok responses
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({ message: 'Network response was not ok and failed to parse error JSON.' }));
         console.error('API Error:', response.status, errorData);
         throw new Error(errorData.message || `API request failed with status ${response.status}`);
     }
-    return response.json();
-};
-
-// Helper to build URL with optional namespace
-// If namespace is an empty string or null/undefined, the query parameter is omitted.
-const buildUrl = (basePath, namespace) => {
-    let url = basePath;
-    if (namespace && namespace !== "") { // Only add namespace query param if it's provided and not an empty string
-        url += `?namespace=${encodeURIComponent(namespace)}`;
+    // For 204 No Content, response.json() will fail. Check for it.
+    if (response.status === 204) {
+        return null; // Or an appropriate representation for no content
     }
-    return url;
+    return response.json();
 };
 
 // --- Deployments ---
 export const getDeployments = async (clusterId, namespace) => {
-    const url = buildUrl(`${API_BASE_URL}/clusters/${clusterId}/deployments`, namespace);
-    const response = await fetch(url);
+    let url;
+    if (namespace && namespace !== "") {
+        url = `${API_BASE_URL}/clusters/${clusterId}/namespaces/${encodeURIComponent(namespace)}/deployments`;
+    } else {
+        url = `${API_BASE_URL}/clusters/${clusterId}/deployments`; // For "All Namespaces"
+    }
+    const response = await fetchWithAuth(url);
     return handleResponse(response);
 };
 
 export const getPodsForDeployment = async (clusterId, namespace, deploymentName) => {
-    const response = await fetch(`${API_BASE_URL}/clusters/${clusterId}/namespaces/${namespace}/deployments/${deploymentName}/pods`);
+    const response = await fetchWithAuth(`${API_BASE_URL}/clusters/${clusterId}/namespaces/${encodeURIComponent(namespace)}/deployments/${encodeURIComponent(deploymentName)}/pods`);
     return handleResponse(response);
 };
 
 // --- Services ---
 export const getServices = async (clusterId, namespace) => {
-    const response = await fetch(`${API_BASE_URL}/clusters/${clusterId}/services?namespace=${namespace}`);
+    let url;
+    if (namespace && namespace !== "") {
+        url = `${API_BASE_URL}/clusters/${clusterId}/namespaces/${encodeURIComponent(namespace)}/services`;
+    } else {
+        // This will point to an "all services" endpoint. Backend support needed.
+        url = `${API_BASE_URL}/clusters/${clusterId}/services`;
+    }
+    const response = await fetchWithAuth(url);
     return handleResponse(response);
 };
 
 // --- DaemonSets ---
 export const getDaemonSets = async (clusterId, namespace) => {
-    const response = await fetch(`${API_BASE_URL}/clusters/${clusterId}/daemonsets?namespace=${namespace}`);
+    let url;
+    if (namespace && namespace !== "") {
+        url = `${API_BASE_URL}/clusters/${clusterId}/namespaces/${encodeURIComponent(namespace)}/daemonsets`;
+    } else {
+        // This will point to an "all daemonsets" endpoint. Backend support needed.
+        url = `${API_BASE_URL}/clusters/${clusterId}/daemonsets`;
+    }
+    const response = await fetchWithAuth(url);
     return handleResponse(response);
 };
 
 export const getPodsForDaemonSet = async (clusterId, namespace, daemonSetName) => {
-    const response = await fetch(`${API_BASE_URL}/clusters/${clusterId}/namespaces/${namespace}/daemonsets/${daemonSetName}/pods`);
+    const response = await fetchWithAuth(`${API_BASE_URL}/clusters/${clusterId}/namespaces/${encodeURIComponent(namespace)}/daemonsets/${encodeURIComponent(daemonSetName)}/pods`);
     return handleResponse(response);
 };
 
 
 // --- StatefulSets ---
 export const getStatefulSets = async (clusterId, namespace) => {
-    const response = await fetch(`${API_BASE_URL}/clusters/${clusterId}/statefulsets?namespace=${namespace}`);
+    let url;
+    if (namespace && namespace !== "") {
+        url = `${API_BASE_URL}/clusters/${clusterId}/namespaces/${encodeURIComponent(namespace)}/statefulsets`;
+    } else {
+        // This will point to an "all statefulsets" endpoint. Backend support needed.
+        url = `${API_BASE_URL}/clusters/${clusterId}/statefulsets`;
+    }
+    const response = await fetchWithAuth(url);
     return handleResponse(response);
 };
 
 export const getPodsForStatefulSet = async (clusterId, namespace, statefulSetName) => {
-    const response = await fetch(`${API_BASE_URL}/clusters/${clusterId}/namespaces/${namespace}/statefulsets/${statefulSetName}/pods`);
+    const response = await fetchWithAuth(`${API_BASE_URL}/clusters/${clusterId}/namespaces/${encodeURIComponent(namespace)}/statefulsets/${encodeURIComponent(statefulSetName)}/pods`);
     return handleResponse(response);
 };
 
 // --- PersistentVolumeClaims (PVCs) ---
 export const getPVCs = async (clusterId, namespace) => {
-    const response = await fetch(`${API_BASE_URL}/clusters/${clusterId}/pvcs?namespace=${namespace}`);
+    let url;
+    if (namespace && namespace !== "") {
+        url = `${API_BASE_URL}/clusters/${clusterId}/namespaces/${encodeURIComponent(namespace)}/persistentvolumeclaims`;
+    } else {
+        // This will point to an "all PVCs" endpoint. Backend support needed.
+        url = `${API_BASE_URL}/clusters/${clusterId}/persistentvolumeclaims`;
+    }
+    const response = await fetchWithAuth(url);
     return handleResponse(response);
 };
 
 // --- PersistentVolumes (PVs) ---
 export const getPVs = async (clusterId) => { // PVs are not namespaced
-    const response = await fetch(`${API_BASE_URL}/clusters/${clusterId}/pvs`);
+    const response = await fetchWithAuth(`${API_BASE_URL}/clusters/${clusterId}/persistentvolumes`);
     return handleResponse(response);
 };
 
 // --- Nodes ---
 export const getNodes = async (clusterId) => { // Nodes are not namespaced
-    const response = await fetch(`${API_BASE_URL}/clusters/${clusterId}/nodes`);
+    const response = await fetchWithAuth(`${API_BASE_URL}/clusters/${clusterId}/nodes`);
     return handleResponse(response);
 };
 
 // --- Namespaces --- (Listing all namespaces is not namespaced itself)
 export const getNamespaces = async (clusterId) => {
-    const response = await fetch(`${API_BASE_URL}/clusters/${clusterId}/namespaces`);
+    const response = await fetchWithAuth(`${API_BASE_URL}/clusters/${clusterId}/namespaces`);
     return handleResponse(response);
 };
 
 // --- Pods ---
-// General pod listing
+// General pod listing - currently requires a namespace.
+// If "all pods in cluster" is needed, backend changes would be required.
 export const getPods = async (clusterId, namespace) => {
-    const url = buildUrl(`${API_BASE_URL}/clusters/${clusterId}/pods`, namespace);
-    const response = await fetch(url);
+    if (!namespace || namespace === "") {
+        // Or handle this by throwing an error, or returning empty array,
+        // as there's no current backend endpoint for "all pods in cluster across all namespaces"
+        // without specifying a namespace in the path.
+        console.warn('getPods called without a namespace. This is not currently supported for general pod listing across all namespaces.');
+        // For now, let\'s assume this won\'t be called with empty namespace by UI logic.
+        // If it were, it would need a dedicated backend endpoint like /clusters/{clusterId}/pods
+        return Promise.resolve([]); // Return empty array or throw error
+    }
+    const url = `${API_BASE_URL}/clusters/${clusterId}/namespaces/${encodeURIComponent(namespace)}/pods`;
+    const response = await fetchWithAuth(url);
     return handleResponse(response);
 };
 
+// Function to get specific pod details
 export const getPodDetails = async (clusterId, namespace, podName) => {
-    const response = await fetch(`${API_BASE_URL}/clusters/${clusterId}/namespaces/${namespace}/pods/${podName}`);
+    const url = `${API_BASE_URL}/clusters/${clusterId}/namespaces/${encodeURIComponent(namespace)}/pods/${encodeURIComponent(podName)}`;
+    const response = await fetchWithAuth(url);
+    return handleResponse(response);
+};
+
+// Function to get events for a specific pod
+export const getPodEvents = async (clusterId, namespace, podName) => {
+    const url = `${API_BASE_URL}/clusters/${clusterId}/namespaces/${encodeURIComponent(namespace)}/pods/${encodeURIComponent(podName)}/events`;
+    const response = await fetchWithAuth(url);
     return handleResponse(response);
 };
 
 export const getPodLogs = async (clusterId, namespace, podName, containerName) => {
-    let url = `${API_BASE_URL}/clusters/${clusterId}/namespaces/${namespace}/pods/${podName}/logs`;
+    let url = `${API_BASE_URL}/clusters/${clusterId}/namespaces/${encodeURIComponent(namespace)}/pods/${encodeURIComponent(podName)}/logs`;
     if (containerName) {
-        url += `?container=${containerName}`;
+        url += `?container=${encodeURIComponent(containerName)}`;
     }
-    const response = await fetch(url);
-    // Logs are typically plain text
+    const response = await fetchWithAuth(url);
     if (!response.ok) {
         const errorText = await response.text().catch(() => 'Failed to fetch logs and parse error text.');
         console.error('API Error fetching logs:', response.status, errorText);

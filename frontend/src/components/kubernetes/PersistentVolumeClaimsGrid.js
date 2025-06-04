@@ -1,32 +1,42 @@
 import React, { useState, useEffect } from 'react';
 import { getPVCs } from '../../services/kubernetesApiService';
 
-const PersistentVolumeClaimsGrid = () => {
+const PersistentVolumeClaimsGrid = ({ clusterId, namespace }) => {
     const [pvcs, setPvcs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
     useEffect(() => {
+        if (!clusterId) {
+            setPvcs([]);
+            setLoading(false);
+            setError(null);
+            return;
+        }
+
         setLoading(true);
-        getPVCs()
+        setError(null);
+        getPVCs(clusterId, namespace)
             .then(response => {
-                setPvcs(response.data);
+                setPvcs(Array.isArray(response) ? response : []);
                 setLoading(false);
             })
             .catch(err => {
                 console.error("Error fetching PVCs:", err);
                 setError(err.message || 'Failed to fetch PVCs');
+                setPvcs([]);
                 setLoading(false);
             });
-    }, []);
+    }, [clusterId, namespace]);
 
     if (loading) return <p>Loading PVCs...</p>;
     if (error) return <p>Error fetching PVCs: {error}</p>;
+    if (!clusterId) return <p>Please select a cluster to view PVCs.</p>;
 
     return (
         <div>
             {pvcs.length === 0 ? (
-                <p>No PersistentVolumeClaims found.</p>
+                <p>No PersistentVolumeClaims found{namespace ? ` in namespace "${namespace}"` : ""}.</p>
             ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
@@ -43,15 +53,15 @@ const PersistentVolumeClaimsGrid = () => {
                     </thead>
                     <tbody>
                         {pvcs.map(pvc => (
-                            <tr key={pvc.id}>
+                            <tr key={`${pvc.namespace}-${pvc.name}`}>
                                 <td style={tableCellStyle}>{pvc.name}</td>
                                 <td style={tableCellStyle}>{pvc.namespace}</td>
-                                <td style={tableCellStyle}>{pvc.status}</td>
-                                <td style={tableCellStyle}>{pvc.volume}</td>
-                                <td style={tableCellStyle}>{pvc.capacity}</td>
-                                <td style={tableCellStyle}>{pvc.accessModes}</td>
-                                <td style={tableCellStyle}>{pvc.storageClass}</td>
-                                <td style={tableCellStyle}>{pvc.age}</td>
+                                <td style={tableCellStyle}>{pvc.status || 'N/A'}</td>
+                                <td style={tableCellStyle}>{pvc.volume_name || 'N/A'}</td>
+                                <td style={tableCellStyle}>{pvc.capacity || 'N/A'}</td>
+                                <td style={tableCellStyle}>{pvc.access_modes ? pvc.access_modes.join(', ') : 'N/A'}</td>
+                                <td style={tableCellStyle}>{pvc.storage_class_name || 'N/A'}</td>
+                                <td style={tableCellStyle}>{pvc.age || 'N/A'}</td>
                             </tr>
                         ))}
                     </tbody>

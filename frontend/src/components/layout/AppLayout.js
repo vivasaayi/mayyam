@@ -54,10 +54,16 @@ const AppLayout = () => {
           <CNavItem>
             <Link to="/chaos" className="nav-link">Chaos Engineering</Link>
           </CNavItem>
+          <CNavItem>
+            <Link to="/csv-comparer" className="nav-link">CSV Comparer</Link>
+          </CNavItem>
 
           <CNavTitle>Settings</CNavTitle>
           <CNavItem>
-            <Link to="/settings" className="nav-link">Settings</Link>
+            <Link to="/settings" className="nav-link">General Settings</Link>
+          </CNavItem>
+          <CNavItem>
+            <Link to="/manage-kubernetes-clusters" className="nav-link">Manage Clusters</Link>
           </CNavItem>
           <CNavItem>
             <Link to="/debug" className="nav-link">Debug</Link>

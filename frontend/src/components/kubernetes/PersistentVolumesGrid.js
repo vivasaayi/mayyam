@@ -1,27 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import { getPVs } from '../../services/kubernetesApiService';
 
-const PersistentVolumesGrid = () => {
+const PersistentVolumesGrid = ({ clusterId }) => {
     const [pvs, setPvs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
     useEffect(() => {
+        if (!clusterId) {
+            setPvs([]);
+            setLoading(false);
+            setError(null);
+            return;
+        }
+
         setLoading(true);
-        getPVs()
+        setError(null);
+        getPVs(clusterId)
             .then(response => {
-                setPvs(response.data);
+                 // The backend directly returns the array
+                setPvs(Array.isArray(response) ? response : []);
                 setLoading(false);
             })
             .catch(err => {
                 console.error("Error fetching PVs:", err);
                 setError(err.message || 'Failed to fetch PVs');
+                setPvs([]);
                 setLoading(false);
             });
-    }, []);
+    }, [clusterId]);
 
     if (loading) return <p>Loading PersistentVolumes...</p>;
     if (error) return <p>Error fetching PersistentVolumes: {error}</p>;
+    if (!clusterId) return <p>Please select a cluster to view Persistent Volumes.</p>;
 
     return (
         <div>
@@ -44,16 +55,16 @@ const PersistentVolumesGrid = () => {
                     </thead>
                     <tbody>
                         {pvs.map(pv => (
-                            <tr key={pv.id}>
+                            <tr key={pv.name}> {/* PV names are unique cluster-wide */}
                                 <td style={tableCellStyle}>{pv.name}</td>
-                                <td style={tableCellStyle}>{pv.capacity}</td>
-                                <td style={tableCellStyle}>{pv.accessModes}</td>
-                                <td style={tableCellStyle}>{pv.reclaimPolicy}</td>
-                                <td style={tableCellStyle}>{pv.status}</td>
-                                <td style={tableCellStyle}>{pv.claim}</td>
-                                <td style={tableCellStyle}>{pv.storageClass}</td>
-                                <td style={tableCellStyle}>{pv.reason}</td>
-                                <td style={tableCellStyle}>{pv.age}</td>
+                                <td style={tableCellStyle}>{pv.capacity || 'N/A'}</td>
+                                <td style={tableCellStyle}>{pv.access_modes ? pv.access_modes.join(', ') : 'N/A'}</td>
+                                <td style={tableCellStyle}>{pv.reclaim_policy || 'N/A'}</td>
+                                <td style={tableCellStyle}>{pv.status || 'N/A'}</td>
+                                <td style={tableCellStyle}>{pv.claim_ref || 'N/A'}</td>
+                                <td style={tableCellStyle}>{pv.storage_class_name || 'N/A'}</td>
+                                <td style={tableCellStyle}>{pv.reason || 'N/A'}</td>
+                                <td style={tableCellStyle}>{pv.age || 'N/A'}</td>
                             </tr>
                         ))}
                     </tbody>

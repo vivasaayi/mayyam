@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, Set, ActiveModelTrait};
 use uuid::Uuid;
 use chrono::Utc;
@@ -14,18 +15,18 @@ use crate::errors::AppError;
 use crate::config::Config;
 
 pub struct DatabaseRepository {
-    db: DatabaseConnection,
+    db: Arc<DatabaseConnection>,
     config: Config,
 }
 
 impl DatabaseRepository {
-    pub fn new(db: DatabaseConnection, config: Config) -> Self {
+    pub fn new(db: Arc<DatabaseConnection>, config: Config) -> Self {
         Self { db, config }
     }
 
     pub async fn find_by_id(&self, id: Uuid) -> Result<Option<DbConnectionModel>, AppError> {
         let connection = DbConnection::find_by_id(id)
-            .one(&self.db)
+            .one(&*self.db)
             .await
             .map_err(AppError::from)?;
         
@@ -35,7 +36,7 @@ impl DatabaseRepository {
     pub async fn find_by_name(&self, name: &str) -> Result<Option<DbConnectionModel>, AppError> {
         let connection = DbConnection::find()
             .filter(database::Column::Name.eq(name))
-            .one(&self.db)
+            .one(&*self.db)
             .await
             .map_err(AppError::from)?;
         
@@ -44,7 +45,7 @@ impl DatabaseRepository {
     
     pub async fn find_all(&self) -> Result<Vec<DbConnectionModel>, AppError> {
         let connections = DbConnection::find()
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(AppError::from)?;
         
@@ -54,7 +55,7 @@ impl DatabaseRepository {
     pub async fn find_by_type(&self, connection_type: &str) -> Result<Vec<DbConnectionModel>, AppError> {
         let connections = DbConnection::find()
             .filter(database::Column::ConnectionType.eq(connection_type))
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(AppError::from)?;
         
@@ -94,7 +95,7 @@ impl DatabaseRepository {
             connection_status: Set(Some("new".to_string())),
         };
         
-        let connection = connection.insert(&self.db).await.map_err(AppError::from)?;
+        let connection = connection.insert(&*self.db).await.map_err(AppError::from)?;
         
         Ok(connection)
     }
@@ -130,7 +131,7 @@ impl DatabaseRepository {
         conn_active.cluster_mode = Set(connection_data.cluster_mode);
         conn_active.updated_at = Set(Utc::now());
         
-        let updated_conn = conn_active.update(&self.db).await.map_err(AppError::from)?;
+        let updated_conn = conn_active.update(&*self.db).await.map_err(AppError::from)?;
         
         Ok(updated_conn)
     }
@@ -142,7 +143,7 @@ impl DatabaseRepository {
         };
         
         let conn_active: DbConnectionActiveModel = connection.into();
-        conn_active.delete(&self.db).await.map_err(AppError::from)?;
+        conn_active.delete(&*self.db).await.map_err(AppError::from)?;
         
         Ok(())
     }
@@ -162,7 +163,7 @@ impl DatabaseRepository {
         
         conn_active.updated_at = Set(Utc::now());
         
-        let updated_conn = conn_active.update(&self.db).await.map_err(AppError::from)?;
+        let updated_conn = conn_active.update(&*self.db).await.map_err(AppError::from)?;
         
         Ok(updated_conn)
     }

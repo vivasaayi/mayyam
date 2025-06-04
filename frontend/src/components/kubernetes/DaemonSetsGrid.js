@@ -1,27 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { getDaemonSets } from '../../services/kubernetesApiService';
 
-const DaemonSetsGrid = ({ onShowPods }) => {
+const DaemonSetsGrid = ({ clusterId, namespace, onShowPods }) => { // Added clusterId, namespace props
     const [daemonSets, setDaemonSets] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
     useEffect(() => {
+        if (!clusterId) { // Don't fetch if clusterId is not available
+            setLoading(false);
+            setDaemonSets([]);
+            return;
+        }
         setLoading(true);
-        getDaemonSets()
-            .then(response => {
-                setDaemonSets(response.data);
+        setError(null);
+        getDaemonSets(clusterId, namespace) // Pass clusterId and namespace
+            .then(data => { // Assuming data is the array directly
+                setDaemonSets(data || []);
                 setLoading(false);
             })
             .catch(err => {
-                console.error("Error fetching daemonsets:", err);
+                console.error(`Error fetching daemonsets for cluster ${clusterId}, namespace ${namespace}:`, err);
                 setError(err.message || 'Failed to fetch daemonsets');
+                setDaemonSets([]);
                 setLoading(false);
             });
-    }, []);
+    }, [clusterId, namespace]); // Re-fetch when clusterId or namespace changes
 
     if (loading) return <p>Loading daemonsets...</p>;
-    if (error) return <p>Error fetching daemonsets: {error}</p>;
+    if (error) return <p>Error fetching daemonsets {namespace ? `in namespace ${namespace}` : 'for all namespaces'}: {error}</p>;
 
     return (
         <div>
@@ -56,7 +63,11 @@ const DaemonSetsGrid = ({ onShowPods }) => {
                                 <td style={tableCellStyle}>{ds.nodeSelector}</td>
                                 <td style={tableCellStyle}>{ds.age}</td>
                                 <td style={tableCellStyle}>
-                                    <button onClick={() => onShowPods('DaemonSet', ds.name, ds.namespace)}>
+                                    <button onClick={() => onShowPods({ 
+                                        kind: 'DaemonSet', 
+                                        name: ds.name, 
+                                        namespace: ds.namespace 
+                                    })}>
                                         View Pods
                                     </button>
                                 </td>

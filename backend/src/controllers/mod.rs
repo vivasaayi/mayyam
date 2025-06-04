@@ -7,3 +7,4 @@ pub mod kafka;
 pub mod kubernetes;
 pub mod aws_account;
 pub mod aws_analytics;
+pub mod kubernetes_cluster_management;

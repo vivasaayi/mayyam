@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use uuid::Uuid;
 use sea_orm::{
     DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, Set, ActiveModelTrait,
@@ -22,11 +23,11 @@ use crate::errors::AppError;
 /// Uses SeaORM for database interactions, providing type-safe
 /// query operations and entity management
 pub struct AwsAccountRepository {
-    db: DatabaseConnection,
+    db: Arc<DatabaseConnection>,
 }
 
 impl AwsAccountRepository {
-    pub fn new(db: DatabaseConnection) -> Self {
+    pub fn new(db: Arc<DatabaseConnection>) -> Self {
         Self { db }
     }
 
@@ -34,7 +35,7 @@ impl AwsAccountRepository {
     pub async fn get_all(&self) -> Result<Vec<DomainModel>, AppError> {
         let entities = AwsAccountEntity::find()
             .order_by(AwsAccountColumn::AccountName, Order::Asc)
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(|e| {
                 error!("Error fetching AWS accounts: {:?}", e);
@@ -47,28 +48,28 @@ impl AwsAccountRepository {
     /// Get a single AWS account by ID
     pub async fn get_by_id(&self, id: Uuid) -> Result<Option<DomainModel>, AppError> {
         let entity = AwsAccountEntity::find_by_id(id)
-            .one(&self.db)
+            .all(&*self.db)
             .await
             .map_err(|e| {
                 error!("Error fetching AWS account by ID: {:?}", e);
                 AppError::Database(e)
             })?;
         
-        Ok(entity.map(DomainModel::from))
+        Ok(entity.into_iter().map(DomainModel::from).next())
     }
 
     /// Get a single AWS account by account ID
     pub async fn get_by_account_id(&self, account_id: &str) -> Result<Option<DomainModel>, AppError> {
         let entity = AwsAccountEntity::find()
             .filter(AwsAccountColumn::AccountId.eq(account_id))
-            .one(&self.db)
+            .all(&*self.db)
             .await
             .map_err(|e| {
                 error!("Error fetching AWS account by account ID: {:?}", e);
                 AppError::Database(e)
             })?;
         
-        Ok(entity.map(DomainModel::from))
+        Ok(entity.into_iter().map(DomainModel::from).next())
     }
 
     /// Create a new AWS account
@@ -84,7 +85,7 @@ impl AwsAccountRepository {
         
         // Convert DTO to ActiveModel and insert
         let active_model = ActiveModel::from(dto);
-        let entity = active_model.insert(&self.db).await.map_err(|e| {
+        let entity = active_model.insert(&*self.db).await.map_err(|e| {
             error!("Error creating AWS account: {:?}", e);
             AppError::Database(e)
         })?;
@@ -96,7 +97,7 @@ impl AwsAccountRepository {
     pub async fn update(&self, id: Uuid, dto: AwsAccountUpdateDto) -> Result<DomainModel, AppError> {
         // Find the existing entity to get the secret key
         let existing = AwsAccountEntity::find_by_id(id)
-            .one(&self.db)
+            .one(&*self.db)
             .await
             .map_err(|e| {
                 error!("Error finding AWS account for update: {:?}", e);
@@ -106,7 +107,7 @@ impl AwsAccountRepository {
         
         // Convert DTO to ActiveModel and update
         let active_model = ActiveModel::from((dto, existing.secret_access_key, id));
-        let entity = active_model.update(&self.db).await.map_err(|e| {
+        let entity = active_model.update(&*self.db).await.map_err(|e| {
             error!("Error updating AWS account: {:?}", e);
             AppError::Database(e)
         })?;
@@ -118,7 +119,7 @@ impl AwsAccountRepository {
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         // Check if account exists first
         if AwsAccountEntity::find_by_id(id)
-            .one(&self.db)
+            .one(&*self.db)
             .await
             .map_err(|e| {
                 error!("Error finding AWS account for deletion: {:?}", e);
@@ -134,7 +135,7 @@ impl AwsAccountRepository {
 
         // Delete the account
         AwsAccountEntity::delete_by_id(id)
-            .exec(&self.db)
+            .exec(&*self.db)
             .await
             .map_err(|e| {
                 error!("Error deleting AWS account: {:?}", e);
@@ -150,7 +151,7 @@ impl AwsAccountRepository {
         
         // Find the existing entity
         let account = AwsAccountEntity::find_by_id(id)
-            .one(&self.db)
+            .one(&*self.db)
             .await
             .map_err(|e| {
                 error!("Error finding AWS account for updating last synced: {:?}", e);
@@ -163,7 +164,7 @@ impl AwsAccountRepository {
         active_model.last_synced_at = Set(Some(now));
         active_model.updated_at = Set(now);
 
-        active_model.update(&self.db).await.map_err(|e| {
+        active_model.update(&*self.db).await.map_err(|e| {
             error!("Error updating last synced timestamp: {:?}", e);
             AppError::Database(e)
         })?;

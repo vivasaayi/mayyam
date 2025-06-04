@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, Set, ActiveModelTrait, PaginatorTrait, QuerySelect};
 use uuid::Uuid;
 use chrono::Utc;
@@ -8,17 +9,17 @@ use crate::models::user::{CreateUserDto, LoginUserDto, UpdateUserDto};
 use crate::errors::AppError;
 
 pub struct UserRepository {
-    db: DatabaseConnection,
+    db: Arc<DatabaseConnection>,
 }
 
 impl UserRepository {
-    pub fn new(db: DatabaseConnection) -> Self {
+    pub fn new(db: Arc<DatabaseConnection>) -> Self {
         Self { db }
     }
 
     pub async fn find_by_id(&self, id: Uuid) -> Result<Option<UserModel>, AppError> {
         let user = User::find_by_id(id)
-            .one(&self.db)
+            .one(&*self.db)
             .await
             .map_err(AppError::Database)?;
         
@@ -28,7 +29,7 @@ impl UserRepository {
     pub async fn find_by_username(&self, username: &str) -> Result<Option<UserModel>, AppError> {
         let user = User::find()
             .filter(user::Column::Username.eq(username))
-            .one(&self.db)
+            .one(&*self.db)
             .await
             .map_err(AppError::Database)?;
         
@@ -38,7 +39,7 @@ impl UserRepository {
     pub async fn find_by_email(&self, email: &str) -> Result<Option<UserModel>, AppError> {
         let user = User::find()
             .filter(user::Column::Email.eq(email))
-            .one(&self.db)
+            .one(&*self.db)
             .await
             .map_err(AppError::Database)?;
         
@@ -74,7 +75,7 @@ impl UserRepository {
             last_login: Set(None),
         };
         
-        let user = user.insert(&self.db).await.map_err(AppError::Database)?;
+        let user = user.insert(&*self.db).await.map_err(AppError::Database)?;
         
         Ok(user)
     }
@@ -96,7 +97,7 @@ impl UserRepository {
             user_active.last_login = Set(Some(Utc::now()));
             user_active.updated_at = Set(Utc::now());
             
-            let updated_user = user_active.update(&self.db).await.map_err(AppError::Database)?;
+            let updated_user = user_active.update(&*self.db).await.map_err(AppError::Database)?;
             
             // Convert roles string to permissions array if needed
             if updated_user.permissions.is_empty() && !updated_user.roles.is_empty() {
@@ -151,7 +152,7 @@ impl UserRepository {
         
         user_active.updated_at = Set(Utc::now());
         
-        let updated_user = user_active.update(&self.db).await.map_err(AppError::Database)?;
+        let updated_user = user_active.update(&*self.db).await.map_err(AppError::Database)?;
         
         Ok(updated_user)
     }
@@ -160,7 +161,7 @@ impl UserRepository {
         let users = User::find()
             .limit(Some(limit))
             .offset(Some(offset))
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(AppError::Database)?;
         
@@ -169,7 +170,7 @@ impl UserRepository {
     
     pub async fn count_users(&self) -> Result<u64, AppError> {
         let count = User::find()
-            .count(&self.db)
+            .count(&*self.db)
             .await
             .map_err(AppError::Database)?;
         
@@ -182,7 +183,7 @@ impl UserRepository {
             
         let user_active: UserActiveModel = user.into();
         
-        user_active.delete(&self.db)
+        user_active.delete(&*self.db)
             .await
             .map_err(AppError::Database)?;
             
