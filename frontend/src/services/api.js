@@ -184,11 +184,26 @@ export const analyzeAwsResource = async (resourceId, workflow, timeRange = null,
 export const askAwsResourceQuestion = async (resourceId, question, workflow = null) => {
   try {
     console.log(`Asking question about AWS resource ${resourceId}: ${question}`);
-    const response = await api.post('/api/aws/analytics/question', {
+    
+    // Check if resourceId is valid
+    if (!resourceId || resourceId.trim() === '') {
+      throw new Error('Resource ID is missing or empty');
+    }
+    
+    // Check if question is valid
+    if (!question || question.trim() === '') {
+      throw new Error('Question text is missing or empty');
+    }
+    
+    // Capture request payload for debugging
+    const payload = {
       resource_id: resourceId,
       question: question,
       workflow: workflow
-    });
+    };
+    
+    console.log("Question API request payload:", JSON.stringify(payload));
+    const response = await api.post('/api/aws/analytics/question', payload);
     
     console.log("Question response received:", response.data);
     
@@ -205,6 +220,21 @@ export const askAwsResourceQuestion = async (resourceId, question, workflow = nu
     return response.data;
   } catch (error) {
     console.error("Error asking AWS resource question:", error);
+    
+    // Provide more detailed error logging
+    if (error.response) {
+      console.error("API response error:", {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data
+      });
+      
+      // If the backend provides a specific error message, use it
+      if (error.response.data && error.response.data.message) {
+        throw new Error(`API Error: ${error.response.data.message}`);
+      }
+    }
+    
     throw error;
   }
 };

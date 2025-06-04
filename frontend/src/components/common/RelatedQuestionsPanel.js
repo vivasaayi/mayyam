@@ -5,14 +5,14 @@ import { Card, CardHeader, CardBody, Spinner } from 'reactstrap';
  * Component to display related questions in a visually appealing way
  * 
  * @param {Object} props Component props
- * @param {Array} props.questions - Array of related questions
- * @param {Function} props.onSelectQuestion - Function called when a question is selected
- * @param {number} props.analysisDepth - Current depth of the analysis (1-5)
+ * @param {Array} props.relatedQuestions - Array of related questions
+ * @param {Function} props.onAskQuestion - Function called when a question is selected
+ * @param {number} props.currentDepth - Current depth of the analysis (1-5)
  * @param {boolean} props.isLoading - Whether an analysis is currently loading (passed from BaseAnalysis)
  * @param {string|null} props.askingQuestionText - The text of the question currently being asked (passed from BaseAnalysis)
  */
-const RelatedQuestionsPanel = ({ questions, onSelectQuestion, analysisDepth = 1, isLoading, askingQuestionText }) => {
-  if (!questions || questions.length === 0) {
+const RelatedQuestionsPanel = ({ relatedQuestions, onAskQuestion, currentDepth = 1, isLoading, askingQuestionText }) => {
+  if (!relatedQuestions || relatedQuestions.length === 0) {
     return null;
   }
 
@@ -25,9 +25,9 @@ const RelatedQuestionsPanel = ({ questions, onSelectQuestion, analysisDepth = 1,
             Follow-up Questions
           </h5>
           <div>
-            {analysisDepth < 5 ? (
+            {currentDepth < 5 ? (
               <span className="badge bg-primary">
-                {5 - analysisDepth} 'Whys' remaining
+                {5 - currentDepth} 'Whys' remaining
               </span>
             ) : (
               <span className="badge bg-success">
@@ -38,7 +38,7 @@ const RelatedQuestionsPanel = ({ questions, onSelectQuestion, analysisDepth = 1,
           </div>
         </div>
       </CardHeader>
-      {analysisDepth < 5 && (
+      {currentDepth < 5 && (
         <div className="p-3 bg-light border-bottom">
           <div className="d-flex align-items-center">
             <i className="fas fa-info-circle text-primary me-2"></i>
@@ -48,7 +48,7 @@ const RelatedQuestionsPanel = ({ questions, onSelectQuestion, analysisDepth = 1,
       )}
       <CardBody>
         <div className="related-questions-flow">
-          {questions.map((question, index) => {
+          {relatedQuestions.map((question, index) => {
             const isCurrentlyAskingThis = isLoading && askingQuestionText === question;
             const cardIsDisabled = !!isLoading; 
 
@@ -56,7 +56,7 @@ const RelatedQuestionsPanel = ({ questions, onSelectQuestion, analysisDepth = 1,
               <div 
                 key={index}
                 className={`question-card ${cardIsDisabled ? 'disabled-card' : ''} ${isCurrentlyAskingThis ? 'asking' : ''}`}
-                onClick={() => !cardIsDisabled && onSelectQuestion(question)}
+                onClick={() => !cardIsDisabled && onAskQuestion(question)}
                 style={{ 
                   cursor: cardIsDisabled ? 'not-allowed' : 'pointer',
                   opacity: cardIsDisabled && !isCurrentlyAskingThis ? 0.7 : 1 
