@@ -1,7 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { getPodDetails, getPodEvents } from '../services/kubernetesApiService'; // Added getPodEvents
-import Tab from '../components/common/Tab';
+import { 
+  CContainer, 
+  CRow, 
+  CCol, 
+  CCard, 
+  CCardBody, 
+  CCardHeader,
+  CBadge,
+  CSpinner,
+  CAlert,
+  CNav,
+  CNavItem,
+  CNavLink,
+  CTable,
+  CTableHead,
+  CTableRow,
+  CTableHeaderCell,
+  CTableBody,
+  CTableDataCell
+} from '@coreui/react';
+import { getPodDetails, getPodEvents } from '../services/kubernetesApiService';
 
 const PodDetailsPage = () => {
     const { clusterId, namespace, podName } = useParams();
@@ -65,124 +84,223 @@ const PodDetailsPage = () => {
     }, [clusterId, namespace, podName]);
 
     if (loading) {
-        return <p>Loading pod details for {podName}...</p>;
+        return (
+            <CContainer fluid className="d-flex justify-content-center align-items-center" style={{ minHeight: '200px' }}>
+                <CSpinner color="primary" />
+                <span className="ms-2">Loading pod details for {podName}...</span>
+            </CContainer>
+        );
     }
 
     if (error) {
-        return <p style={{ color: 'red' }}>Error: {error}</p>;
+        return (
+            <CContainer fluid>
+                <CAlert color="danger">Error: {error}</CAlert>
+            </CContainer>
+        );
     }
 
     if (!podDetails) {
-        return <p>No details found for pod {podName}.</p>;
+        return (
+            <CContainer fluid>
+                <CAlert color="warning">No details found for pod {podName}.</CAlert>
+            </CContainer>
+        );
     }
 
-    // Helper to safely access nested properties
+    // Helper to safely access nested properties using optional chaining fallback
     const get = (obj, path, defaultValue = 'N/A') => {
-        const keys = Array.isArray(path) ? path : path.split('.');
-        let result = obj;
-        for (const key of keys) {
-            if (result && typeof result === 'object' && key in result) {
-                result = result[key];
-            } else {
-                return defaultValue;
+        try {
+            const keys = Array.isArray(path) ? path : path.split('.');
+            let result = obj;
+            for (const key of keys) {
+                if (result && typeof result === 'object' && key in result) {
+                    result = result[key];
+                } else {
+                    return defaultValue;
+                }
             }
+            return result === null || result === undefined ? defaultValue : result;
+        } catch {
+            return defaultValue;
         }
-        return result === null || result === undefined ? defaultValue : result;
     };
 
     const renderOverview = () => (
-        <div>
-            <h4>Pod Overview</h4>
-            <p><strong>Name:</strong> {get(podDetails, 'metadata.name')}</p>
-            <p><strong>Namespace:</strong> {get(podDetails, 'metadata.namespace')}</p>
-            <p><strong>Node:</strong> {get(podDetails, 'spec.nodeName')}</p>
-            <p><strong>Status:</strong> {get(podDetails, 'status.phase')}</p>
-            <p><strong>Pod IP:</strong> {get(podDetails, 'status.podIP')}</p>
-            <p><strong>Host IP:</strong> {get(podDetails, 'status.hostIP')}</p>
-            <p><strong>QoS Class:</strong> {get(podDetails, 'status.qosClass')}</p>
-            <p><strong>Created:</strong> {get(podDetails, 'metadata.creationTimestamp') ? new Date(get(podDetails, 'metadata.creationTimestamp')).toLocaleString() : 'N/A'}</p>
-            {get(podDetails, 'metadata.ownerReferences[0].kind') && 
-                <p><strong>Controlled By:</strong> {`${get(podDetails, 'metadata.ownerReferences[0].kind')}/${get(podDetails, 'metadata.ownerReferences[0].name')}`}</p>
-            }
-            {get(podDetails, 'status.conditions', []).length > 0 && (
-                <>
-                    <h5>Conditions:</h5>
-                    <table style={tableStyle}>
-                        <thead><tr><th style={thStyle}>Type</th><th style={thStyle}>Status</th><th style={thStyle}>Last Transition</th><th style={thStyle}>Reason</th><th style={thStyle}>Message</th></tr></thead>
-                        <tbody>
-                            {get(podDetails, 'status.conditions').map((condition, index) => (
-                                <tr key={index}>
-                                    <td style={tdStyle}>{get(condition, 'type')}</td>
-                                    <td style={tdStyle}>{get(condition, 'status')}</td>
-                                    <td style={tdStyle}>{get(condition, 'lastTransitionTime') ? new Date(get(condition, 'lastTransitionTime')).toLocaleString() : 'N/A'}</td>
-                                    <td style={tdStyle}>{get(condition, 'reason')}</td>
-                                    <td style={tdStyle}>{get(condition, 'message')}</td>
+        <CCard>
+            <CCardHeader>
+                <h5 className="mb-0">Pod Overview</h5>
+            </CCardHeader>
+            <CCardBody>
+                <CRow>
+                    <CCol md={6}>
+                        <table className="table table-sm">
+                            <tbody>
+                                <tr>
+                                    <td><strong>Name:</strong></td>
+                                    <td>{get(podDetails, 'metadata.name')}</td>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </>
-            )}
-        </div>
+                                <tr>
+                                    <td><strong>Namespace:</strong></td>
+                                    <td>{get(podDetails, 'metadata.namespace')}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Node:</strong></td>
+                                    <td>{get(podDetails, 'spec.nodeName')}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Status:</strong></td>
+                                    <td>
+                                        <CBadge color={get(podDetails, 'status.phase') === 'Running' ? 'success' : 'warning'}>
+                                            {get(podDetails, 'status.phase')}
+                                        </CBadge>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </CCol>
+                    <CCol md={6}>
+                        <table className="table table-sm">
+                            <tbody>
+                                <tr>
+                                    <td><strong>Pod IP:</strong></td>
+                                    <td>{get(podDetails, 'status.podIP')}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Host IP:</strong></td>
+                                    <td>{get(podDetails, 'status.hostIP')}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>QoS Class:</strong></td>
+                                    <td>{get(podDetails, 'status.qosClass')}</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Created:</strong></td>
+                                    <td>{get(podDetails, 'metadata.creationTimestamp') ? new Date(get(podDetails, 'metadata.creationTimestamp')).toLocaleString() : 'N/A'}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </CCol>
+                </CRow>
+                {get(podDetails, 'metadata.ownerReferences[0].kind') && (
+                    <div className="mt-3">
+                        <strong>Controlled By:</strong> {`${get(podDetails, 'metadata.ownerReferences[0].kind')}/${get(podDetails, 'metadata.ownerReferences[0].name')}`}
+                    </div>
+                )}
+                {get(podDetails, 'status.conditions', []).length > 0 && (
+                    <div className="mt-4">
+                        <h6>Conditions:</h6>
+                        <CTable hover responsive>
+                            <CTableHead>
+                                <CTableRow>
+                                    <CTableHeaderCell>Type</CTableHeaderCell>
+                                    <CTableHeaderCell>Status</CTableHeaderCell>
+                                    <CTableHeaderCell>Last Transition</CTableHeaderCell>
+                                    <CTableHeaderCell>Reason</CTableHeaderCell>
+                                    <CTableHeaderCell>Message</CTableHeaderCell>
+                                </CTableRow>
+                            </CTableHead>
+                            <CTableBody>
+                                {get(podDetails, 'status.conditions').map((condition, index) => (
+                                    <CTableRow key={index}>
+                                        <CTableDataCell>{get(condition, 'type')}</CTableDataCell>
+                                        <CTableDataCell>{get(condition, 'status')}</CTableDataCell>
+                                        <CTableDataCell>{get(condition, 'lastTransitionTime') ? new Date(get(condition, 'lastTransitionTime')).toLocaleString() : 'N/A'}</CTableDataCell>
+                                        <CTableDataCell>{get(condition, 'reason')}</CTableDataCell>
+                                        <CTableDataCell>{get(condition, 'message')}</CTableDataCell>
+                                    </CTableRow>
+                                ))}
+                            </CTableBody>
+                        </CTable>
+                    </div>
+                )}
+            </CCardBody>
+        </CCard>
     );
 
     const renderContainers = () => (
-        <div>
-            <h4>Containers</h4>
-            {get(podDetails, 'spec.containers', []).map((container, index) => (
-                <div key={index} style={{ marginBottom: '15px', border: '1px solid #eee', padding: '10px' }}>
-                    <h5>Container: {get(container, 'name')}</h5>
-                    <p><strong>Image:</strong> {get(container, 'image')}</p>
-                    <p><strong>Image Pull Policy:</strong> {get(container, 'imagePullPolicy')}</p>
-                    <p><strong>Ready:</strong> {get(podDetails, `status.containerStatuses[${index}].ready`) ? 'Yes' : 'No'}</p>
-                    <p><strong>Restarts:</strong> {get(podDetails, `status.containerStatuses[${index}].restartCount`)}</p>
-                    <p><strong>State:</strong> {formatContainerState(get(podDetails, `status.containerStatuses[${index}].state`))}</p>
-                    <p><strong>Last State:</strong> {formatContainerState(get(podDetails, `status.containerStatuses[${index}].lastState`))}</p>
-                    
-                    {get(container, 'ports', []).length > 0 && (
-                        <>
-                            <strong>Ports:</strong>
-                            <ul>
-                                {get(container, 'ports').map((port, pIndex) => (
-                                    <li key={pIndex}>{get(port, 'name', '-')}:{port.containerPort}/{get(port, 'protocol', 'TCP')} {get(port, 'hostPort') ? `(Host: ${get(port, 'hostPort')})` : ''}</li>
-                                ))}
-                            </ul>
-                        </>
-                    )}
-                    {get(container, 'volumeMounts', []).length > 0 && (
-                        <>
-                            <strong>Volume Mounts:</strong>
-                            <table style={tableStyle}>
-                                <thead><tr><th style={thStyle}>Name</th><th style={thStyle}>Mount Path</th><th style={thStyle}>Read Only</th><th style={thStyle}>SubPath</th></tr></thead>
-                                <tbody>
-                                {get(container, 'volumeMounts').map((mount, mIndex) => (
-                                    <tr key={mIndex}>
-                                        <td style={tdStyle}>{get(mount, 'name')}</td>
-                                        <td style={tdStyle}>{get(mount, 'mountPath')}</td>
-                                        <td style={tdStyle}>{get(mount, 'readOnly') ? 'Yes' : 'No'}</td>
-                                        <td style={tdStyle}>{get(mount, 'subPath')}</td>
-                                    </tr>
-                                ))}
-                                </tbody>
-                            </table>
-                        </>
-                    )}
-                    {/* Add Env Vars, Probes etc. here if needed */}
-                </div>
-            ))}
-            {get(podDetails, 'spec.initContainers', []).length > 0 && (
-                <>
-                    <h5 style={{marginTop: '20px'}}>Init Containers</h5>
-                    {get(podDetails, 'spec.initContainers').map((container, index) => (
-                         <div key={`init-${index}`} style={{ marginBottom: '15px', border: '1px solid #eee', padding: '10px' }}>
-                            <h5>Init Container: {get(container, 'name')}</h5>
-                            <p><strong>Image:</strong> {get(container, 'image')}</p>
-                            <p><strong>State:</strong> {formatContainerState(get(podDetails, `status.initContainerStatuses[${index}].state`))}</p>
-                         </div>
-                    ))}
-                </>
-            )}
-        </div>
+        <CCard>
+            <CCardHeader>
+                <h4 className="mb-0">Containers</h4>
+            </CCardHeader>
+            <CCardBody>
+                {get(podDetails, 'spec.containers', []).map((container, index) => (
+                    <CCard key={index} className="mb-3 border">
+                        <CCardHeader>
+                            <h5 className="mb-0">Container: {get(container, 'name')}</h5>
+                        </CCardHeader>
+                        <CCardBody>
+                            <CRow>
+                                <CCol md={6}>
+                                    <div className="mb-2"><strong>Image:</strong> {get(container, 'image')}</div>
+                                    <div className="mb-2"><strong>Image Pull Policy:</strong> {get(container, 'imagePullPolicy')}</div>
+                                    <div className="mb-2"><strong>Ready:</strong> {get(podDetails, `status.containerStatuses[${index}].ready`) ? 'Yes' : 'No'}</div>
+                                </CCol>
+                                <CCol md={6}>
+                                    <div className="mb-2"><strong>Restarts:</strong> {get(podDetails, `status.containerStatuses[${index}].restartCount`)}</div>
+                                    <div className="mb-2"><strong>State:</strong> {formatContainerState(get(podDetails, `status.containerStatuses[${index}].state`))}</div>
+                                    <div className="mb-2"><strong>Last State:</strong> {formatContainerState(get(podDetails, `status.containerStatuses[${index}].lastState`))}</div>
+                                </CCol>
+                            </CRow>
+                            
+                            {get(container, 'ports', []).length > 0 && (
+                                <div className="mt-3">
+                                    <strong>Ports:</strong>
+                                    <ul className="mt-2">
+                                        {get(container, 'ports').map((port, pIndex) => (
+                                            <li key={pIndex}>{get(port, 'name', '-')}:{port.containerPort}/{get(port, 'protocol', 'TCP')} {get(port, 'hostPort') ? `(Host: ${get(port, 'hostPort')})` : ''}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                            
+                            {get(container, 'volumeMounts', []).length > 0 && (
+                                <div className="mt-3">
+                                    <strong>Volume Mounts:</strong>
+                                    <CTable hover responsive className="mt-2">
+                                        <CTableHead>
+                                            <CTableRow>
+                                                <CTableHeaderCell>Name</CTableHeaderCell>
+                                                <CTableHeaderCell>Mount Path</CTableHeaderCell>
+                                                <CTableHeaderCell>Read Only</CTableHeaderCell>
+                                                <CTableHeaderCell>SubPath</CTableHeaderCell>
+                                            </CTableRow>
+                                        </CTableHead>
+                                        <CTableBody>
+                                            {get(container, 'volumeMounts').map((mount, mIndex) => (
+                                                <CTableRow key={mIndex}>
+                                                    <CTableDataCell>{get(mount, 'name')}</CTableDataCell>
+                                                    <CTableDataCell>{get(mount, 'mountPath')}</CTableDataCell>
+                                                    <CTableDataCell>{get(mount, 'readOnly') ? 'Yes' : 'No'}</CTableDataCell>
+                                                    <CTableDataCell>{get(mount, 'subPath')}</CTableDataCell>
+                                                </CTableRow>
+                                            ))}
+                                        </CTableBody>
+                                    </CTable>
+                                </div>
+                            )}
+                        </CCardBody>
+                    </CCard>
+                ))}
+                
+                {get(podDetails, 'spec.initContainers', []).length > 0 && (
+                    <div className="mt-4">
+                        <h5>Init Containers</h5>
+                        {get(podDetails, 'spec.initContainers').map((container, index) => (
+                            <CCard key={`init-${index}`} className="mb-3 border">
+                                <CCardHeader>
+                                    <h5 className="mb-0">Init Container: {get(container, 'name')}</h5>
+                                </CCardHeader>
+                                <CCardBody>
+                                    <div className="mb-2"><strong>Image:</strong> {get(container, 'image')}</div>
+                                    <div className="mb-2"><strong>State:</strong> {formatContainerState(get(podDetails, `status.initContainerStatuses[${index}].state`))}</div>
+                                </CCardBody>
+                            </CCard>
+                        ))}
+                    </div>
+                )}
+            </CCardBody>
+        </CCard>
     );
 
     const formatContainerState = (state) => {
@@ -199,107 +317,145 @@ const PodDetailsPage = () => {
     };
 
     const renderEnvironmentVariables = () => (
-        <div>
-            <h4>Environment Variables</h4>
-            {get(podDetails, 'spec.containers', []).map((container, index) => (
-                <div key={index} style={{ marginBottom: '15px' }}>
-                    <h5>For Container: {get(container, 'name')}</h5>
-                    {get(container, 'env', []).length > 0 ? (
-                        <table style={tableStyle}>
-                            <thead><tr><th style={thStyle}>Name</th><th style={thStyle}>Value</th><th style={thStyle}>From</th></tr></thead>
-                            <tbody>
-                                {get(container, 'env').map((envVar, eIndex) => (
-                                    <tr key={eIndex}>
-                                        <td style={tdStyle}>{get(envVar, 'name')}</td>
-                                        <td style={tdStyle}>{get(envVar, 'value', '-')}</td>
-                                        <td style={tdStyle}>{envVar.valueFrom ? Object.keys(envVar.valueFrom).map(key => `${key}: ${get(envVar.valueFrom[key], 'name') || get(envVar.valueFrom[key], 'secretKeyRef.name') || get(envVar.valueFrom[key], 'configMapKeyRef.name')}`).join(', ') : '-'}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    ) : <p>No environment variables set for this container.</p>}
-                </div>
-            ))}
-        </div>
+        <CCard>
+            <CCardHeader>
+                <h4 className="mb-0">Environment Variables</h4>
+            </CCardHeader>
+            <CCardBody>
+                {get(podDetails, 'spec.containers', []).map((container, index) => (
+                    <div key={index} className="mb-4">
+                        <h5>For Container: {get(container, 'name')}</h5>
+                        {get(container, 'env', []).length > 0 ? (
+                            <CTable hover responsive className="mt-3">
+                                <CTableHead>
+                                    <CTableRow>
+                                        <CTableHeaderCell>Name</CTableHeaderCell>
+                                        <CTableHeaderCell>Value</CTableHeaderCell>
+                                        <CTableHeaderCell>From</CTableHeaderCell>
+                                    </CTableRow>
+                                </CTableHead>
+                                <CTableBody>
+                                    {get(container, 'env').map((envVar, eIndex) => (
+                                        <CTableRow key={eIndex}>
+                                            <CTableDataCell>{get(envVar, 'name')}</CTableDataCell>
+                                            <CTableDataCell>{get(envVar, 'value', '-')}</CTableDataCell>
+                                            <CTableDataCell>{envVar.valueFrom ? Object.keys(envVar.valueFrom).map(key => `${key}: ${get(envVar.valueFrom[key], 'name') || get(envVar.valueFrom[key], 'secretKeyRef.name') || get(envVar.valueFrom[key], 'configMapKeyRef.name')}`).join(', ') : '-'}</CTableDataCell>
+                                        </CTableRow>
+                                    ))}
+                                </CTableBody>
+                            </CTable>
+                        ) : <p>No environment variables set for this container.</p>}
+                    </div>
+                ))}
+            </CCardBody>
+        </CCard>
     );
     
     const renderVolumes = () => (
-        <div>
-            <h4>Volumes</h4>
-            {get(podDetails, 'spec.volumes', []).length > 0 ? (
-                 <table style={tableStyle}>
-                    <thead>
-                        <tr>
-                            <th style={thStyle}>Name</th>
-                            <th style={thStyle}>Type</th>
-                            <th style={thStyle}>Details</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {get(podDetails, 'spec.volumes').map((volume, index) => {
-                            const volumeType = Object.keys(volume).find(key => key !== 'name');
-                            let details = '-';
-                            if (volumeType && volume[volumeType]) {
-                                if (typeof volume[volumeType] === 'object') {
-                                    details = Object.entries(volume[volumeType]).map(([k,v]) => `${k}: ${v}`).join(', ');
-                                } else {
-                                    details = String(volume[volumeType]);
+        <CCard>
+            <CCardHeader>
+                <h4 className="mb-0">Volumes</h4>
+            </CCardHeader>
+            <CCardBody>
+                {get(podDetails, 'spec.volumes', []).length > 0 ? (
+                    <CTable hover responsive>
+                        <CTableHead>
+                            <CTableRow>
+                                <CTableHeaderCell>Name</CTableHeaderCell>
+                                <CTableHeaderCell>Type</CTableHeaderCell>
+                                <CTableHeaderCell>Details</CTableHeaderCell>
+                            </CTableRow>
+                        </CTableHead>
+                        <CTableBody>
+                            {get(podDetails, 'spec.volumes').map((volume, index) => {
+                                const volumeType = Object.keys(volume).find(key => key !== 'name');
+                                let details = '-';
+                                if (volumeType && volume[volumeType]) {
+                                    if (typeof volume[volumeType] === 'object') {
+                                        details = Object.entries(volume[volumeType]).map(([k,v]) => `${k}: ${v}`).join(', ');
+                                    } else {
+                                        details = String(volume[volumeType]);
+                                    }
                                 }
-                            }
-                            return (
-                                <tr key={index}>
-                                    <td style={tdStyle}>{get(volume, 'name')}</td>
-                                    <td style={tdStyle}>{volumeType || 'N/A'}</td>
-                                    <td style={tdStyle}>{details}</td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
-            ) : <p>No volumes defined for this pod.</p>}
-        </div>
+                                return (
+                                    <CTableRow key={index}>
+                                        <CTableDataCell>{get(volume, 'name')}</CTableDataCell>
+                                        <CTableDataCell>{volumeType || 'N/A'}</CTableDataCell>
+                                        <CTableDataCell>{details}</CTableDataCell>
+                                    </CTableRow>
+                                );
+                            })}
+                        </CTableBody>
+                    </CTable>
+                ) : <p>No volumes defined for this pod.</p>}
+            </CCardBody>
+        </CCard>
     );
 
-    // Placeholder for Events - this would typically require a separate API call in Kubernetes
-    // as events are not directly part of the Pod object in the same way other details are.
-    // For now, we'll leave it as a placeholder.
     const renderEvents = () => {
         if (eventsLoading) {
-            return <p>Loading events...</p>;
+            return (
+                <CCard>
+                    <CCardBody className="text-center">
+                        <CSpinner color="primary" className="me-2" />
+                        Loading events...
+                    </CCardBody>
+                </CCard>
+            );
         }
         if (eventsError) {
-            return <p style={{ color: 'red' }}>Error loading events: {eventsError}</p>;
+            return (
+                <CCard>
+                    <CCardBody>
+                        <CAlert color="danger">Error loading events: {eventsError}</CAlert>
+                    </CCardBody>
+                </CCard>
+            );
         }
         if (!podEvents || podEvents.length === 0) {
-            return <p>No events recorded for this pod.</p>;
+            return (
+                <CCard>
+                    <CCardBody>
+                        <p>No events recorded for this pod.</p>
+                    </CCardBody>
+                </CCard>
+            );
         }
 
         return (
-            <div>
-                <h4>Events</h4>
-                <table style={tableStyle}>
-                    <thead>
-                        <tr>
-                            <th style={thStyle}>Last Seen</th>
-                            <th style={thStyle}>Type</th>
-                            <th style={thStyle}>Reason</th>
-                            <th style={thStyle}>Object</th>
-                            <th style={thStyle}>Message</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {podEvents.map((event, index) => (
-                            <tr key={get(event, 'metadata.uid', index)}> {/* Use event UID as key if available */}
-                                <td style={tdStyle}>{get(event, 'lastTimestamp') ? new Date(get(event, 'lastTimestamp')).toLocaleString() : (get(event, 'eventTime') ? new Date(get(event, 'eventTime')).toLocaleString() : 'N/A')}</td>
-                                <td style={tdStyle}>{get(event, 'type')}</td>
-                                <td style={tdStyle}>{get(event, 'reason')}</td>
-                                <td style={tdStyle}>{`${get(event, 'involvedObject.kind', 'N/A')}/${get(event, 'involvedObject.name', 'N/A')}`}</td>
-                                <td style={tdStyle}>{get(event, 'message')}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+            <CCard>
+                <CCardHeader>
+                    <h4 className="mb-0">Events</h4>
+                </CCardHeader>
+                <CCardBody>
+                    <CTable hover responsive>
+                        <CTableHead>
+                            <CTableRow>
+                                <CTableHeaderCell>Last Seen</CTableHeaderCell>
+                                <CTableHeaderCell>Type</CTableHeaderCell>
+                                <CTableHeaderCell>Reason</CTableHeaderCell>
+                                <CTableHeaderCell>Object</CTableHeaderCell>
+                                <CTableHeaderCell>Message</CTableHeaderCell>
+                            </CTableRow>
+                        </CTableHead>
+                        <CTableBody>
+                            {podEvents.map((event, index) => (
+                                <CTableRow key={get(event, 'metadata.uid', index)}>
+                                    <CTableDataCell>{get(event, 'lastTimestamp') ? new Date(get(event, 'lastTimestamp')).toLocaleString() : (get(event, 'eventTime') ? new Date(get(event, 'eventTime')).toLocaleString() : 'N/A')}</CTableDataCell>
+                                    <CTableDataCell>
+                                        <CBadge color={get(event, 'type') === 'Warning' ? 'warning' : 'info'}>
+                                            {get(event, 'type')}
+                                        </CBadge>
+                                    </CTableDataCell>
+                                    <CTableDataCell>{get(event, 'reason')}</CTableDataCell>
+                                    <CTableDataCell>{`${get(event, 'involvedObject.kind', 'N/A')}/${get(event, 'involvedObject.name', 'N/A')}`}</CTableDataCell>
+                                    <CTableDataCell>{get(event, 'message')}</CTableDataCell>
+                                </CTableRow>
+                            ))}
+                        </CTableBody>
+                    </CTable>
+                </CCardBody>
+            </CCard>
         );
     };
 
@@ -317,33 +473,45 @@ const PodDetailsPage = () => {
     };
 
     return (
-        <div style={{ padding: '20px' }}>
-            <h1 style={{ marginBottom: '20px' }}>Pod Details</h1>
-            <div style={{ marginBottom: '10px' }}>
-                <strong>Name:</strong> {get(podDetails, 'metadata.name')}<br />
-                <strong>Namespace:</strong> {get(podDetails, 'metadata.namespace')}<br />
-                <strong>Cluster ID:</strong> {clusterId} 
-            </div>
+        <CContainer fluid>
+            <CCard className="mb-4">
+                <CCardHeader>
+                    <h1 className="mb-0">Pod Details</h1>
+                </CCardHeader>
+                <CCardBody>
+                    <CRow>
+                        <CCol md={4}>
+                            <strong>Name:</strong> {get(podDetails, 'metadata.name')}
+                        </CCol>
+                        <CCol md={4}>
+                            <strong>Namespace:</strong> {get(podDetails, 'metadata.namespace')}
+                        </CCol>
+                        <CCol md={4}>
+                            <strong>Cluster ID:</strong> {clusterId}
+                        </CCol>
+                    </CRow>
+                </CCardBody>
+            </CCard>
             
-            <div style={{ marginBottom: '20px' }}>
+            <CNav variant="tabs" className="mb-3">
                 {tabs.map(tabName => (
-                    <Tab
-                        key={tabName}
-                        label={tabName}
-                        isActive={activeTab === tabName}
-                        onClick={() => setActiveTab(tabName)}
-                    />
+                    <CNavItem key={tabName}>
+                        <CNavLink
+                            active={activeTab === tabName}
+                            onClick={() => setActiveTab(tabName)}
+                            style={{ cursor: 'pointer' }}
+                        >
+                            {tabName}
+                        </CNavLink>
+                    </CNavItem>
                 ))}
-            </div>
-            <div style={{ border: '1px solid #ccc', padding: '20px', marginTop: '-1px' }}>
+            </CNav>
+            
+            <div className="tab-content">
                 {renderTabContent()}
             </div>
-        </div>
+        </CContainer>
     );
 };
-
-const tableStyle = { width: '100%', borderCollapse: 'collapse', marginTop: '10px' };
-const thStyle = { border: '1px solid #ddd', padding: '8px', textAlign: 'left', backgroundColor: '#f2f2f2' };
-const tdStyle = { border: '1px solid #ddd', padding: '8px', textAlign: 'left' };
 
 export default PodDetailsPage;
