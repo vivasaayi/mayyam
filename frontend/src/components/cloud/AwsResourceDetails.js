@@ -17,91 +17,26 @@ import {
   Table,
   FormGroup,
   Label,
-  Input,
-  ListGroup,
-  ListGroupItem,
-  Alert,
-  Spinner as ReactstrapSpinner
+  Input
 } from "reactstrap";
 import classnames from "classnames";
 import Spinner from "../common/Spinner";
-import api, { analyzeAwsResource, askAwsResourceQuestion } from "../../services/api";
+import api from "../../services/api";
 import ReactJson from "react-json-view";
-import ReactMarkdown from "react-markdown";
-import { useNavigate } from "react-router-dom";
 
 const AwsResourceDetails = ({ resource, isOpen, toggle }) => {
-  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("overview");
-  const [loading, setLoading] = useState(false);
   const [dataPlaneAction, setDataPlaneAction] = useState(null);
   const [actionPayload, setActionPayload] = useState("");
   const [actionResult, setActionResult] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
   
-  // Analysis state
-  const [analysisWorkflows, setAnalysisWorkflows] = useState([]);
-  const [selectedWorkflow, setSelectedWorkflow] = useState(null);
-  const [analysisLoading, setAnalysisLoading] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState(null);
-  const [analysisError, setAnalysisError] = useState(null);
-
   // Reset data plane action when resource changes
   useEffect(() => {
     setDataPlaneAction(null);
     setActionPayload("");
     setActionResult(null);
   }, [resource]);
-
-  // Load analysis workflows when resource changes
-  useEffect(() => {
-    const fetchWorkflows = async () => {
-      if (!resource) return;
-      
-      try {
-        setAnalysisLoading(true);
-        setAnalysisError(null);
-        
-        // Fetch available workflows for this resource type
-        const response = await api.get(`/api/aws/analytics/workflows/${resource.resource_type}`);
-        setAnalysisWorkflows(response.data.workflows || []);
-        
-        // Reset analysis state
-        setSelectedWorkflow(null);
-        setAnalysisResult(null);
-      } catch (error) {
-        console.error(`Error fetching analysis workflows for ${resource.resource_type}:`, error);
-        setAnalysisError("Failed to load analysis workflows. Please try again.");
-        setAnalysisWorkflows([]);
-      } finally {
-        setAnalysisLoading(false);
-      }
-    };
-    
-    fetchWorkflows();
-  }, [resource]);
-
-  // Execute analysis workflow
-  const executeAnalysis = async () => {
-    if (!resource || !selectedWorkflow) return;
-    
-    try {
-      setAnalysisLoading(true);
-      setAnalysisError(null);
-      
-      const result = await analyzeAwsResource(
-        resource.arn,
-        selectedWorkflow
-      );
-      
-      setAnalysisResult(result);
-    } catch (error) {
-      console.error("Error analyzing resource:", error);
-      setAnalysisError(error.response?.data?.message || error.message || "Failed to analyze resource");
-    } finally {
-      setAnalysisLoading(false);
-    }
-  };
 
   // Function to get default payload template based on resource type and action
   const getDefaultPayload = () => {
@@ -363,155 +298,6 @@ const AwsResourceDetails = ({ resource, isOpen, toggle }) => {
     );
   };
 
-  // Render the analysis tab content
-  const renderAnalysisTab = () => {
-    if (analysisLoading && !analysisResult) {
-      return (
-        <div className="d-flex justify-content-center py-5">
-          <ReactstrapSpinner color="primary" />
-        </div>
-      );
-    }
-
-    if (analysisError) {
-      return (
-        <Alert color="danger" className="my-3">
-          <h5>Error</h5>
-          <p>{analysisError}</p>
-        </Alert>
-      );
-    }
-
-    if (analysisResult) {
-      return (
-        <div className="my-3">
-          <div className="d-flex justify-content-between align-items-center mb-3">
-            <h5>Analysis Results</h5>
-            <Button 
-              color="secondary" 
-              size="sm" 
-              onClick={() => setAnalysisResult(null)}
-            >
-              <i className="fa fa-arrow-left me-1"></i>Back
-            </Button>
-          </div>
-          
-          <Card>
-            <CardBody>
-              {analysisResult.format === "markdown" ? (
-                <ReactMarkdown>{analysisResult.content}</ReactMarkdown>
-              ) : (
-                <ReactJson 
-                  src={JSON.parse(analysisResult.content)} 
-                  name={null} 
-                  displayDataTypes={false}
-                  collapsed={1}
-                />
-              )}
-            </CardBody>
-          </Card>
-
-          <div className="mt-4">
-            <h5>Related Questions</h5>
-            <ListGroup>
-              {analysisResult.related_questions && analysisResult.related_questions.map((question, index) => (
-                <ListGroupItem 
-                  key={index}
-                  action
-                  tag="button"
-                  onClick={() => {
-                    // Navigate to a dedicated analysis page with the question
-                    navigate(`/resource-analysis/${resource.id}?question=${encodeURIComponent(question)}`);
-                  }}
-                >
-                  <i className="fa fa-question-circle me-2"></i>
-                  {question}
-                </ListGroupItem>
-              ))}
-            </ListGroup>
-          </div>
-        </div>
-      );
-    }
-
-    // Display workflow selection options
-    return (
-      <div className="my-3">
-        <h5>Select Analysis Workflow</h5>
-        
-        {analysisWorkflows.length === 0 ? (
-          <Alert color="info">
-            No analysis workflows available for this resource type yet.
-          </Alert>
-        ) : (
-          <>
-            <div className="row">
-              {analysisWorkflows.map((workflow) => (
-                <div className="col-md-6 mb-3" key={workflow.workflow_id}>
-                  <Card 
-                    className={classnames("h-100", { 
-                      "border-primary": selectedWorkflow === workflow.workflow_id 
-                    })}
-                    onClick={() => setSelectedWorkflow(workflow.workflow_id)}
-                    style={{ cursor: "pointer" }}
-                  >
-                    <CardBody>
-                      <h5>
-                        <i className={`fa fa-${getWorkflowIcon(workflow.workflow_id)} me-2`}></i>
-                        {workflow.name}
-                      </h5>
-                      <p className="text-muted">{workflow.description}</p>
-                      <div className="d-flex justify-content-between">
-                        <small className="text-muted">Estimated time: {workflow.estimated_duration}</small>
-                        <Badge color="info">{workflow.resource_type}</Badge>
-                      </div>
-                    </CardBody>
-                  </Card>
-                </div>
-              ))}
-            </div>
-            
-            <div className="mt-3">
-              <Button 
-                color="success" 
-                onClick={executeAnalysis}
-                disabled={!selectedWorkflow || analysisLoading}
-              >
-                {analysisLoading ? (
-                  <>
-                    <ReactstrapSpinner size="sm" className="me-2" /> 
-                    Running Analysis...
-                  </>
-                ) : (
-                  <>
-                    <i className="fa fa-play me-2"></i>
-                    Run Analysis
-                  </>
-                )}
-              </Button>
-            </div>
-          </>
-        )}
-      </div>
-    );
-  };
-  
-  // Helper function to get icon for workflow type
-  const getWorkflowIcon = (workflowId) => {
-    switch (workflowId) {
-      case "performance":
-        return "tachometer-alt";
-      case "cost":
-        return "money-bill-alt";
-      case "storage":
-        return "hdd";
-      case "memory":
-        return "memory";
-      default:
-        return "chart-line";
-    }
-  };
-
   if (!resource) return null;
 
   return (
@@ -520,11 +306,7 @@ const AwsResourceDetails = ({ resource, isOpen, toggle }) => {
         Resource Details: {resource.name || resource.resource_id}
       </ModalHeader>
       <ModalBody>
-        {loading ? (
-          <Spinner />
-        ) : (
-          <>
-            <Nav tabs>
+        <Nav tabs>
               <NavItem>
                 <NavLink
                   className={classnames({ active: activeTab === "overview" })}
@@ -557,15 +339,7 @@ const AwsResourceDetails = ({ resource, isOpen, toggle }) => {
                   Data Plane Actions
                 </NavLink>
               </NavItem>
-              <NavItem>
-                <NavLink
-                  className={classnames({ active: activeTab === "analyze" })}
-                  onClick={() => setActiveTab("analyze")}
-                >
-                  <i className="fa fa-chart-line me-1"></i>
-                  Analyze
-                </NavLink>
-              </NavItem>
+
             </Nav>
             
             <TabContent activeTab={activeTab}>
@@ -656,15 +430,8 @@ const AwsResourceDetails = ({ resource, isOpen, toggle }) => {
                   {renderDataPlaneActions()}
                 </div>
               </TabPane>
-              
-              <TabPane tabId="analyze">
-                <div className="p-3">
-                  {renderAnalysisTab()}
-                </div>
-              </TabPane>
+
             </TabContent>
-          </>
-        )}
       </ModalBody>
     </Modal>
   );

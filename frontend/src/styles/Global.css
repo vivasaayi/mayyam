@@ -1,0 +1,54 @@
+/* Global.css */
+
+/* Styles for RelatedQuestionsPanel.js */
+.question-card.disabled-card {
+  cursor: not-allowed !important; /* Ensure this overrides other cursor styles */
+  opacity: 0.65 !important; /* Slightly more pronounced opacity */
+}
+
+.question-card.asking {
+  border-left: 4px solid #0dcaf0; /* Bootstrap's 'info' color for a visual cue */
+  box-shadow: 0 0 8px rgba(13, 202, 240, 0.3); /* Subtle glow */
+  transition: border-left 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Styles for QuestionHistory.js */
+.question-history .breadcrumb-item {
+  font-size: 0.9rem;
+}
+
+.question-history .breadcrumb-item a {
+  text-decoration: none;
+  color: #0d6efd; /* Bootstrap primary blue */
+}
+
+.question-history .breadcrumb-item a:hover {
+  text-decoration: underline;
+  color: #0a58ca; /* Darker blue on hover */
+}
+
+.question-history .breadcrumb-item.active {
+  color: #6c757d; /* Bootstrap secondary text color */
+  font-weight: bold;
+}
+
+/* Styles for FiveWhyProgress.js */
+.five-why-progress .progress-step .step-label {
+  font-size: 0.75rem; /* Slightly smaller step labels */
+  white-space: nowrap;
+}
+
+.five-why-progress .progress-step.active .step-number {
+  background-color: #0d6efd; /* Bootstrap primary blue for active step */
+  color: white;
+}
+
+.five-why-progress .progress-step .step-number {
+  border: 1px solid #0d6efd;
+  color: #0d6efd;
+}
+
+/* General utility for cursor pointer if needed elsewhere */
+.cursor-pointer {
+  cursor: pointer;
+}

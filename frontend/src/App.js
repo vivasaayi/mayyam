@@ -6,6 +6,8 @@ import { useAuth } from "./hooks/useAuth";
 import AppLayout from "./components/layout/AppLayout";
 import LoadingFallback from "./components/common/LoadingFallback";
 
+import './styles/Global.css'; // Import Global CSS
+
 // Lazy-loaded page components
 const Login = lazy(() => import("./pages/Login"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));

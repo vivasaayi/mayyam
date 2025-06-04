@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, CardHeader, CardBody } from 'reactstrap';
+import { Card, CardHeader, CardBody, Spinner } from 'reactstrap';
 
 /**
  * Component to display related questions in a visually appealing way
@@ -8,8 +8,10 @@ import { Card, CardHeader, CardBody } from 'reactstrap';
  * @param {Array} props.questions - Array of related questions
  * @param {Function} props.onSelectQuestion - Function called when a question is selected
  * @param {number} props.analysisDepth - Current depth of the analysis (1-5)
+ * @param {boolean} props.isLoading - Whether an analysis is currently loading (passed from BaseAnalysis)
+ * @param {string|null} props.askingQuestionText - The text of the question currently being asked (passed from BaseAnalysis)
  */
-const RelatedQuestionsPanel = ({ questions, onSelectQuestion, analysisDepth = 1 }) => {
+const RelatedQuestionsPanel = ({ questions, onSelectQuestion, analysisDepth = 1, isLoading, askingQuestionText }) => {
   if (!questions || questions.length === 0) {
     return null;
   }
@@ -25,7 +27,7 @@ const RelatedQuestionsPanel = ({ questions, onSelectQuestion, analysisDepth = 1 
           <div>
             {analysisDepth < 5 ? (
               <span className="badge bg-primary">
-                {5 - analysisDepth} "Whys" remaining
+                {5 - analysisDepth} 'Whys' remaining
               </span>
             ) : (
               <span className="badge bg-success">
@@ -46,22 +48,43 @@ const RelatedQuestionsPanel = ({ questions, onSelectQuestion, analysisDepth = 1 
       )}
       <CardBody>
         <div className="related-questions-flow">
-          {questions.map((question, index) => (
-            <div 
-              key={index}
-              className="question-card"
-              onClick={() => onSelectQuestion(question)}
-            >
-              <div className="question-number">{index + 1}</div>
-              <div className="question-text">{question}</div>
-              <div className="question-action">
-                <span className="btn btn-sm btn-primary">
-                  <i className="fas fa-arrow-right me-1"></i>
-                  Ask
-                </span>
+          {questions.map((question, index) => {
+            const isCurrentlyAskingThis = isLoading && askingQuestionText === question;
+            const cardIsDisabled = !!isLoading; 
+
+            return (
+              <div 
+                key={index}
+                className={`question-card ${cardIsDisabled ? 'disabled-card' : ''} ${isCurrentlyAskingThis ? 'asking' : ''}`}
+                onClick={() => !cardIsDisabled && onSelectQuestion(question)}
+                style={{ 
+                  cursor: cardIsDisabled ? 'not-allowed' : 'pointer',
+                  opacity: cardIsDisabled && !isCurrentlyAskingThis ? 0.7 : 1 
+                }}
+              >
+                <div className="question-number">{index + 1}</div>
+                <div className="question-text">{question}</div>
+                <div className="question-action">
+                  {isCurrentlyAskingThis ? (
+                    <span className="btn btn-sm btn-info">
+                      <Spinner size="sm" type="grow" color="light" className="me-1" />
+                      Asking...
+                    </span>
+                  ) : cardIsDisabled ? (
+                     <span className="btn btn-sm btn-secondary"> 
+                      <i className="fas fa-hourglass-half me-1"></i>
+                      Wait
+                    </span>
+                  ) :(
+                    <span className="btn btn-sm btn-primary">
+                      <i className="fas fa-arrow-right me-1"></i>
+                      Ask
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </CardBody>
     </Card>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
   Card, CardHeader, CardBody, Button, Row, Col, ListGroup, ListGroupItem,
   Spinner, Alert, Badge
@@ -8,6 +8,17 @@ import QuestionHistory from './QuestionHistory';
 import FiveWhyProgress from './FiveWhyProgress';
 import RelatedQuestionsPanel from './RelatedQuestionsPanel';
 import FiveWhySummary from './FiveWhySummary';
+
+/**
+ * Custom hook to get the previous value of a prop or state.
+ */
+function usePrevious(value) {
+  const ref = useRef();
+  useEffect(() => {
+    ref.current = value;
+  }, [value]);
+  return ref.current;
+}
 
 /**
  * BaseAnalysis component that can be reused for different resource types
@@ -36,7 +47,10 @@ const BaseAnalysis = ({
   const [questionHistory, setQuestionHistory] = useState([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(-1);
   const [analysisResults, setAnalysisResults] = useState([]);
-  
+  const [askingQuestionText, setAskingQuestionText] = useState(null); // New state for specific question loading
+
+  const prevLoading = usePrevious(loading); // For detecting loading state changes
+
   // Reset state when a new workflow is selected
   useEffect(() => {
     // When selectedWorkflow changes, reset our internal state
@@ -59,18 +73,24 @@ const BaseAnalysis = ({
         setCurrentQuestionIndex(0);
       }
     }
-  }, [result, selectedWorkflow, workflows, currentQuestionIndex]);
+  }, [result, selectedWorkflow, workflows, currentQuestionIndex, analysisResults.length]); // Added analysisResults.length
+  
+  // Clear askingQuestionText when loading transitions from true to false
+  useEffect(() => {
+    if (prevLoading && !loading) { // If loading was true and now is false
+      setAskingQuestionText(null);
+    }
+  }, [loading, prevLoading]);
   
   // Handle asking a follow-up question
   const handleAskQuestion = (question) => {
     console.log(`BaseAnalysis: handleAskQuestion called with: ${question}`);
     
-    // Don't proceed if we've already reached 5 questions
     if (questionHistory.length >= 5) {
-      // Maybe show a toast notification instead of an alert
       alert('You have completed the 5-Why analysis cycle. Please review your findings or start a new analysis.');
       return;
     }
+    setAskingQuestionText(question); // Set the question being asked
     
     // Add the question to history
     const newHistory = [...questionHistory, question];
@@ -333,16 +353,6 @@ const BaseAnalysis = ({
                 </CardBody>
               </Card>
               
-              {/* Debug info */}
-              <div className="mb-2">
-                <small className="text-muted">
-                  <strong>Debug:</strong> Analysis Result: {analysisResults.length ? 'Available' : 'Missing'}, 
-                  Related Questions: {analysisResults[currentQuestionIndex]?.relatedQuestions ? 
-                    `${analysisResults[currentQuestionIndex].relatedQuestions.length} questions` : 'None'
-                  }
-                </small>
-              </div>
-              
               {/* Related Questions Section - Using RelatedQuestionsPanel */}
               {analysisResults[currentQuestionIndex]?.relatedQuestions && 
                analysisResults[currentQuestionIndex].relatedQuestions.length > 0 && 
@@ -351,6 +361,8 @@ const BaseAnalysis = ({
                   questions={analysisResults[currentQuestionIndex].relatedQuestions}
                   onSelectQuestion={handleAskQuestion}
                   analysisDepth={questionHistory.length}
+                  isLoading={loading} // Pass general loading state
+                  askingQuestionText={askingQuestionText} // Pass the specific question being asked
                 />
               )}
               
@@ -370,48 +382,6 @@ const BaseAnalysis = ({
                     }}
                   />
                 </>
-              )}
-              
-              {/* Fallback Questions Section (for debugging) */}
-              {!analysisResults[currentQuestionIndex]?.relatedQuestions && 
-               currentQuestionIndex === 0 && 
-               questionHistory.length < 5 && (
-                <div className="mb-4">
-                  <Card className="border-warning">
-                    <CardHeader className="bg-warning text-white">
-                      <h5 className="mb-0">
-                        <i className="fas fa-question-circle me-2"></i>
-                        Sample Follow-up Questions
-                      </h5>
-                    </CardHeader>
-                    <CardBody className="bg-light">
-                      <p className="mb-3">
-                        <strong>Debugging:</strong> These are sample questions since no related questions were found in the analysis result.
-                      </p>
-                      
-                      <div className="related-questions-grid">
-                        {["How can I optimize my memory configuration?", 
-                          "Is my current memory allocation sufficient?", 
-                          "What are the peak memory usage patterns?"].map((question, i) => (
-                          <Card key={i} className="mb-2 related-question-card">
-                            <CardBody>
-                              <h6>{question}</h6>
-                              <Button 
-                                color="primary" 
-                                size="sm" 
-                                className="mt-2"
-                                onClick={() => handleAskQuestion(question)}
-                              >
-                                <i className="fas fa-search-plus me-1"></i>
-                                Analyze This
-                              </Button>
-                            </CardBody>
-                          </Card>
-                        ))}
-                      </div>
-                    </CardBody>
-                  </Card>
-                </div>
               )}
             </>
           ) : (
