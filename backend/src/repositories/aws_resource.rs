@@ -13,12 +13,12 @@ use crate::errors::AppError;
 use crate::config::Config;
 
 pub struct AwsResourceRepository {
-    db: DatabaseConnection,
+    db: Arc<DatabaseConnection>,
     config: Config,
 }
 
 impl AwsResourceRepository {
-    pub fn new(db: DatabaseConnection, config: Config) -> Self {
+    pub fn new(db: Arc<DatabaseConnection>, config: Config) -> Self {
         Self { db, config }
     }
 
@@ -43,7 +43,7 @@ impl AwsResourceRepository {
         };
 
         let model = active_model
-            .insert(&self.db)
+            .insert(&*self.db)
             .await
             .map_err(|e| AppError::Database(e))?;
 
@@ -54,7 +54,7 @@ impl AwsResourceRepository {
     // Update an existing AWS resource
     pub async fn update(&self, id: Uuid, resource: &AwsResourceDto) -> Result<Model, AppError> {
         let aws_resource = AwsResource::find_by_id(id)
-            .one(&self.db)
+            .one(&*self.db)
             .await
             .map_err(|e| AppError::Database(e))?
             .ok_or_else(|| AppError::NotFound(format!("AWS resource with ID {} not found", id)))?;
@@ -75,7 +75,7 @@ impl AwsResourceRepository {
         active_model.last_refreshed = Set(now);
 
         let updated_model = active_model
-            .update(&self.db)
+            .update(&*self.db)
             .await
             .map_err(|e| AppError::Database(e))?;
 
@@ -86,7 +86,7 @@ impl AwsResourceRepository {
     // Find resource by ID
     pub async fn find_by_id(&self, id: Uuid) -> Result<Option<Model>, AppError> {
         let resource = AwsResource::find_by_id(id)
-            .one(&self.db)
+            .one(&*self.db)
             .await
             .map_err(|e| AppError::Database(e))?;
 
@@ -97,7 +97,7 @@ impl AwsResourceRepository {
     pub async fn find_by_arn(&self, arn: &str) -> Result<Option<Model>, AppError> {
         let resource = AwsResource::find()
             .filter(aws_resource::Column::Arn.eq(arn))
-            .one(&self.db)
+            .one(&*self.db)
             .await
             .map_err(|e| AppError::Database(e))?;
 
@@ -117,7 +117,7 @@ impl AwsResourceRepository {
                     .add(aws_resource::Column::ResourceType.eq(resource_type)),
             )
             .order_by(aws_resource::Column::Name, Order::Asc)
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(|e| {
                 AppError::Database(e)
@@ -163,7 +163,7 @@ impl AwsResourceRepository {
         // Count total results first
         let total = AwsResource::find()
             .filter(condition.clone())
-            .count(&self.db)
+            .count(&*self.db)
             .await
             .map_err(|e| AppError::Database(e))?;
         
@@ -173,7 +173,7 @@ impl AwsResourceRepository {
             .order_by(aws_resource::Column::UpdatedAt, Order::Desc)
             .limit(Some(page_size))
             .offset(Some(page * page_size))
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(|e| AppError::Database(e))?;
         
@@ -191,7 +191,7 @@ impl AwsResourceRepository {
     // Delete a resource
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
         let res = AwsResource::delete_by_id(id)
-            .exec(&self.db)
+            .exec(&*self.db)
             .await
             .map_err(|e| AppError::Database(e))?;
 
@@ -213,7 +213,7 @@ impl AwsResourceRepository {
         resource_data: serde_json::Value,
     ) -> Result<Model, AppError> {
         let aws_resource = AwsResource::find_by_id(id)
-            .one(&self.db)
+            .one(&*self.db)
             .await
             .map_err(|e| AppError::Database(e))?
             .ok_or_else(|| AppError::NotFound(format!("AWS resource with ID {} not found", id)))?;
@@ -226,7 +226,7 @@ impl AwsResourceRepository {
         active_model.last_refreshed = Set(now);
 
         let updated_model = active_model
-            .update(&self.db)
+            .update(&*self.db)
             .await
             .map_err(|e| AppError::Database(e))?;
 

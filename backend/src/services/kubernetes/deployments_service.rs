@@ -12,8 +12,8 @@ use chrono::Utc;
 
 use crate::errors::AppError;
 use crate::models::cluster::KubernetesClusterConfig;
-// Use the PodInfo and convert_kube_pod_to_pod_info from the pods module
-use crate::services::kubernetes::pods::{PodInfo, convert_kube_pod_to_pod_info};
+// Use the PodInfo and convert_kube_pod_to_pod_info from the pod module
+use crate::services::kubernetes::pod::{PodInfo, convert_kube_pod_to_pod_info};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DeploymentInfo {
@@ -225,10 +225,12 @@ impl DeploymentsService {
             ))
         })?;
 
-        // Use the public helper from the pods module
-        let pod_infos = pod_list.iter()
-            .map(|pod| convert_kube_pod_to_pod_info(pod, namespace))
-            .collect();
+        // Convert each Pod to PodInfo
+        let mut pod_infos = Vec::new();
+        for pod in pod_list {
+            let info = crate::services::kubernetes::pod::convert_kube_pod_to_pod_info(&pod, namespace);
+            pod_infos.push(info);
+        }
 
         Ok(pod_infos)
     }

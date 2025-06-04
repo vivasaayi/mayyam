@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, Set, ActiveModelTrait};
 use uuid::Uuid;
 use chrono::Utc;
@@ -9,18 +10,18 @@ use crate::errors::AppError;
 use crate::config::Config;
 
 pub struct ClusterRepository {
-    db: DatabaseConnection,
+    db: Arc<DatabaseConnection>,
     config: Config,
 }
 
 impl ClusterRepository {
-    pub fn new(db: DatabaseConnection, config: Config) -> Self {
+    pub fn new(db: Arc<DatabaseConnection>, config: Config) -> Self {
         Self { db, config }
     }
 
     pub async fn find_by_id(&self, id: Uuid) -> Result<Option<ClusterModel>, AppError> {
         let cluster = Cluster::find_by_id(id)
-            .one(&self.db)
+            .one(&*self.db)
             .await
             .map_err(AppError::from)?;
         
@@ -30,7 +31,7 @@ impl ClusterRepository {
     pub async fn find_by_name(&self, name: &str) -> Result<Option<ClusterModel>, AppError> {
         let cluster = Cluster::find()
             .filter(cluster::Column::Name.eq(name))
-            .one(&self.db)
+            .one(&*self.db)
             .await
             .map_err(AppError::from)?;
         
@@ -39,7 +40,7 @@ impl ClusterRepository {
     
     pub async fn find_all(&self) -> Result<Vec<ClusterModel>, AppError> {
         let clusters = Cluster::find()
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(AppError::from)?;
         
@@ -49,7 +50,7 @@ impl ClusterRepository {
     pub async fn find_by_type(&self, cluster_type: &str) -> Result<Vec<ClusterModel>, AppError> {
         let clusters = Cluster::find()
             .filter(cluster::Column::ClusterType.eq(cluster_type))
-            .all(&self.db)
+            .all(&*self.db)
             .await
             .map_err(AppError::from)?;
         
@@ -85,7 +86,7 @@ impl ClusterRepository {
             status: Set(Some("new".to_string())),
         };
         
-        let cluster = cluster.insert(&self.db).await.map_err(AppError::from)?;
+        let cluster = cluster.insert(&*self.db).await.map_err(AppError::from)?;
         
         Ok(cluster)
     }
@@ -121,7 +122,7 @@ impl ClusterRepository {
             status: Set(Some("new".to_string())),
         };
         
-        let cluster = cluster.insert(&self.db).await.map_err(AppError::from)?;
+        let cluster = cluster.insert(&*self.db).await.map_err(AppError::from)?;
         
         Ok(cluster)
     }
@@ -152,7 +153,7 @@ impl ClusterRepository {
             status: Set(Some("new".to_string())),
         };
         
-        let cluster = cluster.insert(&self.db).await.map_err(AppError::from)?;
+        let cluster = cluster.insert(&*self.db).await.map_err(AppError::from)?;
         
         Ok(cluster)
     }
@@ -175,7 +176,7 @@ impl ClusterRepository {
         cluster_active.config = Set(config);
         cluster_active.updated_at = Set(Utc::now());
         
-        let updated_cluster = cluster_active.update(&self.db).await.map_err(AppError::from)?;
+        let updated_cluster = cluster_active.update(&*self.db).await.map_err(AppError::from)?;
         
         Ok(updated_cluster)
     }
@@ -187,7 +188,7 @@ impl ClusterRepository {
         };
         
         let cluster_active: ClusterActiveModel = cluster.into();
-        cluster_active.delete(&self.db).await.map_err(AppError::from)?;
+        cluster_active.delete(&*self.db).await.map_err(AppError::from)?;
         
         Ok(())
     }
@@ -207,7 +208,7 @@ impl ClusterRepository {
         
         cluster_active.updated_at = Set(Utc::now());
         
-        let updated_cluster = cluster_active.update(&self.db).await.map_err(AppError::from)?;
+        let updated_cluster = cluster_active.update(&*self.db).await.map_err(AppError::from)?;
         
         Ok(updated_cluster)
     }

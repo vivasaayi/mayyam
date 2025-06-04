@@ -18,24 +18,101 @@ $danger: #e55353;
 // Custom styles
 .app-container {
   display: flex;
-  flex-direction: row;
   min-height: 100vh;
+  width: 100%;
 }
 
 // Sidebar customization
 .sidebar {
   min-height: 100vh;
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  z-index: 1040;
+  width: 256px;
   
   .sidebar-brand {
     padding: 1rem;
-    background-color: rgba(0, 0, 0, 0.05);
+    background-color: rgba(0, 0, 0, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   }
+
+  .nav-title {
+    color: rgba(255, 255, 255, 0.65);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin: 1rem 0 0.5rem 0;
+    padding: 0 1rem;
+  }
+
+  .nav-link {
+    color: rgba(255, 255, 255, 0.87);
+    padding: 0.75rem 1rem;
+    border-radius: 0.375rem;
+    margin: 0.125rem 0.5rem;
+    
+    &:hover {
+      color: #fff;
+      background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    &.active {
+      color: #fff;
+      background-color: rgba(255, 255, 255, 0.2);
+    }
+  }
+}
+
+// Main content wrapper
+.wrapper {
+  width: 100%;
+  transition: margin-left 0.15s ease-in-out;
 }
 
 // Header customizations
 .header {
   background-color: #fff;
   border-bottom: 1px solid #d8dbe0;
+  box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+// Body content
+.body {
+  padding: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+// Ensure containers use full width
+.container-fluid {
+  width: 100% !important;
+  max-width: none !important;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+// Responsive adjustments
+@media (max-width: 991.98px) {
+  .wrapper {
+    margin-left: 0 !important;
+  }
+  
+  .sidebar {
+    transform: translateX(-100%);
+    
+    &.sidebar-show {
+      transform: translateX(0);
+    }
+  }
+}
+
+// Page content styling
+.page-content {
+  width: 100%;
+  max-width: 100%;
+  padding: 1rem 0;
 }
 
 // Dashboard card customizations
@@ -65,14 +142,6 @@ $danger: #e55353;
   
   .ag-row {
     border-bottom: 1px solid #f3f3f3;
-  }
-}
-
-// Responsive adjustments
-@include media-breakpoint-down(md) {
-  .sidebar {
-    position: fixed;
-    z-index: 1030;
   }
 }
 

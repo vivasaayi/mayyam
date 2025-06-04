@@ -26,7 +26,7 @@ use crate::services::{
 use crate::controllers::{
     auth::AuthController,
     aws_analytics::AwsAnalyticsController,
-    // Import other controllers as needed
+    kubernetes_cluster_management::KubernetesClusterManagementController
 };
 use crate::services::analytics::aws_analytics::aws_analytics::AwsAnalyticsService;
 use crate::services::aws::aws_control_plane::dynamodb_control_plane::DynamoDbControlPlane;
@@ -44,7 +44,7 @@ use crate::services::kubernetes::{
     deployments_service::DeploymentsService,
     stateful_sets_service::StatefulSetsService,
     daemon_sets::DaemonSetsService,
-    pods::PodService,
+    pod::PodService, // Changed from pods
     services_service::ServicesService as K8sServicesService, // Alias to avoid conflict with general 'Service'
     nodes_service::NodesService,
     namespaces_service::NamespacesService,
@@ -59,7 +59,8 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     info!("Starting Mayyam server on http://{}", addr);
     
     // Connect to the database
-    let db_connection = database::connect(&config).await?;
+    let db_connection_val = database::connect(&config).await?;
+    let db_connection = Arc::new(db_connection_val);
     
     // Initialize repositories
     let user_repo = Arc::new(UserRepository::new(db_connection.clone()));
@@ -100,7 +101,8 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     // Initialize controllers
     let auth_controller = Arc::new(AuthController::new(user_service.clone(), config.clone()));
     let aws_analytics_controller = Arc::new(AwsAnalyticsController::new(aws_analytics_service.clone()));
-    // Initialize other controllers here
+    
+    let kubernetes_cluster_management_controller = Arc::new(KubernetesClusterManagementController::new(cluster_repo.clone()));
 
     let s3_data_plane = Arc::new(S3DataPlane::new(aws_service.clone()));
     let s3_control_plane = Arc::new(s3_control_plane::S3ControlPlane::new(aws_service.clone()));
@@ -130,7 +132,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             .wrap(cors)
             .wrap(Logger::default())
             .wrap(AuthMiddleware::new(&config))
-            .app_data(web::Data::new(db_connection.clone()))
+            .app_data(web::Data::new(db_connection.clone())) // Now correctly Data<Arc<DatabaseConnection>>
             .app_data(web::Data::new(config.clone()))
             // Repositories
             .app_data(web::Data::new(user_repo.clone()))
@@ -161,6 +163,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             // Controllers
             .app_data(web::Data::new(auth_controller.clone()))
             .app_data(web::Data::new(aws_analytics_controller.clone()))
+	    .app_data(web::Data::new(kubernetes_cluster_management_controller.clone())) // Add new controller
             .app_data(web::Data::new(s3_data_plane.clone()))
             .app_data(web::Data::new(s3_control_plane.clone()))
             .app_data(web::Data::new(dynamodb_data_plane.clone()))
@@ -171,16 +174,18 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             .app_data(web::Data::new(kinesis_control_plane.clone()))
             // Middleware
             // Routes configuration - specify the order: analytics first, then general routes
-            .configure(|cfg| {
+            .configure(|cfg_param: &mut web::ServiceConfig| { // Explicit type for cfg_param
                 info!("Registering route handlers in server.rs");
                 
-                // Explicitly register AWS analytics routes first to avoid route conflicts
                 info!("Registering AWS analytics routes with highest priority");
-                routes::aws_analytics::configure(cfg, aws_analytics_controller.clone());
+                routes::aws_analytics::configure(cfg_param, aws_analytics_controller.clone());
+
+                info!("Registering Kubernetes cluster management routes");
+                routes::kubernetes_cluster_management::configure(cfg_param, kubernetes_cluster_management_controller.clone());
                 
-                // Skip aws_analytics configuration in the general routes to avoid duplicate route registrations
-                info!("Registering general routes");
-                routes::configure(cfg);
+                info!("Registering other general routes");
+                // Pass Arc<DatabaseConnection> to the general routes::configure function
+                routes::configure(cfg_param, db_connection.clone()); 
             })
             .service(web::resource("/health").to(|| async { "Mayyam API is running!" }))
     })

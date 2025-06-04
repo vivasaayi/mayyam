@@ -8,14 +8,18 @@ pub mod ai;
 pub mod graphql;
 pub mod aws_account;
 pub mod aws_analytics;
+pub mod kubernetes_cluster_management; // New module
 
 use actix_web::web;
+use sea_orm::DatabaseConnection; // Ensure this is imported
+use std::sync::Arc; // Ensure this is imported
 
-pub fn configure(cfg: &mut web::ServiceConfig) {
+// Modified signature to accept db connection
+pub fn configure(cfg: &mut web::ServiceConfig, db: Arc<DatabaseConnection>) {
     auth::configure(cfg);
-    database::configure(cfg);
-    kafka::configure(cfg);
-    kubernetes::configure(cfg);
+    database::configure(cfg); // This might also need the db if it configures routes needing it directly
+    kafka::configure(cfg);    // Same for this
+    kubernetes::configure(cfg, db.clone()); // Pass db to kubernetes::configure
     cloud::configure(cfg);
     chaos::configure(cfg);
     ai::configure(cfg);

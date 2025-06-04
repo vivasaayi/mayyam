@@ -1,32 +1,43 @@
 import React, { useState, useEffect } from 'react';
 import { getStatefulSets } from '../../services/kubernetesApiService';
 
-const StatefulSetsGrid = ({ onShowPods }) => {
+const StatefulSetsGrid = ({ clusterId, namespace, onShowPods }) => {
     const [statefulSets, setStatefulSets] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
     useEffect(() => {
+        if (!clusterId) {
+            setStatefulSets([]);
+            setLoading(false);
+            setError(null); // Clear error if no clusterId
+            return;
+        }
+
         setLoading(true);
-        getStatefulSets()
+        setError(null);
+        getStatefulSets(clusterId, namespace)
             .then(response => {
-                setStatefulSets(response.data);
+                // The backend directly returns the array of statefulsets
+                setStatefulSets(Array.isArray(response) ? response : []);
                 setLoading(false);
             })
             .catch(err => {
                 console.error("Error fetching statefulsets:", err);
                 setError(err.message || 'Failed to fetch statefulsets');
+                setStatefulSets([]); // Clear data on error
                 setLoading(false);
             });
-    }, []);
+    }, [clusterId, namespace]);
 
     if (loading) return <p>Loading statefulsets...</p>;
     if (error) return <p>Error fetching statefulsets: {error}</p>;
+    if (!clusterId) return <p>Please select a cluster to view StatefulSets.</p>;
 
     return (
         <div>
             {statefulSets.length === 0 ? (
-                <p>No statefulsets found.</p>
+                <p>No statefulsets found{namespace ? ` in namespace "${namespace}"` : ""}.</p>
             ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
@@ -42,15 +53,19 @@ const StatefulSetsGrid = ({ onShowPods }) => {
                     </thead>
                     <tbody>
                         {statefulSets.map(sts => (
-                            <tr key={sts.id}>
+                            <tr key={`${sts.namespace}-${sts.name}`}> {/* Ensure unique key if names can repeat across namespaces */}
                                 <td style={tableCellStyle}>{sts.name}</td>
                                 <td style={tableCellStyle}>{sts.namespace}</td>
-                                <td style={tableCellStyle}>{sts.ready}</td>
-                                <td style={tableCellStyle}>{sts.age}</td>
-                                <td style={tableCellStyle}>{sts.containers}</td>
-                                <td style={tableCellStyle}>{sts.images}</td>
+                                <td style={tableCellStyle}>{sts.ready_replicas !== undefined && sts.replicas !== undefined ? `${sts.ready_replicas}/${sts.replicas}` : 'N/A'}</td>
+                                <td style={tableCellStyle}>{sts.age || 'N/A'}</td>
+                                <td style={tableCellStyle}>{sts.containers ? sts.containers.join(', ') : 'N/A'}</td>
+                                <td style={tableCellStyle}>{sts.images ? sts.images.join(', ') : 'N/A'}</td>
                                 <td style={tableCellStyle}>
-                                    <button onClick={() => onShowPods('StatefulSet', sts.name, sts.namespace)}>
+                                    <button onClick={() => onShowPods({ // Pass the whole sts object or necessary parts
+                                        kind: 'StatefulSet', 
+                                        name: sts.name, 
+                                        namespace: sts.namespace 
+                                    })}>
                                         View Pods
                                     </button>
                                 </td>

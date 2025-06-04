@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use actix_web::{web, HttpResponse, Responder};
 use sea_orm::DatabaseConnection;
 
@@ -14,7 +15,7 @@ use crate::services::analytics::postgres_analytics::postgres_analytics_service::
 
 pub async fn execute_query(
     query_req: web::Json<DatabaseQueryRequest>,
-    db_pool: web::Data<DatabaseConnection>,
+    db_pool: web::Data<Arc<DatabaseConnection>>,
     config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
@@ -40,7 +41,7 @@ pub async fn execute_query(
 
 pub async fn analyze_database(
     path: web::Path<String>,
-    db_pool: web::Data<DatabaseConnection>,
+    db_pool: web::Data<Arc<DatabaseConnection>>,
     config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
@@ -64,7 +65,7 @@ pub async fn analyze_database(
 }
 
 pub async fn list_connections(
-    db_pool: web::Data<DatabaseConnection>,
+    db_pool: web::Data<Arc<DatabaseConnection>>,
     config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
@@ -76,7 +77,7 @@ pub async fn list_connections(
 
 pub async fn get_connection(
     path: web::Path<String>,
-    db_pool: web::Data<DatabaseConnection>,
+    db_pool: web::Data<Arc<DatabaseConnection>>,
     config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
@@ -92,7 +93,7 @@ pub async fn get_connection(
 
 pub async fn create_connection(
     connection: web::Json<CreateDatabaseConnectionRequest>,
-    db_pool: web::Data<DatabaseConnection>,
+    db_pool: web::Data<Arc<DatabaseConnection>>,
     config: web::Data<Config>,
     claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
@@ -109,7 +110,7 @@ pub async fn create_connection(
 pub async fn update_connection(
     path: web::Path<String>,
     connection: web::Json<CreateDatabaseConnectionRequest>,
-    db_pool: web::Data<DatabaseConnection>,
+    db_pool: web::Data<Arc<DatabaseConnection>>,
     config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
@@ -125,7 +126,7 @@ pub async fn update_connection(
 
 pub async fn delete_connection(
     path: web::Path<String>,
-    db_pool: web::Data<DatabaseConnection>,
+    db_pool: web::Data<Arc<DatabaseConnection>>,
     config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
@@ -141,7 +142,7 @@ pub async fn delete_connection(
 
 pub async fn test_connection(
     path: web::Path<String>,
-    db_pool: web::Data<DatabaseConnection>,
+    db_pool: web::Data<Arc<DatabaseConnection>>,
     config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
@@ -162,7 +163,7 @@ pub async fn test_connection(
 
 pub async fn get_schema(
     path: web::Path<String>,
-    db_pool: web::Data<DatabaseConnection>,
+    db_pool: web::Data<Arc<DatabaseConnection>>,
     config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {

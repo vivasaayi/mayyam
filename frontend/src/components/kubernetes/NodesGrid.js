@@ -1,27 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import { getNodes } from '../../services/kubernetesApiService';
 
-const NodesGrid = () => {
+const NodesGrid = ({ clusterId }) => {
     const [nodes, setNodes] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
     useEffect(() => {
+        if (!clusterId) {
+            setNodes([]);
+            setLoading(false);
+            setError(null);
+            return;
+        }
+
         setLoading(true);
-        getNodes()
+        setError(null);
+        getNodes(clusterId)
             .then(response => {
-                setNodes(response.data);
+                // The backend directly returns the array
+                setNodes(Array.isArray(response) ? response : []);
                 setLoading(false);
             })
             .catch(err => {
                 console.error("Error fetching nodes:", err);
                 setError(err.message || 'Failed to fetch nodes');
+                setNodes([]);
                 setLoading(false);
             });
-    }, []);
+    }, [clusterId]);
 
     if (loading) return <p>Loading nodes...</p>;
     if (error) return <p>Error fetching nodes: {error}</p>;
+    if (!clusterId) return <p>Please select a cluster to view Nodes.</p>;
 
     return (
         <div>
@@ -43,14 +54,14 @@ const NodesGrid = () => {
                     </thead>
                     <tbody>
                         {nodes.map(node => (
-                            <tr key={node.id}>
+                            <tr key={node.name}> {/* Node names are unique cluster-wide */}
                                 <td style={tableCellStyle}>{node.name}</td>
-                                <td style={tableCellStyle}>{node.status}</td>
-                                <td style={tableCellStyle}>{node.roles}</td>
-                                <td style={tableCellStyle}>{node.age}</td>
-                                <td style={tableCellStyle}>{node.version}</td>
-                                <td style={tableCellStyle}>{node.internalIP}</td>
-                                <td style={tableCellStyle}>{node.externalIP}</td>
+                                <td style={tableCellStyle}>{node.status || 'N/A'}</td>
+                                <td style={tableCellStyle}>{node.roles ? node.roles.join(', ') : 'N/A'}</td>
+                                <td style={tableCellStyle}>{node.age || 'N/A'}</td>
+                                <td style={tableCellStyle}>{node.kubelet_version || 'N/A'}</td>
+                                <td style={tableCellStyle}>{node.internal_ip || 'N/A'}</td>
+                                <td style={tableCellStyle}>{node.external_ip || 'N/A'}</td>
                             </tr>
                         ))}
                     </tbody>

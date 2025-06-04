@@ -28,72 +28,89 @@ const AppLayout = () => {
   };
 
   return (
-    <div className="app-container">
+    <div className="d-flex" style={{ minHeight: "100vh" }}>
       <CSidebar
+        className="d-print-none sidebar sidebar-fixed"
         visible={sidebarVisible}
         onVisibleChange={(visible) => setSidebarVisible(visible)}
+        position="fixed"
+        colorScheme="dark"
       >
-        <CSidebarBrand>Mayyam</CSidebarBrand>
+        <CSidebarBrand className="d-md-down-none">
+          <div className="text-decoration-none text-white fw-bold">
+            Mayyam
+          </div>
+        </CSidebarBrand>
         <CSidebarNav>
           <CNavTitle>Features</CNavTitle>
           <CNavItem>
-            <Link to="/dashboard" className="nav-link">Dashboard</Link>
+            <CNavLink as={Link} to="/">Dashboard</CNavLink>
           </CNavItem>
           <CNavItem>
-            <Link to="/databases" className="nav-link">Databases</Link>
+            <CNavLink as={Link} to="/databases">Databases</CNavLink>
           </CNavItem>
           <CNavItem>
-            <Link to="/kafka" className="nav-link">Kafka</Link>
+            <CNavLink as={Link} to="/kafka">Kafka</CNavLink>
           </CNavItem>
           <CNavItem>
-            <Link to="/cloud" className="nav-link">Cloud</Link>
+            <CNavLink as={Link} to="/cloud">Cloud</CNavLink>
           </CNavItem>
           <CNavItem>
-            <Link to="/kubernetes" className="nav-link">Kubernetes</Link>
+            <CNavLink as={Link} to="/kubernetes">Kubernetes</CNavLink>
           </CNavItem>
           <CNavItem>
-            <Link to="/chaos" className="nav-link">Chaos Engineering</Link>
+            <CNavLink as={Link} to="/chaos">Chaos Engineering</CNavLink>
+          </CNavItem>
+          <CNavItem>
+            <CNavLink as={Link} to="/csv-comparer">CSV Comparer</CNavLink>
           </CNavItem>
 
           <CNavTitle>Settings</CNavTitle>
           <CNavItem>
-            <Link to="/settings" className="nav-link">Settings</Link>
+            <CNavLink as={Link} to="/manage-kubernetes-clusters">Manage Clusters</CNavLink>
           </CNavItem>
           <CNavItem>
-            <Link to="/debug" className="nav-link">Debug</Link>
+            <CNavLink as={Link} to="/debug">Debug</CNavLink>
           </CNavItem>
         </CSidebarNav>
         <CSidebarToggler 
+          className="d-none d-lg-flex"
           onClick={() => setSidebarVisible(!sidebarVisible)} 
         />
       </CSidebar>
 
-      <div className="wrapper d-flex flex-column min-vh-100">
-        <CHeader className="header">
-          <CContainer fluid className="d-flex align-items-center justify-content-between">
-            <CHeaderBrand>
-              <div className="d-flex align-items-center">
-                <CSidebarToggler 
-                  onClick={() => setSidebarVisible(!sidebarVisible)}
-                  className="d-md-none"
-                />
-                <h4 className="mb-0 ms-2">Mayyam</h4>
-              </div>
+      <div className="wrapper d-flex flex-column min-vh-100" style={{ marginLeft: sidebarVisible ? '256px' : '0', width: '100%', transition: 'margin-left 0.15s' }}>
+        <CHeader position="sticky" className="mb-4">
+          <CContainer fluid className="d-flex align-items-center">
+            <CHeaderBrand className="me-auto">
+              <CSidebarToggler 
+                className="ps-1"
+                onClick={() => setSidebarVisible(!sidebarVisible)}
+                style={{ marginInlineStart: '-14px' }}
+              />
+              <span className="ms-2 fs-4">Mayyam</span>
             </CHeaderBrand>
-            <CHeaderNav className="ms-auto">
+            <CHeaderNav>
               {user && (
                 <CNavItem>
-                  <span onClick={handleLogout} className="nav-link" style={{ cursor: "pointer" }}>
-                    Logout
-                  </span>
+                  <CNavLink 
+                    href="#" 
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleLogout();
+                    }}
+                    style={{ cursor: "pointer" }}
+                  >
+                    Logout ({user.username})
+                  </CNavLink>
                 </CNavItem>
               )}
             </CHeaderNav>
           </CContainer>
         </CHeader>
 
-        <div className="body flex-grow-1 px-3 py-3">
-          <CContainer fluid>
+        <div className="body flex-grow-1">
+          <CContainer fluid className="h-auto px-4">
             <Outlet />
           </CContainer>
         </div>

@@ -76,6 +76,18 @@ pub struct CreateKubernetesClusterRequest {
     pub token: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Serialize)] // Added Serialize for potential use in responses
+pub struct UpdateKubernetesClusterRequest {
+    pub name: String,
+    pub kube_config_path: Option<String>,
+    pub kube_context: Option<String>,
+    pub api_server_url: Option<String>,
+    pub certificate_authority_data: Option<String>,
+    pub client_certificate_data: Option<String>,
+    pub client_key_data: Option<String>,
+    pub token: Option<String>,
+}
+
 // Cloud provider models
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AwsCloudConfig {

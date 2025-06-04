@@ -1,27 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { getServices } from '../../services/kubernetesApiService';
 
-const ServicesGrid = () => {
+const ServicesGrid = ({ clusterId, namespace }) => { // Added clusterId, namespace props
     const [services, setServices] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
     useEffect(() => {
+        if (!clusterId) { // Don't fetch if clusterId is not available
+            setLoading(false);
+            setServices([]);
+            return;
+        }
         setLoading(true);
-        getServices()
-            .then(response => {
-                setServices(response.data);
+        setError(null);
+        getServices(clusterId, namespace) // Pass clusterId and namespace
+            .then(data => { // Assuming data is the array directly
+                setServices(data || []);
                 setLoading(false);
             })
             .catch(err => {
-                console.error("Error fetching services:", err);
+                console.error(`Error fetching services for cluster ${clusterId}, namespace ${namespace}:`, err);
                 setError(err.message || 'Failed to fetch services');
+                setServices([]);
                 setLoading(false);
             });
-    }, []);
+    }, [clusterId, namespace]); // Re-fetch when clusterId or namespace changes
 
     if (loading) return <p>Loading services...</p>;
-    if (error) return <p>Error fetching services: {error}</p>;
+    if (error) return <p>Error fetching services {namespace ? `in namespace ${namespace}` : 'for all namespaces'}: {error}</p>;
 
     return (
         <div>
@@ -49,7 +56,20 @@ const ServicesGrid = () => {
                                 <td style={tableCellStyle}>{svc.type}</td>
                                 <td style={tableCellStyle}>{svc.clusterIP}</td>
                                 <td style={tableCellStyle}>{svc.externalIP}</td>
-                                <td style={tableCellStyle}>{svc.ports}</td>
+                                <td style={tableCellStyle}>
+                                    {
+                                        Array.isArray(svc.ports) && svc.ports.length > 0
+                                        ? svc.ports.map(p => {
+                                            let portStr = '';
+                                            if (p.name) portStr += `${p.name}:`;
+                                            portStr += `${p.port}/${p.protocol}`;
+                                            if (p.target_port) portStr += ` -> ${p.target_port}`;
+                                            if (p.node_port) portStr += ` (Node: ${p.node_port})`;
+                                            return portStr;
+                                        }).join(', ')
+                                        : 'N/A'
+                                    }
+                                </td>
                                 <td style={tableCellStyle}>{svc.age}</td>
                             </tr>
                         ))}

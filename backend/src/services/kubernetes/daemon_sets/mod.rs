@@ -13,7 +13,7 @@ use chrono::Utc;
 use crate::errors::AppError;
 use crate::models::cluster::KubernetesClusterConfig;
 // Use the PodInfo and convert_kube_pod_to_pod_info from the pods module
-use crate::services::kubernetes::pods::{PodInfo, convert_kube_pod_to_pod_info};
+use crate::services::kubernetes::pod::{PodInfo, convert_kube_pod_to_pod_info};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DaemonSetInfo {
