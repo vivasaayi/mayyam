@@ -9,6 +9,10 @@ pub mod graphql;
 pub mod aws_account;
 pub mod aws_analytics;
 pub mod kubernetes_cluster_management; // New module
+pub mod data_source;
+pub mod llm_provider;
+pub mod prompt_template;
+pub mod llm_analytics;
 
 use actix_web::web;
 use sea_orm::DatabaseConnection; // Ensure this is imported

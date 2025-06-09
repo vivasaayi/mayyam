@@ -1,14 +1,12 @@
 use actix_web::{middleware::Logger, web, App, HttpServer};
 use actix_cors::Cors;
-use tracing::{error, info};
+use tracing::info;
 use std::error::Error;
 use std::sync::Arc;
-use sea_orm::DatabaseConnection;
 
 use crate::config::Config;
 use crate::api::routes;
 use crate::middleware::auth::AuthMiddleware;
-use crate::services::aws::aws_control_plane::s3_control_plane::S3ControlPlane;
 use crate::utils::database;
 use crate::repositories::{
     aws_account::AwsAccountRepository,
@@ -16,17 +14,27 @@ use crate::repositories::{
     cluster::ClusterRepository,
     database::DatabaseRepository,
     user::UserRepository,
+    data_source::DataSourceRepository,
+    llm_provider::LlmProviderRepository,
+    prompt_template::PromptTemplateRepository,
 };
 use crate::services::{
     aws::{AwsControlPlane, AwsCostService, AwsDataPlane, AwsService},
     aws_account::AwsAccountService,
     kafka::KafkaService,
     user::UserService,
+    llm_integration::LlmIntegrationService,
+    data_collection::DataCollectionService,
+    llm_analytics::LlmAnalyticsService,
 };
 use crate::controllers::{
     auth::AuthController,
     aws_analytics::AwsAnalyticsController,
-    kubernetes_cluster_management::KubernetesClusterManagementController
+    kubernetes_cluster_management::KubernetesClusterManagementController,
+    data_source::DataSourceController,
+    llm_provider::LlmProviderController,
+    prompt_template::PromptTemplateController,
+    llm_analytics::LlmAnalyticsController,
 };
 use crate::services::analytics::aws_analytics::aws_analytics::AwsAnalyticsService;
 use crate::services::aws::aws_control_plane::dynamodb_control_plane::DynamoDbControlPlane;
@@ -68,6 +76,9 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     let cluster_repo = Arc::new(ClusterRepository::new(db_connection.clone(), config.clone()));
     let aws_resource_repo = Arc::new(AwsResourceRepository::new(db_connection.clone(), config.clone()));
     let aws_account_repo = Arc::new(AwsAccountRepository::new(db_connection.clone()));
+    let data_source_repo = Arc::new(DataSourceRepository::new(db_connection.clone()));
+    let llm_provider_repo = Arc::new(LlmProviderRepository::new(db_connection.clone(), config.clone()));
+    let prompt_template_repo = Arc::new(PromptTemplateRepository::new((*db_connection).clone()));
     
     // Initialize services
     let user_service = Arc::new(UserService::new(user_repo.clone()));
@@ -87,6 +98,24 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
         aws_resource_repo.clone(),
     ));
 
+    // New LLM Analytics platform services
+    let llm_integration_service = Arc::new(LlmIntegrationService::new(
+        llm_provider_repo.clone(),
+        prompt_template_repo.clone(),
+    ));
+    let data_collection_service = Arc::new(DataCollectionService::new(
+        data_source_repo.clone(),
+        None, // CloudWatch client - will be initialized when needed
+        config.clone(),
+    ));
+    let llm_analytics_service = Arc::new(LlmAnalyticsService::new(
+        llm_integration_service.clone(),
+        data_collection_service.clone(),
+        data_source_repo.clone(),
+        llm_provider_repo.clone(),
+        prompt_template_repo.clone(),
+    ));
+
     // Initialize Kubernetes Services
     let deployments_service = Arc::new(DeploymentsService::new());
     let stateful_sets_service = Arc::new(StatefulSetsService::new());
@@ -103,6 +132,21 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     let aws_analytics_controller = Arc::new(AwsAnalyticsController::new(aws_analytics_service.clone()));
     
     let kubernetes_cluster_management_controller = Arc::new(KubernetesClusterManagementController::new(cluster_repo.clone()));
+
+    // New LLM Analytics platform controllers
+    let data_source_controller = Arc::new(DataSourceController::new(
+        data_source_repo.clone(),
+        data_collection_service.clone(),
+    ));
+    let llm_provider_controller = Arc::new(LlmProviderController::new(
+        llm_provider_repo.clone(),
+    ));
+    let prompt_template_controller = Arc::new(PromptTemplateController::new(
+        prompt_template_repo.clone(),
+    ));
+    let llm_analytics_controller = Arc::new(LlmAnalyticsController::new(
+        llm_analytics_service.clone(),
+    ));
 
     let s3_data_plane = Arc::new(S3DataPlane::new(aws_service.clone()));
     let s3_control_plane = Arc::new(s3_control_plane::S3ControlPlane::new(aws_service.clone()));
@@ -140,6 +184,9 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             .app_data(web::Data::new(cluster_repo.clone()))
             .app_data(web::Data::new(aws_resource_repo.clone()))
             .app_data(web::Data::new(aws_account_repo.clone()))
+            .app_data(web::Data::new(data_source_repo.clone()))
+            .app_data(web::Data::new(llm_provider_repo.clone()))
+            .app_data(web::Data::new(prompt_template_repo.clone()))
             // Services
             .app_data(web::Data::new(user_service.clone()))
             .app_data(web::Data::new(kafka_service.clone()))
@@ -150,6 +197,9 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             .app_data(web::Data::new(cloudwatch_service.clone()))
             .app_data(web::Data::new(aws_account_service.clone()))
             .app_data(web::Data::new(aws_analytics_service.clone()))
+            .app_data(web::Data::new(llm_integration_service.clone()))
+            .app_data(web::Data::new(data_collection_service.clone()))
+            .app_data(web::Data::new(llm_analytics_service.clone()))
             // Kubernetes Services
             .app_data(web::Data::new(deployments_service.clone()))
             .app_data(web::Data::new(stateful_sets_service.clone()))
@@ -163,7 +213,11 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             // Controllers
             .app_data(web::Data::new(auth_controller.clone()))
             .app_data(web::Data::new(aws_analytics_controller.clone()))
-	    .app_data(web::Data::new(kubernetes_cluster_management_controller.clone())) // Add new controller
+	    .app_data(web::Data::new(kubernetes_cluster_management_controller.clone()))
+            .app_data(web::Data::new(data_source_controller.clone()))
+            .app_data(web::Data::new(llm_provider_controller.clone()))
+            .app_data(web::Data::new(prompt_template_controller.clone()))
+            .app_data(web::Data::new(llm_analytics_controller.clone()))
             .app_data(web::Data::new(s3_data_plane.clone()))
             .app_data(web::Data::new(s3_control_plane.clone()))
             .app_data(web::Data::new(dynamodb_data_plane.clone()))
@@ -182,6 +236,12 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
 
                 info!("Registering Kubernetes cluster management routes");
                 routes::kubernetes_cluster_management::configure(cfg_param, kubernetes_cluster_management_controller.clone());
+                
+                info!("Registering LLM Analytics Platform routes");
+                routes::data_source::configure(cfg_param, data_source_controller.clone());
+                routes::llm_provider::configure(cfg_param, llm_provider_controller.clone());
+                routes::prompt_template::configure(cfg_param, prompt_template_controller.clone());
+                routes::llm_analytics::configure(cfg_param, llm_analytics_controller.clone());
                 
                 info!("Registering other general routes");
                 // Pass Arc<DatabaseConnection> to the general routes::configure function
