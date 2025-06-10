@@ -5,8 +5,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::repositories::llm_provider::LlmProviderRepository;
-use crate::models::llm_provider::{LlmProviderType, LlmProviderStatus, LlmPromptFormat, CreateLlmProviderDto, UpdateLlmProviderDto, LlmProviderResponseDto};
-use crate::errors::AppError;
+use crate::models::llm_provider::{LlmProviderType, LlmProviderStatus, LlmPromptFormat, LlmProviderResponseDto};
 
 #[derive(Debug, Deserialize)]
 pub struct CreateLlmProviderRequest {

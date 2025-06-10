@@ -8,7 +8,7 @@ use crate::controllers::llm_provider::{CreateLlmProviderRequest, UpdateLlmProvid
 pub fn configure(cfg: &mut web::ServiceConfig, controller: Arc<LlmProviderController>) {
     cfg.service(
         web::scope("/api/v1/llm-providers")
-            .app_data(web::Data::new(controller))
+            .app_data(web::Data::from(controller))
             .route("", web::get().to(list_llm_providers))
             .route("", web::post().to(create_llm_provider))
             .route("/{id}", web::get().to(get_llm_provider))

@@ -332,8 +332,9 @@ impl LlmIntegrationService {
 
     async fn call_local(&self, provider: &LlmProviderModel, request: LlmRequest) -> Result<LlmResponse, AppError> {
         // For local models, we'll assume they use an OpenAI-compatible API
-        let endpoint = provider.base_url.as_ref()
+        let base_url = provider.base_url.as_ref()
             .ok_or_else(|| AppError::BadRequest("Local model endpoint not configured".to_string()))?;
+        let endpoint = format!("{}/chat/completions", base_url.trim_end_matches('/'));
 
         let mut messages = Vec::new();
         
@@ -362,12 +363,12 @@ impl LlmIntegrationService {
         }
 
         let response = self.http_client
-            .post(endpoint)
+            .post(&endpoint)
             .header("Content-Type", "application/json")
             .json(&body)
             .send()
             .await
-            .map_err(|e| AppError::ExternalServiceError(format!("Local model API error: {}", e)))?;
+            .map_err(|e| AppError::ExternalServiceError(format!("Local model API error calling {}: {}", endpoint, e)))?;
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
@@ -382,9 +383,11 @@ impl LlmIntegrationService {
             .ok_or_else(|| AppError::ExternalServiceError("Invalid local model response format".to_string()))?
             .to_string();
 
+        let tokens_used = response_data["usage"]["total_tokens"].as_u64().map(|t| t as u32);
+
         Ok(LlmResponse {
             content,
-            tokens_used: None,
+            tokens_used,
             model: provider.model_name.clone(),
             provider: "Local".to_string(),
             timestamp: Utc::now(),

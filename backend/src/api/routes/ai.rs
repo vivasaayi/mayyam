@@ -8,7 +8,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .route("/generate", web::post().to(generate_content))
         .route("/summary", web::post().to(generate_summary))
         .route("/explain", web::post().to(explain_data))
-        .route("/chat", web::post().to(chat_completion))
+        .route("/chat", web::post().to(ai::chat))
         .route("/analyze/rds/{id}/{workflow}", web::get().to(ai::analyze_rds_instance))
         .route("/analyze/rds/question", web::post().to(ai::answer_rds_question));
     
@@ -57,12 +57,5 @@ async fn explain_data() -> HttpResponse {
     HttpResponse::Ok().json(serde_json::json!({
         "message": "This endpoint will explain complex data using AI",
         "explanation": "The database latency increased because of a blocking query that was initiated at 10:15 AM. This query was accessing a table without proper indexing, causing full table scans. The issue resolved after the query completed at 10:27 AM."
-    }))
-}
-
-async fn chat_completion() -> HttpResponse {
-    HttpResponse::Ok().json(serde_json::json!({
-        "message": "This endpoint will provide chat completions using AI",
-        "response": "Based on the metrics you've shared, it appears that the system is experiencing unusual network latency. This could be due to increased traffic or a potential network issue. I recommend checking your network monitoring tools and recent configuration changes."
     }))
 }

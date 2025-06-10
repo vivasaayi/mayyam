@@ -68,6 +68,17 @@ impl LlmProviderRepository {
         Ok(provider)
     }
     
+    pub async fn find_by_model_name(&self, model_name: &str) -> Result<Option<LlmProviderModel>, AppError> {
+        let provider = LlmProvider::find()
+            .filter(llm_provider::Column::ModelName.eq(model_name))
+            .filter(llm_provider::Column::Enabled.eq(true))
+            .one(&*self.db)
+            .await
+            .map_err(AppError::from)?;
+        
+        Ok(provider)
+    }
+    
     pub async fn find_all(&self) -> Result<Vec<LlmProviderModel>, AppError> {
         let providers = LlmProvider::find()
             .order_by_asc(llm_provider::Column::Name)
