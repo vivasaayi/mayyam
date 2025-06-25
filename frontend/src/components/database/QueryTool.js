@@ -12,11 +12,11 @@ import {
   CAlert,
   CSpinner,
   CBadge,
-  CTabs,
-  CTabList,
-  CTab,
+  CNav,
+  CNavItem,
+  CNavLink,
   CTabContent,
-  CTabPanel
+  CTabPane
 } from "@coreui/react";
 import { AgGridReact } from "ag-grid-react";
 import ReactMarkdown from "react-markdown";
@@ -139,158 +139,127 @@ const QueryTool = ({
   }, [queryResult, gridData]);
 
   return (
-    <div style={{ height: "100%" }}>
-      <CTabs activeTab={activeTab} onTabChange={setActiveTab}>
-        <CTabList variant="pills" className="mb-3">
-          <CTab value="editor">✏️ Query Editor</CTab>
-          <CTab value="results">📋 Results</CTab>
-          <CTab value="history">🕒 History</CTab>
-          <CTab value="templates">📄 Query Templates</CTab>
-        </CTabList>
+    <div style={{ height: "100%" }} className="query-tool-container">
+      <CNav variant="tabs" className="query-tabs">
+        <CNavItem>
+          <CNavLink 
+            active={activeTab === 'editor'}
+            onClick={() => setActiveTab('editor')}
+            href="#"
+            className={activeTab === 'editor' ? 'active' : ''}
+          >
+            ✏️ Query Editor
+          </CNavLink>
+        </CNavItem>
+        <CNavItem>
+          <CNavLink 
+            active={activeTab === 'results'}
+            onClick={() => setActiveTab('results')}
+            href="#"
+            className={activeTab === 'results' ? 'active' : ''}
+          >
+            📋 Results
+          </CNavLink>
+        </CNavItem>
+        <CNavItem>
+          <CNavLink 
+            active={activeTab === 'history'}
+            onClick={() => setActiveTab('history')}
+            href="#"
+            className={activeTab === 'history' ? 'active' : ''}
+          >
+            🕒 History
+          </CNavLink>
+        </CNavItem>
+        <CNavItem>
+          <CNavLink 
+            active={activeTab === 'templates'}
+            onClick={() => setActiveTab('templates')}
+            href="#"
+            className={activeTab === 'templates' ? 'active' : ''}
+          >
+            📄 Templates
+          </CNavLink>
+        </CNavItem>
+      </CNav>
 
-        <CTabContent style={{ height: "calc(100% - 60px)" }}>
-          <CTabPanel value="editor">
-            <CRow style={{ height: "100%" }}>
-              <CCol lg={8} style={{ height: "100%" }}>
-                <CCard style={{ height: "100%" }}>
-                  <CCardHeader className="d-flex justify-content-between align-items-center">
-                    <strong>SQL Editor</strong>
-                    <div className="d-flex gap-2">
-                      <CFormSelect 
-                        size="sm" 
-                        style={{ width: "auto" }}
-                        value={queryOptions.limit}
-                        onChange={(e) => setQueryOptions({...queryOptions, limit: parseInt(e.target.value)})}
-                      >
-                        <option value={100}>Limit 100</option>
-                        <option value={500}>Limit 500</option>
-                        <option value={1000}>Limit 1000</option>
-                        <option value={5000}>Limit 5000</option>
-                      </CFormSelect>
-                      <CButton 
-                        color="primary" 
-                        size="sm"
-                        onClick={executeCurrentQuery}
-                        disabled={loading || !currentQuery.trim()}
-                      >
-                        {loading ? <CSpinner size="sm" /> : "▶️ Execute"}
-                      </CButton>
-                    </div>
-                  </CCardHeader>
-                  <CCardBody style={{ height: "calc(100% - 60px)", padding: 0 }}>
-                    <CFormTextarea
-                      style={{ 
-                        height: "100%", 
-                        border: "none", 
-                        resize: "none",
-                        fontFamily: "Monaco, 'Courier New', monospace"
-                      }}
-                      value={currentQuery}
-                      onChange={(e) => setCurrentQuery(e.target.value)}
-                      placeholder="Enter your SQL query here..."
-                    />
-                  </CCardBody>
-                </CCard>
-              </CCol>
-              <CCol lg={4} style={{ height: "100%" }}>
-                <CCard style={{ height: "100%" }}>
-                  <CCardHeader>
-                    <strong>Quick Actions</strong>
-                  </CCardHeader>
-                  <CCardBody style={{ height: "calc(100% - 60px)", overflowY: "auto" }}>
-                    <div className="mb-3">
-                      <h6>Quick Actions</h6>
-                      {templatesLoading ? (
-                        <div className="text-center my-2">
-                          <CSpinner size="sm" />
-                        </div>
-                      ) : templatesError ? (
-                        <CAlert color="warning" className="p-2 small">
-                          {templatesError}
-                        </CAlert>
-                      ) : templates.length === 0 ? (
-                        <CAlert color="info" className="p-2 small">
-                          No templates available. Create templates in the "Query Templates" tab.
-                        </CAlert>
-                      ) : (
-                        templates
-                          .filter(template => template.is_favorite)
-                          .slice(0, 5)
-                          .map((template, index) => (
-                            <CButton
-                              key={template.id}
-                              variant="outline"
-                              color="info"
-                              size="sm"
-                              className="me-2 mb-2 d-block w-100 text-start"
-                              onClick={() => loadCommonQuery(template)}
-                            >
-                              {template.name}
-                            </CButton>
-                          ))
-                      )}
-                    </div>
-                    
-                    {queryResult && (
-                      <div className="mb-3">
-                        <h6>Last Result Summary</h6>
-                        <div className="small">
-                          <div>Rows: {queryResult.row_count}</div>
-                          <div>Execution Time: {queryResult.execution_time_ms}ms</div>
-                          <div>Columns: {queryResult.columns.length}</div>
-                        </div>
-                      </div>
-                    )}
-
-                    {queryHistory.length > 0 && (
-                      <div>
-                        <h6>Recent Queries</h6>
-                        {queryHistory.slice(-3).reverse().map((item, index) => (
-                          <div key={index} className="border p-2 mb-2 small">
-                            <div className="text-truncate" style={{ maxWidth: "200px" }}>
-                              {item.query}
-                            </div>
-                            <div className="text-muted">
-                              {item.timestamp} • {item.execution_time}ms • {item.rows} rows
-                            </div>
-                            <CButton
-                              size="sm"
-                              variant="outline"
-                              color="primary"
-                              onClick={() => setCurrentQuery(item.query)}
-                            >
-                              Load
-                            </CButton>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </CCardBody>
-                </CCard>
-              </CCol>
-            </CRow>
-          </CTabPanel>
-
-          <CTabPanel value="results">
+      <CTabContent style={{ height: "calc(100vh - 150px)" }}>
+          <CTabPane visible={activeTab === 'editor'}>
             <CCard style={{ height: "100%" }}>
-              <CCardHeader className="d-flex justify-content-between align-items-center">
+              <CCardHeader className="d-flex justify-content-between align-items-center py-2">
+                <div className="d-flex align-items-center">
+                  <strong>SQL Query</strong>
+                  {connection && (
+                    <span className="ms-2 text-muted small">
+                      {connection.name} ({connection.connection_type})
+                    </span>
+                  )}
+                </div>
+                <div className="d-flex gap-2 align-items-center">
+                  <CFormSelect 
+                    size="sm" 
+                    style={{ width: "120px" }}
+                    value={queryOptions.limit}
+                    onChange={(e) => setQueryOptions({...queryOptions, limit: parseInt(e.target.value)})}
+                  >
+                    <option value={100}>Limit 100</option>
+                    <option value={500}>Limit 500</option>
+                    <option value={1000}>Limit 1000</option>
+                    <option value={5000}>Limit 5000</option>
+                  </CFormSelect>
+                  <CButton 
+                    color="primary" 
+                    size="sm"
+                    onClick={executeCurrentQuery}
+                    disabled={loading || !currentQuery.trim()}
+                  >
+                    {loading ? <CSpinner size="sm" /> : "Execute"}
+                  </CButton>
+                </div>
+              </CCardHeader>
+              <CCardBody className="p-0" style={{ height: "calc(100vh - 200px)" }}>
+                <CFormTextarea
+                  className="sql-editor"
+                  style={{ 
+                    height: "100%", 
+                    width: "100%",
+                    border: "none", 
+                    resize: "none",
+                    fontFamily: "Monaco, 'Courier New', monospace",
+                    padding: "12px",
+                    fontSize: "14px",
+                    lineHeight: "1.5",
+                    minHeight: "400px",
+                    overflowY: "auto"
+                  }}
+                  rows={25}
+                  value={currentQuery}
+                  onChange={(e) => setCurrentQuery(e.target.value)}
+                  placeholder="Enter your SQL query here..."
+                />
+              </CCardBody>
+            </CCard>
+          </CTabPane>
+
+          <CTabPane visible={activeTab === 'results'}>
+            <CCard style={{ height: "100%" }}>
+              <CCardHeader className="py-2 d-flex justify-content-between align-items-center">
                 <strong>Query Results</strong>
                 {queryResult && (
-                  <div className="d-flex gap-3">
-                    <CBadge color="info">{queryResult.row_count} rows</CBadge>
-                    <CBadge color="success">{queryResult.execution_time_ms}ms</CBadge>
-                    <CBadge color="primary">{queryResult.columns.length} columns</CBadge>
+                  <div className="d-flex gap-2">
+                    <CBadge color="info" className="p-1">{queryResult.row_count} rows</CBadge>
+                    <CBadge color="success" className="p-1">{queryResult.execution_time_ms}ms</CBadge>
+                    <CBadge color="primary" className="p-1">{queryResult.columns.length} columns</CBadge>
                   </div>
                 )}
               </CCardHeader>
-              <CCardBody style={{ height: "calc(100% - 60px)", padding: 0 }}>
+              <CCardBody className="p-0" style={{ height: "calc(100vh - 200px)" }}>
                 {queryResult ? (
                   gridData && gridData.columnDefs && gridData.rowData ? (
                     <div className="ag-theme-alpine" style={{ 
-                      height: "calc(100vh - 250px)", 
+                      height: "100%", 
                       width: "100%",
-                      border: "1px solid #ddd",
-                      minHeight: "400px" // Ensure grid has a minimum height
+                      minHeight: "400px"
                     }}>
                       <AgGridReact
                         ref={gridRef}
@@ -300,23 +269,14 @@ const QueryTool = ({
                           resizable: true,
                           sortable: true,
                           filter: true,
-                          minWidth: 100,
-                          flex: 1 // Make columns flexible
+                          minWidth: 120
                         }}
                         pagination={true}
                         paginationPageSize={50}
                         suppressRowClickSelection={true}
                         animateRows={true}
-                        domLayout="normal" // Changed from autoHeight to normal
                         onGridReady={(params) => {
-                          // Fit columns when grid is ready
-                          setTimeout(() => {
-                            params.api.sizeColumnsToFit();
-                          }, 100);
-                        }}
-                        onFirstDataRendered={(params) => {
-                          // Autosize columns after data is loaded
-                          params.columnApi.autoSizeAllColumns();
+                          setTimeout(() => params.api.sizeColumnsToFit(), 100);
                         }}
                       />
                     </div>
@@ -325,25 +285,7 @@ const QueryTool = ({
                       <CAlert color="warning">
                         <h6>No data to display</h6>
                         <p>Query executed but returned no displayable data or the data format is unexpected.</p>
-                        <small>
-                          Columns: {queryResult.columns?.length || 0} | 
-                          Rows: {queryResult.rows?.length || 0}
-                        </small>
                       </CAlert>
-                      <div className="mt-3">
-                        <h6>Raw Query Result</h6>
-                        <pre className="bg-light p-2 small" style={{ maxHeight: "300px", overflow: "auto" }}>
-                          {JSON.stringify(queryResult, null, 2)}
-                        </pre>
-                      </div>
-                      {queryResult.rows && queryResult.rows.length > 0 && (
-                        <div className="mt-3">
-                          <h6>Data Preview (First Row)</h6>
-                          <pre className="bg-light p-2 small" style={{ maxHeight: "200px", overflow: "auto" }}>
-                            {JSON.stringify(queryResult.rows[0], null, 2)}
-                          </pre>
-                        </div>
-                      )}
                     </div>
                   )
                 ) : (
@@ -353,54 +295,52 @@ const QueryTool = ({
                 )}
               </CCardBody>
             </CCard>
-          </CTabPanel>
+          </CTabPane>
 
-          <CTabPanel value="history">
+          <CTabPane visible={activeTab === 'history'}>
             <CCard style={{ height: "100%" }}>
-              <CCardHeader>
+              <CCardHeader className="py-2">
                 <strong>Query History</strong>
               </CCardHeader>
-              <CCardBody style={{ height: "calc(100% - 60px)", overflowY: "auto" }}>
+              <CCardBody className="p-0" style={{ height: "calc(100vh - 200px)", overflowY: "auto" }}>
                 {queryHistory.length > 0 ? (
-                  <div>
+                  <div className="p-2">
                     {queryHistory.slice().reverse().map((item, index) => (
-                      <CCard key={index} className="mb-3">
-                        <CCardBody>
-                          <div className="d-flex justify-content-between align-items-start mb-2">
-                            <div>
-                              <CBadge color="info" className="me-2">{item.timestamp}</CBadge>
-                              <CBadge color="success" className="me-2">{item.execution_time}ms</CBadge>
-                              <CBadge color="primary">{item.rows} rows</CBadge>
-                            </div>
-                            <CButton
-                              size="sm"
-                              color="primary"
-                              variant="outline"
-                              onClick={() => {
-                                setCurrentQuery(item.query);
-                                setActiveTab("editor");
-                              }}
-                            >
-                              Load
-                            </CButton>
+                      <CCard key={index} className="mb-2 history-item">
+                        <CCardHeader className="py-2 d-flex justify-content-between align-items-center">
+                          <div className="d-flex gap-2">
+                            <small>{item.timestamp}</small>
+                            <CBadge color="success" className="p-1">{item.execution_time}ms</CBadge>
+                            <CBadge color="primary" className="p-1">{item.rows} rows</CBadge>
                           </div>
-                          <pre className="bg-light p-2 small" style={{ whiteSpace: "pre-wrap" }}>
-                            {item.query}
-                          </pre>
+                          <CButton
+                            size="sm"
+                            color="primary"
+                            variant="outline"
+                            onClick={() => {
+                              setCurrentQuery(item.query);
+                              setActiveTab("editor");
+                            }}
+                          >
+                            Load
+                          </CButton>
+                        </CCardHeader>
+                        <CCardBody className="py-2">
+                          <pre className="mb-0 code-block">{item.query}</pre>
                         </CCardBody>
                       </CCard>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center text-muted">
+                  <div className="text-center text-muted p-4">
                     No query history available
                   </div>
                 )}
               </CCardBody>
             </CCard>
-          </CTabPanel>
-
-          <CTabPanel value="templates">
+          </CTabPane>
+          
+          <CTabPane visible={activeTab === 'templates'}>
             <CCard style={{ height: "100%" }}>
               <CCardHeader className="d-flex justify-content-between align-items-center">
                 <strong>Query Templates - {connection.connection_type.toUpperCase()}</strong>
@@ -413,7 +353,7 @@ const QueryTool = ({
                   Open Template Manager
                 </CButton>
               </CCardHeader>
-              <CCardBody style={{ height: "calc(100% - 60px)", overflowY: "auto" }}>
+              <CCardBody style={{ height: "calc(100vh - 200px)", overflowY: "auto" }}>
                 {templatesLoading ? (
                   <div className="text-center p-3">
                     <CSpinner />
@@ -430,35 +370,41 @@ const QueryTool = ({
                   </CAlert>
                 ) : (
                   <div className="template-list">
-                    <h6>Favorite Templates (Quick Access)</h6>
-                    <div className="mb-4">
-                      {templates.filter(t => t.is_favorite).map(template => (
-                        <CButton
-                          key={template.id}
-                          color="light"
-                          className="m-1"
-                          onClick={() => {
-                            loadCommonQuery(template);
-                            setActiveTab("editor");
-                          }}
-                        >
-                          {template.name}
-                        </CButton>
-                      ))}
-                      {templates.filter(t => t.is_favorite).length === 0 && (
-                        <p className="text-muted small">No favorite templates. Mark templates as favorites in the Template Manager.</p>
-                      )}
-                    </div>
+                    {templates.filter(t => t.is_favorite).length > 0 && (
+                      <div className="mb-4">
+                        <h6 className="border-bottom pb-2">Favorite Templates (Quick Access)</h6>
+                        <div className="d-flex flex-wrap gap-2 mb-3">
+                          {templates.filter(t => t.is_favorite).map(template => (
+                            <CButton
+                              key={template.id}
+                              color="info"
+                              className="template-favorite-button"
+                              onClick={() => {
+                                loadCommonQuery(template);
+                                setActiveTab("editor");
+                              }}
+                            >
+                              {template.name}
+                            </CButton>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     
-                    <h6>All Templates</h6>
+                    <h6 className="border-bottom pb-2">All Templates</h6>
                     <div className="template-grid">
                       {templates.map(template => (
-                        <CCard key={template.id} className="mb-3">
+                        <CCard key={template.id} className="mb-3 template-card">
                           <CCardHeader className="py-2 d-flex justify-content-between align-items-center">
-                            <strong>{template.name}</strong>
-                            {template.is_favorite && <CBadge color="info">Favorite</CBadge>}
+                            <div className="d-flex align-items-center">
+                              <strong>{template.name}</strong>
+                              {template.is_favorite && <span className="ms-2 text-warning">⭐</span>}
+                            </div>
+                            {template.category && (
+                              <CBadge color="light" className="text-dark">{template.category}</CBadge>
+                            )}
                           </CCardHeader>
-                          <CCardBody className="p-3">
+                          <CCardBody className="py-2">
                             {template.description && (
                               <p className="text-muted small mb-2">{template.description}</p>
                             )}
@@ -468,6 +414,7 @@ const QueryTool = ({
                             <CButton 
                               size="sm" 
                               color="primary"
+                              className="w-100"
                               onClick={() => {
                                 loadCommonQuery(template);
                                 setActiveTab("editor");
@@ -483,11 +430,10 @@ const QueryTool = ({
                 )}
               </CCardBody>
             </CCard>
-          </CTabPanel>
+          </CTabPane>
         </CTabContent>
-      </CTabs>
-    </div>
-  );
-};
+      </div>
+    );
+  };
 
 export default QueryTool;

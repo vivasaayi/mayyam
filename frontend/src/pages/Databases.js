@@ -6,11 +6,9 @@ import {
   CRow,
   CCol,
   CButton,
-  CTabs,
-  CTabList,
-  CTab,
+  CNav,
   CTabContent,
-  CTabPanel,
+  CTabPane,
   CModal,
   CModalHeader,
   CModalTitle,
@@ -594,25 +592,65 @@ const DatabaseWorkbench = ({
       </div>
 
       {/* Tabs */}
-      <CTabs activeTab={activeTab} onTabChange={setActiveTab}>
-        <CTabList variant="pills" className="px-3 pt-3 bg-light">
-          <CTab value="overview">📈 Overview</CTab>
-          <CTab value="performance">🚀 Performance</CTab>
-          <CTab value="query">🔍 Query Tool</CTab>
-          <CTab value="schema">📋 Schema</CTab>
-          <CTab value="monitoring">📊 Monitoring</CTab>
-        </CTabList>
+      <div>
+        <CNav variant="pills" className="px-3 pt-3 bg-light">
+          <CNavItem>
+            <CNavLink 
+              active={activeTab === 'overview'}
+              onClick={() => setActiveTab('overview')}
+              href="#"
+            >
+              📈 Overview
+            </CNavLink>
+          </CNavItem>
+          <CNavItem>
+            <CNavLink 
+              active={activeTab === 'performance'}
+              onClick={() => setActiveTab('performance')}
+              href="#"
+            >
+              🚀 Performance
+            </CNavLink>
+          </CNavItem>
+          <CNavItem>
+            <CNavLink 
+              active={activeTab === 'query'}
+              onClick={() => setActiveTab('query')}
+              href="#"
+            >
+              🔍 Query Tool
+            </CNavLink>
+          </CNavItem>
+          <CNavItem>
+            <CNavLink 
+              active={activeTab === 'schema'}
+              onClick={() => setActiveTab('schema')}
+              href="#"
+            >
+              📋 Schema
+            </CNavLink>
+          </CNavItem>
+          <CNavItem>
+            <CNavLink 
+              active={activeTab === 'monitoring'}
+              onClick={() => setActiveTab('monitoring')}
+              href="#"
+            >
+              📊 Monitoring
+            </CNavLink>
+          </CNavItem>
+        </CNav>
 
         <CTabContent style={{ flex: 1 }}>
-          <CTabPanel value="overview" className="p-3">
+          <CTabPane visible={activeTab === 'overview'} className="p-3">
             <DatabaseOverview 
               connection={connection}
               analysisResult={analysisResult}
               performanceMetrics={performanceMetrics}
             />
-          </CTabPanel>
+          </CTabPane>
 
-          <CTabPanel value="performance" className="p-3">
+          <CTabPane visible={activeTab === 'performance'} className="p-3">
             <PerformanceAnalysis 
               connection={connection}
               analysisWorkflows={analysisWorkflows}
@@ -623,9 +661,9 @@ const DatabaseWorkbench = ({
               analysisLoading={analysisLoading}
               performanceMetrics={performanceMetrics}
             />
-          </CTabPanel>
+          </CTabPane>
 
-          <CTabPanel value="query" className="p-3">
+          <CTabPane visible={activeTab === 'query'} className="p-3">
             <QueryTool 
               connection={connection}
               currentQuery={currentQuery}
@@ -635,20 +673,20 @@ const DatabaseWorkbench = ({
               queryHistory={queryHistory}
               loading={loading}
             />
-          </CTabPanel>
+          </CTabPane>
 
-          <CTabPanel value="schema" className="p-3">
+          <CTabPane visible={activeTab === 'schema'} className="p-3">
             <SchemaExplorer connection={connection} />
-          </CTabPanel>
+          </CTabPane>
 
-          <CTabPanel value="monitoring" className="p-3">
+          <CTabPane visible={activeTab === 'monitoring'} className="p-3">
             <DatabaseMonitoring 
               connection={connection}
               performanceMetrics={performanceMetrics}
             />
-          </CTabPanel>
+          </CTabPane>
         </CTabContent>
-      </CTabs>
+      </div>
     </div>
   );
 };
