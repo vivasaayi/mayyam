@@ -177,23 +177,65 @@ LIMIT 10;`
   };
 
   const formatQueryResult = (result) => {
-    if (!result) return null;
+    if (!result || !result.columns || !result.rows) {
+      console.warn('Invalid query result:', result);
+      return null;
+    }
 
+    if (result.columns.length === 0) {
+      console.warn('No columns in query result');
+      return null;
+    }
+
+    // Create column definitions
     const columnDefs = result.columns.map(col => ({
       headerName: col,
       field: col,
       resizable: true,
       sortable: true,
-      filter: true
+      filter: true,
+      minWidth: 150,
+      flex: 1,
+      // Add cellRenderer for better display of null/undefined values
+      cellRenderer: (params) => {
+        if (params.value === null || params.value === undefined) {
+          return '<span class="text-muted">(null)</span>';
+        }
+        return params.value;
+      }
     }));
+
+    // Ensure all rows have all fields defined
+    const rowData = result.rows.map(row => {
+      const normalizedRow = {};
+      // Initialize all fields with null
+      result.columns.forEach(col => {
+        normalizedRow[col] = row[col] !== undefined ? row[col] : null;
+      });
+      return normalizedRow;
+    });
+
+    console.log('Generated column definitions:', columnDefs);
+    console.log('Row data:', rowData);
 
     return {
       columnDefs,
-      rowData: result.rows
+      rowData
     };
   };
 
   const gridData = formatQueryResult(queryResult);
+  
+  // Debug logging to see what data is being passed to AGGrid
+  React.useEffect(() => {
+    if (queryResult) {
+      console.log('QueryResult:', queryResult);
+      console.log('GridData:', gridData);
+      console.log('Columns (expanded):', JSON.stringify(gridData?.columnDefs, null, 2));
+      console.log('Rows (first 3, expanded):', JSON.stringify(gridData?.rowData?.slice(0, 3), null, 2));
+      console.log('Row count:', gridData?.rowData?.length);
+    }
+  }, [queryResult, gridData]);
 
   return (
     <div style={{ height: "100%" }}>
@@ -325,20 +367,67 @@ LIMIT 10;`
               </CCardHeader>
               <CCardBody style={{ height: "calc(100% - 60px)", padding: 0 }}>
                 {queryResult ? (
-                  <div className="ag-theme-alpine" style={{ height: "100%", width: "100%" }}>
-                    <AgGridReact
-                      ref={gridRef}
-                      columnDefs={gridData.columnDefs}
-                      rowData={gridData.rowData}
-                      defaultColDef={{
-                        resizable: true,
-                        sortable: true,
-                        filter: true
-                      }}
-                      pagination={true}
-                      paginationPageSize={50}
-                    />
-                  </div>
+                  gridData && gridData.columnDefs && gridData.rowData ? (
+                    <div className="ag-theme-alpine" style={{ 
+                      height: "calc(100vh - 250px)", 
+                      width: "100%",
+                      border: "1px solid #ddd",
+                      minHeight: "400px" // Ensure grid has a minimum height
+                    }}>
+                      <AgGridReact
+                        ref={gridRef}
+                        columnDefs={gridData.columnDefs}
+                        rowData={gridData.rowData}
+                        defaultColDef={{
+                          resizable: true,
+                          sortable: true,
+                          filter: true,
+                          minWidth: 100,
+                          flex: 1 // Make columns flexible
+                        }}
+                        pagination={true}
+                        paginationPageSize={50}
+                        suppressRowClickSelection={true}
+                        animateRows={true}
+                        domLayout="normal" // Changed from autoHeight to normal
+                        onGridReady={(params) => {
+                          // Fit columns when grid is ready
+                          setTimeout(() => {
+                            params.api.sizeColumnsToFit();
+                          }, 100);
+                        }}
+                        onFirstDataRendered={(params) => {
+                          // Autosize columns after data is loaded
+                          params.columnApi.autoSizeAllColumns();
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="p-3">
+                      <CAlert color="warning">
+                        <h6>No data to display</h6>
+                        <p>Query executed but returned no displayable data or the data format is unexpected.</p>
+                        <small>
+                          Columns: {queryResult.columns?.length || 0} | 
+                          Rows: {queryResult.rows?.length || 0}
+                        </small>
+                      </CAlert>
+                      <div className="mt-3">
+                        <h6>Raw Query Result</h6>
+                        <pre className="bg-light p-2 small" style={{ maxHeight: "300px", overflow: "auto" }}>
+                          {JSON.stringify(queryResult, null, 2)}
+                        </pre>
+                      </div>
+                      {queryResult.rows && queryResult.rows.length > 0 && (
+                        <div className="mt-3">
+                          <h6>Data Preview (First Row)</h6>
+                          <pre className="bg-light p-2 small" style={{ maxHeight: "200px", overflow: "auto" }}>
+                            {JSON.stringify(queryResult.rows[0], null, 2)}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  )
                 ) : (
                   <div className="d-flex align-items-center justify-content-center h-100 text-muted">
                     Execute a query to see results
