@@ -12,6 +12,7 @@ pub mod kubernetes_cluster_management; // New module
 pub mod data_source;
 pub mod llm_provider;
 pub mod prompt_template;
+pub mod query_template;
 pub mod llm_analytics;
 
 use actix_web::web;

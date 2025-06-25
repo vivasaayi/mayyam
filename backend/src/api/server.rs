@@ -241,6 +241,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
                 routes::data_source::configure(cfg_param, data_source_controller.clone());
                 routes::llm_provider::configure(cfg_param, llm_provider_controller.clone());
                 routes::prompt_template::configure(cfg_param, prompt_template_controller.clone());
+                routes::query_template::configure(cfg_param);
                 routes::llm_analytics::configure(cfg_param, llm_analytics_controller.clone());
                 
                 info!("Registering other general routes");
