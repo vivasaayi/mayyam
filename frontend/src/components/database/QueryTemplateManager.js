@@ -22,7 +22,7 @@ import {
 } from "@coreui/react";
 import QueryTemplateService from "../../services/queryTemplateService";
 
-const QueryTemplateManager = ({ connection, onTemplateSelect }) => {
+const QueryTemplateManager = ({ connection, onTemplateSelect, initialTemplates = [] }) => {
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -48,19 +48,28 @@ const QueryTemplateManager = ({ connection, onTemplateSelect }) => {
     { value: "Other", label: "Other" }
   ];
 
-  // Load templates when connection changes
+  // Use initialTemplates if provided on first load
   useEffect(() => {
-    if (connection) {
+    if (initialTemplates && initialTemplates.length > 0) {
+      setTemplates(initialTemplates);
+      setLoading(false);
+    } else if (connection) {
       loadTemplates();
     }
-  }, [connection]);
+  }, [connection, initialTemplates]);
 
   // Load templates from the backend
   const loadTemplates = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await QueryTemplateService.getTemplatesByType(connection.connection_type);
+      let data;
+      // For common templates (empty connection_type)
+      if (!connection.connection_type) {
+        data = await QueryTemplateService.getCommonTemplates();
+      } else {
+        data = await QueryTemplateService.getTemplatesByType(connection.connection_type);
+      }
       setTemplates(data);
     } catch (err) {
       console.error("Failed to load templates:", err);

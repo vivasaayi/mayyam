@@ -27,6 +27,9 @@ const PodDetailsPage = lazy(() => import("./pages/PodDetailsPage")); // Import f
 const ManageKubernetesClustersPage = lazy(() => import("./pages/ManageKubernetesClustersPage")); // Import for managing clusters
 const Chat = lazy(() => import("./pages/Chat")); // Import for Chat page
 const LlmProviders = lazy(() => import("./pages/LlmProviders")); // Import for LLM Providers management page
+const QueryTemplates = lazy(() => import("./pages/QueryTemplates")); // Import for Query Templates management page
+const PromptTemplates = lazy(() => import("./pages/PromptTemplates")); // Import for Prompt Templates management page
+const Configurations = lazy(() => import("./pages/Configurations")); // Import for Configurations management page
 
 const App = () => {
   const { isAuthenticated, isLoading } = useAuth();
@@ -62,6 +65,9 @@ const App = () => {
             <Route path="manage-kubernetes-clusters" element={<ManageKubernetesClustersPage />} /> {/* Route for managing clusters */}
             <Route path="chat" element={<Chat />} /> {/* Route for Chat page */}
             <Route path="llm-providers" element={<LlmProviders />} /> {/* Route for LLM Providers management page */}
+            <Route path="query-templates" element={<QueryTemplates />} /> {/* Route for Query Templates management page */}
+            <Route path="prompt-templates" element={<PromptTemplates />} /> {/* Route for Prompt Templates management page */}
+            <Route path="configurations" element={<Configurations />} /> {/* Route for Configurations management page */}
             <Route path="*" element={<NotFound />} />
           </Route>
         </Route>

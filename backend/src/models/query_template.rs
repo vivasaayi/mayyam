@@ -11,7 +11,7 @@ pub struct Model {
     pub name: String,
     pub query: String,
     pub description: Option<String>,
-    pub connection_type: String, // e.g., "mysql", "postgresql"
+    pub connection_type: Option<String>, // e.g., "mysql", "postgresql", or NULL for common templates
     pub category: Option<String>, // e.g., "Performance", "Schema", "Monitoring"
     pub is_favorite: bool,
     pub display_order: i32,
@@ -31,7 +31,7 @@ pub struct CreateQueryTemplateRequest {
     pub name: String,
     pub query: String,
     pub description: Option<String>,
-    pub connection_type: String,
+    pub connection_type: Option<String>, // Make connection_type optional
     pub category: Option<String>,
     pub is_favorite: Option<bool>,
     pub display_order: Option<i32>,
@@ -42,7 +42,7 @@ pub struct UpdateQueryTemplateRequest {
     pub name: Option<String>,
     pub query: Option<String>,
     pub description: Option<String>,
-    pub connection_type: Option<String>,
+    pub connection_type: Option<String>, // Keep it optional
     pub category: Option<String>,
     pub is_favorite: Option<bool>,
     pub display_order: Option<i32>,
@@ -54,7 +54,7 @@ pub struct QueryTemplateResponse {
     pub name: String,
     pub query: String,
     pub description: Option<String>,
-    pub connection_type: String,
+    pub connection_type: Option<String>,
     pub category: Option<String>,
     pub is_favorite: bool,
     pub display_order: i32,

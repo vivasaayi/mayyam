@@ -61,7 +61,8 @@ impl QueryTemplateRepository {
             updated_at: Set(now),
         };
 
-        new_template.insert(&*self.db).await
+        let result = new_template.insert(&*self.db).await?;
+        Ok(result)
     }
 
     // Update an existing template
@@ -86,7 +87,9 @@ impl QueryTemplateRepository {
             }
             
             if let Some(connection_type) = &template.connection_type {
-                template_active.connection_type = Set(connection_type.clone());
+                template_active.connection_type = Set(Some(connection_type.clone()));
+            } else {
+                template_active.connection_type = Set(None);
             }
             
             if let Some(category) = &template.category {
@@ -126,5 +129,33 @@ impl QueryTemplateRepository {
                 format!("Template with ID {} not found", id)
             ))
         }
+    }
+
+    // Find common templates (connection_type is NULL)
+    pub async fn find_common_templates(&self) -> Result<Vec<Model>, DbErr> {
+        query_template::Entity::find()
+            .filter(query_template::Column::ConnectionType.is_null())
+            .order_by(query_template::Column::DisplayOrder, sea_orm::Order::Asc)
+            .all(&*self.db)
+            .await
+    }
+    
+    // Find templates for a specific connection type, including common templates
+    pub async fn find_by_connection_type_with_common(&self, conn_type: &str) -> Result<Vec<Model>, DbErr> {
+        // Get specific connection type templates
+        let specific_templates = self.find_by_connection_type(conn_type).await?;
+        
+        // Get common templates
+        let common_templates = self.find_common_templates().await?;
+        
+        // Combine both lists
+        let mut all_templates = Vec::new();
+        all_templates.extend(common_templates);
+        all_templates.extend(specific_templates);
+        
+        // Sort by display_order
+        all_templates.sort_by(|a, b| a.display_order.cmp(&b.display_order));
+        
+        Ok(all_templates)
     }
 }

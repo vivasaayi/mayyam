@@ -22,6 +22,7 @@ import { AgGridReact } from "ag-grid-react";
 import ReactMarkdown from "react-markdown";
 import QueryTemplateService from "../../services/queryTemplateService";
 import QueryTemplateManager from "./QueryTemplateManager";
+import "../../styles/QueryTemplates.css"; // Import the CSS file
 
 const QueryTool = ({ 
   connection, 
@@ -71,8 +72,9 @@ const QueryTool = ({
     await executeQuery();
   };
 
-  const loadCommonQuery = (query) => {
-    setCurrentQuery(query);
+  // Load a query from a template
+  const loadCommonQuery = (template) => {
+    setCurrentQuery(template.query);
   };
 
   const formatQueryResult = (result) => {
@@ -221,7 +223,7 @@ const QueryTool = ({
                               color="info"
                               size="sm"
                               className="me-2 mb-2 d-block w-100 text-start"
-                              onClick={() => loadCommonQuery(template.query)}
+                              onClick={() => loadCommonQuery(template)}
                             >
                               {template.name}
                             </CButton>
@@ -400,17 +402,85 @@ const QueryTool = ({
 
           <CTabPanel value="templates">
             <CCard style={{ height: "100%" }}>
-              <CCardHeader>
+              <CCardHeader className="d-flex justify-content-between align-items-center">
                 <strong>Query Templates - {connection.connection_type.toUpperCase()}</strong>
+                <CButton 
+                  color="primary" 
+                  size="sm"
+                  href="#/query-templates"
+                  target="_blank"
+                >
+                  Open Template Manager
+                </CButton>
               </CCardHeader>
               <CCardBody style={{ height: "calc(100% - 60px)", overflowY: "auto" }}>
-                <QueryTemplateManager 
-                  connection={connection} 
-                  onTemplateSelect={(query) => {
-                    loadCommonQuery(query);
-                    setActiveTab("editor");
-                  }}
-                />
+                {templatesLoading ? (
+                  <div className="text-center p-3">
+                    <CSpinner />
+                    <p className="mt-2">Loading templates...</p>
+                  </div>
+                ) : templatesError ? (
+                  <CAlert color="danger">{templatesError}</CAlert>
+                ) : templates.length === 0 ? (
+                  <CAlert color="info">
+                    <p>No templates available for {connection.connection_type}.</p>
+                    <p>
+                      <a href="#/query-templates" target="_blank">Create templates in the Query Templates Manager</a>
+                    </p>
+                  </CAlert>
+                ) : (
+                  <div className="template-list">
+                    <h6>Favorite Templates (Quick Access)</h6>
+                    <div className="mb-4">
+                      {templates.filter(t => t.is_favorite).map(template => (
+                        <CButton
+                          key={template.id}
+                          color="light"
+                          className="m-1"
+                          onClick={() => {
+                            loadCommonQuery(template);
+                            setActiveTab("editor");
+                          }}
+                        >
+                          {template.name}
+                        </CButton>
+                      ))}
+                      {templates.filter(t => t.is_favorite).length === 0 && (
+                        <p className="text-muted small">No favorite templates. Mark templates as favorites in the Template Manager.</p>
+                      )}
+                    </div>
+                    
+                    <h6>All Templates</h6>
+                    <div className="template-grid">
+                      {templates.map(template => (
+                        <CCard key={template.id} className="mb-3">
+                          <CCardHeader className="py-2 d-flex justify-content-between align-items-center">
+                            <strong>{template.name}</strong>
+                            {template.is_favorite && <CBadge color="info">Favorite</CBadge>}
+                          </CCardHeader>
+                          <CCardBody className="p-3">
+                            {template.description && (
+                              <p className="text-muted small mb-2">{template.description}</p>
+                            )}
+                            <div className="code-preview mb-2">
+                              <pre className="p-2 bg-light">{template.query}</pre>
+                            </div>
+                            <CButton 
+                              size="sm" 
+                              color="primary"
+                              onClick={() => {
+                                loadCommonQuery(template);
+                                setActiveTab("editor");
+                              }}
+                            >
+                              Use This Query
+                            </CButton>
+                          </CCardBody>
+                        </CCard>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </CCardBody>
             </CCard>
           </CTabPanel>

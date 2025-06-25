@@ -70,6 +70,9 @@ const AppLayout = () => {
 
           <CNavTitle>Settings</CNavTitle>
           <CNavItem>
+            <CNavLink as={Link} to="/query-templates">Query Templates</CNavLink>
+          </CNavItem>
+          <CNavItem>
             <CNavLink as={Link} to="/llm-providers">LLM Providers</CNavLink>
           </CNavItem>
           <CNavItem>

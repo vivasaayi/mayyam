@@ -82,7 +82,18 @@ const QueryTemplateService = {
       console.error('Error deleting query template:', error);
       throw error;
     }
-  }
+  },
+
+  // Get common templates (not specific to any connection type)
+  async getCommonTemplates() {
+    try {
+      const response = await api.get('/api/query-templates/common');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching common query templates:', error);
+      throw error;
+    }
+  },
 };
 
 export default QueryTemplateService;
