@@ -9,6 +9,7 @@ const LlmProviders = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showModal, setShowModal] = useState(false);
+  const [editingProvider, setEditingProvider] = useState(null);
   const [form, setForm] = useState({
     name: "",
     provider_type: "OpenAI",
@@ -22,6 +23,8 @@ const LlmProviders = () => {
   });
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+  const [testing, setTesting] = useState(null);
 
   const fetchProviders = async () => {
     setLoading(true);
@@ -54,19 +57,122 @@ const LlmProviders = () => {
     setError(null);
     setSuccess(null);
     try {
-      const res = await fetchWithAuth("/api/v1/llm-providers", {
-        method: "POST",
+      const url = editingProvider ? `/api/v1/llm-providers/${editingProvider.id}` : "/api/v1/llm-providers";
+      const method = editingProvider ? "PUT" : "POST";
+      
+      // Prepare the payload with correct field mapping
+      const payload = {
+        name: form.name,
+        provider_type: form.provider_type,
+        model_name: form.model_name,
+        api_endpoint: form.api_endpoint || null,
+        prompt_format: form.prompt_format,
+        enabled: form.enabled,
+        is_default: form.is_default,
+        model_config: form.model_config,
+      };
+      
+      // Only include api_key if it's provided (for security)
+      if (form.api_key) {
+        payload.api_key = form.api_key;
+      }
+      
+      const res = await fetchWithAuth(url, {
+        method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error("Failed to create provider");
+      if (!res.ok) throw new Error(`Failed to ${editingProvider ? 'update' : 'create'} provider`);
+      
       setShowModal(false);
-      setSuccess("Provider created successfully");
+      setEditingProvider(null);
+      setSuccess(`Provider ${editingProvider ? 'updated' : 'created'} successfully`);
+      resetForm();
       fetchProviders();
     } catch (e) {
       setError(e.message);
     }
     setSaving(false);
+  };
+
+  const resetForm = () => {
+    setForm({
+      name: "",
+      provider_type: "OpenAI",
+      model_name: "",
+      api_endpoint: "",
+      api_key: "",
+      prompt_format: "OpenAI",
+      enabled: true,
+      is_default: false,
+      model_config: {},
+    });
+  };
+
+  const handleEdit = (provider) => {
+    setEditingProvider(provider);
+    setForm({
+      name: provider.name,
+      provider_type: provider.provider_type,
+      model_name: provider.model_name,
+      api_endpoint: provider.base_url || "",
+      api_key: "", // Don't populate for security
+      prompt_format: provider.prompt_format,
+      enabled: provider.enabled,
+      is_default: provider.is_default,
+      model_config: provider.model_config || {},
+    });
+    setShowModal(true);
+  };
+
+  const handleDelete = async (providerId) => {
+    if (!window.confirm("Are you sure you want to delete this LLM provider?")) {
+      return;
+    }
+    
+    setDeleting(providerId);
+    setError(null);
+    try {
+      const res = await fetchWithAuth(`/api/v1/llm-providers/${providerId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to delete provider");
+      
+      setSuccess("Provider deleted successfully");
+      fetchProviders();
+    } catch (e) {
+      setError(e.message);
+    }
+    setDeleting(null);
+  };
+
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setEditingProvider(null);
+    resetForm();
+  };
+
+  const handleTest = async (providerId) => {
+    setTesting(providerId);
+    setError(null);
+    try {
+      const res = await fetchWithAuth(`/api/v1/llm-providers/${providerId}/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ test_prompt: "Hello, this is a test message." }),
+      });
+      if (!res.ok) throw new Error("Failed to test provider");
+      
+      const result = await res.json();
+      if (result.success) {
+        setSuccess(`Test successful: ${result.message}`);
+      } else {
+        setError(`Test failed: ${result.message}`);
+      }
+    } catch (e) {
+      setError(e.message);
+    }
+    setTesting(null);
   };
 
   return (
@@ -77,7 +183,11 @@ const LlmProviders = () => {
       <CCard className="mb-4">
         <CCardHeader>
           LLM Providers
-          <CButton color="primary" className="float-end" onClick={() => setShowModal(true)}>
+          <CButton color="primary" className="float-end" onClick={() => {
+            resetForm();
+            setEditingProvider(null);
+            setShowModal(true);
+          }}>
             Add Provider
           </CButton>
         </CCardHeader>
@@ -99,6 +209,32 @@ const LlmProviders = () => {
                       <div><b>Model:</b> {prov.model_name}</div>
                       <div><b>Default:</b> {prov.is_default ? "Yes" : "No"}</div>
                       <div><b>Created:</b> {new Date(prov.created_at).toLocaleString()}</div>
+                      
+                      <div className="mt-3 d-flex gap-2 flex-wrap">
+                        <CButton 
+                          color="primary" 
+                          size="sm" 
+                          onClick={() => handleEdit(prov)}
+                        >
+                          Edit
+                        </CButton>
+                        <CButton 
+                          color="info" 
+                          size="sm" 
+                          onClick={() => handleTest(prov.id)}
+                          disabled={testing === prov.id}
+                        >
+                          {testing === prov.id ? <CSpinner size="sm" /> : "Test"}
+                        </CButton>
+                        <CButton 
+                          color="danger" 
+                          size="sm" 
+                          onClick={() => handleDelete(prov.id)}
+                          disabled={deleting === prov.id}
+                        >
+                          {deleting === prov.id ? <CSpinner size="sm" /> : "Delete"}
+                        </CButton>
+                      </div>
                     </CCardBody>
                   </CCard>
                 </CCol>
@@ -107,8 +243,8 @@ const LlmProviders = () => {
           )}
         </CCardBody>
       </CCard>
-      <CModal visible={showModal} onClose={() => setShowModal(false)}>
-        <CModalHeader>Add LLM Provider</CModalHeader>
+      <CModal visible={showModal} onClose={handleCloseModal}>
+        <CModalHeader>{editingProvider ? 'Edit LLM Provider' : 'Add LLM Provider'}</CModalHeader>
         <CModalBody>
           <CForm onSubmit={handleSubmit}>
             <CFormLabel>Name</CFormLabel>
@@ -127,7 +263,14 @@ const LlmProviders = () => {
             <CFormLabel className="mt-2">API Endpoint</CFormLabel>
             <CFormInput name="api_endpoint" value={form.api_endpoint} onChange={handleChange} />
             <CFormLabel className="mt-2">API Key</CFormLabel>
-            <CFormInput name="api_key" value={form.api_key} onChange={handleChange} type="password" autoComplete="new-password" />
+            <CFormInput 
+              name="api_key" 
+              value={form.api_key} 
+              onChange={handleChange} 
+              type="password" 
+              autoComplete="new-password"
+              placeholder={editingProvider ? "Leave empty to keep existing key" : ""}
+            />
             <CFormLabel className="mt-2">Prompt Format</CFormLabel>
             <CFormSelect name="prompt_format" value={form.prompt_format} onChange={handleChange}>
               <option>OpenAI</option>
@@ -145,12 +288,12 @@ const LlmProviders = () => {
               <option value="true">Yes</option>
             </CFormSelect>
             <CButton color="primary" type="submit" className="mt-3" disabled={saving}>
-              {saving ? <CSpinner size="sm" /> : "Save"}
+              {saving ? <CSpinner size="sm" /> : (editingProvider ? "Update" : "Save")}
             </CButton>
           </CForm>
         </CModalBody>
         <CModalFooter>
-          <CButton color="secondary" onClick={() => setShowModal(false)}>
+          <CButton color="secondary" onClick={handleCloseModal}>
             Cancel
           </CButton>
         </CModalFooter>

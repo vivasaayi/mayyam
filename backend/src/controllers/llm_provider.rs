@@ -17,6 +17,8 @@ pub struct CreateLlmProviderRequest {
     pub model_config: Option<Value>,
     pub prompt_format: LlmPromptFormat,
     pub description: Option<String>,
+    pub enabled: Option<bool>,
+    pub is_default: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -29,6 +31,8 @@ pub struct UpdateLlmProviderRequest {
     pub prompt_format: Option<LlmPromptFormat>,
     pub description: Option<Option<String>>,
     pub status: Option<LlmProviderStatus>,
+    pub enabled: Option<bool>,
+    pub is_default: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -80,6 +84,8 @@ impl LlmProviderController {
                 request.model_config.clone(),
                 request.prompt_format.clone(),
                 request.description.clone(),
+                request.enabled,
+                request.is_default,
             )
             .await
             .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
@@ -144,6 +150,8 @@ impl LlmProviderController {
                 request.prompt_format.clone(),
                 request.description.clone(),
                 request.status.clone(),
+                request.enabled,
+                request.is_default,
             )
             .await
             .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;

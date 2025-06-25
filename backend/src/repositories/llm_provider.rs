@@ -27,7 +27,7 @@ impl LlmProviderRepository {
 
     pub async fn create(&self, name: String, provider_type: LlmProviderType, model_name: String,
                        api_endpoint: Option<String>, api_key: Option<String>, model_config: Option<Value>,
-                       prompt_format: LlmPromptFormat, description: Option<String>) -> Result<LlmProviderModel, AppError> {
+                       prompt_format: LlmPromptFormat, description: Option<String>, enabled: Option<bool>, is_default: Option<bool>) -> Result<LlmProviderModel, AppError> {
         
         // For now, store api_key directly (in production, you'd want to encrypt it)
         let provider = LlmProviderActiveModel {
@@ -39,8 +39,8 @@ impl LlmProviderRepository {
             api_key: Set(api_key),
             model_config: Set(model_config.unwrap_or(serde_json::json!({}))),
             prompt_format: Set(serde_json::to_string(&prompt_format).unwrap_or("\"OpenAI\"".to_string())),
-            enabled: Set(true), // Default to enabled
-            is_default: Set(false), // Default to not default
+            enabled: Set(enabled.unwrap_or(true)), // Default to enabled
+            is_default: Set(is_default.unwrap_or(false)), // Default to not default
             created_at: Set(Utc::now()),
             updated_at: Set(Utc::now()),
         };
@@ -116,7 +116,8 @@ impl LlmProviderRepository {
     pub async fn update(&self, id: Uuid, name: Option<String>, model_name: Option<String>,
                        api_endpoint: Option<Option<String>>, api_key: Option<Option<String>>,
                        model_config: Option<Option<Value>>, prompt_format: Option<LlmPromptFormat>,
-                       description: Option<Option<String>>, status: Option<LlmProviderStatus>) -> Result<LlmProviderModel, AppError> {
+                       description: Option<Option<String>>, status: Option<LlmProviderStatus>,
+                       enabled: Option<bool>, is_default: Option<bool>) -> Result<LlmProviderModel, AppError> {
         let provider = LlmProvider::find_by_id(id)
             .one(&*self.db)
             .await
@@ -144,6 +145,12 @@ impl LlmProviderRepository {
         if let Some(prompt_format) = prompt_format {
             let format_str = serde_json::to_string(&prompt_format).unwrap_or("\"OpenAI\"".to_string());
             active_model.prompt_format = Set(format_str);
+        }
+        if let Some(enabled) = enabled {
+            active_model.enabled = Set(enabled);
+        }
+        if let Some(is_default) = is_default {
+            active_model.is_default = Set(is_default);
         }
         // For status, we'll map it to the enabled field
         if let Some(status) = status {
