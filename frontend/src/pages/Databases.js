@@ -216,6 +216,7 @@ const DatabaseManagement = () => {
         rows: response.data.row_count
       }]);
     } catch (err) {
+      console.error('Query execution error:', err);  // Debug log
       setError("Query execution failed: " + (err.response?.data?.message || err.message));
     } finally {
       setLoading(false);

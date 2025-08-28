@@ -97,10 +97,10 @@ const QueryTool = ({
       filter: true,
       minWidth: 150,
       flex: 1,
-      // Add cellRenderer for better display of null/undefined values
-      cellRenderer: (params) => {
+      // Handle null/undefined values properly for display
+      valueFormatter: (params) => {
         if (params.value === null || params.value === undefined) {
-          return '<span class="text-muted">(null)</span>';
+          return '(null)';
         }
         return params.value;
       }
@@ -116,9 +116,6 @@ const QueryTool = ({
       return normalizedRow;
     });
 
-    console.log('Generated column definitions:', columnDefs);
-    console.log('Row data:', rowData);
-
     return {
       columnDefs,
       rowData
@@ -126,17 +123,6 @@ const QueryTool = ({
   };
 
   const gridData = formatQueryResult(queryResult);
-  
-  // Debug logging to see what data is being passed to AGGrid
-  React.useEffect(() => {
-    if (queryResult) {
-      console.log('QueryResult:', queryResult);
-      console.log('GridData:', gridData);
-      console.log('Columns (expanded):', JSON.stringify(gridData?.columnDefs, null, 2));
-      console.log('Rows (first 3, expanded):', JSON.stringify(gridData?.rowData?.slice(0, 3), null, 2));
-      console.log('Row count:', gridData?.rowData?.length);
-    }
-  }, [queryResult, gridData]);
 
   return (
     <div style={{ height: "100%" }} className="query-tool-container">

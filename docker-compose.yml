@@ -11,7 +11,7 @@ services:
       - RUST_LOG=info
       - DATABASE_URL=postgres://postgres:postgres@db:5432/mayyam
     depends_on:
-      - db
+      - postgres
     volumes:
       - ./backend/config.yml:/app/config.yml
 
@@ -24,7 +24,7 @@ services:
     depends_on:
       - backend
 
-  db:
+  postgres:
     image: postgres:14-alpine
     environment:
       - POSTGRES_PASSWORD=postgres
@@ -45,7 +45,7 @@ services:
       MYSQL_USER: mayyam_user
       MYSQL_PASSWORD: mayyam_password
     ports:
-      - "3307:3306"
+      - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./backend/migrations:/docker-entrypoint-initdb.d

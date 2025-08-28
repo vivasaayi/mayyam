@@ -104,81 +104,233 @@ impl MySqlAnalyticsService {
         let mut rows = Vec::new();
         
         if !result.is_empty() {
-            // For now, we'll need to handle this differently since SeaORM's QueryResult
-            // doesn't expose column metadata directly. Let's use a simpler approach
-            // for common queries like "SHOW TABLES"
+            // Check if this is a data-returning query
+            let is_data_query = query.to_lowercase().trim().starts_with("select") ||
+                               query.to_lowercase().trim().starts_with("show") ||
+                               query.to_lowercase().trim().starts_with("describe") ||
+                               query.to_lowercase().trim().starts_with("desc") ||
+                               query.to_lowercase().trim().starts_with("explain");
             
-            if query.to_lowercase().trim().starts_with("show tables") {
-                // Get the actual database name from the connection model
-                let db_name = conn_model.database_name.as_deref().unwrap_or("mysql");
-                let column_name = format!("Tables_in_{}", db_name);
+            if is_data_query {
+                // Get column names - try to infer from query structure or use defaults
+                columns = self.get_column_names_for_query(query, conn_model);
                 
-                // Use the dynamic column name instead of hardcoded "Tables_in_database"
-                columns = vec![column_name.clone()];
-                
-                for (index, row) in result.iter().enumerate() {
+                // Extract data for each row
+                for row in &result {
                     let mut row_data = serde_json::Map::new();
                     
-                    // Try to get the table name using the actual database name first
-                    let table_name = if let Ok(name) = row.try_get::<String>("", &column_name) {
-                        name
-                    } else {
-                        // Fallback: try some common database column name patterns
-                        let common_patterns = vec![
-                            format!("Tables_in_{}", db_name),
-                            "Tables_in_mysql".to_string(),
-                            "Tables_in_test".to_string(), 
-                            "Tables_in_mydb".to_string(),
-                            "Tables_in_information_schema".to_string(),
-                            "Tables_in_sys".to_string(),
-                        ];
-                        
-                        let mut found_name = None;
-                        for pattern in &common_patterns {
-                            if let Ok(name) = row.try_get::<String>("", pattern) {
-                                found_name = Some(name);
-                                break;
-                            }
-                        }
-                        
-                        found_name.unwrap_or_else(|| {
-                            // If all else fails, generate a placeholder name
-                            format!("table_{}", index + 1)
-                        })
-                    };
+                    // Try to extract values by index since column names might not work
+                    for (index, col_name) in columns.iter().enumerate() {
+                        let value = self.extract_value_by_index(row, index);
+                        row_data.insert(col_name.clone(), value);
+                    }
                     
-                    // Use the dynamic column name as the key in the row data
-                    row_data.insert(column_name.clone(), serde_json::Value::String(table_name));
                     rows.push(serde_json::Value::Object(row_data));
                 }
             } else {
-                // For other queries, we'll return a simplified result for now
+                // Non-data queries (INSERT, UPDATE, DELETE, etc.)
                 columns = vec!["result".to_string()];
-                let mut row_data = serde_json::Map::new();
-                row_data.insert("result".to_string(), serde_json::Value::String("Query executed successfully".to_string()));
-                rows.push(serde_json::Value::Object(row_data));
+                rows = vec![serde_json::json!({"result": "Query executed successfully"})];
             }
         } else {
-            // If no results, provide default structure based on query type
-            columns = match query.to_lowercase().trim() {
-                q if q.starts_with("show tables") => {
-                    let db_name = conn_model.database_name.as_deref().unwrap_or("mysql");
-                    vec![format!("Tables_in_{}", db_name)]
-                },
-                q if q.starts_with("show databases") => vec!["Database".to_string()],
-                q if q.starts_with("describe ") || q.starts_with("desc ") => {
-                    vec!["Field".to_string(), "Type".to_string(), "Null".to_string(), "Key".to_string(), "Default".to_string(), "Extra".to_string()]
-                },
-                _ => vec!["result".to_string()]
-            };
-            
-            // For queries with no results, still indicate success
-            if columns == vec!["result".to_string()] {
-                rows = vec![serde_json::json!({"result": "Query executed successfully - no rows returned"})];
+            // Handle empty results
+            if query.to_lowercase().trim().starts_with("select") {
+                columns = vec!["message".to_string()];
+                rows = vec![serde_json::json!({"message": "Query executed successfully - no rows returned"})];
+            } else {
+                columns = vec!["result".to_string()];
+                rows = vec![serde_json::json!({"result": "Query executed successfully"})];
             }
         }
 
         Ok((columns, rows))
+    }
+
+    fn get_column_names_for_query(&self, query: &str, conn_model: &crate::models::database::Model) -> Vec<String> {
+        // First try to parse column names from SELECT query
+        if let Some(parsed_cols) = self.parse_select_columns(query) {
+            return parsed_cols;
+        }
+        
+        // Fall back to query-specific defaults
+        self.get_query_specific_columns(query, conn_model)
+    }
+
+    fn extract_value_by_index(&self, row: &sea_orm::QueryResult, index: usize) -> serde_json::Value {
+        // Try to extract value by index - generate potential column names based on index
+        let potential_names = vec![
+            index.to_string(),
+            format!("column_{}", index),
+            format!("col_{}", index),
+            format!("{}", index + 1), // 1-based indexing
+        ];
+        
+        for name in potential_names {
+            // Use the correct SeaORM syntax: try_get("", "column_name") for raw queries
+            if let Ok(val) = row.try_get::<String>("", &name) {
+                return serde_json::Value::String(val);
+            } else if let Ok(val) = row.try_get::<Option<String>>("", &name) {
+                return match val {
+                    Some(s) => serde_json::Value::String(s),
+                    None => serde_json::Value::Null,
+                };
+            } else if let Ok(val) = row.try_get::<i64>("", &name) {
+                return serde_json::Value::Number(serde_json::Number::from(val));
+            } else if let Ok(val) = row.try_get::<Option<i64>>("", &name) {
+                return match val {
+                    Some(n) => serde_json::Value::Number(serde_json::Number::from(n)),
+                    None => serde_json::Value::Null,
+                };
+            } else if let Ok(val) = row.try_get::<i32>("", &name) {
+                return serde_json::Value::Number(serde_json::Number::from(val));
+            } else if let Ok(val) = row.try_get::<Option<i32>>("", &name) {
+                return match val {
+                    Some(n) => serde_json::Value::Number(serde_json::Number::from(n)),
+                    None => serde_json::Value::Null,
+                };
+            } else if let Ok(val) = row.try_get::<f64>("", &name) {
+                return serde_json::Number::from_f64(val).map(serde_json::Value::Number)
+                    .unwrap_or(serde_json::Value::Null);
+            } else if let Ok(val) = row.try_get::<Option<f64>>("", &name) {
+                return match val {
+                    Some(f) => serde_json::Number::from_f64(f).map(serde_json::Value::Number)
+                        .unwrap_or(serde_json::Value::Null),
+                    None => serde_json::Value::Null,
+                };
+            } else if let Ok(val) = row.try_get::<bool>("", &name) {
+                return serde_json::Value::Bool(val);
+            } else if let Ok(val) = row.try_get::<Option<bool>>("", &name) {
+                return match val {
+                    Some(b) => serde_json::Value::Bool(b),
+                    None => serde_json::Value::Null,
+                };
+            }
+        }
+        
+        // If all else fails, return a placeholder that shows we tried
+        serde_json::Value::String(format!("column_{}_value", index))
+    }
+
+    fn parse_select_columns(&self, query: &str) -> Option<Vec<String>> {
+        let query_lower = query.to_lowercase();
+        if let Some(select_pos) = query_lower.find("select") {
+            if let Some(from_pos) = query_lower.find("from") {
+                let select_part = query[select_pos + 6..from_pos].trim();
+                
+                if select_part == "*" {
+                    return None; // Let caller handle wildcard
+                }
+                
+                let columns = select_part
+                    .split(',')
+                    .map(|s| {
+                        let clean = s.trim();
+                        // Handle aliases (AS keyword or space-separated)
+                        if let Some(as_pos) = clean.to_lowercase().rfind(" as ") {
+                            clean[as_pos + 4..].trim().to_string()
+                        } else {
+                            // Extract base column name, removing functions and table prefixes
+                            let parts: Vec<&str> = clean.split_whitespace().collect();
+                            if parts.len() > 1 && !parts.last().unwrap().contains('(') {
+                                // Last part is likely an alias
+                                parts.last().unwrap().to_string()
+                            } else {
+                                // Extract column name from first part
+                                let col_part = parts[0];
+                                if let Some(dot_pos) = col_part.rfind('.') {
+                                    col_part[dot_pos + 1..].to_string()
+                                } else {
+                                    // Remove function calls like COUNT(), MAX(), etc.
+                                    if let Some(paren_pos) = col_part.find('(') {
+                                        if col_part.ends_with(')') {
+                                            let func_name = &col_part[..paren_pos];
+                                            format!("{}(...)", func_name)
+                                        } else {
+                                            col_part.to_string()
+                                        }
+                                    } else {
+                                        col_part.to_string()
+                                    }
+                                }
+                            }
+                        }
+                    })
+                    .collect();
+                
+                return Some(columns);
+            }
+        }
+        None
+    }
+
+    fn get_query_specific_columns(&self, query: &str, conn_model: &crate::models::database::Model) -> Vec<String> {
+        let query_lower = query.to_lowercase();
+        let query_trim = query_lower.trim();
+        
+        if query_trim.starts_with("show tables") {
+            let db_name = conn_model.database_name.as_deref().unwrap_or("mysql");
+            vec![format!("Tables_in_{}", db_name)]
+        } else if query_trim.starts_with("show databases") {
+            vec!["Database".to_string()]
+        } else if query_trim.starts_with("describe ") || query_trim.starts_with("desc ") {
+            vec!["Field".to_string(), "Type".to_string(), "Null".to_string(), "Key".to_string(), "Default".to_string(), "Extra".to_string()]
+        } else if query_trim.starts_with("show variables") {
+            vec!["Variable_name".to_string(), "Value".to_string()]
+        } else if query_trim.starts_with("show status") {
+            vec!["Variable_name".to_string(), "Value".to_string()]
+        } else if query_trim.starts_with("show processlist") {
+            vec!["Id".to_string(), "User".to_string(), "Host".to_string(), "db".to_string(), "Command".to_string(), "Time".to_string(), "State".to_string(), "Info".to_string()]
+        } else {
+            // Generic fallback - try to determine number of columns
+            vec!["column_0".to_string(), "column_1".to_string(), "column_2".to_string()]
+        }
+    }
+
+    fn extract_value_by_name(&self, row: &sea_orm::QueryResult, col_name: &str) -> serde_json::Value {
+        // Try different data types for the given column name
+        // SeaORM QueryResult expects try_get("table_alias", "column_name") but for raw queries, we use empty string for table alias
+        if let Ok(val) = row.try_get::<String>("", col_name) {
+            serde_json::Value::String(val)
+        } else if let Ok(val) = row.try_get::<Option<String>>("", col_name) {
+            match val {
+                Some(s) => serde_json::Value::String(s),
+                None => serde_json::Value::Null,
+            }
+        } else if let Ok(val) = row.try_get::<i64>("", col_name) {
+            serde_json::Value::Number(serde_json::Number::from(val))
+        } else if let Ok(val) = row.try_get::<Option<i64>>("", col_name) {
+            match val {
+                Some(n) => serde_json::Value::Number(serde_json::Number::from(n)),
+                None => serde_json::Value::Null,
+            }
+        } else if let Ok(val) = row.try_get::<i32>("", col_name) {
+            serde_json::Value::Number(serde_json::Number::from(val))
+        } else if let Ok(val) = row.try_get::<Option<i32>>("", col_name) {
+            match val {
+                Some(n) => serde_json::Value::Number(serde_json::Number::from(n)),
+                None => serde_json::Value::Null,
+            }
+        } else if let Ok(val) = row.try_get::<f64>("", col_name) {
+            serde_json::Number::from_f64(val).map(serde_json::Value::Number)
+                .unwrap_or(serde_json::Value::Null)
+        } else if let Ok(val) = row.try_get::<Option<f64>>("", col_name) {
+            match val {
+                Some(f) => serde_json::Number::from_f64(f).map(serde_json::Value::Number)
+                    .unwrap_or(serde_json::Value::Null),
+                None => serde_json::Value::Null,
+            }
+        } else if let Ok(val) = row.try_get::<bool>("", col_name) {
+            serde_json::Value::Bool(val)
+        } else if let Ok(val) = row.try_get::<Option<bool>>("", col_name) {
+            match val {
+                Some(b) => serde_json::Value::Bool(b),
+                None => serde_json::Value::Null,
+            }
+        } else {
+            // If all else fails, try to extract as a raw value using indexes
+            tracing::warn!("Could not extract value for column '{}', returning placeholder", col_name);
+            serde_json::Value::String(format!("Unable to extract: {}", col_name))
+        }
     }
 
     async fn analyze_costs(&self, conn: &DatabaseConnection) -> Result<CostAnalysis, AppError> {
