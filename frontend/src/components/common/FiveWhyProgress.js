@@ -42,12 +42,11 @@ const FiveWhyProgress = ({ currentDepth, maxDepth = 5 }) => {
     <div className="five-why-progress my-4">
       <div className="d-flex justify-content-between align-items-center mb-2">
         <h6 className="mb-0">5-Why Analysis Progress</h6>
-        <span className={`badge ${currentDepth >= maxDepth ? 'bg-success' : 'bg-primary'}`}>
-          {currentDepth >= maxDepth ? 
-            <><i className="fas fa-check me-1"></i> Complete</> : 
-            `${currentDepth}/${maxDepth} Levels`
-          }
-        </span>
+        {currentDepth >= maxDepth && (
+          <span className="badge bg-success">
+            <i className="fas fa-check me-1"></i> Complete
+          </span>
+        )}
       </div>
       
       <div className="progress-container position-relative" style={{ height: '40px', marginBottom: '20px' }}>

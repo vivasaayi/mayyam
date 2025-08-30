@@ -1,438 +1,358 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { 
-  Card, CardHeader, CardBody, Button, Row, Col, ListGroup, ListGroupItem,
-  Spinner, Alert, Badge
+  Card, CardBody, Button, Spinner, Alert, Badge
 } from "reactstrap";
-import ReactMarkdown from 'react-markdown';
 import QuestionHistory from './QuestionHistory';
 import FiveWhyProgress from './FiveWhyProgress';
 import RelatedQuestionsPanel from './RelatedQuestionsPanel';
 import FiveWhySummary from './FiveWhySummary';
+// Using react-icons for icon components - ensure react-icons is installed
+import { FaQuestionCircle, FaSpinner } from 'react-icons/fa';
 
 /**
- * BaseAnalysis component that can be reused for different resource types
- * 
- * @param {Object} props Component props
- * @param {string} props.title - Title of the analysis page
- * @param {Object} props.resource - The resource being analyzed
- * @param {Array} props.workflows - Array of workflow objects with id, name, description, icon
- * @param {Function} props.onRunAnalysis - Function to call when a workflow is selected
- * @param {Object} props.result - The analysis result object
- * @param {boolean} props.loading - Loading state
- * @param {string} props.error - Error message
+ * Custom hook to get the previous value of a prop or state.
  */
+function usePrevious(value) {
+  const ref = useRef();
+  useEffect(() => {
+    ref.current = value;
+  }, [value]);
+  return ref.current;
+}
+
 const BaseAnalysis = ({
   title,
   resource,
-  workflows,
-  onRunAnalysis,
-  result,
-  loading,
-  error,
-  selectedWorkflow,
-  onAskQuestion,
-  analysisHistory
+  workflows, // Array of available workflow objects { id, name, description }
+  onRunAnalysis, // Function to call to run the initial analysis of a selected workflow (workflowId) => {}
+  result, // The latest analysis result object from the parent
+  loading, // General loading state from the parent (e.g., while resource or workflows are loading)
+  error, // Error object from parent
+  selectedWorkflow, // ID of the currently selected workflow
+  onAskQuestion, // Function to call when a follow-up question is asked (questionText, workflowIdContext) => {}
+  initialQuestionFromUrl, // An initial question passed via URL query params
 }) => {
-  const [questionHistory, setQuestionHistory] = useState([]);
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(-1);
-  const [analysisResults, setAnalysisResults] = useState([]);
+  // Combined state for the entire Q&A history
+  // Each item: { questionText: string, answer: object | null, isProcessing: boolean, isInitial: boolean }
+  const [qaHistory, setQaHistory] = React.useState([]);
+  const [currentAnalysisDepth, setCurrentAnalysisDepth] = React.useState(0); // 1-based depth, number of answered questions
   
-  // Reset state when a new workflow is selected
-  useEffect(() => {
-    // When selectedWorkflow changes, reset our internal state
-    if (selectedWorkflow) {
-      console.log(`Workflow changed to: ${selectedWorkflow}, resetting analysis state`);
-      setQuestionHistory([]);
-      setAnalysisResults([]);
-      setCurrentQuestionIndex(-1);
+  const prevSelectedWorkflow = usePrevious(selectedWorkflow);
+  const prevInitialQuestionFromUrl = usePrevious(initialQuestionFromUrl);
+  const prevResult = usePrevious(result);
+  // No need to track previous loading state since we're using other conditions for flow control
+
+  // Effect to reset Q&A history when the primary analysis driver (workflow or URL question) changes.
+  React.useEffect(() => {
+    if (selectedWorkflow !== prevSelectedWorkflow || initialQuestionFromUrl !== prevInitialQuestionFromUrl) {
+      console.log(
+        `BaseAnalysis: Workflow or initial URL question changed. New Workflow: ${selectedWorkflow}, New URL Question: ${initialQuestionFromUrl}. Resetting Q&A history.`
+      );
+      setQaHistory([]);
+      setCurrentAnalysisDepth(0);
     }
-  }, [selectedWorkflow]);
-  
-  // Update history when a new result comes in
-  useEffect(() => {
-    if (result && result.content) {
-      // For the initial analysis, we'll use the workflow name as the "question"
-      if (currentQuestionIndex === -1 && selectedWorkflow) {
-        const workflowName = workflows.find(w => w.id === selectedWorkflow)?.name || selectedWorkflow;
-        setQuestionHistory([workflowName]);
-        setAnalysisResults([result]);
-        setCurrentQuestionIndex(0);
+  }, [selectedWorkflow, initialQuestionFromUrl, prevSelectedWorkflow, prevInitialQuestionFromUrl]);
+
+  // Effect to trigger the initial analysis (either from URL question or selected workflow)
+  React.useEffect(() => {
+    // Only proceed if history is empty and the parent isn't in a general loading state (e.g. loading resource details).
+    // The `loading` here refers to the prop passed from the parent, which might indicate app-level loading,
+    // not specific to an analysis call initiated by this component.
+    if (qaHistory.length === 0 && !loading) {
+      if (initialQuestionFromUrl && onAskQuestion) {
+        console.log("BaseAnalysis: Triggering analysis for initial question from URL:", initialQuestionFromUrl);
+        setQaHistory([{
+          questionText: initialQuestionFromUrl,
+          answer: null,
+          isProcessing: true,
+          isInitial: true, // Treat as the first step of this analysis session
+        }]);
+        // setCurrentAnalysisDepth(0); // Depth updates upon receiving answer
+        onAskQuestion(initialQuestionFromUrl, selectedWorkflow || null); // Pass current workflow as context if any
+      } else if (selectedWorkflow && onRunAnalysis) {
+        const workflow = workflows.find(w => w.id === selectedWorkflow);
+        if (workflow) {
+          console.log("BaseAnalysis: Triggering initial run for selected workflow:", workflow.name);
+          setQaHistory([{
+            questionText: workflow.name, // Use workflow name as the "question" for initial workflow step
+            answer: null,
+            isProcessing: true,
+            isInitial: true,
+          }]);
+          // setCurrentAnalysisDepth(0); // Depth updates upon receiving answer
+          onRunAnalysis(selectedWorkflow);
+        }
       }
     }
-  }, [result, selectedWorkflow, workflows, currentQuestionIndex]);
-  
-  // Handle asking a follow-up question
-  const handleAskQuestion = (question) => {
-    console.log(`BaseAnalysis: handleAskQuestion called with: ${question}`);
-    
-    // Don't proceed if we've already reached 5 questions
-    if (questionHistory.length >= 5) {
-      // Maybe show a toast notification instead of an alert
-      alert('You have completed the 5-Why analysis cycle. Please review your findings or start a new analysis.');
+  }, [
+    initialQuestionFromUrl,
+    selectedWorkflow,
+    qaHistory.length, // Re-evaluate if history is cleared
+    loading,          // Parent's general loading state
+    onAskQuestion,
+    onRunAnalysis,
+    workflows,
+  ]);
+
+  // Effect to process incoming results (both initial and follow-up)
+  React.useEffect(() => {
+    // Ensure result is new, valid, and different from the previous result processed.
+    if (result && result.content && result !== prevResult) {
+      console.log("BaseAnalysis: New result received:", result);
+      console.log("BaseAnalysis: Result has related_questions:", result.related_questions);
+      // If there are no related_questions, log it as a potential issue
+      if (!result.related_questions || result.related_questions.length === 0) {
+        console.warn("BaseAnalysis: No related_questions found in result!");
+      }
+      setQaHistory(prevHistory => {
+        const newHistory = [...prevHistory];
+        // Find the first item in history that is marked as processing.
+        // This should correspond to the question/workflow that was just run.
+        const processingIndex = newHistory.findIndex(item => item.isProcessing);
+
+        if (processingIndex !== -1) {
+          console.log("BaseAnalysis: Processing result for item:", newHistory[processingIndex].questionText);
+          newHistory[processingIndex] = {
+            ...newHistory[processingIndex],
+            answer: result,
+            isProcessing: false,
+            // isInitial is preserved from when the item was added
+          };
+          // Update depth based on the number of items that now have answers.
+          setCurrentAnalysisDepth(newHistory.filter(item => item.answer).length);
+        } else {
+          // This block is a fallback. Ideally, an item should always be marked `isProcessing`
+          // before its corresponding result arrives.
+          if (prevHistory.length === 0) {
+            // If history was empty, this result is likely for the very first action triggered.
+            const triggerText = initialQuestionFromUrl || (workflows.find(w => w.id === selectedWorkflow))?.name;
+            if (triggerText) {
+              console.warn("BaseAnalysis: Result received, but no processing item found in history. Assuming it's for initial trigger:", triggerText);
+              newHistory.push({
+                questionText: triggerText,
+                answer: result,
+                isProcessing: false,
+                isInitial: true,
+              });
+              setCurrentAnalysisDepth(1);
+            } else {
+              console.error("BaseAnalysis: Result received, but no processing item and no identifiable trigger. Discarding result.", result);
+            }
+          } else {
+            console.warn("BaseAnalysis: Received a result but no matching qaHistory item was actively processing. Result:", result, "Current qaHistory:", newHistory);
+            // Potentially, this result could be a duplicate or stale. For now, we don't add it if there's no clear processing item.
+          }
+        }
+        return newHistory;
+      });
+    }
+  }, [result, prevResult, initialQuestionFromUrl, selectedWorkflow, workflows]); // Dependencies help in fallback logic
+
+  const handleAskFollowUpQuestion = (questionText) => {
+    // Ensure we don't exceed 5 levels of "why" if an initial analysis has been completed.
+    const initialAnalysisCompleted = qaHistory.some(item => item.isInitial && item.answer);
+    if (initialAnalysisCompleted && currentAnalysisDepth >= 5) {
+      alert('You have completed the 5-Why analysis cycle for this path.');
       return;
     }
-    
-    // Add the question to history
-    const newHistory = [...questionHistory, question];
-    console.log(`Adding question to history. New length: ${newHistory.length}`);
-    setQuestionHistory(newHistory);
-    setCurrentQuestionIndex(newHistory.length - 1);
-    
-    // Call the parent's onAskQuestion function
-    if (typeof onAskQuestion === 'function') {
-      console.log(`Calling parent's onAskQuestion with: ${question}`);
-      onAskQuestion(question);
-    } else {
-      console.error('onAskQuestion is not a function:', onAskQuestion);
+    if (!questionText || questionText.trim() === "") {
+        alert('Please enter a question.');
+        return;
     }
-  };
-  
-  // Handle selecting a question from history
-  const handleSelectQuestion = (index) => {
-    if (index >= 0 && index < questionHistory.length) {
-      setCurrentQuestionIndex(index);
-      
-      // If we're viewing a historical item and we have fewer than 5 questions,
-      // show a prompt to continue from this point
-      if (index < questionHistory.length - 1 && questionHistory.length < 5) {
-        // This could be a toast notification instead
-        const confirmContinue = window.confirm(
-          "You're viewing a previous step in your analysis. Would you like to continue your analysis from this point instead? " +
-          "(This will remove subsequent questions)"
-        );
-        
-        if (confirmContinue) {
-          // Trim the history to this point
-          setQuestionHistory(questionHistory.slice(0, index + 1));
-        }
-      }
-    }
-  };
-  
-  // Update our results array when a new result comes in (for follow-up questions)
-  useEffect(() => {
-    if (result && result.content) {
-      console.log("Received result:", result);
-      
-      if (questionHistory.length === 0 && selectedWorkflow) {
-        // Initial analysis for a new workflow
-        const workflowName = workflows.find(w => w.id === selectedWorkflow)?.name || selectedWorkflow;
-        console.log(`Initial analysis: ${workflowName}`);
-        setQuestionHistory([workflowName]);
-        
-        // If related_questions doesn't exist, add a default array
-        const enhancedResult = {
-          ...result,
-          relatedQuestions: result.relatedQuestions || [
-            "How can I optimize my memory configuration?",
-            "Is my current memory allocation sufficient?",
-            "What are the peak memory usage patterns?"
-          ]
-        };
-        
-        console.log("Enhanced result for initial analysis:", enhancedResult);
-        setAnalysisResults([enhancedResult]);
-        setCurrentQuestionIndex(0);
-      } else if (currentQuestionIndex === questionHistory.length - 1) {
-        // This is a follow-up question result
-        console.log(`Follow-up result for question ${currentQuestionIndex + 1}`);
-        
-        // Ensure related questions exist
-        const enhancedResult = {
-          ...result,
-          relatedQuestions: result.relatedQuestions || [
-            "How does this compare to other similar workloads?",
-            "What metrics should I monitor after applying these changes?",
-            "How can I automate this optimization process?"
-          ]
-        };
-        
-        // Add to the results array
-        let newResults;
-        if (analysisResults.length <= currentQuestionIndex) {
-          // If the array isn't long enough, create a new one with the right size
-          newResults = [...analysisResults];
-          // Fill any gaps
-          while (newResults.length < currentQuestionIndex) {
-            newResults.push(null);
-          }
-          newResults.push(enhancedResult);
-        } else {
-          // Just update the existing array
-          newResults = [...analysisResults];
-          newResults[currentQuestionIndex] = enhancedResult;
-        }
-        
-        console.log("Updated analysis results:", newResults);
-        setAnalysisResults(newResults);
-      }
-    }
-  }, [result, questionHistory, currentQuestionIndex, selectedWorkflow, workflows]);
 
-  if (loading && !result) {
+    console.log(`BaseAnalysis: Asking follow-up question: "${questionText}" in context of workflow: ${selectedWorkflow || 'None'}`);
+    setQaHistory(prevHistory => [
+      ...prevHistory,
+      {
+        questionText: questionText,
+        answer: null,
+        isProcessing: true, // Mark as processing
+        isInitial: false,   // Follow-up questions are not initial steps
+      }
+    ]);
+    if (onAskQuestion) {
+      // Pass the question and the current selectedWorkflow (if any) as context.
+      onAskQuestion(questionText, selectedWorkflow || null);
+    }
+  };
+
+  const handleSelectHistoryItem = (index) => {
+    console.log(`BaseAnalysis: Attempting to navigate to history item index: ${index}`);
+    // Allow branching if the selected item is not the last one.
+    if (index < qaHistory.length - 1) {
+      const confirmContinue = window.confirm(
+        "You are about to revisit a previous step. Continuing from here will discard subsequent questions and answers in the current path. Do you want to proceed?"
+      );
+      if (confirmContinue) {
+        setQaHistory(prevHistory => prevHistory.slice(0, index + 1));
+        setCurrentAnalysisDepth(index + 1); // Depth is now the number of items remaining
+        // The UI will then show the RelatedQuestionsPanel based on the new last item.
+        // No need to re-fetch, just changing the view.
+        console.log("BaseAnalysis: Branched history. New qaHistory:", qaHistory.slice(0, index + 1));
+      }
+    } else {
+      console.log("BaseAnalysis: Selected history item is the last item or analysis is complete. No action taken for branching.");
+    }
+  };
+  
+  // Determine if any question is currently being processed for loading indicators
+  const isAnyQuestionProcessing = qaHistory.some(item => item.isProcessing);
+
+  // Overall loading state for the analysis section:
+  // True if parent says it's loading (e.g. resource details) AND we have no history yet,
+  // OR if any question/workflow step within BaseAnalysis is actively processing.
+  const overallAnalysisLoading = (loading && qaHistory.length === 0) || isAnyQuestionProcessing;
+
+  if (error) {
     return (
-      <div className="d-flex justify-content-center align-items-center" style={{ height: "300px" }}>
-        <Spinner color="primary" />
-      </div>
+      <Card className="mb-4">
+        <CardBody>
+          <Alert color="danger">
+            <h4>Analysis Error</h4>
+            <p>{error.message || (typeof error === 'string' ? error : 'An unexpected error occurred.')}</p>
+          </Alert>
+        </CardBody>
+      </Card>
     );
   }
 
-  return (
-    <div>
-      {error && <Alert color="danger">{error}</Alert>}
-
-      {/* Resource Details Card */}
-      {resource && (
-        <Card className="mb-4">
-          <CardHeader>
-            <h4 className="mb-0">
-              <i className="fas fa-cube mr-2"></i>
-              {resource.name || resource.identifier || "Resource"}
-            </h4>
-          </CardHeader>
-          <CardBody>
-            <Row>
-              {Object.entries(resource)
-                .filter(([key]) => !['id', 'name', 'identifier'].includes(key))
-                .map(([key, value]) => (
-                  <Col md={3} key={key}>
-                    <p>
-                      <strong>{key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:</strong>{' '}
-                      {typeof value === 'boolean' 
-                        ? (value ? 'Yes' : 'No') 
-                        : (typeof value === 'object' && value !== null 
-                          ? JSON.stringify(value) 
-                          : (value || 'N/A'))}
-                    </p>
-                  </Col>
-                ))}
-            </Row>
-          </CardBody>
-        </Card>
-      )}
-
-
-      {/* Analysis Workflows - Now at the top of the page */}
+  // Initial loading spinner for the entire component before any Q&A item is shown
+  if (loading && qaHistory.length === 0 && !selectedWorkflow && !initialQuestionFromUrl) {
+    return (
       <Card className="mb-4">
-        <CardHeader>
-          <h5 className="mb-0">Analysis Workflows</h5>
-        </CardHeader>
-        <CardBody className="p-3">
-          <div className="workflow-grid">
-            {workflows && workflows.length > 0 ? (
-              workflows.map(workflow => (
-                workflow && workflow.id ? (
-                  <Button 
-                    key={workflow.id}
-                    color={selectedWorkflow === workflow.id ? "primary" : "light"}
-                    className={`workflow-button p-3 mb-2 ${selectedWorkflow === workflow.id ? 'active' : ''}`}
-                    onClick={() => onRunAnalysis(workflow.id)}
-                  >
-                    <div className="d-flex align-items-center">
-                      <div className="workflow-icon me-3">
-                        <i className={`fas ${workflow.icon || 'fa-cogs'} fa-2x`}></i>
-                      </div>
-                      <div className="workflow-content">
-                        <h6 className="mb-1">{workflow.name}</h6>
-                        <small>{workflow.description}</small>
-                      </div>
-                    </div>
-                  </Button>
-                ) : null
-              ))
-            ) : (
-              <Alert color="info">
-                No analysis workflows available for this resource type. Please try a different resource.
-              </Alert>
-            )}
-          </div>
+        <CardBody className="text-center">
+          <Spinner color="primary" style={{ width: '3rem', height: '3rem' }} />
+          <p className="mt-2">Loading analysis options...</p>
         </CardBody>
       </Card>
+    );
+  }
+  
+  const currentWorkflow = workflows.find(w => w.id === selectedWorkflow);
+  const showStartPrompt = !selectedWorkflow && !initialQuestionFromUrl && qaHistory.length === 0 && !overallAnalysisLoading;
+  const analysisComplete = qaHistory.some(item => item.isInitial && item.answer) && currentAnalysisDepth >= 5;
+  const lastQaItem = qaHistory.length > 0 ? qaHistory[qaHistory.length - 1] : null;
+  const showRelatedQuestions = lastQaItem && lastQaItem.answer && !lastQaItem.isProcessing && currentAnalysisDepth < 5;
 
-      {/* Analysis Path - Now directly below Analysis Workflows */}
-      {analysisResults.length > 0 && questionHistory.length > 0 && currentQuestionIndex >= 0 && (
-        <Card className="mb-4 analysis-path-card">
-          <CardHeader>
-            <h5 className="mb-0">Analysis Path</h5>
-          </CardHeader>
+  return (
+    <div className="base-analysis-container">
+      {/* Workflow Selection Buttons */}
+      {!initialQuestionFromUrl && ( // Only show workflow buttons if not started by a URL question
+        <Card className="mb-3">
           <CardBody>
-            <div className="current-path mb-3">
-              <div className="d-flex align-items-center mb-2">
-                <h6 className="mb-0 me-2">Current Path:</h6>
-                <div className="progress flex-grow-1" style={{ height: '8px' }}>
-                  <div 
-                    className="progress-bar" 
-                    role="progressbar" 
-                    style={{ width: `${Math.min(100, (questionHistory.length / 5) * 100)}%` }}
-                    aria-valuenow={questionHistory.length} 
-                    aria-valuemin="0" 
-                    aria-valuemax="5">
-                  </div>
-                </div>
-                <span className="ms-2 text-muted small">{questionHistory.length}/5 Why</span>
+            <h5>Analysis Workflows</h5>
+            {workflows && workflows.length > 0 ? (
+              <div className="d-flex flex-wrap">
+                {workflows.map((wf) => (
+                  <Button
+                    key={wf.id}
+                    color={selectedWorkflow === wf.id ? "primary" : "outline-secondary"}
+                    onClick={() => {
+                      if (selectedWorkflow !== wf.id) {
+                        // Parent's onRunAnalysis will be called by useEffect when selectedWorkflow changes
+                        // and qaHistory is reset.
+                        // Here, we just update the selectedWorkflow state in the parent.
+                        // This requires ResourceAnalysis to have a setSelectedWorkflow prop or similar.
+                        // For now, assuming onRunAnalysis in parent also sets selectedWorkflow.
+                        // This component itself doesn't set selectedWorkflow directly.
+                        // The parent ResourceAnalysis.js calls runAnalysis(workflowId) which sets selectedWorkflow.
+                        // So, we should call onRunAnalysis here if we want to change workflow.
+                        // However, the current design is that BaseAnalysis receives selectedWorkflow.
+                        // The buttons here should ideally call a method passed from parent to change selectedWorkflow.
+                        // Let's assume clicking a workflow button calls onRunAnalysis, which implies selection.
+                        if (onRunAnalysis) onRunAnalysis(wf.id);
+                      }
+                    }}
+                    className="m-1"
+                    disabled={overallAnalysisLoading && selectedWorkflow !== wf.id}
+                    id={`workflow-tooltip-${wf.id}`}
+                  >
+                    {selectedWorkflow === wf.id && isAnyQuestionProcessing && <FaSpinner className="fa-spin me-2" />}
+                    {wf.name}
+                  </Button>
+                ))}
               </div>
-            </div>
-            
-            <QuestionHistory 
-              questions={questionHistory} 
-              onQuestionSelect={(index) => handleSelectQuestion(index)}
-              activeIndex={currentQuestionIndex}
-            />
-          
-            {/* 5-Why Progress Indicator */}
-            <FiveWhyProgress 
-              currentDepth={Math.min(questionHistory.length, 5)}
-              maxDepth={5}
-            />
+            ) : (
+              <p>{loading && workflows.length === 0 ? "Loading workflows..." : "No analysis workflows available for this resource type."}</p>
+            )}
           </CardBody>
         </Card>
       )}
 
+      {/* Initial Prompt or Loading for Q&A Area */}
+      {showStartPrompt && (
+        <Card className="mb-3 text-center">
+          <CardBody>
+            <FaQuestionCircle size="3em" className="text-muted mb-3" />
+            <h4>Start Your Analysis</h4>
+            <p>Select a workflow above or provide an initial question via URL to begin.</p>
+          </CardBody>
+        </Card>
+      )}
       
-
-      <Row>
-        <Col md={12}>
-          {loading && result ? (
-            <Card>
-              <CardBody className="text-center p-5">
-                <Spinner color="primary" />
-                <p className="mt-3">Analyzing your resource...</p>
-              </CardBody>
-            </Card>
-          ) : analysisResults.length > 0 && currentQuestionIndex >= 0 ? (
-            <>
-            
-              <Card className="mb-4 analysis-card">
-                <CardHeader className="d-flex justify-content-between align-items-center">
-                  <h5 className="mb-0">
-                    {currentQuestionIndex === 0 
-                      ? workflows.find(w => w.id === selectedWorkflow)?.name
-                      : (
-                        <div className="d-flex align-items-center">
-                          <i className="fas fa-question-circle me-2 text-primary"></i>
-                          <span>{questionHistory[currentQuestionIndex]}</span>
-                        </div>
-                      )
-                    }
-                  </h5>
-                  <Badge color="info" pill>
-                    <i className="fas fa-info-circle me-1"></i>
-                    {currentQuestionIndex === 0 ? "Initial Analysis" : `Follow-up ${currentQuestionIndex}`}
-                  </Badge>
-                </CardHeader>
-                <CardBody>
-                  <div className="analysis-content">
-                    {analysisResults[currentQuestionIndex]?.format === "markdown" ? (
-                      <ReactMarkdown>{analysisResults[currentQuestionIndex].content}</ReactMarkdown>
-                    ) : analysisResults[currentQuestionIndex]?.format === "html" ? (
-                      <div dangerouslySetInnerHTML={{ __html: analysisResults[currentQuestionIndex].content }} />
-                    ) : (
-                      <pre>{analysisResults[currentQuestionIndex]?.content}</pre>
-                    )}
-                  </div>
-                </CardBody>
-              </Card>
-              
-              {/* Debug info */}
-              <div className="mb-2">
-                <small className="text-muted">
-                  <strong>Debug:</strong> Analysis Result: {analysisResults.length ? 'Available' : 'Missing'}, 
-                  Related Questions: {analysisResults[currentQuestionIndex]?.relatedQuestions ? 
-                    `${analysisResults[currentQuestionIndex].relatedQuestions.length} questions` : 'None'
-                  }
-                </small>
-              </div>
-              
-              {/* Related Questions Section - Using RelatedQuestionsPanel */}
-              {analysisResults[currentQuestionIndex]?.relatedQuestions && 
-               analysisResults[currentQuestionIndex].relatedQuestions.length > 0 && 
-               questionHistory.length < 5 && (
-                <RelatedQuestionsPanel
-                  questions={analysisResults[currentQuestionIndex].relatedQuestions}
-                  onSelectQuestion={handleAskQuestion}
-                  analysisDepth={questionHistory.length}
-                />
-              )}
-              
-              {/* Show summary when 5-why analysis is complete */}
-              {questionHistory.length >= 5 && (
-                <>
-                  <div className="alert alert-success mb-4">
-                    <h5><i className="fas fa-check-circle me-2"></i>5-Why Analysis Complete!</h5>
-                    <p className="mb-0">You've reached the recommended depth for a 5-Why analysis. Review your findings below or start a new analysis workflow.</p>
-                  </div>
-                  
-                  <FiveWhySummary 
-                    analysisResults={analysisResults}
-                    onExportResults={() => {
-                      // For now, just create a simple text export
-                      alert('Exporting analysis results will be implemented in a future version.');
-                    }}
-                  />
-                </>
-              )}
-              
-              {/* Fallback Questions Section (for debugging) */}
-              {!analysisResults[currentQuestionIndex]?.relatedQuestions && 
-               currentQuestionIndex === 0 && 
-               questionHistory.length < 5 && (
-                <div className="mb-4">
-                  <Card className="border-warning">
-                    <CardHeader className="bg-warning text-white">
-                      <h5 className="mb-0">
-                        <i className="fas fa-question-circle me-2"></i>
-                        Sample Follow-up Questions
-                      </h5>
-                    </CardHeader>
-                    <CardBody className="bg-light">
-                      <p className="mb-3">
-                        <strong>Debugging:</strong> These are sample questions since no related questions were found in the analysis result.
-                      </p>
-                      
-                      <div className="related-questions-grid">
-                        {["How can I optimize my memory configuration?", 
-                          "Is my current memory allocation sufficient?", 
-                          "What are the peak memory usage patterns?"].map((question, i) => (
-                          <Card key={i} className="mb-2 related-question-card">
-                            <CardBody>
-                              <h6>{question}</h6>
-                              <Button 
-                                color="primary" 
-                                size="sm" 
-                                className="mt-2"
-                                onClick={() => handleAskQuestion(question)}
-                              >
-                                <i className="fas fa-search-plus me-1"></i>
-                                Analyze This
-                              </Button>
-                            </CardBody>
-                          </Card>
-                        ))}
-                      </div>
-                    </CardBody>
-                  </Card>
-                </div>
-              )}
-            </>
-          ) : (
-            <Card>
-              <CardBody className="text-center p-5">
-                <i className="fas fa-chart-line fa-3x mb-3 text-muted"></i>
-                <h4>Start Your 5-Why Analysis</h4>
-                <p className="text-muted mb-4">Choose one of the predefined analysis workflows above to begin analyzing your resource.</p>
-                <div className="five-why-explanation bg-light p-3 rounded mx-auto" style={{ maxWidth: '600px' }}>
-                  <h6><i className="fas fa-lightbulb me-2 text-warning"></i>What is 5-Why Analysis?</h6>
-                  <p className="mb-0 text-start small">
-                    The 5-Why technique is a simple but powerful tool for cutting quickly through the outward symptoms 
-                    of a problem to reveal its underlying causes, so that you can deal with it once and for all.
-                    Start by selecting a workflow, then follow the suggested questions to drill down to the root cause.
-                  </p>
-                </div>
-              </CardBody>
-            </Card>
+      {/* Display Q&A History, Progress, and Related Questions if history exists */}
+      {qaHistory.length > 0 && (
+        <>
+          <QuestionHistory history={qaHistory} onSelectHistoryItem={handleSelectHistoryItem} />
+          
+          {currentWorkflow && currentWorkflow.name && currentWorkflow.name.toLowerCase().includes("5 why") && ( // Only show for 5-Why type workflows
+            <FiveWhyProgress currentStep={currentAnalysisDepth} totalSteps={5} history={qaHistory} />
           )}
-        </Col>
-      </Row>
+
+          {qaHistory.map((item, index) => (
+            <Card key={index} className={`mb-3 ${item.isProcessing ? 'border-primary' : ''}`}>
+              <CardBody>
+                <div className="d-flex justify-content-between align-items-start">
+                  <h5 className="card-title mb-2">
+                    {item.isInitial && currentWorkflow ? currentWorkflow.name : item.questionText}
+                  </h5>
+                  {item.isInitial && <Badge color="success" pill className="ms-2">Initial Analysis</Badge>}
+                </div>
+
+                {item.isProcessing ? (
+                  <div className="text-center my-3">
+                    <Spinner color="primary" />
+                    <p className="mt-2">Processing answer...</p>
+                  </div>
+                ) : item.answer && item.answer.content ? (
+                  <div dangerouslySetInnerHTML={{ __html: item.answer.content }} />
+                ) : item.answer && typeof item.answer === 'string' ? ( // Basic string answer
+                  <p>{item.answer}</p>
+                ) : !item.isProcessing && !item.answer ? (
+                    <p className="text-muted"><em>No answer received or answer is empty.</em></p>
+                ) : null}
+              </CardBody>
+            </Card>
+          ))}
+
+          {showRelatedQuestions && lastQaItem && lastQaItem.answer && lastQaItem.answer.related_questions && (
+            <>
+              {console.log("Rendering RelatedQuestionsPanel with questions:", lastQaItem.answer.related_questions)}
+              <RelatedQuestionsPanel
+                relatedQuestions={lastQaItem.answer.related_questions}
+                onAskQuestion={handleAskFollowUpQuestion}
+                isLoading={isAnyQuestionProcessing} // Pass overall processing state
+                currentDepth={currentAnalysisDepth}
+                askingQuestionText={qaHistory.find(item => item.isProcessing)?.questionText || null}
+              />
+            </>
+          )}
+
+          {analysisComplete && (
+            <FiveWhySummary history={qaHistory} />
+          )}
+        </>
+      )}
+
+      {/* Fallback if loading but no specific prompt/content shown yet */}
+      {overallAnalysisLoading && qaHistory.length === 0 && !showStartPrompt && (
+         <Card className="mb-3 text-center">
+            <CardBody>
+                <Spinner color="primary" />
+                <p className="mt-2">Loading analysis...</p>
+            </CardBody>
+        </Card>
+      )}
     </div>
   );
 };

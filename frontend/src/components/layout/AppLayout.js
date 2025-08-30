@@ -64,8 +64,17 @@ const AppLayout = () => {
           <CNavItem>
             <CNavLink as={Link} to="/csv-comparer">CSV Comparer</CNavLink>
           </CNavItem>
+          <CNavItem>
+            <CNavLink as={Link} to="/chat">AI Chat</CNavLink>
+          </CNavItem>
 
           <CNavTitle>Settings</CNavTitle>
+          <CNavItem>
+            <CNavLink as={Link} to="/query-templates">Query Templates</CNavLink>
+          </CNavItem>
+          <CNavItem>
+            <CNavLink as={Link} to="/llm-providers">LLM Providers</CNavLink>
+          </CNavItem>
           <CNavItem>
             <CNavLink as={Link} to="/manage-kubernetes-clusters">Manage Clusters</CNavLink>
           </CNavItem>

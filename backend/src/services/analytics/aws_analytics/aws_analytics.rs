@@ -376,6 +376,11 @@ impl AwsAnalyticsService {
                 &request.question,
                 &metrics
             ).await?,
+            "DynamoDbTable" => DynamoDbAnalyzer::answer_dynamodb_question(
+                &resource,
+                &request.question,
+                &metrics
+            ).await?,
             // Add other resource types...
             _ => return Err(AppError::BadRequest(format!(
                 "Unsupported resource type: {}",

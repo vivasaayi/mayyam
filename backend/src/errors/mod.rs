@@ -49,6 +49,13 @@ pub enum AppError {
     
     #[error("Internal server error: {0}")]
     Internal(String),
+    
+    // Add aliases for compatibility
+    #[error("External service error: {0}")]
+    ExternalServiceError(String),
+    
+    #[error("Internal server error: {0}")]
+    InternalServerError(String),
 }
 
 impl ResponseError for AppError {
@@ -94,6 +101,8 @@ impl ErrorResponse {
             AppError::Kafka(_) => "KAFKA_ERROR",
             AppError::AI(_) => "AI_ERROR",
             AppError::Internal(_) => "INTERNAL_SERVER_ERROR",
+            AppError::ExternalServiceError(_) => "EXTERNAL_SERVICE_ERROR",
+            AppError::InternalServerError(_) => "INTERNAL_SERVER_ERROR",
         };
 
         Self {

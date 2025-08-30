@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   backend:
     build:
@@ -9,7 +11,7 @@ services:
       - RUST_LOG=info
       - DATABASE_URL=postgres://postgres:postgres@db:5432/mayyam
     depends_on:
-      - db
+      - postgres
     volumes:
       - ./backend/config.yml:/app/config.yml
 
@@ -22,7 +24,7 @@ services:
     depends_on:
       - backend
 
-  db:
+  postgres:
     image: postgres:14-alpine
     environment:
       - POSTGRES_PASSWORD=postgres
@@ -33,5 +35,45 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  mysql:
+    image: mysql:8.0
+    container_name: mayyam_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: mayyam_db
+      MYSQL_USER: mayyam_user
+      MYSQL_PASSWORD: mayyam_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./backend/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - mayyam_network
+    command: --default-authentication-plugin=mysql_native_password
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin:latest
+    container_name: mayyam_phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: rootpassword
+      MYSQL_ROOT_PASSWORD: rootpassword
+    ports:
+      - "8081:80"
+    depends_on:
+      - mysql
+    networks:
+      - mayyam_network
+
 volumes:
   postgres_data:
+  mysql_data:
+
+networks:
+  mayyam_network:
+    driver: bridge
