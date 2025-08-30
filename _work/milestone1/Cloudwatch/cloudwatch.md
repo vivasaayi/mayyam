@@ -1,0 +1,1 @@
+I want to fetch metrics from cloudwatch and analyze them using ChatGPT or DeepSeek or LocalLLm.

@@ -1,0 +1,2 @@
+I want teh capability to connect to a Kafka instance and get details about the topics and offsets
+Make sure that the packaging issues are addressed and the docker container can be built and run without issues.
