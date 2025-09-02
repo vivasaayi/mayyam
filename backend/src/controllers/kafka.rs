@@ -52,19 +52,107 @@ pub struct OffsetRequest {
     pub to_offset: Option<i64>,
 }
 
+pub async fn health_check(
+    path: web::Path<String>,
+    kafka_service: web::Data<Arc<KafkaService>>,
+    config: web::Data<crate::config::Config>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let cluster_id = path.into_inner();
+    
+    // Use the KafkaService to perform health check
+    let health_status = kafka_service.health_check(&cluster_id, &config).await?;
+    
+    Ok(HttpResponse::Ok().json(health_status))
+}
+
+pub async fn get_metrics(
+    kafka_service: web::Data<Arc<KafkaService>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    // Get current metrics from the Kafka service
+    let metrics = kafka_service.get_metrics()?;
+    
+    Ok(HttpResponse::Ok().json(metrics))
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BatchProduceRequest {
+    pub messages: Vec<MessageRequest>,
+}
+
+pub async fn produce_batch(
+    path: web::Path<String>,
+    batch_req: web::Json<BatchProduceRequest>,
+    kafka_service: web::Data<Arc<KafkaService>>,
+    config: web::Data<crate::config::Config>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let cluster_id = path.into_inner();
+    
+    // Convert request messages to service models
+    let kafka_messages: Vec<KafkaMessage> = batch_req.messages.iter().map(|msg| {
+        KafkaMessage {
+            key: msg.key.clone(),
+            value: msg.value.clone(),
+            headers: msg.headers.clone(),
+        }
+    }).collect();
+    
+    // Use the KafkaService to produce batch messages
+    let response = kafka_service.produce_batch(&cluster_id, "batch-topic", kafka_messages, &config).await?;
+    
+    Ok(HttpResponse::Ok().json(response))
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RetryProduceRequest {
+    pub message: MessageRequest,
+    pub max_retries: Option<u32>,
+}
+
+pub async fn produce_with_retry(
+    path: web::Path<String>,
+    retry_req: web::Json<RetryProduceRequest>,
+    kafka_service: web::Data<Arc<KafkaService>>,
+    config: web::Data<crate::config::Config>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let cluster_id = path.into_inner();
+    
+    // Convert request to service model
+    let kafka_message = KafkaMessage {
+        key: retry_req.message.key.clone(),
+        value: retry_req.message.value.clone(),
+        headers: retry_req.message.headers.clone(),
+    };
+    
+    let max_retries = retry_req.max_retries.unwrap_or(3);
+    
+    // Use the KafkaService to produce message with retry
+    let response = kafka_service.produce_with_retry(&cluster_id, "retry-topic", &kafka_message, &config, max_retries).await?;
+    
+    Ok(HttpResponse::Ok().json(response))
+}
+
 pub async fn list_clusters(
     config: web::Data<crate::config::Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let clusters = &config.kafka.clusters;
-    
-    let response = clusters.iter().map(|cluster| {
+    let clusters: Vec<serde_json::Value> = config.kafka.clusters.iter().map(|cluster| {
         serde_json::json!({
+            "id": cluster.name, // Using name as ID for now
             "name": cluster.name,
             "bootstrap_servers": cluster.bootstrap_servers,
             "security_protocol": cluster.security_protocol,
+            "sasl_mechanism": cluster.sasl_mechanism,
         })
-    }).collect::<Vec<_>>();
+    }).collect();
+    
+    let response = serde_json::json!({
+        "clusters": clusters,
+        "total": clusters.len()
+    });
     
     Ok(HttpResponse::Ok().json(response))
 }
