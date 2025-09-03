@@ -198,7 +198,39 @@ services:
     networks:
       - mayyam_network
 
+  kafka-ui:
+    profiles: ["dev", "uat"]
+    image: provectuslabs/kafka-ui:latest
+    container_name: mayyam_kafka_ui
+    restart: unless-stopped
+    depends_on:
+      - kafka
+    ports:
+      - "8082:8080"  # Using 8082 since 8081 is used by phpmyadmin
+    environment:
+      KAFKA_CLUSTERS_0_NAME: mayyam_local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - mayyam_network
+
   # ===== TESTING SERVICES =====
+  test-data-generator:
+    profiles: ["test"]
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: mayyam_test_data_generator
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_BROKERS: kafka:29092
+      TEST_TOPIC: backup-test-topic
+      MESSAGE_COUNT: 10000
+    networks:
+      - mayyam_network
+    command: ["python", "generate_test_data.py"]
+
   # integration-tests:
   #   profiles: ["dev", "uat"]
   #   build:
