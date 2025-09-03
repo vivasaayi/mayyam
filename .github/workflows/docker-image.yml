@@ -73,8 +73,8 @@ jobs:
     
     - name: Build production image using Docker Compose
       run: docker compose --profile dev build backend-dev frontend-dev
-        
-        - name: Build and push production image
+    
+    - name: Build and push production image
       run: |
         # The development images should already be built in the build job
         # If needed, rebuild here (uncomment below)
