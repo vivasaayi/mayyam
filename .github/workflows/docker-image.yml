@@ -37,11 +37,11 @@ jobs:
     - name: Tag and prepare for registry (optional)
       if: github.ref == 'refs/heads/main'
       run: |
-        # Tag the development images
-        docker tag $(docker compose --profile dev images -q backend-dev) mayyam-backend:latest
-        docker tag $(docker compose --profile dev images -q frontend-dev) mayyam-frontend:latest
-        docker tag $(docker compose --profile dev images -q backend-dev) mayyam-backend:${{ github.sha }}
-        docker tag $(docker compose --profile dev images -q frontend-dev) mayyam-frontend:${{ github.sha }}
+        # Tag the development images using service names directly
+        docker tag mayyam-theta-backend-dev:latest mayyam-backend:latest
+        docker tag mayyam-theta-frontend-dev:latest mayyam-frontend:latest
+        docker tag mayyam-theta-backend-dev:latest mayyam-backend:${{ github.sha }}
+        docker tag mayyam-theta-frontend-dev:latest mayyam-frontend:${{ github.sha }}
         
         # List built images
         docker images | grep mayyam
@@ -80,24 +80,16 @@ jobs:
         # If needed, rebuild here (uncomment below)
         # docker compose --profile dev build backend-dev frontend-dev
         
-        # Tag for different registries (uncomment as needed)
-        docker tag $(docker compose --profile dev images -q backend-dev) ${{ secrets.DOCKER_USERNAME }}/mayyam-backend:latest
-        docker tag $(docker compose --profile dev images -q frontend-dev) ${{ secrets.DOCKER_USERNAME }}/mayyam-frontend:latest
-        docker tag $(docker compose --profile dev images -q backend-dev) ${{ secrets.DOCKER_USERNAME }}/mayyam-backend:${{ github.sha }}
-        docker tag $(docker compose --profile dev images -q frontend-dev) ${{ secrets.DOCKER_USERNAME }}/mayyam-frontend:${{ github.sha }}
-        # docker tag $(docker compose --profile dev images -q backend-dev) ghcr.io/${{ github.repository }}-backend:latest
-        # docker tag $(docker compose --profile dev images -q frontend-dev) ghcr.io/${{ github.repository }}-frontend:latest
-        # docker tag $(docker compose --profile dev images -q backend-dev) ghcr.io/${{ github.repository }}-backend:${{ github.sha }}
-        # docker tag $(docker compose --profile dev images -q frontend-dev) ghcr.io/${{ github.repository }}-frontend:${{ github.sha }}
+        # Tag for Docker Hub using service names directly
+        docker tag mayyam-theta-backend-dev:latest ${{ secrets.DOCKER_USERNAME }}/mayyam-backend:latest
+        docker tag mayyam-theta-frontend-dev:latest ${{ secrets.DOCKER_USERNAME }}/mayyam-frontend:latest
+        docker tag mayyam-theta-backend-dev:latest ${{ secrets.DOCKER_USERNAME }}/mayyam-backend:${{ github.sha }}
+        docker tag mayyam-theta-frontend-dev:latest ${{ secrets.DOCKER_USERNAME }}/mayyam-frontend:${{ github.sha }}
         
-        # Push to registries (uncomment as needed)
+        # Push to Docker Hub
         docker push ${{ secrets.DOCKER_USERNAME }}/mayyam-backend:latest
         docker push ${{ secrets.DOCKER_USERNAME }}/mayyam-frontend:latest
         docker push ${{ secrets.DOCKER_USERNAME }}/mayyam-backend:${{ github.sha }}
         docker push ${{ secrets.DOCKER_USERNAME }}/mayyam-frontend:${{ github.sha }}
-        # docker push ghcr.io/${{ github.repository }}-backend:latest
-        # docker push ghcr.io/${{ github.repository }}-frontend:latest
-        # docker push ghcr.io/${{ github.repository }}-backend:${{ github.sha }}
-        # docker push ghcr.io/${{ github.repository }}-frontend:${{ github.sha }}
         
-        echo "Build completed successfully. Uncomment push commands to publish to registry."
+        echo "Build completed successfully. Images pushed to Docker Hub."
