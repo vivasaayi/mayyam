@@ -1,0 +1,97 @@
+# Simplified but optimized Dockerfile - works with regular docker build
+# For multi-platform builds, use: docker buildx build --platform linux/amd64
+
+# Build arguments for optional cross-platform support
+ARG TARGETARCH=amd64
+
+# Stage 1: Build the Rust application
+FROM rust:1.85-slim AS builder
+
+WORKDIR /usr/src/app
+
+# Install base build dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        pkg-config \
+        libssl-dev \
+        build-essential \
+        zlib1g-dev \
+        curl \
+        ca-certificates \
+        gnupg && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install librdkafka - try Confluent repo first, fallback to source build
+RUN set -e; \
+    if [ "$TARGETARCH" = "amd64" ] || [ "$(uname -m)" = "x86_64" ]; then \
+        echo "Installing librdkafka from Confluent (amd64)..."; \
+        curl -fsSL https://packages.confluent.io/deb/8.0/archive.key | gpg --dearmor -o /usr/share/keyrings/confluent-archive-keyring.gpg && \
+        echo "deb [arch=amd64 signed-by=/usr/share/keyrings/confluent-archive-keyring.gpg] https://packages.confluent.io/deb/8.0 stable main" > /etc/apt/sources.list.d/confluent.list && \
+        apt-get update && \
+        apt-get install -y --no-install-recommends librdkafka-dev && \
+        rm -rf /var/lib/apt/lists/* && \
+        echo "Confluent librdkafka installed successfully"; \
+    else \
+        echo "Building librdkafka from source (non-amd64)..."; \
+        apt-get update && \
+        apt-get install -y --no-install-recommends git cmake g++ libsasl2-dev && \
+        git clone --depth 1 --branch v2.10.0 https://github.com/confluentinc/librdkafka.git /tmp/librdkafka && \
+        mkdir -p /tmp/librdkafka/build && \
+        cd /tmp/librdkafka/build && \
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local && \
+        make -j"$(nproc)" && \
+        make install && \
+        rm -rf /tmp/librdkafka && \
+        apt-get remove -y git cmake g++ && \
+        apt-get autoremove -y && \
+        rm -rf /var/lib/apt/lists/* && \
+        echo "Source-built librdkafka installed successfully"; \
+    fi
+
+# Set PKG_CONFIG_PATH for both installation methods
+ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/aarch64-linux-gnu/pkgconfig
+
+# Verify librdkafka installation
+RUN pkg-config --modversion rdkafka && echo "librdkafka version check passed"
+
+# Copy dependency files and create dummy main for caching
+COPY Cargo.toml Cargo.lock ./
+RUN mkdir src && \
+    echo 'fn main() { println!("Building dependencies..."); }' > src/main.rs && \
+    cargo build --release && \
+    rm -rf src
+
+# Copy actual source and build application
+COPY src ./src/
+COPY config.default.yml config.yml ./
+
+RUN cargo build --release
+
+# Strip the binary for smaller size
+RUN strip target/release/mayyam
+
+# Stage 2: Runtime image - secure and minimal
+FROM gcr.io/distroless/cc-debian11:latest
+
+WORKDIR /app
+
+# Copy the application and config files
+COPY --from=builder /usr/src/app/target/release/mayyam /app/mayyam
+COPY --from=builder /usr/src/app/config.default.yml /app/config.default.yml
+COPY --from=builder /usr/src/app/config.yml /app/config.yml
+
+# Copy librdkafka shared libraries if built from source
+RUN mkdir -p /usr/local/lib
+COPY --from=builder /usr/local/lib/ /usr/local/lib/
+
+# Set runtime environment
+ENV RUST_LOG=info
+ENV LD_LIBRARY_PATH=/usr/local/lib
+
+# Run as non-root user (distroless has nonroot user by default)
+USER nonroot:nonroot
+
+# Expose port and set entrypoint
+EXPOSE 8080
+ENTRYPOINT ["/app/mayyam"]
+CMD ["server", "--host", "0.0.0.0", "--port", "8080"]

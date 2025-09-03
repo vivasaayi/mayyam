@@ -1,0 +1,84 @@
+# Fast Working Dockerfile for ARM64
+FROM rust:1.85-slim AS builder
+
+WORKDIR /usr/src/app
+
+# Install build dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        pkg-config \
+        libssl-dev \
+        build-essential \
+        zlib1g-dev \
+        curl \
+        ca-certificates \
+        git \
+        cmake \
+        g++ \
+        libsasl2-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Build librdkafka v2.10.0 from source (required for ARM64)
+RUN git clone --depth 1 --branch v2.10.0 https://github.com/confluentinc/librdkafka.git /tmp/librdkafka && \
+    cd /tmp/librdkafka && \
+    ./configure --prefix=/usr/local && \
+    make -j"$(nproc)" && \
+    make install && \
+    rm -rf /tmp/librdkafka
+
+# Set PKG_CONFIG_PATH
+ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
+
+# Verify librdkafka
+RUN pkg-config --modversion rdkafka
+
+# Copy Cargo files
+COPY Cargo.toml Cargo.lock ./
+
+# Build dependencies (cache layer)
+RUN mkdir -p src && \
+    echo 'fn main() { println!("Dummy"); }' > src/main.rs && \
+    cargo build --release && \
+    rm -rf src
+
+# Copy source and build
+COPY src ./src/
+COPY config.default.yml config.yml ./
+
+RUN cargo build --release
+
+# Strip binary
+RUN strip target/release/mayyam
+
+# Runtime stage
+FROM debian:bullseye-slim
+
+WORKDIR /app
+
+# Install runtime deps
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        libssl1.1 \
+        curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy app and configs
+COPY --from=builder /usr/src/app/target/release/mayyam /app/mayyam
+COPY --from=builder /usr/src/app/config.default.yml /app/config.default.yml
+COPY --from=builder /usr/src/app/config.yml /app/config.yml
+
+# Copy librdkafka libs
+COPY --from=builder /usr/local/lib/librdkafka* /usr/local/lib/
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash appuser && \
+    chown -R appuser:appuser /app
+USER appuser
+
+# Runtime config
+ENV RUST_LOG=info
+ENV LD_LIBRARY_PATH=/usr/local/lib
+EXPOSE 8080
+
+CMD ["/app/mayyam", "server", "--host", "0.0.0.0", "--port", "8080"]
