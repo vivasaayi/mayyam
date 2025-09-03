@@ -1,4 +1,0 @@
-# Minimal test Dockerfile
-FROM alpine:latest
-RUN echo "Docker build test successful"
-CMD ["echo", "Hello from Docker"]

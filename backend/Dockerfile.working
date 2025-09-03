@@ -45,13 +45,17 @@ RUN mkdir -p src && \
 COPY src ./src/
 COPY config.default.yml config.yml ./
 
-RUN cargo build --release
+RUN echo "cargo build starting"
+
+RUN cargo build
+
+RUN echo "cargo build complete"
 
 # Strip binary
 RUN strip target/release/mayyam
 
 # Runtime stage
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
 
 WORKDIR /app
 
@@ -59,7 +63,7 @@ WORKDIR /app
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
-        libssl1.1 \
+        libssl3 \
         curl && \
     rm -rf /var/lib/apt/lists/*
 
