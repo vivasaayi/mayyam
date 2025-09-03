@@ -5,6 +5,7 @@ edition = "2021"
 description = "A comprehensive toolbox for DevOps and SRE engineers"
 authors = ["Rajan Panneer Selvam"]
 license = "MIT"
+default-run = "mayyam"
 
 [dependencies]
 # Web framework
@@ -46,6 +47,14 @@ samael = "0.0.12"  # SAML2 authentication support
 
 # Kafka
 rdkafka = { version = "0.34", features = ["dynamic-linking"] }
+
+# Compression and filesystem operations
+flate2 = "1.0"  # Gzip compression
+snap = "1.1"    # Snappy compression
+lz4 = "1.24"    # LZ4 compression
+crc32fast = "1.3"  # CRC32 checksum for data integrity
+walkdir = "2.4"    # Directory traversal for backup management
+tempfile = "3.8"   # Temporary file creation for safe operations
 
 # AWS SDK
 aws-config = "0.55"
@@ -111,6 +120,15 @@ proptest = "1.0"
 fake = "2.5"
 tempfile = "3.5"
 serial_test = "2.0"
-testcontainers = "0.14"
 wiremock = "0.5"
 assert_matches = "1.5"
+
+testcontainers = "0.15"
+testcontainers-modules = { version = "0.1", features = ["kafka", "zookeeper"] }
+serial_test = "2.0"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[features]
+default = []
+integration-tests = []
+performance-tests = []

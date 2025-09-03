@@ -27,7 +27,7 @@ INSERT INTO query_templates (
     gen_random_uuid(), 'Show Tables', 'SHOW TABLES;', 
     'Shows all tables in the current database',
     'mysql', 'Schema', TRUE, 10,
-    '00000000-0000-0000-0000-000000000001', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+    '00000000-0000-0000-0000-000000000000'::uuid, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 );
 
 INSERT INTO query_templates (
@@ -37,7 +37,7 @@ INSERT INTO query_templates (
     gen_random_uuid(), 'Show Process List', 'SHOW PROCESSLIST;', 
     'Shows all running processes/connections',
     'mysql', 'Monitoring', TRUE, 20,
-    '00000000-0000-0000-0000-000000000001', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+    '00000000-0000-0000-0000-000000000000'::uuid, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 );
 
 INSERT INTO query_templates (
@@ -55,7 +55,7 @@ ORDER BY avg_timer_wait DESC
 LIMIT 10;',
     'Lists the top 10 queries by average execution time',
     'mysql', 'Performance', TRUE, 30,
-    '00000000-0000-0000-0000-000000000001', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+    '00000000-0000-0000-0000-000000000000'::uuid, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 );
 
 -- Insert some default PostgreSQL templates
@@ -67,7 +67,7 @@ INSERT INTO query_templates (
     'SELECT schemaname, tablename FROM pg_tables WHERE schemaname NOT IN (''information_schema'', ''pg_catalog'');', 
     'Lists all tables in all schemas except system schemas',
     'postgresql', 'Schema', TRUE, 10,
-    '00000000-0000-0000-0000-000000000001', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+    '00000000-0000-0000-0000-000000000000'::uuid, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 );
 
 INSERT INTO query_templates (
@@ -78,7 +78,7 @@ INSERT INTO query_templates (
     'SELECT pg_size_pretty(pg_database_size(current_database())) AS database_size;', 
     'Shows the current database size in a human-readable format',
     'postgresql', 'Monitoring', TRUE, 20,
-    '00000000-0000-0000-0000-000000000001', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+    '00000000-0000-0000-0000-000000000000'::uuid, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 );
 
 INSERT INTO query_templates (
@@ -89,5 +89,5 @@ INSERT INTO query_templates (
     'SELECT count(*) FROM pg_stat_activity WHERE state = ''active'';', 
     'Shows the number of active connections',
     'postgresql', 'Monitoring', TRUE, 30,
-    '00000000-0000-0000-0000-000000000001', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+    '00000000-0000-0000-0000-000000000000'::uuid, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 );

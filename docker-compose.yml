@@ -1,31 +1,113 @@
-version: '3.8'
+# Environment variables for mode selection
+# MODE=dev|uat|prod
+# For dev: Use local code with hot reloading
+# For uat: Production-like setup with tests
+# For prod: Single container for end users
 
 services:
-  backend:
+  # ===== PRODUCTION MODE SERVICE =====
+  # Single container with both frontend and backend
+  mayyam-prod:
+    profiles: ["prod"]
+    build: .
+    ports:
+      - "80:80"
+    environment:
+      - RUST_LOG=info
+      - MODE=prod
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - mayyam_network
+
+  # ===== DEVELOPMENT MODE SERVICES =====
+  backend-dev:
+    profiles: ["dev"]
     build:
       context: ./backend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8080:8080"
+    environment:
+      - RUST_LOG=debug
+      - MODE=dev
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/mayyam
+      - MYSQL_URL=mysql://mayyam_user:mayyam_password@mysql:3306/mayyam_db
+      - KAFKA_BROKERS=kafka:29092
+    depends_on:
+      - postgres
+      - mysql
+      - kafka
+    volumes:
+      - ./backend:/usr/src/app
+    working_dir: /usr/src/app
+    networks:
+      - mayyam_network
+
+  frontend-dev:
+    profiles: ["dev"]
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev  # Custom dev Dockerfile with hot reloading
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://backend-dev:8080
+      - NODE_ENV=development
+    depends_on:
+      - backend-dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules  # Exclude node_modules for faster rebuilds
+    networks:
+      - mayyam_network
+
+  # ===== UAT MODE SERVICES =====
+  # Production-like setup with testing
+  backend-uat:
+    profiles: ["uat"]
+    build:
+      context: .
       dockerfile: Dockerfile
     ports:
       - "8080:8080"
     environment:
       - RUST_LOG=info
-      - DATABASE_URL=postgres://postgres:postgres@db:5432/mayyam
+      - MODE=uat
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/mayyam
+      - MYSQL_URL=mysql://mayyam_user:mayyam_password@mysql:3306/mayyam_db
+      - KAFKA_BROKERS=kafka:29092
     depends_on:
       - postgres
+      - mysql
+      - kafka
     volumes:
       - ./backend/config.yml:/app/config.yml
+    networks:
+      - mayyam_network
 
-  frontend:
+  frontend-uat:
+    profiles: ["uat"]
     build:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
       - "3000:80"
     depends_on:
-      - backend
+      - backend-uat
+    networks:
+      - mayyam_network
 
+  # ===== SHARED INFRASTRUCTURE =====
   postgres:
+    profiles: ["dev", "uat"]
     image: postgres:14-alpine
+    restart: unless-stopped
     environment:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_USER=postgres
@@ -34,8 +116,12 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./backend/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - mayyam_network
 
   mysql:
+    profiles: ["dev", "uat"]
     image: mysql:8.0
     container_name: mayyam_mysql
     restart: unless-stopped
@@ -54,6 +140,7 @@ services:
     command: --default-authentication-plugin=mysql_native_password
 
   phpmyadmin:
+    profiles: ["dev", "uat"]
     image: phpmyadmin/phpmyadmin:latest
     container_name: mayyam_phpmyadmin
     restart: unless-stopped
@@ -69,6 +156,102 @@ services:
       - mysql
     networks:
       - mayyam_network
+
+  zookeeper:
+    profiles: ["dev", "uat"]
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: mayyam_zookeeper
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - mayyam_network
+
+  kafka:
+    profiles: ["dev", "uat"]
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: mayyam_kafka
+    restart: unless-stopped
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_DELETE_TOPIC_ENABLE: 'true'
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_NUM_PARTITIONS: 3
+    networks:
+      - mayyam_network
+
+  kafka-ui:
+    profiles: ["dev", "uat"]
+    image: provectuslabs/kafka-ui:latest
+    container_name: mayyam_kafka_ui
+    restart: unless-stopped
+    depends_on:
+      - kafka
+    ports:
+      - "8082:8080"  # Using 8082 since 8081 is used by phpmyadmin
+    environment:
+      KAFKA_CLUSTERS_0_NAME: mayyam_local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - mayyam_network
+
+  # ===== TESTING SERVICES =====
+  test-data-generator:
+    profiles: ["test"]
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: mayyam_test_data_generator
+    depends_on:
+      - kafka
+    environment:
+      KAFKA_BROKERS: kafka:29092
+      TEST_TOPIC: backup-test-topic
+      MESSAGE_COUNT: 10000
+    networks:
+      - mayyam_network
+    command: ["python", "generate_test_data.py"]
+
+  # integration-tests:
+  #   profiles: ["dev", "uat"]
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile.test
+  #   environment:
+  #     - DATABASE_URL=postgres://postgres:postgres@postgres:5432/mayyam
+  #     - MYSQL_URL=mysql://mayyam_user:mayyam_password@mysql:3306/mayyam_db
+  #     - KAFKA_BROKERS=kafka:29092
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     mysql:
+  #       condition: service_started
+  #     kafka:
+  #       condition: service_started
+  #   volumes:
+  #     - ./backend:/usr/src/app
+  #   networks:
+  #     - mayyam_network
+  #   command: cargo test --test integration
 
 volumes:
   postgres_data:

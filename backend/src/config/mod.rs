@@ -122,13 +122,11 @@ pub struct AuthConfig {
 impl Default for AuthConfig {
     fn default() -> Self {
         Self {
-            jwt_secret: "test-jwt-secret-key-for-testing-only".to_string(),
             jwt_expiration: 3600,
             enable_local_auth: true,
             enable_token_auth: true,
             enable_saml: false,
             saml_metadata_url: None,
-            encryption_key: "test-encryption-key-32-chars-long".to_string(),
         }
     }
 }
@@ -180,8 +178,8 @@ impl Default for AIConfig {
     fn default() -> Self {
         Self {
             provider: "openai".to_string(),
-            api_key: "test-api-key".to_string(),
-            model: "gpt-3.5-turbo".to_string(),
+            api_key: "default-api-key".to_string(),
+            model: "gpt-4".to_string(),
             endpoint: None,
         }
     }
@@ -195,7 +193,6 @@ pub struct SecurityConfig {
 impl Default for SecurityConfig {
     fn default() -> Self {
         Self {
-            encryption_key: "test-encryption-key-32-chars-long".to_string(),
         }
     }
 }

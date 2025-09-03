@@ -15,18 +15,17 @@ use crate::config::Config;
 async fn test_aws_account_crud() {
     // Set up test environment
     let config = Config::default();
-    let db: DatabaseConnection = database::connect(&config).await.unwrap();
-    let db = Arc::new(db);
-    
+    let db: Arc<DatabaseConnection> = Arc::new(database::connect(&config).await.unwrap());
+
     // Create repositories and services
     let repo = Arc::new(AwsAccountRepository::new(db.clone()));
-    
+
     // Create a mock AwsControlPlane for testing
     let aws_control_plane = Arc::new(AwsControlPlane::new(Arc::new(crate::services::aws::AwsService::new(
         Arc::new(crate::repositories::aws_resource::AwsResourceRepository::new(db.clone(), config.clone())),
         config.clone(),
     ))));
-    
+
     let service = Arc::new(AwsAccountService::new(repo.clone(), aws_control_plane.clone()));
     
     // Create test app

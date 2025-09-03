@@ -15,7 +15,6 @@
     "test:e2e:codegen": "playwright codegen localhost:3000",
     "eject": "react-scripts eject"
   },
-  "proxy": "http://localhost:8080",
   "eslintConfig": {
     "extends": [
       "react-app",
@@ -47,6 +46,7 @@
     "axios": "^1.9.0",
     "chart.js": "^4.4.9",
     "classnames": "^2.5.1",
+    "http-proxy-middleware": "^2.0.6",
     "jwt-decode": "^4.0.0",
     "papaparse": "^5.5.3",
     "react": "^19.1.0",

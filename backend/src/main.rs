@@ -18,7 +18,6 @@ mod tests;
 #[derive(Parser)]
 #[command(name = "mayyam")]
 #[command(about = "A comprehensive toolbox for DevOps and SRE engineers", long_about = None)]
-#[command(disable_help_flag = true)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -33,7 +32,7 @@ enum Commands {
         port: u16,
         
         /// Host to bind to
-        #[arg(short, long, default_value = "127.0.0.1")]
+        #[arg(long, default_value = "0.0.0.0")]
         host: String,
     },
     
