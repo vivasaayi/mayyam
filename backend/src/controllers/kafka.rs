@@ -9,7 +9,9 @@ use uuid::Uuid;
 use crate::services::kafka::{
     KafkaService, KafkaCluster, KafkaTopic, KafkaMessage, 
     ConsumeOptions, OffsetReset, PartitionOffset,
-    ClusterUpdateRequest, TopicConfigUpdateRequest, PartitionAdditionRequest
+    ClusterUpdateRequest, TopicConfigUpdateRequest, PartitionAdditionRequest,
+    MessageBackupRequest, MessageBackupResponse, MessageRestoreRequest, MessageRestoreResponse,
+    MessageMigrationRequest, MessageMigrationResponse, QueueDrainRequest, QueueDrainResponse
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -449,6 +451,65 @@ pub async fn get_broker_status(
         "brokers": brokers,
         "total_brokers": brokers.len()
     });
+    
+    Ok(HttpResponse::Ok().json(response))
+}
+
+// ===== BACKUP AND RESTORE CONTROLLERS =====
+
+// Backup messages from a topic
+pub async fn backup_topic_messages(
+    path: web::Path<String>,
+    backup_req: web::Json<MessageBackupRequest>,
+    kafka_service: web::Data<Arc<KafkaService>>,
+    config: web::Data<crate::config::Config>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let cluster_id = path.into_inner();
+    
+    let response = kafka_service.backup_topic_messages(&cluster_id, &*backup_req, &config).await?;
+    
+    Ok(HttpResponse::Ok().json(response))
+}
+
+// Restore messages to a topic
+pub async fn restore_topic_messages(
+    path: web::Path<String>,
+    restore_req: web::Json<MessageRestoreRequest>,
+    kafka_service: web::Data<Arc<KafkaService>>,
+    config: web::Data<crate::config::Config>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let cluster_id = path.into_inner();
+    
+    let response = kafka_service.restore_topic_messages(&cluster_id, &*restore_req, &config).await?;
+    
+    Ok(HttpResponse::Ok().json(response))
+}
+
+// Migrate messages between topics (can be cross-cluster)
+pub async fn migrate_topic_messages(
+    migration_req: web::Json<MessageMigrationRequest>,
+    kafka_service: web::Data<Arc<KafkaService>>,
+    config: web::Data<crate::config::Config>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let response = kafka_service.migrate_topic_messages(&*migration_req, &config).await?;
+    
+    Ok(HttpResponse::Ok().json(response))
+}
+
+// Wait for consumer group to drain all messages
+pub async fn wait_for_queue_drain(
+    path: web::Path<String>,
+    drain_req: web::Json<QueueDrainRequest>,
+    kafka_service: web::Data<Arc<KafkaService>>,
+    config: web::Data<crate::config::Config>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let cluster_id = path.into_inner();
+    
+    let response = kafka_service.wait_for_queue_drain(&cluster_id, &*drain_req, &config).await?;
     
     Ok(HttpResponse::Ok().json(response))
 }

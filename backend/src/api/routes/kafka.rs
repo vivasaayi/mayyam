@@ -22,7 +22,11 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .route("/clusters/{id}/topics/{topic}/config", web::put().to(kafka::update_topic_config))
         .route("/clusters/{id}", web::put().to(kafka::update_cluster))
         .route("/clusters/{id}/topics/{topic}/partitions", web::post().to(kafka::add_topic_partitions))
-        .route("/clusters/{id}/brokers", web::get().to(kafka::get_broker_status));
+        .route("/clusters/{id}/brokers", web::get().to(kafka::get_broker_status))
+        .route("/clusters/{id}/backup", web::post().to(kafka::backup_topic_messages))
+        .route("/clusters/{id}/restore", web::post().to(kafka::restore_topic_messages))
+        .route("/migrate", web::post().to(kafka::migrate_topic_messages))
+        .route("/clusters/{id}/drain", web::post().to(kafka::wait_for_queue_drain));
     
     cfg.service(scope);
 }
