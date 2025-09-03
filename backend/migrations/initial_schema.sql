@@ -2,7 +2,7 @@
 
 -- Users table for authentication and authorization
 CREATE TABLE IF NOT EXISTS users (
-    id VARCHAR(36) PRIMARY KEY,
+    id UUID PRIMARY KEY,
     username VARCHAR(64) NOT NULL UNIQUE,
     email VARCHAR(255) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- Database connections table
 CREATE TABLE IF NOT EXISTS database_connections (
-    id VARCHAR(36) PRIMARY KEY,
+    id UUID PRIMARY KEY,
     name VARCHAR(100) NOT NULL UNIQUE,
     connection_type VARCHAR(20) NOT NULL, -- postgres, mysql, redis, opensearch
     host VARCHAR(255) NOT NULL,
@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS database_connections (
     database_name VARCHAR(100),
     ssl_mode VARCHAR(20),
     cluster_mode BOOLEAN,
-    created_by VARCHAR(36) NOT NULL REFERENCES users(id),
+    created_by UUID NOT NULL REFERENCES users(id),
     created_at TIMESTAMP WITH TIME ZONE NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
     last_connected_at TIMESTAMP WITH TIME ZONE,
@@ -36,11 +36,11 @@ CREATE TABLE IF NOT EXISTS database_connections (
 
 -- Clusters table for Kafka, Kubernetes, and cloud providers
 CREATE TABLE IF NOT EXISTS clusters (
-    id VARCHAR(36) PRIMARY KEY,
+    id UUID PRIMARY KEY,
     name VARCHAR(100) NOT NULL UNIQUE,
     cluster_type VARCHAR(20) NOT NULL, -- kafka, kubernetes, aws, azure
     config JSONB NOT NULL,
-    created_by VARCHAR(36) NOT NULL REFERENCES users(id),
+    created_by UUID NOT NULL REFERENCES users(id),
     created_at TIMESTAMP WITH TIME ZONE NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
     last_connected_at TIMESTAMP WITH TIME ZONE,
@@ -52,7 +52,10 @@ CREATE INDEX idx_database_connections_type ON database_connections(connection_ty
 CREATE INDEX idx_clusters_type ON clusters(cluster_type);
 CREATE INDEX idx_users_email ON users(email);
 
+-- Setup initial user for Mayyam application
+
 -- Create a default admin user (password: admin123)
+-- Using the correct schema from the database
 INSERT INTO users (
     id, 
     username, 
@@ -60,19 +63,19 @@ INSERT INTO users (
     password_hash, 
     first_name, 
     last_name, 
-    active, 
+    active,
     roles, 
     created_at, 
     updated_at
 ) VALUES (
-    '00000000-0000-0000-0000-000000000000',
+    '00000000-0000-0000-0000-000000000001'::uuid,
     'admin',
     'admin@mayyam.local',
-    '$argon2id$v=19$m=16,t=2,p=1$ZU55Q2pyRmJYTkZJbHJQSA$VIX6doq2qsOTWQexsl0JhA', -- hashed "admin123"
+    '$2b$10$oz69QfHeT6BhqP3Gl5qzFuBBUZYqb1xKJv6Kciykra9983.qBLsse', -- bcrypt hash for "admin123"
     'Admin',
     'User',
     TRUE,
     'admin,user',
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP
-) ON CONFLICT DO NOTHING;
+) ON CONFLICT (username) DO NOTHING;

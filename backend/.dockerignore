@@ -1,0 +1,17 @@
+# Ignore build artifacts and large directories
+target/
+.git/
+.gitignore
+*.log
+logs/
+.DS_Store
+.vscode/
+.idea/
+node_modules/
+.dockerignore
+README.md
+*.md
+docker-build.sh
+test-builds.sh
+Dockerfile*
+.buildx-cache/

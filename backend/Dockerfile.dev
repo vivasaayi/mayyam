@@ -1,0 +1,64 @@
+# Development Dockerfile for Backend with Hot Reloading
+FROM rust:1.85-slim
+
+WORKDIR /usr/src/app
+
+# Install build dependencies and development tools
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        pkg-config \
+        libssl-dev \
+        build-essential \
+        zlib1g-dev \
+        curl \
+        ca-certificates \
+        git \
+        cmake \
+        g++ \
+        libsasl2-dev \
+        # Add cargo-watch for hot reloading
+        && cargo install cargo-watch \
+        && rm -rf /var/lib/apt/lists/*
+
+# Build librdkafka v2.10.0 from source (required for ARM64)
+RUN git clone --depth 1 --branch v2.10.0 https://github.com/confluentinc/librdkafka.git /tmp/librdkafka && \
+    cd /tmp/librdkafka && \
+    ./configure --prefix=/usr/local && \
+    make -j"$(nproc)" && \
+    make install && \
+    rm -rf /tmp/librdkafka
+
+# Set PKG_CONFIG_PATH
+ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
+
+# Verify librdkafka
+RUN pkg-config --modversion rdkafka
+
+# Copy Cargo files first for better caching
+COPY Cargo.toml Cargo.lock ./
+
+# Copy source code
+COPY src ./src/
+COPY config.default.yml config.yml ./
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash appuser && \
+    chown -R appuser:appuser /usr/src/app
+
+# Fix cargo registry permissions and create target directory
+RUN mkdir -p /usr/local/cargo/registry && \
+    mkdir -p /usr/src/app/target && \
+    chown -R appuser:appuser /usr/local/cargo && \
+    chown -R appuser:appuser /usr/src/app/target
+
+# For development, run as root to avoid permission issues with mounted volumes
+# USER appuser
+
+# Expose port
+EXPOSE 8080
+
+# Set library path for librdkafka
+ENV LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
+
+# Default command for development with hot reloading
+CMD ["cargo", "watch", "-x", "run -- server"]

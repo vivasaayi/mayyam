@@ -5,6 +5,7 @@ edition = "2021"
 description = "A comprehensive toolbox for DevOps and SRE engineers"
 authors = ["Rajan Panneer Selvam"]
 license = "MIT"
+default-run = "mayyam"
 
 [dependencies]
 # Web framework
