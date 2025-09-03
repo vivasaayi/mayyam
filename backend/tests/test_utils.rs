@@ -87,60 +87,28 @@ mock! {
 /// Test data factories
 pub mod factories {
     use fake::Fake;
-    use uuid::Uuid;
     // For integration tests, we need to use the crate name directly
-    extern crate mayyam;
-    use mayyam::models::aws_account::{AwsAccountCreateDto, DomainModel};
+    // Note: In test context, we can't import from the main crate directly
+    // These factories are for use in unit tests within the main crate
 
-    /// Create a fake AWS account for testing
-    pub fn fake_aws_account() -> AwsAccountCreateDto {
-        AwsAccountCreateDto {
-            account_id: fake::faker::number::en::NumberWithFormat("############").fake(),
-            account_name: fake::faker::company::en::CompanyName().fake(),
-            profile: Some(fake::faker::lorem::en::Word().fake()),
-            default_region: "us-east-1".to_string(),
-            use_role: false,
-            role_arn: None,
-            external_id: None,
-            access_key_id: Some(fake::faker::lorem::en::Word().fake()),
-            secret_access_key: Some(fake::faker::lorem::en::Word().fake()),
-        }
+    /// Create a fake AWS account ID for testing
+    pub fn fake_aws_account_id() -> String {
+        fake::faker::number::en::NumberWithFormat("############").fake()
     }
 
-    /// Create a fake domain model for testing
-    pub fn fake_domain_model() -> DomainModel {
-        DomainModel {
-            id: Uuid::new_v4(),
-            account_id: fake::faker::number::en::NumberWithFormat("############").fake(),
-            account_name: fake::faker::company::en::CompanyName().fake(),
-            profile: Some(fake::faker::lorem::en::Word().fake()),
-            default_region: "us-east-1".to_string(),
-            use_role: false,
-            role_arn: None,
-            external_id: None,
-            access_key_id: Some(fake::faker::lorem::en::Word().fake()),
-            secret_access_key: Some(fake::faker::lorem::en::Word().fake()),
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-        }
+    /// Create a fake company name for testing
+    pub fn fake_company_name() -> String {
+        fake::faker::company::en::CompanyName().fake()
+    }
+
+    /// Create a fake word for testing
+    pub fn fake_word() -> String {
+        fake::faker::lorem::en::Word().fake()
     }
 }
 
 /// Common test assertions
 pub mod assertions {
-    use crate::errors::AppError;
-
-    /// Assert that a result is an error of a specific type
-    pub fn assert_error_type<T>(result: &Result<T, AppError>, expected_error: &str) {
-        match result {
-            Err(AppError::Validation(msg)) if msg.contains(expected_error) => {}
-            Err(AppError::NotFound(msg)) if msg.contains(expected_error) => {}
-            Err(AppError::Database(_)) if expected_error == "database" => {}
-            Err(AppError::Authentication(msg)) if msg.contains(expected_error) => {}
-            _ => panic!("Expected error containing '{}', got {:?}", expected_error, result),
-        }
-    }
-
     /// Assert that a result contains the expected data
     pub fn assert_contains_data<T, F>(items: &[T], predicate: F)
     where
