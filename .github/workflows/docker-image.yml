@@ -81,10 +81,10 @@ jobs:
         # docker compose --profile dev build backend-dev frontend-dev
         
         # Tag for Docker Hub using service names directly
-        docker tag mayyam-theta-backend-dev:latest ${{ secrets.DOCKER_USERNAME }}/mayyam-backend:latest
-        docker tag mayyam-theta-frontend-dev:latest ${{ secrets.DOCKER_USERNAME }}/mayyam-frontend:latest
-        docker tag mayyam-theta-backend-dev:latest ${{ secrets.DOCKER_USERNAME }}/mayyam-backend:${{ github.sha }}
-        docker tag mayyam-theta-frontend-dev:latest ${{ secrets.DOCKER_USERNAME }}/mayyam-frontend:${{ github.sha }}
+        docker tag mayyam-backend-dev:latest ${{ secrets.DOCKER_USERNAME }}/mayyam-backend:latest
+        docker tag mayyam-frontend-dev:latest ${{ secrets.DOCKER_USERNAME }}/mayyam-frontend:latest
+        docker tag mayyam-backend-dev:latest ${{ secrets.DOCKER_USERNAME }}/mayyam-backend:${{ github.sha }}
+        docker tag mayyam-frontend-dev:latest ${{ secrets.DOCKER_USERNAME }}/mayyam-frontend:${{ github.sha }}
         
         # Push to Docker Hub
         docker push ${{ secrets.DOCKER_USERNAME }}/mayyam-backend:latest
