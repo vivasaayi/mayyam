@@ -8,7 +8,8 @@ use uuid::Uuid;
 
 use crate::services::kafka::{
     KafkaService, KafkaCluster, KafkaTopic, KafkaMessage, 
-    ConsumeOptions, OffsetReset, PartitionOffset
+    ConsumeOptions, OffsetReset, PartitionOffset,
+    ClusterUpdateRequest, TopicConfigUpdateRequest, PartitionAdditionRequest
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -50,6 +51,15 @@ pub struct OffsetRequest {
     pub to_earliest: Option<bool>,
     pub to_latest: Option<bool>,
     pub to_offset: Option<i64>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BrokerStatus {
+    pub id: i32,
+    pub host: String,
+    pub port: i32,
+    pub is_controller: bool,
+    pub rack: Option<String>,
 }
 
 pub async fn health_check(
@@ -356,6 +366,89 @@ pub async fn reset_offsets(
     
     // Use the KafkaService to reset offsets
     let response = kafka_service.reset_offsets(&cluster_id, &group_id, &offset_reset, &config).await?;
+    
+    Ok(HttpResponse::Ok().json(response))
+}
+
+// Update topic configuration
+pub async fn update_topic_config(
+    path: web::Path<(String, String)>,
+    config_req: web::Json<TopicConfigUpdateRequest>,
+    kafka_service: web::Data<Arc<KafkaService>>,
+    config: web::Data<crate::config::Config>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (cluster_id, topic_name) = path.into_inner();
+    let validate_only = config_req.validate_only.unwrap_or(false);
+    
+    // Use the KafkaService to update topic configuration
+    let response = kafka_service.update_topic_config(
+        &cluster_id,
+        &topic_name,
+        config_req.configs.clone(),
+        validate_only,
+        &config
+    ).await?;
+    
+    Ok(HttpResponse::Ok().json(response))
+}
+
+// Update cluster configuration
+pub async fn update_cluster(
+    path: web::Path<String>,
+    update_req: web::Json<ClusterUpdateRequest>,
+    kafka_service: web::Data<Arc<KafkaService>>,
+    config: web::Data<crate::config::Config>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let cluster_id = path.into_inner();
+    
+    // Use the KafkaService to update cluster configuration
+    let response = kafka_service.update_cluster_config(&cluster_id, &*update_req, &config).await?;
+    
+    Ok(HttpResponse::Ok().json(response))
+}
+
+// Add partitions to a topic
+pub async fn add_topic_partitions(
+    path: web::Path<(String, String)>,
+    partition_req: web::Json<PartitionAdditionRequest>,
+    kafka_service: web::Data<Arc<KafkaService>>,
+    config: web::Data<crate::config::Config>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (cluster_id, topic_name) = path.into_inner();
+    let validate_only = partition_req.validate_only.unwrap_or(false);
+    
+    // Use the KafkaService to add partitions
+    let response = kafka_service.add_topic_partitions(
+        &cluster_id,
+        &topic_name,
+        partition_req.count,
+        validate_only,
+        &config
+    ).await?;
+    
+    Ok(HttpResponse::Ok().json(response))
+}
+
+// Get detailed broker status
+pub async fn get_broker_status(
+    path: web::Path<String>,
+    kafka_service: web::Data<Arc<KafkaService>>,
+    config: web::Data<crate::config::Config>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let cluster_id = path.into_inner();
+    
+    // Use the KafkaService to get broker status
+    let brokers = kafka_service.get_broker_status(&cluster_id, &config).await?;
+    
+    let response = serde_json::json!({
+        "cluster_id": cluster_id,
+        "brokers": brokers,
+        "total_brokers": brokers.len()
+    });
     
     Ok(HttpResponse::Ok().json(response))
 }

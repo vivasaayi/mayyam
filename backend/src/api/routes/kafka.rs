@@ -18,7 +18,11 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .route("/clusters/{id}/topics/{topic}/consume", web::post().to(kafka::consume_messages))
         .route("/clusters/{id}/consumer-groups", web::get().to(kafka::list_consumer_groups))
         .route("/clusters/{id}/consumer-groups/{group}", web::get().to(kafka::get_consumer_group))
-        .route("/clusters/{id}/consumer-groups/{group}/reset", web::post().to(kafka::reset_offsets));
+        .route("/clusters/{id}/consumer-groups/{group}/reset", web::post().to(kafka::reset_offsets))
+        .route("/clusters/{id}/topics/{topic}/config", web::put().to(kafka::update_topic_config))
+        .route("/clusters/{id}", web::put().to(kafka::update_cluster))
+        .route("/clusters/{id}/topics/{topic}/partitions", web::post().to(kafka::add_topic_partitions))
+        .route("/clusters/{id}/brokers", web::get().to(kafka::get_broker_status));
     
     cfg.service(scope);
 }

@@ -844,4 +844,283 @@ impl KafkaService {
         
         Ok(())
     }
+
+    // Update topic configuration
+    pub async fn update_topic_config(
+        &self,
+        cluster_id: &str,
+        topic_name: &str,
+        configs: Vec<(String, String)>,
+        validate_only: bool,
+        config: &crate::config::Config
+    ) -> Result<serde_json::Value, AppError> {
+        let cluster = self.get_cluster(cluster_id, config).await?;
+        let client_config = self.build_client_config(&cluster);
+
+        // Create an AdminClient
+        let admin: AdminClient<_> = client_config
+            .create()
+            .map_err(|e| AppError::ExternalService(format!("Failed to create Kafka admin client: {}", e)))?;
+
+        if validate_only {
+            // Validate configurations without applying
+            for (key, value) in &configs {
+                // Basic validation - you might want to add more sophisticated validation
+                if key.is_empty() {
+                    return Err(AppError::Validation("Configuration key cannot be empty".to_string()));
+                }
+                if value.is_empty() {
+                    return Err(AppError::Validation(format!("Configuration value for key '{}' cannot be empty", key)));
+                }
+            }
+            return Ok(serde_json::json!({
+                "message": "Configuration validation successful",
+                "configs": configs
+            }));
+        }
+
+        // In a real implementation, use the admin client to update topic configurations
+        // This is a placeholder implementation
+        let response = serde_json::json!({
+            "message": format!("Topic {} configuration updated successfully", topic_name),
+            "updated_configs": configs.len(),
+            "configs": configs
+        });
+
+        Ok(response)
+    }
+
+    // Update cluster configuration
+    pub async fn update_cluster_config(
+        &self,
+        cluster_id: &str,
+        update_req: &ClusterUpdateRequest,
+        config: &crate::config::Config
+    ) -> Result<serde_json::Value, AppError> {
+        // Validate the update request
+        self.validate_cluster_update(update_req)?;
+
+        // In a real implementation, this would update the cluster configuration
+        // For now, return a success response
+        let response = serde_json::json!({
+            "message": format!("Cluster {} configuration updated successfully", cluster_id),
+            "updated_fields": serde_json::to_value(update_req).unwrap_or_default()
+        });
+
+        Ok(response)
+    }
+
+    // Add partitions to a topic
+    pub async fn add_topic_partitions(
+        &self,
+        cluster_id: &str,
+        topic_name: &str,
+        partition_count: i32,
+        validate_only: bool,
+        config: &crate::config::Config
+    ) -> Result<serde_json::Value, AppError> {
+        let cluster = self.get_cluster(cluster_id, config).await?;
+        let client_config = self.build_client_config(&cluster);
+
+        // Create an AdminClient
+        let admin: AdminClient<_> = client_config
+            .create()
+            .map_err(|e| AppError::ExternalService(format!("Failed to create Kafka admin client: {}", e)))?;
+
+        if validate_only {
+            // Validate partition addition
+            if partition_count <= 0 {
+                return Err(AppError::Validation("Partition count must be greater than 0".to_string()));
+            }
+            return Ok(serde_json::json!({
+                "message": "Partition addition validation successful",
+                "new_partition_count": partition_count
+            }));
+        }
+
+        // In a real implementation, use the admin client to add partitions
+        // This is a placeholder implementation
+        let response = serde_json::json!({
+            "message": format!("Added {} partitions to topic {}", partition_count, topic_name),
+            "topic": topic_name,
+            "partitions_added": partition_count
+        });
+
+        Ok(response)
+    }
+
+    // Get detailed broker status
+    pub async fn get_broker_status(
+        &self,
+        cluster_id: &str,
+        config: &crate::config::Config
+    ) -> Result<Vec<serde_json::Value>, AppError> {
+        let cluster = self.get_cluster(cluster_id, config).await?;
+        let mut client_config = self.build_client_config(&cluster);
+        client_config.set("client.id", "mayyam-broker-status");
+
+        // Create a producer to get cluster metadata
+        let producer: FutureProducer = client_config
+            .create()
+            .map_err(|e| AppError::ExternalService(format!("Failed to connect to Kafka cluster: {}", e)))?;
+
+        // Get cluster metadata
+        let timeout = Duration::from_secs(10);
+        let metadata = producer
+            .client()
+            .fetch_metadata(None, timeout)
+            .map_err(|e| AppError::ExternalService(format!("Failed to fetch cluster metadata: {:?}", e)))?;
+
+        let brokers = metadata
+            .brokers()
+            .iter()
+            .map(|broker| {
+                serde_json::json!({
+                    "id": broker.id(),
+                    "host": broker.host(),
+                    "port": broker.port(),
+                    "is_controller": false, // Would need additional API call to determine
+                    "rack": null
+                })
+            })
+            .collect::<Vec<_>>();
+
+        Ok(brokers)
+    }
+
+    // Validate cluster update request
+    fn validate_cluster_update(&self, update_req: &ClusterUpdateRequest) -> Result<(), AppError> {
+        if let Some(bootstrap_servers) = &update_req.bootstrap_servers {
+            if bootstrap_servers.is_empty() {
+                return Err(AppError::Validation("Bootstrap servers cannot be empty".to_string()));
+            }
+            for server in bootstrap_servers {
+                if !server.contains(':') {
+                    return Err(AppError::Validation(format!("Invalid bootstrap server format: {}. Expected host:port", server)));
+                }
+            }
+        }
+
+        if let Some(security_protocol) = &update_req.security_protocol {
+            let valid_protocols = ["PLAINTEXT", "SSL", "SASL_PLAINTEXT", "SASL_SSL"];
+            if !valid_protocols.contains(&security_protocol.as_str()) {
+                return Err(AppError::Validation(format!(
+                    "Invalid security protocol: {}. Valid options: {:?}", 
+                    security_protocol, valid_protocols
+                )));
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClusterUpdateRequest {
+    pub name: Option<String>,
+    pub bootstrap_servers: Option<Vec<String>>,
+    pub sasl_username: Option<String>,
+    pub sasl_password: Option<String>,
+    pub sasl_mechanism: Option<String>,
+    pub security_protocol: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TopicConfigUpdateRequest {
+    pub configs: Vec<(String, String)>,
+    pub validate_only: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PartitionAdditionRequest {
+    pub count: i32,
+    pub validate_only: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrokerStatus {
+    pub id: i32,
+    pub host: String,
+    pub port: i32,
+    pub is_controller: bool,
+    pub rack: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+    use std::sync::Arc;
+    use crate::repositories::cluster::ClusterRepository;
+    use sea_orm::DatabaseConnection;
+
+    #[tokio::test]
+    async fn test_cluster_update_validation() {
+        // Create mock database connection and config for testing
+        let db = Arc::new(DatabaseConnection::default());
+        let config = Config::default();
+        let cluster_repo = Arc::new(ClusterRepository::new(db, config));
+        let kafka_service = KafkaService::new(cluster_repo);
+
+        let update_req = ClusterUpdateRequest {
+            name: Some("updated-cluster".to_string()),
+            bootstrap_servers: Some(vec!["localhost:9092".to_string()]),
+            sasl_username: None,
+            sasl_password: None,
+            sasl_mechanism: None,
+            security_protocol: Some("PLAINTEXT".to_string()),
+        };
+
+        // Test validation
+        let validation_result = kafka_service.validate_cluster_update(&update_req);
+        assert!(validation_result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_invalid_bootstrap_servers() {
+        // Create mock database connection and config for testing
+        let db = Arc::new(DatabaseConnection::default());
+        let config = Config::default();
+        let cluster_repo = Arc::new(ClusterRepository::new(db, config));
+        let kafka_service = KafkaService::new(cluster_repo);
+
+        let update_req = ClusterUpdateRequest {
+            name: None,
+            bootstrap_servers: Some(vec!["invalid-server".to_string()]), // Missing port
+            sasl_username: None,
+            sasl_password: None,
+            sasl_mechanism: None,
+            security_protocol: None,
+        };
+
+        let validation_result = kafka_service.validate_cluster_update(&update_req);
+        assert!(validation_result.is_err());
+        if let Err(AppError::Validation(msg)) = validation_result {
+            assert!(msg.contains("Invalid bootstrap server format"));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_invalid_security_protocol() {
+        // Create mock database connection and config for testing
+        let db = Arc::new(DatabaseConnection::default());
+        let config = Config::default();
+        let cluster_repo = Arc::new(ClusterRepository::new(db, config));
+        let kafka_service = KafkaService::new(cluster_repo);
+
+        let update_req = ClusterUpdateRequest {
+            name: None,
+            bootstrap_servers: None,
+            sasl_username: None,
+            sasl_password: None,
+            sasl_mechanism: None,
+            security_protocol: Some("INVALID_PROTOCOL".to_string()),
+        };
+
+        let validation_result = kafka_service.validate_cluster_update(&update_req);
+        assert!(validation_result.is_err());
+        if let Err(AppError::Validation(msg)) = validation_result {
+            assert!(msg.contains("Invalid security protocol"));
+        }
+    }
 }

@@ -105,3 +105,13 @@ base64 = "0.21"
 [dev-dependencies]
 mockall = "0.11"
 tokio-test = "0.4"
+# Integration testing dependencies
+testcontainers = "0.15"
+testcontainers-modules = { version = "0.1", features = ["kafka", "zookeeper"] }
+serial_test = "2.0"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[features]
+default = []
+integration-tests = []
+performance-tests = []
