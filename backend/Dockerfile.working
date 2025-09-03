@@ -35,19 +35,13 @@ RUN pkg-config --modversion rdkafka
 # Copy Cargo files
 COPY Cargo.toml Cargo.lock ./
 
-# Build dependencies (cache layer)
-RUN mkdir -p src && \
-    echo 'fn main() { println!("Dummy"); }' > src/main.rs && \
-    cargo build --release && \
-    rm -rf src
-
 # Copy source and build
 COPY src ./src/
 COPY config.default.yml config.yml ./
 
 RUN echo "cargo build starting"
 
-RUN cargo build
+RUN cargo build --release
 
 RUN echo "cargo build complete"
 
