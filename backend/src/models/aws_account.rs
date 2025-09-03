@@ -58,7 +58,7 @@ pub struct DomainModel {
 }
 
 /// DTO for creating a new AWS account
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AwsAccountCreateDto {
     pub account_id: String,
     pub account_name: String,
@@ -72,7 +72,7 @@ pub struct AwsAccountCreateDto {
 }
 
 /// DTO for updating an existing AWS account
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AwsAccountUpdateDto {
     pub account_id: String,
     pub account_name: String,
@@ -86,7 +86,7 @@ pub struct AwsAccountUpdateDto {
 }
 
 /// DTO for returning account information (without sensitive data)
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AwsAccountDto {
     pub id: Uuid,
     pub account_id: String,

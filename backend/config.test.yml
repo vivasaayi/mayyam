@@ -1,0 +1,60 @@
+database:
+  postgres:
+    - name: test
+      host: localhost
+      port: 5432
+      username: postgres
+      password: postgres
+      database: mayyam_test
+      ssl_mode: disable
+  mysql:
+    - name: test
+      host: localhost
+      port: 3306
+      username: root
+      password: rootpassword
+      database: mayyam_test_db
+  redis: []
+  opensearch: []
+
+kafka:
+  clusters:
+    - name: test-cluster
+      bootstrap_servers:
+        - "localhost:9092"
+      sasl_username: null
+      sasl_password: null
+      sasl_mechanism: null
+      security_protocol: "PLAINTEXT"
+    - name: test-cluster-ssl
+      bootstrap_servers:
+        - "localhost:9093"
+      sasl_username: null
+      sasl_password: null
+      sasl_mechanism: null
+      security_protocol: "PLAINTEXT"
+
+auth:
+  jwt_secret: "test_jwt_secret_for_testing_only_not_secure"
+  jwt_expiration: 3600
+  enable_local_auth: true
+  enable_token_auth: true
+  enable_saml: false
+  saml_metadata_url: ""
+  encryption_key: "test-32-byte-encryption-key-32"
+
+security:
+  encryption_key: "test-32-byte-encryption-key-32"
+
+kubernetes:
+  clusters: []
+
+cloud:
+  aws: []
+  azure: []
+
+ai:
+  provider: openai
+  api_key: "test-api-key"
+  model: "gpt-4"
+  endpoint: "https://api.openai.com/v1"
