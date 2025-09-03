@@ -16,9 +16,6 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
     
-    - name: Build production image using Docker Compose
-      run: docker compose -f docker-compose.yml build
-    
     - name: Build and test development environment
       run: |
         # Build development images
@@ -40,9 +37,11 @@ jobs:
     - name: Tag and prepare for registry (optional)
       if: github.ref == 'refs/heads/main'
       run: |
-        # Tag the production image
-        docker tag $(docker compose -f docker-compose.prod.yml images -q mayyam) mayyam:latest
-        docker tag $(docker compose -f docker-compose.prod.yml images -q mayyam) mayyam:${{ github.sha }}
+        # Tag the development images
+        docker tag $(docker compose --profile dev images -q backend-dev) mayyam-backend:latest
+        docker tag $(docker compose --profile dev images -q frontend-dev) mayyam-frontend:latest
+        docker tag $(docker compose --profile dev images -q backend-dev) mayyam-backend:${{ github.sha }}
+        docker tag $(docker compose --profile dev images -q frontend-dev) mayyam-frontend:${{ github.sha }}
         
         # List built images
         docker images | grep mayyam
@@ -72,21 +71,33 @@ jobs:
     #     username: ${{ github.actor }}
     #     password: ${{ secrets.GITHUB_TOKEN }}
     
-    - name: Build and push production image
+    - name: Build production image using Docker Compose
+      run: docker compose --profile dev build backend-dev frontend-dev
+        
+        - name: Build and push production image
       run: |
-        # Build production image
-        docker compose -f docker-compose.prod.yml build
+        # The development images should already be built in the build job
+        # If needed, rebuild here (uncomment below)
+        # docker compose --profile dev build backend-dev frontend-dev
         
         # Tag for different registries (uncomment as needed)
-        # docker tag $(docker compose -f docker-compose.prod.yml images -q mayyam) ${{ github.repository }}:latest
-        # docker tag $(docker compose -f docker-compose.prod.yml images -q mayyam) ${{ github.repository }}:${{ github.sha }}
-        # docker tag $(docker compose -f docker-compose.prod.yml images -q mayyam) ghcr.io/${{ github.repository }}:latest
-        # docker tag $(docker compose -f docker-compose.prod.yml images -q mayyam) ghcr.io/${{ github.repository }}:${{ github.sha }}
+        # docker tag $(docker compose --profile dev images -q backend-dev) ${{ github.repository }}-backend:latest
+        # docker tag $(docker compose --profile dev images -q frontend-dev) ${{ github.repository }}-frontend:latest
+        # docker tag $(docker compose --profile dev images -q backend-dev) ${{ github.repository }}-backend:${{ github.sha }}
+        # docker tag $(docker compose --profile dev images -q frontend-dev) ${{ github.repository }}-frontend:${{ github.sha }}
+        # docker tag $(docker compose --profile dev images -q backend-dev) ghcr.io/${{ github.repository }}-backend:latest
+        # docker tag $(docker compose --profile dev images -q frontend-dev) ghcr.io/${{ github.repository }}-frontend:latest
+        # docker tag $(docker compose --profile dev images -q backend-dev) ghcr.io/${{ github.repository }}-backend:${{ github.sha }}
+        # docker tag $(docker compose --profile dev images -q frontend-dev) ghcr.io/${{ github.repository }}-frontend:${{ github.sha }}
         
         # Push to registries (uncomment as needed)
-        # docker push ${{ github.repository }}:latest
-        # docker push ${{ github.repository }}:${{ github.sha }}
-        # docker push ghcr.io/${{ github.repository }}:latest
-        # docker push ghcr.io/${{ github.repository }}:${{ github.sha }}
+        # docker push ${{ github.repository }}-backend:latest
+        # docker push ${{ github.repository }}-frontend:latest
+        # docker push ${{ github.repository }}-backend:${{ github.sha }}
+        # docker push ${{ github.repository }}-frontend:${{ github.sha }}
+        # docker push ghcr.io/${{ github.repository }}-backend:latest
+        # docker push ghcr.io/${{ github.repository }}-frontend:latest
+        # docker push ghcr.io/${{ github.repository }}-backend:${{ github.sha }}
+        # docker push ghcr.io/${{ github.repository }}-frontend:${{ github.sha }}
         
         echo "Build completed successfully. Uncomment push commands to publish to registry."
