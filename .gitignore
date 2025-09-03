@@ -47,7 +47,6 @@ yarn-error.log*
 /backend/Cargo.lock
 /backend/debug/
 /backend/.env*
-/backend/config.yml
 
 # Database
 *.sqlite

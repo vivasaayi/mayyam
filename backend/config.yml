@@ -1,0 +1,46 @@
+database:
+  postgres:
+    - name: main
+      host: postgres
+      port: 5432
+      username: postgres
+      password: postgres
+      database: mayyam
+      ssl_mode: disable
+  mysql:
+    - name: main
+      host: mysql
+      port: 3306
+      username: root
+      password: rootpassword
+      database: mayyam_db
+  redis: []
+  opensearch: []
+
+kafka:
+  clusters: []
+
+auth:
+  jwt_secret: "change_this_to_a_secure_secret_in_production_environment"
+  jwt_expiration: 3600
+  enable_local_auth: true
+  enable_token_auth: true
+  enable_saml: false
+  saml_metadata_url: ""
+  encryption_key: "mayyam-32-byte-encryption-key-32"
+
+security:
+  encryption_key: "mayyam-32-byte-encryption-key-32"
+
+kubernetes:
+  clusters: []
+
+cloud:
+  aws: []
+  azure: []
+
+ai:
+  provider: openai
+  api_key: "your-openai-api-key"
+  model: "gpt-4"
+  endpoint: "https://api.openai.com/v1"
