@@ -9,6 +9,7 @@ use crate::models::cluster::{self, Entity as Cluster, Model as ClusterModel, Act
 use crate::errors::AppError;
 use crate::config::Config;
 
+#[derive(Debug)]
 pub struct ClusterRepository {
     db: Arc<DatabaseConnection>,
     config: Config,
