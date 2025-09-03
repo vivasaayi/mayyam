@@ -3,8 +3,7 @@ use chrono::{DateTime, Utc, Duration};
 use serde_json::json;
 use crate::errors::AppError;
 use crate::services::llm_integration::LlmIntegrationService;
-use crate::services::aws::aws_data_plane::cloudwatch::metrics::CloudWatchMetrics;
-use crate::services::aws::aws_data_plane::cloudwatch::types::CloudWatchMetricsRequest;
+use crate::services::aws::aws_data_plane::cloudwatch::{CloudWatchMetrics, CloudWatchService, CloudWatchMetricsRequest, CloudWatchMetricData};
 
 #[derive(Debug, Clone)]
 pub struct CloudWatchAnalyzer {
@@ -146,10 +145,11 @@ impl CloudWatchAnalyzer {
         region: &str,
         start_time: DateTime<Utc>,
         end_time: DateTime<Utc>,
-    ) -> Result<Vec<crate::services::aws::aws_data_plane::cloudwatch::types::CloudWatchMetricData>, AppError> {
+    ) -> Result<Vec<CloudWatchMetricData>, AppError> {
         let request = CloudWatchMetricsRequest {
             resource_type: resource_type.to_string(),
             resource_id: resource_id.to_string(),
+            region: region.to_string(),
             metrics: self.get_metrics_for_resource_type(resource_type),
             start_time,
             end_time,
@@ -183,7 +183,7 @@ impl CloudWatchAnalyzer {
         }
     }
 
-    fn calculate_usage_score(&self, resource_type: &str, metrics: &[crate::services::aws::aws_data_plane::cloudwatch::types::CloudWatchMetricData]) -> Result<i32, AppError> {
+    fn calculate_usage_score(&self, resource_type: &str, metrics: &[CloudWatchMetricData]) -> Result<i32, AppError> {
         match resource_type {
             "Kinesis" => {
                 let avg_throughput = metrics.iter()
@@ -231,7 +231,7 @@ impl CloudWatchAnalyzer {
         &self,
         resource_type: &str,
         resource_id: &str,
-        metrics: &[crate::services::aws::aws_data_plane::cloudwatch::types::CloudWatchMetricData],
+        metrics: &[CloudWatchMetricData],
     ) -> Result<String, AppError> {
         let mut prompt = format!(
             "Analyze usage patterns for {} resource {}:\n\nMetrics:\n",

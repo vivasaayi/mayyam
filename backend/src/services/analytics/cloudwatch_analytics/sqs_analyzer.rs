@@ -17,6 +17,7 @@ impl SqsAnalyzer {
 
         match workflow {
             "unused" => {
+                let queue_name = resource.name.as_ref().unwrap_or(&resource.resource_id);
                 let unused_analysis = analyzer.analyze_unused_resource(
                     "SQS",
                     &queue_name,

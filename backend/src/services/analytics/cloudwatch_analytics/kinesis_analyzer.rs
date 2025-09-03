@@ -17,6 +17,7 @@ impl KinesisAnalyzer {
 
         match workflow {
             "unused" => {
+                let stream_name = resource.name.as_ref().unwrap_or(&resource.resource_id);
                 let unused_analysis = analyzer.analyze_unused_resource(
                     "Kinesis",
                     &stream_name,
