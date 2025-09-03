@@ -14,12 +14,37 @@ pub struct Config {
     pub kubernetes: KubernetesConfig,
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            database: DatabaseConfig::default(),
+            kafka: KafkaConfig::default(),
+            auth: AuthConfig::default(),
+            cloud: CloudConfig::default(),
+            ai: AIConfig::default(),
+            security: SecurityConfig::default(),
+            kubernetes: KubernetesConfig::default(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabaseConfig {
     pub postgres: Vec<PostgresConfig>,
     pub mysql: Vec<MySQLConfig>,
     pub redis: Vec<RedisConfig>,
     pub opensearch: Vec<OpenSearchConfig>,
+}
+
+impl Default for DatabaseConfig {
+    fn default() -> Self {
+        Self {
+            postgres: vec![],
+            mysql: vec![],
+            redis: vec![],
+            opensearch: vec![],
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,6 +90,14 @@ pub struct KafkaConfig {
     pub clusters: Vec<KafkaClusterConfig>,
 }
 
+impl Default for KafkaConfig {
+    fn default() -> Self {
+        Self {
+            clusters: vec![],
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KafkaClusterConfig {
     pub name: String,
@@ -86,10 +119,33 @@ pub struct AuthConfig {
     pub encryption_key: String,
 }
 
+impl Default for AuthConfig {
+    fn default() -> Self {
+        Self {
+            jwt_secret: "test-jwt-secret-key-for-testing-only".to_string(),
+            jwt_expiration: 3600,
+            enable_local_auth: true,
+            enable_token_auth: true,
+            enable_saml: false,
+            saml_metadata_url: None,
+            encryption_key: "test-encryption-key-32-chars-long".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CloudConfig {
     pub aws: Vec<AwsConfig>,
     pub azure: Vec<AzureConfig>,
+}
+
+impl Default for CloudConfig {
+    fn default() -> Self {
+        Self {
+            aws: vec![],
+            azure: vec![],
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -120,14 +176,41 @@ pub struct AIConfig {
     pub endpoint: Option<String>,
 }
 
+impl Default for AIConfig {
+    fn default() -> Self {
+        Self {
+            provider: "openai".to_string(),
+            api_key: "test-api-key".to_string(),
+            model: "gpt-3.5-turbo".to_string(),
+            endpoint: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityConfig {
     pub encryption_key: String,
 }
 
+impl Default for SecurityConfig {
+    fn default() -> Self {
+        Self {
+            encryption_key: "test-encryption-key-32-chars-long".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KubernetesConfig {
     pub clusters: Vec<KubernetesClusterConfig>,
+}
+
+impl Default for KubernetesConfig {
+    fn default() -> Self {
+        Self {
+            clusters: vec![],
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

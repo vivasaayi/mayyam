@@ -16,6 +16,7 @@ async fn test_aws_account_crud() {
     // Set up test environment
     let config = Config::default();
     let db: DatabaseConnection = database::connect(&config).await.unwrap();
+    let db = Arc::new(db);
     
     // Create repositories and services
     let repo = Arc::new(AwsAccountRepository::new(db.clone()));
