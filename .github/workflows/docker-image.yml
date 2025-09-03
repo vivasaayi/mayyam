@@ -23,7 +23,7 @@ jobs:
         
         # Start development environment
         docker compose --profile dev up -d
-        sleep 120  # Wait for all services to start
+        sleep 60  # Wait for all services to start
         
         # Test backend directly
         curl -f http://localhost:8080/api/health || echo "Backend health check failed"
