@@ -28,20 +28,109 @@ Mayyam is built with:
 
 ### Running with Docker Compose
 
-The easiest way to get started is using Docker Compose:
+The easiest way to get started is using Docker Compose with different modes:
+
+#### 🚀 Production Mode (Single Container)
+Perfect for end users who just want to run the application:
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/mayyam.git
-cd mayyam
+# Use the production compose file
+docker-compose -f docker-compose.prod.yml up --build
 
-# Start the application stack
-docker-compose up -d
+# Or use the main compose with prod profile
+docker-compose --profile prod up --build
 ```
 
-The application will be available at:
-- Frontend: http://localhost:3000
+**Access:**
+- Application: http://localhost
+- Health Check: Built-in container health monitoring
+
+#### 🛠️ Development Mode
+For developers working on the codebase with hot reloading:
+
+```bash
+# Start development environment
+docker-compose --profile dev up --build
+
+# Run integration tests
+docker-compose --profile dev up integration-tests
+```
+
+**Features:**
+- Hot reloading for both frontend and backend
+- Local code mounting for instant changes
+- Debug logging enabled
+- All services (DB, Kafka, etc.) available
+
+**Access:**
+- Frontend: http://localhost:3000 (with hot reloading)
 - Backend API: http://localhost:8080
+- PHPMyAdmin: http://localhost:8081
+- Kafka: localhost:9092
+
+#### 🧪 UAT Mode
+Production-like environment for testing before release:
+
+```bash
+# Start UAT environment
+docker-compose --profile uat up --build
+
+# Run integration tests in UAT
+docker-compose --profile uat up integration-tests
+```
+
+**Features:**
+- Production-like configuration
+- All services running (same as dev)
+- Optimized builds (no dev dependencies)
+- Integration testing capability
+
+#### 📊 Available Services
+
+All modes include:
+
+| Service | Dev/UAT Port | Description |
+|---------|-------------|-------------|
+| Frontend | 3000 | React application |
+| Backend API | 8080 | Rust REST API |
+| PostgreSQL | 5432 | Primary database |
+| MySQL | 3306 | Secondary database |
+| Kafka | 9092 | Message broker |
+| Zookeeper | 2181 | Kafka coordination |
+| PHPMyAdmin | 8081 | Database management |
+
+#### 🔧 Environment Variables
+
+Configure the application using environment variables:
+
+```bash
+# Database connections
+DATABASE_URL=postgres://user:pass@postgres:5432/mayyam
+MYSQL_URL=mysql://user:pass@mysql:3306/mayyam_db
+
+# Kafka configuration
+KAFKA_BROKERS=kafka:29092
+
+# Logging
+RUST_LOG=info  # dev mode
+RUST_LOG=debug # development
+```
+
+### Quick Commands
+
+```bash
+# Using the convenience script (recommended)
+./run.sh dev up        # Start development environment
+./run.sh uat test      # Run tests in UAT mode
+./run.sh prod up       # Start production environment
+./run.sh dev logs      # Show development logs
+./run.sh down          # Stop all services
+
+# Or using docker-compose directly
+docker-compose --profile dev up --build
+docker-compose --profile uat up --build
+docker-compose -f docker-compose.prod.yml up -d
+```
 
 ### Development Setup
 

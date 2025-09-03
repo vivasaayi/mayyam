@@ -32,7 +32,7 @@ enum Commands {
         port: u16,
         
         /// Host to bind to
-        #[arg(short, long, default_value = "127.0.0.1")]
+        #[arg(long, default_value = "0.0.0.0")]
         host: String,
     },
     

@@ -1,0 +1,24 @@
+# Production Docker Compose for Mayyam
+# This is the simple setup for end users
+
+services:
+  mayyam:
+    build: .
+    ports:
+      - "80:80"
+    environment:
+      - RUST_LOG=info
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+# To run:
+# docker-compose -f docker-compose.prod.yml up --build
+#
+# Access the application at:
+# - Frontend: http://localhost
+# - API: http://localhost/api/*
