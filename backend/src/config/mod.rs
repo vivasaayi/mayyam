@@ -122,11 +122,13 @@ pub struct AuthConfig {
 impl Default for AuthConfig {
     fn default() -> Self {
         Self {
+            jwt_secret: "default-jwt-secret-key-for-development-only".to_string(),
             jwt_expiration: 3600,
             enable_local_auth: true,
             enable_token_auth: true,
             enable_saml: false,
             saml_metadata_url: None,
+            encryption_key: "default-encryption-key-for-development-only".to_string(),
         }
     }
 }
@@ -193,6 +195,7 @@ pub struct SecurityConfig {
 impl Default for SecurityConfig {
     fn default() -> Self {
         Self {
+            encryption_key: "default-encryption-key-for-development-only".to_string(),
         }
     }
 }
