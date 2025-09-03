@@ -1,55 +1,82 @@
-# Optimized Dockerfile for Mayyam Backend
-FROM rust:1.85-slim
+# Fast Working Dockerfile for ARM64
+FROM rust:1.85-slim AS builder
 
 WORKDIR /usr/src/app
 
-# Install system dependencies including build tools for librdkafka
+# Install build dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         pkg-config \
         libssl-dev \
-        ca-certificates \
         build-essential \
-        cmake \
-        git \
         zlib1g-dev \
-        curl && \
+        curl \
+        ca-certificates \
+        git \
+        cmake \
+        g++ \
+        libsasl2-dev && \
     rm -rf /var/lib/apt/lists/*
 
-# Build librdkafka from source (required version >= 2.10.0)
+# Build librdkafka v2.10.0 from source (required for ARM64)
 RUN git clone --depth 1 --branch v2.10.0 https://github.com/confluentinc/librdkafka.git /tmp/librdkafka && \
     cd /tmp/librdkafka && \
-    cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local . && \
-    make -j$(nproc) && \
+    ./configure --prefix=/usr/local && \
+    make -j"$(nproc)" && \
     make install && \
     rm -rf /tmp/librdkafka
 
-# Set PKG_CONFIG_PATH for the installed librdkafka
+# Set PKG_CONFIG_PATH
 ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
 
-# Copy dependency files first for better caching
+# Verify librdkafka
+RUN pkg-config --modversion rdkafka
+
+# Copy Cargo files
 COPY Cargo.toml Cargo.lock ./
 
-# Create dummy src to cache dependencies
-RUN mkdir src && echo 'fn main() {}' > src/main.rs
-RUN cargo build --release && rm -rf src target/release/deps/mayyam*
-
-# Copy source code
+# Copy source and build
 COPY src ./src/
 COPY config.default.yml config.yml ./
 
-# Build the application
-ENV RUSTFLAGS="-C opt-level=1 -C debug-assertions=off"
+RUN echo "cargo build starting"
+
 RUN cargo build --release
+
+RUN echo "cargo build complete"
+
+# Strip binary
+RUN strip target/release/mayyam
+
+# Runtime stage
+FROM debian:bookworm-slim
+
+WORKDIR /app
+
+# Install runtime deps
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        libssl3 \
+        curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy app and configs
+COPY --from=builder /usr/src/app/target/release/mayyam /app/mayyam
+COPY --from=builder /usr/src/app/config.default.yml /app/config.default.yml
+COPY --from=builder /usr/src/app/config.yml /app/config.yml
+
+# Copy librdkafka libs
+COPY --from=builder /usr/local/lib/librdkafka* /usr/local/lib/
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash appuser && \
-    chown -R appuser:appuser /usr/src/app
-
+    chown -R appuser:appuser /app
 USER appuser
 
-# Runtime configuration
-EXPOSE 8080
+# Runtime config
 ENV RUST_LOG=info
+ENV LD_LIBRARY_PATH=/usr/local/lib
+EXPOSE 8080
 
-CMD ["./target/release/mayyam"]
+CMD ["/app/mayyam", "server", "--host", "0.0.0.0", "--port", "8080"]
