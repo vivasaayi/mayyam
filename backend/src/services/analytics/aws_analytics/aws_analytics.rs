@@ -14,12 +14,16 @@ use crate::services::analytics::aws_analytics::models::resource_workflows::*;
 use crate::services::analytics::aws_analytics::metrics::MetricsAnalyzer;
 use crate::services::analytics::aws_analytics::questions::QuestionGenerator;
 use crate::services::analytics::aws_analytics::resources::*;
+use crate::services::analytics::cloudwatch_analytics::{
+    CloudWatchAnalyzer, KinesisAnalyzer, SqsAnalyzer, RdsAnalyzer
+};
 
 pub struct AwsAnalyticsService {
     config: Config,
     aws_service: Arc<AwsService>,
     aws_data_plane: Arc<AwsDataPlane>,
     aws_resource_repo: Arc<AwsResourceRepository>,
+    cloudwatch_analyzer: Option<CloudWatchAnalyzer>,
 }
 
 impl AwsAnalyticsService {
@@ -29,11 +33,13 @@ impl AwsAnalyticsService {
         aws_data_plane: Arc<AwsDataPlane>,
         aws_resource_repo: Arc<AwsResourceRepository>,
     ) -> Self {
+        // TODO: Initialize CloudWatch analyzer when LLM services are properly set up
         Self {
             config,
             aws_service,
             aws_data_plane,
             aws_resource_repo,
+            cloudwatch_analyzer: None, // Will be initialized when needed
         }
     }
 
@@ -70,6 +76,39 @@ impl AwsAnalyticsService {
 
         // Generate analysis based on resource type and workflow
         let analysis = match resource.resource_type.as_str() {
+            "KinesisStream" | "Kinesis" => {
+                if let Some(ref analyzer) = self.cloudwatch_analyzer {
+                    KinesisAnalyzer::analyze_kinesis_stream(
+                        analyzer,
+                        &resource,
+                        &request.workflow,
+                    ).await?
+                } else {
+                    "# CloudWatch Analyzer Not Available\n\nPlease configure LLM services to enable CloudWatch analysis.".to_string()
+                }
+            },
+            "SQS" | "SQSQueue" => {
+                if let Some(ref analyzer) = self.cloudwatch_analyzer {
+                    SqsAnalyzer::analyze_sqs_queue(
+                        analyzer,
+                        &resource,
+                        &request.workflow,
+                    ).await?
+                } else {
+                    "# CloudWatch Analyzer Not Available\n\nPlease configure LLM services to enable CloudWatch analysis.".to_string()
+                }
+            },
+            "RDS" | "RDSInstance" => {
+                if let Some(ref analyzer) = self.cloudwatch_analyzer {
+                    RdsAnalyzer::analyze_rds_instance(
+                        analyzer,
+                        &resource,
+                        &request.workflow,
+                    ).await?
+                } else {
+                    "# CloudWatch Analyzer Not Available\n\nPlease configure LLM services to enable CloudWatch analysis.".to_string()
+                }
+            },
             "EC2Instance" => Ec2Analyzer::analyze_ec2_instance(
                 &resource,
                 &workflow,
@@ -80,22 +119,12 @@ impl AwsAnalyticsService {
                 &workflow,
                 &metrics
             ).await?,
-            "RdsInstance" => RdsAnalyzer::analyze_rds_instance(
-                &resource,
-                &workflow,
-                &metrics
-            ).await?,
             "DynamoDbTable" => DynamoDbAnalyzer::analyze_dynamodb_table(
                 &resource,
                 &workflow,
                 &metrics
             ).await?,
             "ElastiCache" => ElastiCacheAnalyzer::analyze_elasticache_cluster(
-                &resource,
-                &workflow,
-                &metrics
-            ).await?,
-            "KinesisStream" => KinesisAnalyzer::analyze_kinesis_stream(
                 &resource,
                 &workflow,
                 &metrics

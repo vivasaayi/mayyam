@@ -24,6 +24,7 @@ use tracing::debug;
 use std::fs;
 
 // Base AWS service
+#[derive(Debug)]
 pub struct AwsService {
     pub(crate) aws_resource_repo: Arc<AwsResourceRepository>,
     config: Config,

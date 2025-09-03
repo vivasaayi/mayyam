@@ -26,6 +26,7 @@ pub struct LlmResponse {
     pub timestamp: chrono::DateTime<Utc>,
 }
 
+#[derive(Debug)]
 pub struct LlmIntegrationService {
     llm_provider_repo: Arc<LlmProviderRepository>,
     prompt_template_repo: Arc<PromptTemplateRepository>,

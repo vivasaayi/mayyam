@@ -4,6 +4,7 @@ use crate::errors::AppError;
 use crate::services::AwsService;
 use crate::services::aws::client_factory::AwsClientFactory;
 
+#[derive(Debug)]
 pub struct CloudWatchService {
     aws_service: Arc<AwsService>,
 }
