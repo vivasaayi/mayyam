@@ -498,6 +498,28 @@ pub struct KafkaMetrics {
     pub avg_response_time_ms: f64,
     pub last_health_check: i64,
     pub active_connections: u32,
+    // Backup and restore metrics
+    pub backups_created: u64,
+    pub backups_restored: u64,
+    pub messages_backed_up: u64,
+    pub messages_restored: u64,
+    pub total_backup_size_bytes: u64,
+    pub total_restore_size_bytes: u64,
+    pub backup_errors: u64,
+    pub restore_errors: u64,
+    pub avg_backup_duration_ms: f64,
+    pub avg_restore_duration_ms: f64,
+    pub active_backups: u32,
+    pub active_restores: u32,
+    // Migration metrics
+    pub migrations_completed: u64,
+    pub messages_migrated: u64,
+    pub migration_errors: u64,
+    pub avg_migration_duration_ms: f64,
+    // Queue drain metrics
+    pub drain_operations: u64,
+    pub drain_success_rate: f64,
+    pub avg_drain_duration_ms: f64,
 }
 
 #[derive(Debug)]
@@ -517,6 +539,28 @@ impl KafkaService {
                 avg_response_time_ms: 0.0,
                 last_health_check: 0,
                 active_connections: 0,
+                // Backup and restore metrics
+                backups_created: 0,
+                backups_restored: 0,
+                messages_backed_up: 0,
+                messages_restored: 0,
+                total_backup_size_bytes: 0,
+                total_restore_size_bytes: 0,
+                backup_errors: 0,
+                restore_errors: 0,
+                avg_backup_duration_ms: 0.0,
+                avg_restore_duration_ms: 0.0,
+                active_backups: 0,
+                active_restores: 0,
+                // Migration metrics
+                migrations_completed: 0,
+                messages_migrated: 0,
+                migration_errors: 0,
+                avg_migration_duration_ms: 0.0,
+                // Queue drain metrics
+                drain_operations: 0,
+                drain_success_rate: 0.0,
+                avg_drain_duration_ms: 0.0,
             })),
         }
     }
@@ -531,22 +575,106 @@ impl KafkaService {
             avg_response_time_ms: metrics.avg_response_time_ms,
             last_health_check: metrics.last_health_check,
             active_connections: metrics.active_connections,
+            // Backup and restore metrics
+            backups_created: metrics.backups_created,
+            backups_restored: metrics.backups_restored,
+            messages_backed_up: metrics.messages_backed_up,
+            messages_restored: metrics.messages_restored,
+            total_backup_size_bytes: metrics.total_backup_size_bytes,
+            total_restore_size_bytes: metrics.total_restore_size_bytes,
+            backup_errors: metrics.backup_errors,
+            restore_errors: metrics.restore_errors,
+            avg_backup_duration_ms: metrics.avg_backup_duration_ms,
+            avg_restore_duration_ms: metrics.avg_restore_duration_ms,
+            active_backups: metrics.active_backups,
+            active_restores: metrics.active_restores,
+            // Migration metrics
+            migrations_completed: metrics.migrations_completed,
+            messages_migrated: metrics.messages_migrated,
+            migration_errors: metrics.migration_errors,
+            avg_migration_duration_ms: metrics.avg_migration_duration_ms,
+            // Queue drain metrics
+            drain_operations: metrics.drain_operations,
+            drain_success_rate: metrics.drain_success_rate,
+            avg_drain_duration_ms: metrics.avg_drain_duration_ms,
         })
     }
 
     // Update metrics helper
     fn update_metrics(&self, operation: &str, duration_ms: f64, success: bool) {
         if let Ok(mut metrics) = self.metrics.lock() {
-            if !success {
-                metrics.errors_count += 1;
+            match operation {
+                "backup" => {
+                    if success {
+                        metrics.backups_created += 1;
+                        metrics.avg_backup_duration_ms = (metrics.avg_backup_duration_ms + duration_ms) / 2.0;
+                    } else {
+                        metrics.backup_errors += 1;
+                    }
+                }
+                "restore" => {
+                    if success {
+                        metrics.backups_restored += 1;
+                        metrics.avg_restore_duration_ms = (metrics.avg_restore_duration_ms + duration_ms) / 2.0;
+                    } else {
+                        metrics.restore_errors += 1;
+                    }
+                }
+                "migrate" => {
+                    if success {
+                        metrics.migrations_completed += 1;
+                        metrics.avg_migration_duration_ms = (metrics.avg_migration_duration_ms + duration_ms) / 2.0;
+                    } else {
+                        metrics.migration_errors += 1;
+                    }
+                }
+                "drain" => {
+                    metrics.drain_operations += 1;
+                    if success {
+                        metrics.drain_success_rate = (metrics.drain_success_rate + 1.0) / 2.0;
+                        metrics.avg_drain_duration_ms = (metrics.avg_drain_duration_ms + duration_ms) / 2.0;
+                    } else {
+                        metrics.drain_success_rate = (metrics.drain_success_rate + 0.0) / 2.0;
+                    }
+                }
+                _ => {
+                    // Update general metrics
+                    if !success {
+                        metrics.errors_count += 1;
+                    }
+                    // Update average response time (simple moving average)
+                    let current_avg = metrics.avg_response_time_ms;
+                    metrics.avg_response_time_ms = (current_avg + duration_ms) / 2.0;
+                }
             }
-            
-            // Update average response time (simple moving average)
-            let current_avg = metrics.avg_response_time_ms;
-            metrics.avg_response_time_ms = (current_avg + duration_ms) / 2.0;
         }
-        
+
         info!("Kafka operation '{}' completed in {:.2}ms, success: {}", operation, duration_ms, success);
+    }
+
+    // Update backup-specific metrics
+    fn update_backup_metrics(&self, messages_count: u64, data_size: u64) {
+        if let Ok(mut metrics) = self.metrics.lock() {
+            metrics.messages_backed_up += messages_count;
+            metrics.total_backup_size_bytes += data_size;
+            metrics.active_backups += 1;
+        }
+    }
+
+    // Update restore-specific metrics
+    fn update_restore_metrics(&self, messages_count: u64, data_size: u64) {
+        if let Ok(mut metrics) = self.metrics.lock() {
+            metrics.messages_restored += messages_count;
+            metrics.total_restore_size_bytes += data_size;
+            metrics.active_restores += 1;
+        }
+    }
+
+    // Update migration-specific metrics
+    fn update_migration_metrics(&self, messages_count: u64) {
+        if let Ok(mut metrics) = self.metrics.lock() {
+            metrics.messages_migrated += messages_count;
+        }
     }
 
     // Get a Kafka cluster configuration by ID or name
@@ -1415,7 +1543,8 @@ impl KafkaService {
 
         let backup_id = format!("backup_{}_{}", request.topic, chrono::Utc::now().timestamp());
         let mut total_messages = 0u64;
-        let start_time = chrono::Utc::now().to_rfc3339();
+        let start_time = chrono::Utc::now();
+        let start_time_str = start_time.to_rfc3339();
 
         // Initialize filesystem storage
         let storage_path = PathBuf::from("./backups"); // TODO: Make configurable
@@ -1519,7 +1648,7 @@ impl KafkaService {
                     partition: *partition,
                     messages: partition_messages,
                     checksum: 0, // Will be calculated by storage
-                    created_at: start_time.clone(),
+                    created_at: start_time_str.clone(),
                 };
 
                 storage.store_backup(&backup_data, &compression).await
@@ -1527,14 +1656,20 @@ impl KafkaService {
             }
         }
 
-        let end_time = chrono::Utc::now().to_rfc3339();
+        let end_time = chrono::Utc::now();
+        let end_time_str = end_time.to_rfc3339();
+
+        // Update metrics
+        let duration_ms = (end_time.timestamp_millis() - start_time.timestamp_millis()) as f64;
+        self.update_metrics("backup", duration_ms, true);
+        self.update_backup_metrics(total_messages, 0); // TODO: Calculate actual data size
 
         Ok(MessageBackupResponse {
             topic: request.topic.clone(),
             partitions_backed_up: partitions_to_backup,
             total_messages,
-            start_time,
-            end_time,
+            start_time: start_time_str,
+            end_time: end_time_str,
             backup_id,
         })
     }
@@ -1552,7 +1687,8 @@ impl KafkaService {
         let producer: FutureProducer = client_config.create()
             .map_err(|e| AppError::Kafka(format!("Failed to create producer: {}", e)))?;
 
-        let start_time = chrono::Utc::now().to_rfc3339();
+        let start_time = chrono::Utc::now();
+        let start_time_str = start_time.to_rfc3339();
         let mut messages_restored = 0u64;
 
         // Initialize filesystem storage
@@ -1623,14 +1759,20 @@ impl KafkaService {
             }
         }
 
-        let end_time = chrono::Utc::now().to_rfc3339();
+        let end_time = chrono::Utc::now();
+        let end_time_str = end_time.to_rfc3339();
+
+        // Update metrics
+        let duration_ms = (end_time.timestamp_millis() - start_time.timestamp_millis()) as f64;
+        self.update_metrics("restore", duration_ms, true);
+        self.update_restore_metrics(messages_restored, 0); // TODO: Calculate actual data size
 
         Ok(MessageRestoreResponse {
             target_topic: request.target_topic.clone(),
             messages_restored,
             partitions_restored: partitions_to_restore,
-            start_time,
-            end_time,
+            start_time: start_time_str,
+            end_time: end_time_str,
         })
     }
 
