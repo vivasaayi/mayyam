@@ -18,6 +18,24 @@ Cargo.lock
 # IDE and editor files
 .idea/
 .vscode/
+
+# AWS Credentials (NEVER COMMIT THESE!)
+.aws/
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.p12
+*.pfx
+
+# AWS CLI credentials
+~/.aws/credentials
+~/.aws/config
+
+# Environment variables with secrets
+.envrc
+.secrets
 *.swp
 *.swo
 .DS_Store

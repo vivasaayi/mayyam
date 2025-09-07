@@ -79,7 +79,13 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         
         // Kinesis operations
         .route("/profiles/{profile}/regions/{region}/kinesis", 
-               web::post().to(cloud::kinesis_put_record));
+               web::post().to(cloud::kinesis_put_record))
+        .route("/profiles/{profile}/regions/{region}/kinesis/streams", 
+               web::post().to(cloud::kinesis_create_stream))
+        .route("/profiles/{profile}/regions/{region}/kinesis/streams", 
+               web::delete().to(cloud::kinesis_delete_stream))
+        .route("/profiles/{profile}/regions/{region}/kinesis/streams/describe", 
+               web::post().to(cloud::kinesis_describe_stream));
     
     // Register the scopes
     cfg.service(cloud_scope);

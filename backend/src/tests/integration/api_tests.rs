@@ -29,7 +29,7 @@ mod api_integration_tests {
         // Note: For now, we'll test with minimal dependencies
         // In full implementation, you'd set up test database, etc.
 
-        let config = create_test_config();
+        let _config = create_test_config();
 
         // Test 1: List available Kafka clusters
         println!("📋 Step 1: SRE lists available Kafka clusters via API...");

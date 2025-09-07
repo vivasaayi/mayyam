@@ -5,6 +5,7 @@ use crate::services::aws::aws_types::kinesis::KinesisPutRecordRequest;
 use crate::services::aws::aws_types::cloud_watch::{CloudWatchMetricsRequest, CloudWatchMetricsResult};
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::AwsService;
+use aws_sdk_kinesis::primitives::Blob;
 
 // Data plane implementation for Kinesis
 pub struct KinesisDataPlane {
@@ -19,26 +20,29 @@ impl KinesisDataPlane {
     pub async fn put_record(&self, profile: Option<&str>, region: &str, request: &KinesisPutRecordRequest) -> Result<serde_json::Value, AppError> {
         let client = self.aws_service.create_kinesis_client(profile, region).await?;
         
-        // In a real implementation, this would call put_record
-        let response = json!({
-            "sequence_number": "49613369067872193874107527441867152207618406126793392130",
-            "shard_id": "shardId-000000000000",
-            "encryption_type": "KMS"
-        });
+        // Actually call AWS Kinesis put_record API
+        let response = client.put_record()
+            .stream_name(&request.stream_name)
+            .data(Blob::new(request.data.as_bytes()))
+            .partition_key(&request.partition_key)
+            .send()
+            .await
+            .map_err(|e| AppError::ExternalService(format!("Failed to put record to Kinesis stream: {}", e)))?;
         
-        Ok(response)
+        let sequence_number = response.sequence_number()
+            .ok_or_else(|| AppError::ExternalService("Missing sequence number in put_record response".to_string()))?;
+        let shard_id = response.shard_id()
+            .ok_or_else(|| AppError::ExternalService("Missing shard ID in put_record response".to_string()))?;
+
+        Ok(json!({
+            "sequence_number": sequence_number,
+            "shard_id": shard_id,
+            "encryption_type": response.encryption_type().map(|et| et.as_str()).unwrap_or("NONE")
+        }))
     }
 
-    pub async fn get_stream_metrics(&self, request: &CloudWatchMetricsRequest) -> Result<CloudWatchMetricsResult, AppError> {
-        let client = self.aws_service.create_cloudwatch_client(None, &request.region).await?;
-        
-        // Kinesis-specific metric collection logic would go here
-        // For now returning empty result
-        Ok(CloudWatchMetricsResult {
-            resource_id: request.resource_id.clone(),
-            resource_type: request.resource_type.clone(),
-            metrics: vec![],
-        })
+    pub async fn get_stream_metrics(&self, _request: &CloudWatchMetricsRequest) -> Result<CloudWatchMetricsResult, AppError> {
+        return Err(AppError::ExternalService("get_stream_metrics not implemented - use CloudWatch data plane directly".to_string()));
     }
 
     // Additional Kinesis-specific data plane operations would go here

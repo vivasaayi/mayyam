@@ -16,8 +16,9 @@ use crate::services::aws::aws_data_plane::sqs_data_plane::SqsDataPlane;
 use crate::services::aws::aws_types::dynamodb::{DynamoDBGetItemRequest, DynamoDBPutItemRequest, DynamoDBQueryRequest};
 use crate::services::aws::aws_types::sqs::{SqsReceiveMessageRequest, SqsSendMessageRequest};
 use crate::services::aws::aws_data_plane::dynamodb_data_plane::DynamoDBDataPlane;
-use crate::services::aws::aws_types::kinesis::KinesisPutRecordRequest;
+use crate::services::aws::aws_types::kinesis::{KinesisPutRecordRequest, KinesisCreateStreamRequest, KinesisDeleteStreamRequest, KinesisDescribeStreamRequest};
 use crate::services::aws::aws_data_plane::kinesis_data_plane::KinesisDataPlane;
+use crate::services::aws::aws_control_plane::kinesis_control_plane::KinesisControlPlane;
 use crate::services::aws::aws_types::s3::{S3GetObjectRequest, S3PutObjectRequest};
 use crate::services::aws::aws_data_plane::s3_data_plane::S3DataPlane;
 use crate::services::aws::aws_types::resource_sync::ResourceSyncRequest;
@@ -299,6 +300,48 @@ pub async fn kinesis_put_record(
     
     let response = aws_data_plane.put_record(profile_opt, &region, &req).await?;
     
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn kinesis_create_stream(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisCreateStreamRequest>,
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
+
+    let response = aws_control_plane.kinesis_create_stream(profile_opt, &region, &req).await?;
+
+    Ok(HttpResponse::Created().json(response))
+}
+
+pub async fn kinesis_delete_stream(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisDeleteStreamRequest>,
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
+
+    let response = aws_control_plane.kinesis_delete_stream(profile_opt, &region, &req).await?;
+
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn kinesis_describe_stream(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisDescribeStreamRequest>,
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
+
+    let response = aws_control_plane.kinesis_describe_stream(profile_opt, &region, &req).await?;
+
     Ok(HttpResponse::Ok().json(response))
 }
 

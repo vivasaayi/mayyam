@@ -60,6 +60,22 @@ impl AwsControlPlane {
         elasticache.sync_clusters_with_auth(account_id, profile, region, account_auth).await
     }
 
+    // Kinesis control plane operations
+    pub async fn kinesis_create_stream(&self, profile: Option<&str>, region: &str, request: &crate::services::aws::aws_types::kinesis::KinesisCreateStreamRequest) -> Result<serde_json::Value, AppError> {
+        let kinesis = KinesisControlPlane::new(self.aws_service.clone());
+        kinesis.create_stream(profile, region, request).await
+    }
+
+    pub async fn kinesis_delete_stream(&self, profile: Option<&str>, region: &str, request: &crate::services::aws::aws_types::kinesis::KinesisDeleteStreamRequest) -> Result<serde_json::Value, AppError> {
+        let kinesis = KinesisControlPlane::new(self.aws_service.clone());
+        kinesis.delete_stream(profile, region, request).await
+    }
+
+    pub async fn kinesis_describe_stream(&self, profile: Option<&str>, region: &str, request: &crate::services::aws::aws_types::kinesis::KinesisDescribeStreamRequest) -> Result<serde_json::Value, AppError> {
+        let kinesis = KinesisControlPlane::new(self.aws_service.clone());
+        kinesis.describe_stream(profile, region, request).await
+    }
+
     // Sync all resources for an account and region
     pub async fn sync_resources(&self, request: &ResourceSyncRequest) -> Result<ResourceSyncResponse, AppError> {
         let account_id = &request.account_id;
