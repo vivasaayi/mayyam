@@ -166,6 +166,7 @@ impl KinesisControlPlane {
     // Control plane operations
     pub async fn create_stream(&self, profile: Option<&str>, region: &str, request: &KinesisCreateStreamRequest) -> Result<serde_json::Value, AppError> {
         let client = self.aws_service.create_kinesis_client(profile, region).await?;
+        let account_id = self.aws_service.get_account_id_with_fallback(profile, region).await;
 
         let shard_count = request.shard_count
             .ok_or_else(|| AppError::ExternalService("Missing shard_count in create stream request".to_string()))?;
@@ -177,9 +178,10 @@ impl KinesisControlPlane {
             .await
             .map_err(|e| AppError::ExternalService(format!("Failed to create Kinesis stream: {}", e)))?;
 
+        // AI_TODO: Instead of returning a static response, we should call describe_stream to get the actual stream details
         Ok(json!({
             "stream_name": request.stream_name,
-            "stream_arn": format!("arn:aws:kinesis:{}:123456789012:stream/{}", region, request.stream_name),
+            "stream_arn": format!("arn:aws:kinesis:{}:{}:stream/{}", region, account_id, request.stream_name),
             "status": "CREATING"
         }))
     }
@@ -193,6 +195,7 @@ impl KinesisControlPlane {
             .await
             .map_err(|e| AppError::ExternalService(format!("Failed to delete Kinesis stream: {}", e)))?;
 
+        // AI_TODO: Instead of returning a static response, we should call describe_stream to get the actual stream details
         Ok(json!({
             "stream_name": request.stream_name,
             "status": "DELETING"
@@ -200,6 +203,7 @@ impl KinesisControlPlane {
     }
 
     pub async fn describe_stream(&self, profile: Option<&str>, region: &str, request: &KinesisDescribeStreamRequest) -> Result<serde_json::Value, AppError> {
+        // AI_TODO: Why are we returning JSON here instead of a typed response? can we return a typed response?
         let client = self.aws_service.create_kinesis_client(profile, region).await?;
 
         let response = client.describe_stream()
@@ -252,6 +256,7 @@ impl KinesisControlPlane {
     }
 
     pub async fn list_streams(&self, profile: Option<&str>, region: &str, request: &KinesisListStreamsRequest) -> Result<serde_json::Value, AppError> {
+        // AI_TODO: Why are we returning JSON here instead of a typed response? can we return a typed response?
         let client = self.aws_service.create_kinesis_client(profile, region).await?;
 
         let mut list_builder = client.list_streams();
@@ -307,6 +312,7 @@ impl KinesisControlPlane {
             .await
             .map_err(|e| AppError::ExternalService(format!("Failed to update shard count: {}", e)))?;
 
+        // AI_TODO: Instead of returning a static response, we should call describe_stream to get the actual stream details
         Ok(json!({
             "stream_name": request.stream_name,
             "target_shard_count": request.target_shard_count,
@@ -325,6 +331,8 @@ impl KinesisControlPlane {
             .await
             .map_err(|e| AppError::ExternalService(format!("Failed to add tags to stream: {}", e)))?;
 
+        // AI_TODO: Instead of returning a static response, we should call describe_stream to get the actual stream details
+
         Ok(json!({
             "stream_name": request.stream_name,
             "tags_added": request.tags.len(),
@@ -342,6 +350,8 @@ impl KinesisControlPlane {
             .await
             .map_err(|e| AppError::ExternalService(format!("Failed to remove tags from stream: {}", e)))?;
 
+        // AI_TODO: Instead of returning a static response, we should call describe_stream to get the actual stream details
+
         Ok(json!({
             "stream_name": request.stream_name,
             "tags_removed": request.tag_keys.len(),
@@ -350,6 +360,7 @@ impl KinesisControlPlane {
     }
 
     pub async fn list_tags_for_stream(&self, profile: Option<&str>, region: &str, stream_name: &str) -> Result<serde_json::Value, AppError> {
+        // AI_TODO: Why are we returning JSON here instead of a typed response? can we return a typed response?
         let client = self.aws_service.create_kinesis_client(profile, region).await?;
 
         let response = client.list_tags_for_stream()
@@ -398,6 +409,8 @@ impl KinesisControlPlane {
             .await
             .map_err(|e| AppError::ExternalService(format!("Failed to update stream mode: {}", e)))?;
 
+        // AI_TODO: Instead of returning a static response, we should call describe_stream to get the actual stream details
+
         Ok(json!({
             "stream_name": request.stream_name,
             "stream_mode": request.stream_mode_details.stream_mode,
@@ -421,6 +434,8 @@ impl KinesisControlPlane {
             .await
             .map_err(|e| AppError::ExternalService(format!("Failed to start stream encryption: {}", e)))?;
 
+        // AI_TODO: Instead of returning a static response, we should call describe_stream to get the actual stream details
+
         Ok(json!({
             "stream_name": request.stream_name,
             "encryption_type": request.encryption_type,
@@ -438,6 +453,8 @@ impl KinesisControlPlane {
             .send()
             .await
             .map_err(|e| AppError::ExternalService(format!("Failed to stop stream encryption: {}", e)))?;
+
+        // AI_TODO: Instead of returning a static response, we should call describe_stream to get the actual stream details
 
         Ok(json!({
             "stream_name": request.stream_name,

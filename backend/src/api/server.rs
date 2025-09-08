@@ -17,6 +17,7 @@ use crate::repositories::{
     data_source::DataSourceRepository,
     llm_provider::LlmProviderRepository,
     prompt_template::PromptTemplateRepository,
+    cost_analytics::CostAnalyticsRepository,
 };
 use crate::services::{
     aws::{AwsControlPlane, AwsCostService, AwsDataPlane, AwsService},
@@ -26,6 +27,7 @@ use crate::services::{
     llm_integration::LlmIntegrationService,
     data_collection::DataCollectionService,
     llm_analytics::LlmAnalyticsService,
+    aws_cost_analytics::AwsCostAnalyticsService,
 };
 use crate::controllers::{
     auth::AuthController,
@@ -79,6 +81,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     let data_source_repo = Arc::new(DataSourceRepository::new(db_connection.clone()));
     let llm_provider_repo = Arc::new(LlmProviderRepository::new(db_connection.clone(), config.clone()));
     let prompt_template_repo = Arc::new(PromptTemplateRepository::new((*db_connection).clone()));
+    let cost_analytics_repo = Arc::new(CostAnalyticsRepository::new(db_connection.clone()));
     
     // Initialize services
     let user_service = Arc::new(UserService::new(user_repo.clone()));
@@ -91,18 +94,24 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     let aws_cost_service = Arc::new(AwsCostService::new(aws_service.clone()));
     let cloudwatch_service = Arc::new(CloudWatchService::new(aws_service.clone()));
     let aws_account_service = Arc::new(AwsAccountService::new(aws_account_repo.clone(), aws_control_plane.clone()));
+    
+    // Initialize LLM Integration service first (needed by AWS analytics)
+    let llm_integration_service = Arc::new(LlmIntegrationService::new(
+        llm_provider_repo.clone(),
+        prompt_template_repo.clone(),
+    ));
+    
+    // AWS Analytics service with real LLM integration
     let aws_analytics_service = Arc::new(AwsAnalyticsService::new(
         config.clone(),
         aws_service.clone(),
         aws_data_plane.clone(),
         aws_resource_repo.clone(),
+        llm_integration_service.clone(),
+        cloudwatch_service.clone(),
     ));
 
     // New LLM Analytics platform services
-    let llm_integration_service = Arc::new(LlmIntegrationService::new(
-        llm_provider_repo.clone(),
-        prompt_template_repo.clone(),
-    ));
     let data_collection_service = Arc::new(DataCollectionService::new(
         data_source_repo.clone(),
         None, // CloudWatch client - will be initialized when needed
@@ -115,6 +124,22 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
         llm_provider_repo.clone(),
         prompt_template_repo.clone(),
     ));
+
+    // AWS Cost Analytics service
+    let aws_cost_analytics_service = {
+        let aws_sdk_config = aws_service.load_aws_sdk_config(None, "us-east-1").await
+            .unwrap_or_else(|e| {
+                tracing::warn!("Failed to load AWS SDK config for cost analytics: {}. Using default config.", e);
+                // Create a minimal default config
+                aws_config::SdkConfig::builder().build()
+            });
+        
+        Arc::new(AwsCostAnalyticsService::new(
+            &aws_sdk_config,
+            cost_analytics_repo.clone(),
+            llm_integration_service.clone(),
+        ))
+    };
 
     // Initialize Kubernetes Services
     let deployments_service = Arc::new(DeploymentsService::new());
@@ -187,6 +212,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             .app_data(web::Data::new(data_source_repo.clone()))
             .app_data(web::Data::new(llm_provider_repo.clone()))
             .app_data(web::Data::new(prompt_template_repo.clone()))
+            .app_data(web::Data::new(cost_analytics_repo.clone()))
             // Services
             .app_data(web::Data::new(user_service.clone()))
             .app_data(web::Data::new(kafka_service.clone()))
@@ -200,6 +226,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             .app_data(web::Data::new(llm_integration_service.clone()))
             .app_data(web::Data::new(data_collection_service.clone()))
             .app_data(web::Data::new(llm_analytics_service.clone()))
+            .app_data(web::Data::new(aws_cost_analytics_service.clone()))
             // Kubernetes Services
             .app_data(web::Data::new(deployments_service.clone()))
             .app_data(web::Data::new(stateful_sets_service.clone()))
@@ -243,6 +270,9 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
                 routes::prompt_template::configure(cfg_param, prompt_template_controller.clone());
                 routes::query_template::configure(cfg_param);
                 routes::llm_analytics::configure(cfg_param, llm_analytics_controller.clone());
+                
+                info!("Registering AWS Cost Analytics routes");
+                routes::cost_analytics::configure_routes(cfg_param);
                 
                 info!("Registering other general routes");
                 // Pass Arc<DatabaseConnection> to the general routes::configure function

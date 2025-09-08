@@ -15,7 +15,10 @@ use crate::services::analytics::aws_analytics::metrics::MetricsAnalyzer;
 use crate::services::analytics::aws_analytics::questions::QuestionGenerator;
 use crate::services::analytics::aws_analytics::resources::*;
 use crate::services::analytics::cloudwatch_analytics::{
-    CloudWatchAnalyzer, KinesisAnalyzer, SqsAnalyzer, RdsAnalyzer
+    CloudWatchAnalyzer, 
+    KinesisAnalyzer as CloudWatchKinesisAnalyzer, 
+    SqsAnalyzer, 
+    RdsAnalyzer
 };
 
 pub struct AwsAnalyticsService {
@@ -32,14 +35,21 @@ impl AwsAnalyticsService {
         aws_service: Arc<AwsService>,
         aws_data_plane: Arc<AwsDataPlane>,
         aws_resource_repo: Arc<AwsResourceRepository>,
+        llm_integration_service: Arc<crate::services::llm_integration::LlmIntegrationService>,
+        cloudwatch_service: Arc<crate::services::aws::aws_data_plane::cloudwatch::CloudWatchService>,
     ) -> Self {
-        // TODO: Initialize CloudWatch analyzer when LLM services are properly set up
+        // Initialize CloudWatch analyzer with real LLM services
+        let cloudwatch_analyzer = Some(CloudWatchAnalyzer::new(
+            llm_integration_service,
+            cloudwatch_service,
+        ));
+        
         Self {
             config,
             aws_service,
             aws_data_plane,
             aws_resource_repo,
-            cloudwatch_analyzer: None, // Will be initialized when needed
+            cloudwatch_analyzer,
         }
     }
 
@@ -78,13 +88,19 @@ impl AwsAnalyticsService {
         let analysis = match resource.resource_type.as_str() {
             "KinesisStream" | "Kinesis" => {
                 if let Some(ref analyzer) = self.cloudwatch_analyzer {
-                    KinesisAnalyzer::analyze_kinesis_stream(
+                    // Use LLM-powered CloudWatch analyzer for advanced workflows
+                    CloudWatchKinesisAnalyzer::analyze_kinesis_stream(
                         analyzer,
                         &resource,
                         &request.workflow,
                     ).await?
                 } else {
-                    "# CloudWatch Analyzer Not Available\n\nPlease configure LLM services to enable CloudWatch analysis.".to_string()
+                    // Fallback to metrics-based analyzer
+                    KinesisAnalyzer::analyze_kinesis_stream(
+                        &resource,
+                        &workflow,
+                        &metrics
+                    ).await?
                 }
             },
             "SQS" | "SQSQueue" => {

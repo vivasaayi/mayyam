@@ -11,6 +11,7 @@ use aws_sdk_sns::Client as SnsClient;
 use aws_sdk_lambda::Client as LambdaClient;
 use aws_sdk_elasticache::Client as ElasticacheClient;
 use aws_sdk_opensearch::Client as OpenSearchClient;
+use aws_sdk_sts::Client as StsClient;
 use async_trait::async_trait;
 
 use crate::{errors::AppError, config::AwsConfig};
@@ -62,6 +63,9 @@ pub trait AwsClientFactory {
 
     async fn create_opensearch_client(&self, profile: Option<&str>, region: &str) -> Result<OpenSearchClient, AppError>;
     async fn create_opensearch_client_with_auth(&self, profile: Option<&str>, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<OpenSearchClient, AppError>;
+
+    async fn create_sts_client(&self, profile: Option<&str>, region: &str) -> Result<StsClient, AppError>;
+    async fn create_sts_client_with_auth(&self, profile: Option<&str>, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<StsClient, AppError>;
 
     // Generic client creation method for any AWS service client that can be created from AwsConfig
     async fn create_client_with_auth<C>(&self, profile: Option<&str>, region: &str) -> Result<C, AppError> 

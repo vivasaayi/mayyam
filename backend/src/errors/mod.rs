@@ -58,6 +58,29 @@ pub enum AppError {
     InternalServerError(String),
 }
 
+impl AppError {
+    pub fn error_type(&self) -> &'static str {
+        match self {
+            AppError::Auth(_) => "AUTH_ERROR",
+            AppError::Database(_) => "DATABASE_ERROR",
+            AppError::Validation(_) => "VALIDATION_ERROR",
+            AppError::NotFound(_) => "NOT_FOUND",
+            AppError::Conflict(_) => "CONFLICT_ERROR",
+            AppError::BadRequest(_) => "BAD_REQUEST",
+            AppError::Config(_) => "CONFIG_ERROR",
+            AppError::Integration(_) => "INTEGRATION_ERROR",
+            AppError::ExternalService(_) => "EXTERNAL_SERVICE_ERROR",
+            AppError::CloudProvider(_) => "CLOUD_PROVIDER_ERROR",
+            AppError::Kubernetes(_) => "KUBERNETES_ERROR",
+            AppError::Kafka(_) => "KAFKA_ERROR",
+            AppError::AI(_) => "AI_ERROR",
+            AppError::Internal(_) => "INTERNAL_SERVER_ERROR",
+            AppError::ExternalServiceError(_) => "EXTERNAL_SERVICE_ERROR",
+            AppError::InternalServerError(_) => "INTERNAL_SERVER_ERROR",
+        }
+    }
+}
+
 impl ResponseError for AppError {
     fn error_response(&self) -> HttpResponse {
         match self {

@@ -73,6 +73,7 @@ aws-sdk-cloudwatchlogs = "0.28.0"
 aws-sdk-elasticache = "0.28"
 aws-sdk-opensearch = "0.28"
 aws-sdk-costexplorer = "0.28"
+aws-sdk-sts = "0.28"
 aws-types = "0.55"
 
 # Azure SDK
