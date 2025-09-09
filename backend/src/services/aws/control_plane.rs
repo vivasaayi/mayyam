@@ -63,17 +63,74 @@ impl AwsControlPlane {
     // Kinesis control plane operations
     pub async fn kinesis_create_stream(&self, profile: Option<&str>, region: &str, request: &crate::services::aws::aws_types::kinesis::KinesisCreateStreamRequest) -> Result<serde_json::Value, AppError> {
         let kinesis = KinesisControlPlane::new(self.aws_service.clone());
-        kinesis.create_stream(profile, region, request).await
+        let response = kinesis.create_stream(profile, region, request).await?;
+        Ok(serde_json::to_value(response)?)
     }
 
     pub async fn kinesis_delete_stream(&self, profile: Option<&str>, region: &str, request: &crate::services::aws::aws_types::kinesis::KinesisDeleteStreamRequest) -> Result<serde_json::Value, AppError> {
         let kinesis = KinesisControlPlane::new(self.aws_service.clone());
-        kinesis.delete_stream(profile, region, request).await
+        let response = kinesis.delete_stream(profile, region, request).await?;
+        Ok(serde_json::to_value(response)?)
     }
 
     pub async fn kinesis_describe_stream(&self, profile: Option<&str>, region: &str, request: &crate::services::aws::aws_types::kinesis::KinesisDescribeStreamRequest) -> Result<serde_json::Value, AppError> {
         let kinesis = KinesisControlPlane::new(self.aws_service.clone());
-        kinesis.describe_stream(profile, region, request).await
+        let response = kinesis.describe_stream(profile, region, request).await?;
+        Ok(serde_json::to_value(response)?)
+    }
+
+    pub async fn kinesis_list_streams(&self, profile: Option<&str>, region: &str, request: &crate::services::aws::aws_types::kinesis::KinesisListStreamsRequest) -> Result<serde_json::Value, AppError> {
+        let kinesis = KinesisControlPlane::new(self.aws_service.clone());
+        let response = kinesis.list_streams(profile, region, request).await?;
+        Ok(serde_json::to_value(response)?)
+    }
+
+    pub async fn kinesis_describe_limits(&self, profile: Option<&str>, region: &str) -> Result<serde_json::Value, AppError> {
+        let kinesis = KinesisControlPlane::new(self.aws_service.clone());
+        let response = kinesis.describe_limits(profile, region).await?;
+        Ok(serde_json::to_value(response)?)
+    }
+
+    pub async fn kinesis_describe_stream_summary(&self, profile: Option<&str>, region: &str, stream_name: &str) -> Result<serde_json::Value, AppError> {
+        let kinesis = KinesisControlPlane::new(self.aws_service.clone());
+        let response = kinesis.describe_stream_summary(profile, region, stream_name).await?;
+        Ok(serde_json::to_value(response)?)
+    }
+
+    pub async fn kinesis_update_shard_count(&self, profile: Option<&str>, region: &str, request: &crate::services::aws::aws_types::kinesis::KinesisUpdateShardCountRequest) -> Result<serde_json::Value, AppError> {
+        let kinesis = KinesisControlPlane::new(self.aws_service.clone());
+        let response = kinesis.update_shard_count(profile, region, request).await?;
+        Ok(serde_json::to_value(response)?)
+    }
+
+    pub async fn kinesis_increase_retention_period(&self, profile: Option<&str>, region: &str, request: &crate::services::aws::aws_types::kinesis::KinesisRetentionPeriodRequest) -> Result<serde_json::Value, AppError> {
+        let kinesis = KinesisControlPlane::new(self.aws_service.clone());
+        let response = kinesis.increase_stream_retention_period(profile, region, request).await?;
+        Ok(serde_json::to_value(response)?)
+    }
+
+    pub async fn kinesis_decrease_retention_period(&self, profile: Option<&str>, region: &str, request: &crate::services::aws::aws_types::kinesis::KinesisRetentionPeriodRequest) -> Result<serde_json::Value, AppError> {
+        let kinesis = KinesisControlPlane::new(self.aws_service.clone());
+        let response = kinesis.decrease_stream_retention_period(profile, region, request).await?;
+        Ok(serde_json::to_value(response)?)
+    }
+
+    pub async fn kinesis_enable_enhanced_monitoring(&self, profile: Option<&str>, region: &str, request: &crate::services::aws::aws_types::kinesis::KinesisEnhancedMonitoringRequest) -> Result<serde_json::Value, AppError> {
+        let kinesis = KinesisControlPlane::new(self.aws_service.clone());
+        let response = kinesis.enable_enhanced_monitoring(profile, region, request).await?;
+        Ok(serde_json::to_value(response)?)
+    }
+
+    pub async fn kinesis_disable_enhanced_monitoring(&self, profile: Option<&str>, region: &str, request: &crate::services::aws::aws_types::kinesis::KinesisEnhancedMonitoringRequest) -> Result<serde_json::Value, AppError> {
+        let kinesis = KinesisControlPlane::new(self.aws_service.clone());
+        let response = kinesis.disable_enhanced_monitoring(profile, region, request).await?;
+        Ok(serde_json::to_value(response)?)
+    }
+
+    pub async fn kinesis_list_shards(&self, profile: Option<&str>, region: &str, request: &crate::services::aws::aws_types::kinesis::KinesisListShardsRequest) -> Result<serde_json::Value, AppError> {
+        let kinesis = KinesisControlPlane::new(self.aws_service.clone());
+        let response = kinesis.list_shards(profile, region, request).await?;
+        Ok(serde_json::to_value(response)?)
     }
 
     // Sync all resources for an account and region

@@ -31,6 +31,7 @@ const LlmProviders = lazy(() => import("./pages/LlmProviders")); // Import for L
 const QueryTemplates = lazy(() => import("./pages/QueryTemplates")); // Import for Query Templates management page
 const PromptTemplates = lazy(() => import("./pages/PromptTemplates")); // Import for Prompt Templates management page
 const Configurations = lazy(() => import("./pages/Configurations")); // Import for Configurations management page
+const KinesisDashboard = lazy(() => import("./components/Kinesis/KinesisDashboard")); // Import for Kinesis Dashboard
 
 const App = () => {
   const { isAuthenticated, isLoading } = useAuth();
@@ -70,6 +71,7 @@ const App = () => {
             <Route path="query-templates" element={<QueryTemplates />} /> {/* Route for Query Templates management page */}
             <Route path="prompt-templates" element={<PromptTemplates />} /> {/* Route for Prompt Templates management page */}
             <Route path="configurations" element={<Configurations />} /> {/* Route for Configurations management page */}
+            <Route path="kinesis" element={<KinesisDashboard />} /> {/* Route for Kinesis Dashboard */}
             <Route path="*" element={<NotFound />} />
           </Route>
         </Route>

@@ -16,7 +16,12 @@ use crate::services::aws::aws_data_plane::sqs_data_plane::SqsDataPlane;
 use crate::services::aws::aws_types::dynamodb::{DynamoDBGetItemRequest, DynamoDBPutItemRequest, DynamoDBQueryRequest};
 use crate::services::aws::aws_types::sqs::{SqsReceiveMessageRequest, SqsSendMessageRequest};
 use crate::services::aws::aws_data_plane::dynamodb_data_plane::DynamoDBDataPlane;
-use crate::services::aws::aws_types::kinesis::{KinesisPutRecordRequest, KinesisCreateStreamRequest, KinesisDeleteStreamRequest, KinesisDescribeStreamRequest};
+use crate::services::aws::aws_types::kinesis::{
+    KinesisPutRecordRequest, KinesisCreateStreamRequest, KinesisDeleteStreamRequest, 
+    KinesisDescribeStreamRequest, KinesisListStreamsRequest, KinesisUpdateShardCountRequest,
+    KinesisRetentionPeriodRequest, KinesisEnhancedMonitoringRequest, KinesisListShardsRequest,
+    KinesisPutRecordsRequest, KinesisGetRecordsRequest, KinesisGetShardIteratorRequest
+};
 use crate::services::aws::aws_data_plane::kinesis_data_plane::KinesisDataPlane;
 use crate::services::aws::aws_control_plane::kinesis_control_plane::KinesisControlPlane;
 use crate::services::aws::aws_types::s3::{S3GetObjectRequest, S3PutObjectRequest};
@@ -342,6 +347,162 @@ pub async fn kinesis_describe_stream(
 
     let response = aws_control_plane.kinesis_describe_stream(profile_opt, &region, &req).await?;
 
+    Ok(HttpResponse::Ok().json(response))
+}
+
+// Additional Kinesis Control Plane Endpoints
+pub async fn kinesis_list_streams(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisListStreamsRequest>,
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
+    
+    let response = aws_control_plane.kinesis_list_streams(profile_opt, &region, &req).await?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn kinesis_describe_limits(
+    path: web::Path<(String, String)>,
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
+    
+    let response = aws_control_plane.kinesis_describe_limits(profile_opt, &region).await?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn kinesis_describe_stream_summary(
+    path: web::Path<(String, String, String)>, // (profile, region, stream_name)
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region, stream_name) = path.into_inner();
+    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
+    
+    let response = aws_control_plane.kinesis_describe_stream_summary(profile_opt, &region, &stream_name).await?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn kinesis_update_shard_count(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisUpdateShardCountRequest>,
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
+    
+    let response = aws_control_plane.kinesis_update_shard_count(profile_opt, &region, &req).await?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn kinesis_increase_retention_period(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisRetentionPeriodRequest>,
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
+    
+    let response = aws_control_plane.kinesis_increase_retention_period(profile_opt, &region, &req).await?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn kinesis_decrease_retention_period(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisRetentionPeriodRequest>,
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
+    
+    let response = aws_control_plane.kinesis_decrease_retention_period(profile_opt, &region, &req).await?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn kinesis_enable_enhanced_monitoring(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisEnhancedMonitoringRequest>,
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
+    
+    let response = aws_control_plane.kinesis_enable_enhanced_monitoring(profile_opt, &region, &req).await?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn kinesis_disable_enhanced_monitoring(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisEnhancedMonitoringRequest>,
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
+    
+    let response = aws_control_plane.kinesis_disable_enhanced_monitoring(profile_opt, &region, &req).await?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn kinesis_list_shards(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisListShardsRequest>,
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
+    
+    let response = aws_control_plane.kinesis_list_shards(profile_opt, &region, &req).await?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+// Kinesis Data Plane Endpoints
+pub async fn kinesis_put_records(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisPutRecordsRequest>,
+    aws_data_plane: web::Data<Arc<AwsDataPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
+    
+    let response = aws_data_plane.kinesis_put_records(profile_opt, &region, &req).await?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn kinesis_get_records(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisGetRecordsRequest>,
+    aws_data_plane: web::Data<Arc<AwsDataPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
+    
+    let response = aws_data_plane.kinesis_get_records(profile_opt, &region, &req).await?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn kinesis_get_shard_iterator(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisGetShardIteratorRequest>,
+    aws_data_plane: web::Data<Arc<AwsDataPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
+    
+    let response = aws_data_plane.kinesis_get_shard_iterator(profile_opt, &region, &req).await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
