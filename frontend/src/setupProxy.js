@@ -1,9 +1,13 @@
 const { createProxyMiddleware } = require('http-proxy-middleware');
 
 module.exports = function(app) {
-  // Determine the backend URL based on environment
-  const backendUrl = process.env.REACT_APP_API_URL || 'http://backend-dev:8080';
-  
+  // Determine the backend URL based on environment variables
+  const backendHost = process.env.REACT_APP_BACKEND_HOST || 'localhost';
+  const backendPort = process.env.REACT_APP_BACKEND_PORT || '3000';
+  const backendUrl = `http://${backendHost}:${backendPort}`;
+
+  console.log(`Frontend proxy configured to connect to backend at: ${backendUrl}`);
+
   app.use(
     '/api',
     createProxyMiddleware({

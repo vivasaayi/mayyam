@@ -5,6 +5,11 @@
   "description": "Mayyam - A comprehensive toolbox for DevOps and SRE engineers",
   "scripts": {
     "start": "react-scripts start",
+    "start:port": "PORT=$PORT react-scripts start",
+    "start:backend": "REACT_APP_BACKEND_HOST=localhost REACT_APP_BACKEND_PORT=$BACKEND_PORT react-scripts start",
+    "start:dev": "REACT_APP_BACKEND_HOST=localhost REACT_APP_BACKEND_PORT=3000 react-scripts start",
+    "start:dev:3005": "REACT_APP_BACKEND_HOST=localhost REACT_APP_BACKEND_PORT=3005 react-scripts start",
+    "start:custom": "REACT_APP_BACKEND_HOST=localhost REACT_APP_BACKEND_PORT=${BACKEND_PORT:-3000} PORT=${FRONTEND_PORT:-3001} react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
