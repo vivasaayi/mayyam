@@ -7,6 +7,9 @@ pub mod nodes_service;
 pub mod namespaces_service;
 pub mod persistent_volume_claims_service;
 pub mod persistent_volumes_service;
+pub mod client;
+pub mod configmaps_service;
+pub mod secrets_service;
 
 
 pub mod prelude {

@@ -1,12 +1,14 @@
-use kube::{api::{DeleteParams, ListParams, LogParams, ObjectMeta}, config::{KubeConfigOptions, Kubeconfig, Config as KubeConfig}, Api, Client, ResourceExt};
+use kube::{api::{DeleteParams, ListParams, LogParams, ObjectMeta}, Api, Client, ResourceExt};
 use k8s_openapi::api::core::v1::{Pod, Event, PodSpec, PodStatus};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, error};
-use std::sync::Arc;
 use chrono::Utc;
 use std::collections::BTreeMap;
 
 use crate::{models::cluster::KubernetesClusterConfig, errors::AppError};
+use crate::services::kubernetes::client::ClientFactory;
+use kube::api::AttachParams;
+use tokio::io::AsyncReadExt;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PodDetail { 
@@ -23,6 +25,20 @@ impl From<Pod> for PodDetail {
             status: pod.status,
         }
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ExecOptions {
+    pub command: Vec<String>,
+    pub container: Option<String>,
+    pub tty: Option<bool>,
+    pub stdin: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ExecResult {
+    pub stdout: String,
+    pub stderr: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -124,20 +140,7 @@ impl PodService {
     }
 
     async fn get_kube_client(cluster_config: &KubernetesClusterConfig) -> Result<Client, AppError> {
-        let kubeconfig = if let Some(path) = &cluster_config.kube_config_path {
-            Kubeconfig::read_from(path).map_err(|e| AppError::ExternalService(format!("Failed to read kubeconfig from path: {}", e)))?
-        } else {
-            let infer_config = kube::Config::infer().await.map_err(|e| AppError::ExternalService(format!("Failed to infer Kubernetes config: {}", e)))?;
-            return Client::try_from(infer_config).map_err(|e| AppError::ExternalService(format!("Failed to create Kubernetes client from inferred config: {}", e)));
-        };
-        
-        let client_config = KubeConfig::from_custom_kubeconfig(kubeconfig, &KubeConfigOptions {
-            context: cluster_config.kube_context.clone(),
-            cluster: None,
-            user: None,
-        }).await.map_err(|e| AppError::ExternalService(format!("Failed to create Kubernetes client config: {}", e)))?;
-
-        Client::try_from(client_config).map_err(|e| AppError::ExternalService(format!("Failed to create Kubernetes client: {}", e)))
+        ClientFactory::get_client(cluster_config).await
     }
 
     pub async fn list_pods(
@@ -279,6 +282,45 @@ impl PodService {
                 Err(AppError::Kubernetes(e.to_string()))
             }
         }
+    }
+
+    pub async fn exec_command(
+        &self,
+        cluster_config: &KubernetesClusterConfig,
+        namespace: &str,
+        pod_name: &str,
+        opts: ExecOptions,
+    ) -> Result<ExecResult, AppError> {
+        let client = Self::get_kube_client(cluster_config).await?;
+        let api: Api<Pod> = Api::namespaced(client, namespace);
+
+        let mut ap = AttachParams::default()
+            .stdout(true)
+            .stderr(true)
+            .stdin(opts.stdin.unwrap_or(false))
+            .tty(opts.tty.unwrap_or(false));
+        if let Some(c) = opts.container.clone() { ap = ap.container(c.as_str()); }
+
+    let cmd: Vec<String> = opts.command.clone();
+    let mut attached = api.exec(pod_name, cmd.as_slice(), &ap).await
+            .map_err(|e| AppError::Kubernetes(e.to_string()))?;
+
+        let mut stdout_buf: Vec<u8> = Vec::new();
+        let mut stderr_buf: Vec<u8> = Vec::new();
+
+        if let Some(mut out) = attached.stdout().take() {
+            out.read_to_end(&mut stdout_buf).await
+                .map_err(|e| AppError::Kubernetes(format!("Failed reading stdout: {}", e)))?;
+        }
+        if let Some(mut err) = attached.stderr().take() {
+            err.read_to_end(&mut stderr_buf).await
+                .map_err(|e| AppError::Kubernetes(format!("Failed reading stderr: {}", e)))?;
+        }
+
+        Ok(ExecResult {
+            stdout: String::from_utf8_lossy(&stdout_buf).to_string(),
+            stderr: String::from_utf8_lossy(&stderr_buf).to_string(),
+        })
     }
 }
 

@@ -126,6 +126,8 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     let namespaces_service = Arc::new(NamespacesService::new());
     let persistent_volume_claims_service = Arc::new(PersistentVolumeClaimsService::new());
     let persistent_volumes_service = Arc::new(PersistentVolumesService::new());
+    let configmaps_service = Arc::new(crate::services::kubernetes::configmaps_service::ConfigMapsService::new());
+    let secrets_service = Arc::new(crate::services::kubernetes::secrets_service::SecretsService::new());
     
     // Initialize controllers
     let auth_controller = Arc::new(AuthController::new(user_service.clone(), config.clone()));
@@ -210,6 +212,8 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             .app_data(web::Data::new(namespaces_service.clone()))
             .app_data(web::Data::new(persistent_volume_claims_service.clone()))
             .app_data(web::Data::new(persistent_volumes_service.clone()))
+            .app_data(web::Data::new(configmaps_service.clone()))
+            .app_data(web::Data::new(secrets_service.clone()))
             // Controllers
             .app_data(web::Data::new(auth_controller.clone()))
             .app_data(web::Data::new(aws_analytics_controller.clone()))
