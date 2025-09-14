@@ -8,7 +8,7 @@ pub trait DimensionValues {
     async fn get_dimension_values(
         &self,
         account_id: &str,
-        profile: Option<&str>,
+        aws_account_dto: AwsAccountDto,
         region: &str,
         dimension: &str,
         start_date: &str,
@@ -18,7 +18,7 @@ pub trait DimensionValues {
     async fn get_available_dimensions(
         &self,
         account_id: &str,
-        profile: Option<&str>,
+        aws_account_dto: AwsAccountDto,
         region: &str,
     ) -> Result<Vec<String>, AppError>;
 }
@@ -26,54 +26,43 @@ pub trait DimensionValues {
 impl DimensionValues for AwsCostService {
     async fn get_dimension_values(
         &self,
-        _account_id: &str,
-        profile: Option<&str>,
+        account_id: &str,
+        aws_account_dto: AwsAccountDto,
         region: &str,
         dimension: &str,
         start_date: &str,
         end_date: &str,
     ) -> Result<Value, AppError> {
-        let client = self.create_client(profile, region).await?;
+        let client = self.create_client(aws_account_dto, region).await?;
         
         let time_period = DateInterval::builder()
             .start(start_date)
             .end(end_date)
-            .build();
+            .build()
+            .map_err(|e| AppError::ExternalService(format!("Failed to build time period: {}", e)))?;
         
         debug!("Fetching dimension values for {}", dimension);
         
-        let response = match client.get_dimension_values()
+        let response = client.get_dimension_values()
             .time_period(time_period)
             .dimension(aws_sdk_costexplorer::types::Dimension::from(dimension))
             .context(Context::CostAndUsage)
             .send()
-            .await {
-            Ok(resp) => resp,
-            Err(e) => {
-                error!("Error getting dimension values: {:?}", e);
-                return Err(AppError::ExternalService(format!("Failed to get dimension values: {}", e)));
-            }
-        };
+            .await
+            .map_err(|e| AppError::ExternalService(format!("Failed to get dimension values: {}", e)))?;
         
         let mut result = json!({
             "dimension": dimension,
-            "account_id": _account_id,
+            "account_id": account_id,
             "values": []
         });
         
-        let values = result["values"].as_array_mut().unwrap();
-        
-        for dimension_value in response.dimension_values().unwrap_or_default() {
-            values.push(json!({
-                "value": dimension_value.value().unwrap_or_default(),
-                "attributes": dimension_value.attributes().map(|attrs| {
-                    let mut map = json!({});
-                    for (k, v) in attrs {
-                        map[k] = json!(v);
-                    }
-                    map
-                }).unwrap_or_else(|| json!({}))
-            }));
+        for dimension_value in response.dimension_values().as_deref().unwrap_or(&[]) {
+            if let Some(value) = dimension_value.value() {
+                if let Some(values) = result["values"].as_array_mut() {
+                    values.push(json!(value));
+                }
+            }
         }
         
         Ok(result)
@@ -82,7 +71,7 @@ impl DimensionValues for AwsCostService {
     async fn get_available_dimensions(
         &self,
         _account_id: &str,
-        _profile: Option<&str>,
+        _aws_account_dto: AwsAccountDto,
         _region: &str,
     ) -> Result<Vec<String>, AppError> {
         // AWS Cost Explorer supports these standard dimensions

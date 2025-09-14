@@ -37,8 +37,8 @@ impl KinesisControlPlane {
         Self { aws_service }
     }
 
-    pub async fn sync_streams(&self, account_id: &str, aws_account_dto: &AwsAccountDto, region: &str) -> Result<Vec<AwsResourceModel>, AppError> {
-        let client: KinesisClient = self.aws_service.create_kinesis_client(aws_account_dto, region).await?;
+    pub async fn sync_streams(&self, account_id: &str, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
+        let client: KinesisClient = self.aws_service.create_kinesis_client(aws_account_dto).await?;
         // List streams from AWS
         let response = client.list_streams()
             .send()
@@ -63,7 +63,7 @@ impl KinesisControlPlane {
             // Get tags for the stream
             let arn = format!("arn:aws:kinesis:{}:{}:stream/{}", region, account_id, stream_name);
 
-            let tags = self.list_tags_for_stream(aws_account_dto, region, stream_name).await?;
+            let tags = self.list_tags_for_stream(aws_account_dto, stream_name).await?;
 
             // If no name tag was found, use the stream name as name
             // if name.is_none() {
@@ -150,8 +150,8 @@ impl KinesisControlPlane {
         Ok(streams.into_iter().map(|s| s.into()).collect())
     }
 
-    pub async fn return_current_status_as_response(&self, aws_account_dto: &AwsAccountDto, region: &str, stream_name: &str) -> Result<KinesisOperationResponse, AppError> {
-        let stream_details = self.describe_stream(aws_account_dto, region,
+    pub async fn return_current_status_as_response(&self, aws_account_dto: &AwsAccountDto, stream_name: &str) -> Result<KinesisOperationResponse, AppError> {
+        let stream_details = self.describe_stream(aws_account_dto,
             &KinesisDescribeStreamRequest {
                 stream_name: stream_name.to_string()
             }).await
@@ -184,8 +184,8 @@ impl KinesisControlPlane {
         self.return_current_status_as_response(aws_account_dto, region, &request.stream_name).await
     }
 
-    pub async fn delete_stream(&self, aws_account_dto: &AwsAccountDto, region: &str, request: &KinesisDeleteStreamRequest) -> Result<KinesisOperationResponse, AppError> {
-        let client = self.aws_service.create_kinesis_client(aws_account_dto, region).await?;
+    pub async fn delete_stream(&self, aws_account_dto: &AwsAccountDto, request: &KinesisDeleteStreamRequest) -> Result<KinesisOperationResponse, AppError> {
+        let client = self.aws_service.create_kinesis_client(aws_account_dto).await?;
 
         client.delete_stream()
             .stream_name(&request.stream_name)
@@ -193,11 +193,11 @@ impl KinesisControlPlane {
             .await
             .map_err(|e| AppError::ExternalService(format!("Failed to delete Kinesis stream: {}", e)))?;
 
-        self.return_current_status_as_response(aws_account_dto, region, &request.stream_name).await
+        self.return_current_status_as_response(aws_account_dto, &request.stream_name).await
     }
 
-    pub async fn describe_stream(&self, aws_account_dto: &AwsAccountDto, region: &str, request: &KinesisDescribeStreamRequest) -> Result<StreamDescription, AppError> {
-        let client = self.aws_service.create_kinesis_client(aws_account_dto, region).await?;
+    pub async fn describe_stream(&self, aws_account_dto: &AwsAccountDto, request: &KinesisDescribeStreamRequest) -> Result<StreamDescription, AppError> {
+        let client = self.aws_service.create_kinesis_client(aws_account_dto).await?;
 
         let response = client.describe_stream()
             .stream_name(&request.stream_name)
@@ -208,8 +208,8 @@ impl KinesisControlPlane {
         Ok(response.stream_description.unwrap())
     }
 
-    pub async fn list_streams(&self, aws_account_dto: &AwsAccountDto, region: &str, request: &KinesisListStreamsRequest) -> Result<KinesisListStreamsResponse, AppError> {
-        let client = self.aws_service.create_kinesis_client(aws_account_dto, region).await?;
+    pub async fn list_streams(&self, aws_account_dto: &AwsAccountDto, request: &KinesisListStreamsRequest) -> Result<KinesisListStreamsResponse, AppError> {
+        let client = self.aws_service.create_kinesis_client(aws_account_dto).await?;
 
         let mut list_builder = client.list_streams();
 
@@ -235,8 +235,8 @@ impl KinesisControlPlane {
         })
     }
 
-    pub async fn update_shard_count(&self, aws_account_dto: &AwsAccountDto, region: &str, request: &KinesisUpdateShardCountRequest) -> Result<KinesisOperationResponse, AppError> {
-        let client = self.aws_service.create_kinesis_client(aws_account_dto, region).await?;
+    pub async fn update_shard_count(&self, aws_account_dto: &AwsAccountDto, request: &KinesisUpdateShardCountRequest) -> Result<KinesisOperationResponse, AppError> {
+        let client = self.aws_service.create_kinesis_client(aws_account_dto).await?;
 
         let scaling_type = match request.scaling_type.as_str() {
             "UNIFORM_SCALING" => aws_sdk_kinesis::types::ScalingType::UniformScaling,
@@ -255,11 +255,11 @@ impl KinesisControlPlane {
         details.insert("target_shard_count".to_string(), serde_json::json!(request.target_shard_count));
         details.insert("scaling_type".to_string(), serde_json::json!(request.scaling_type));
 
-        self.return_current_status_as_response(aws_account_dto, region, &request.stream_name).await
+        self.return_current_status_as_response(aws_account_dto, &request.stream_name).await
     }
 
-    pub async fn add_tags_to_stream(&self, aws_account_dto: &AwsAccountDto, region: &str, request: &KinesisAddTagsRequest) -> Result<KinesisTagsResponse, AppError> {
-        let client = self.aws_service.create_kinesis_client(aws_account_dto, region).await?;
+    pub async fn add_tags_to_stream(&self, aws_account_dto: &AwsAccountDto, request: &KinesisAddTagsRequest) -> Result<KinesisTagsResponse, AppError> {
+        let client = self.aws_service.create_kinesis_client(aws_account_dto).await?;
 
         client.add_tags_to_stream()
             .stream_name(&request.stream_name)
@@ -274,8 +274,8 @@ impl KinesisControlPlane {
         })
     }
 
-    pub async fn remove_tags_from_stream(&self, aws_account_dto: &AwsAccountDto, region: &str, request: &KinesisRemoveTagsRequest) -> Result<KinesisOperationResponse, AppError> {
-        let client = self.aws_service.create_kinesis_client(aws_account_dto, region).await?;
+    pub async fn remove_tags_from_stream(&self, aws_account_dto: &AwsAccountDto, request: &KinesisRemoveTagsRequest) -> Result<KinesisOperationResponse, AppError> {
+        let client = self.aws_service.create_kinesis_client(aws_account_dto).await?;
 
         client.remove_tags_from_stream()
             .stream_name(&request.stream_name)
@@ -296,8 +296,8 @@ impl KinesisControlPlane {
         })
     }
 
-    pub async fn list_tags_for_stream(&self, aws_account_dto: &AwsAccountDto, region: &str, stream_name: &str) -> Result<KinesisTagsResponse, AppError> {
-        let client = self.aws_service.create_kinesis_client(aws_account_dto, region).await?;
+    pub async fn list_tags_for_stream(&self, aws_account_dto: &AwsAccountDto, stream_name: &str) -> Result<KinesisTagsResponse, AppError> {
+        let client = self.aws_service.create_kinesis_client(aws_account_dto).await?;
 
         let response = client.list_tags_for_stream()
             .stream_name(stream_name)
@@ -318,8 +318,8 @@ impl KinesisControlPlane {
         })
     }
 
-    pub async fn update_stream_mode(&self, aws_account_dto: &AwsAccountDto, region: &str, request: &KinesisUpdateStreamModeRequest) -> Result<KinesisOperationResponse, AppError> {
-        let client = self.aws_service.create_kinesis_client(aws_account_dto, region).await?;
+    pub async fn update_stream_mode(&self, aws_account_dto: &AwsAccountDto, request: &KinesisUpdateStreamModeRequest) -> Result<KinesisOperationResponse, AppError> {
+        let client = self.aws_service.create_kinesis_client(aws_account_dto).await?;
 
         let stream_mode = match request.stream_mode_details.stream_mode.as_str() {
             "PROVISIONED" => aws_sdk_kinesis::types::StreamMode::Provisioned,
@@ -343,11 +343,11 @@ impl KinesisControlPlane {
         let mut details = std::collections::HashMap::new();
         details.insert("stream_mode".to_string(), serde_json::json!(request.stream_mode_details.stream_mode));
 
-        self.return_current_status_as_response(aws_account_dto, region, &request.stream_name).await
+        self.return_current_status_as_response(aws_account_dto, &request.stream_name).await
     }
 
-    pub async fn start_stream_encryption(&self, aws_account_dto: &AwsAccountDto, region: &str, request: &KinesisStartEncryptionRequest) -> Result<KinesisOperationResponse, AppError> {
-        let client = self.aws_service.create_kinesis_client(aws_account_dto, region).await?;
+    pub async fn start_stream_encryption(&self, aws_account_dto: &AwsAccountDto, request: &KinesisStartEncryptionRequest) -> Result<KinesisOperationResponse, AppError> {
+        let client = self.aws_service.create_kinesis_client(aws_account_dto).await?;
 
         let encryption_type = match request.encryption_type.as_str() {
             "KMS" => aws_sdk_kinesis::types::EncryptionType::Kms,
@@ -374,8 +374,8 @@ impl KinesisControlPlane {
         })
     }
 
-    pub async fn stop_stream_encryption(&self, aws_account_dto: &AwsAccountDto, region: &str, request: &KinesisStopEncryptionRequest) -> Result<KinesisOperationResponse, AppError> {
-        let client = self.aws_service.create_kinesis_client(aws_account_dto, region).await?;
+    pub async fn stop_stream_encryption(&self, aws_account_dto: &AwsAccountDto, request: &KinesisStopEncryptionRequest) -> Result<KinesisOperationResponse, AppError> {
+        let client = self.aws_service.create_kinesis_client(aws_account_dto).await?;
 
         client.stop_stream_encryption()
             .stream_name(&request.stream_name)
@@ -384,12 +384,12 @@ impl KinesisControlPlane {
             .await
             .map_err(|e| AppError::ExternalService(format!("Failed to stop stream encryption: {}", e)))?;
 
-        self.return_current_status_as_response(aws_account_dto, region, &request.stream_name).await
+        self.return_current_status_as_response(aws_account_dto, &request.stream_name).await
     }
 
     // Additional Control Plane Operations
-    pub async fn describe_limits(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<KinesisLimitsResponse, AppError> {
-        let client = self.aws_service.create_kinesis_client(aws_account_dto, region).await?;
+    pub async fn describe_limits(&self, aws_account_dto: &AwsAccountDto) -> Result<KinesisLimitsResponse, AppError> {
+        let client = self.aws_service.create_kinesis_client(aws_account_dto).await?;
 
         let response = client.describe_limits()
             .send()
@@ -404,8 +404,8 @@ impl KinesisControlPlane {
         })
     }
 
-    pub async fn increase_stream_retention_period(&self, aws_account_dto: &AwsAccountDto, region: &str, request: &KinesisRetentionPeriodRequest) -> Result<KinesisOperationResponse, AppError> {
-        let client = self.aws_service.create_kinesis_client(aws_account_dto, region).await?;
+    pub async fn increase_stream_retention_period(&self, aws_account_dto: &AwsAccountDto, request: &KinesisRetentionPeriodRequest) -> Result<KinesisOperationResponse, AppError> {
+        let client = self.aws_service.create_kinesis_client(aws_account_dto).await?;
 
         client.increase_stream_retention_period()
             .stream_name(&request.stream_name)
@@ -414,11 +414,11 @@ impl KinesisControlPlane {
             .await
             .map_err(|e| AppError::ExternalService(format!("Failed to increase retention period: {}", e)))?;
 
-        self.return_current_status_as_response(aws_account_dto, region, &request.stream_name).await
+        self.return_current_status_as_response(aws_account_dto, &request.stream_name).await
     }
 
-    pub async fn decrease_stream_retention_period(&self, aws_account_dto: &AwsAccountDto, region: &str, request: &KinesisRetentionPeriodRequest) -> Result<KinesisOperationResponse, AppError> {
-        let client = self.aws_service.create_kinesis_client(aws_account_dto, region).await?;
+    pub async fn decrease_stream_retention_period(&self, aws_account_dto: &AwsAccountDto, request: &KinesisRetentionPeriodRequest) -> Result<KinesisOperationResponse, AppError> {
+        let client = self.aws_service.create_kinesis_client(aws_account_dto).await?;
 
         client.decrease_stream_retention_period()
             .stream_name(&request.stream_name)
@@ -427,11 +427,11 @@ impl KinesisControlPlane {
             .await
             .map_err(|e| AppError::ExternalService(format!("Failed to decrease retention period: {}", e)))?;
 
-        self.return_current_status_as_response(aws_account_dto, region, &request.stream_name).await
+        self.return_current_status_as_response(aws_account_dto, &request.stream_name).await
     }
 
-    pub async fn enable_enhanced_monitoring(&self, aws_account_dto: &AwsAccountDto, region: &str, request: &KinesisEnhancedMonitoringRequest) -> Result<KinesisEnhancedMonitoringResponse, AppError> {
-        let client = self.aws_service.create_kinesis_client(aws_account_dto, region).await?;
+    pub async fn enable_enhanced_monitoring(&self, aws_account_dto: &AwsAccountDto, request: &KinesisEnhancedMonitoringRequest) -> Result<KinesisEnhancedMonitoringResponse, AppError> {
+        let client = self.aws_service.create_kinesis_client(aws_account_dto).await?;
 
         let shard_level_metrics: Vec<aws_sdk_kinesis::types::MetricsName> = request.shard_level_metrics
             .iter()
@@ -463,8 +463,8 @@ impl KinesisControlPlane {
         })
     }
 
-    pub async fn disable_enhanced_monitoring(&self, aws_account_dto: &AwsAccountDto, region: &str, request: &KinesisEnhancedMonitoringRequest) -> Result<KinesisEnhancedMonitoringResponse, AppError> {
-        let client = self.aws_service.create_kinesis_client(aws_account_dto, region).await?;
+    pub async fn disable_enhanced_monitoring(&self, aws_account_dto: &AwsAccountDto, request: &KinesisEnhancedMonitoringRequest) -> Result<KinesisEnhancedMonitoringResponse, AppError> {
+        let client = self.aws_service.create_kinesis_client(aws_account_dto).await?;
 
         let shard_level_metrics: Vec<aws_sdk_kinesis::types::MetricsName> = request.shard_level_metrics
             .iter()
@@ -496,8 +496,8 @@ impl KinesisControlPlane {
         })
     }
 
-    pub async fn list_shards(&self, aws_account_dto: &AwsAccountDto, region: &str, request: &KinesisListShardsRequest) -> Result<KinesisListShardsResponse, AppError> {
-        let client = self.aws_service.create_kinesis_client(aws_account_dto, region).await?;
+    pub async fn list_shards(&self, aws_account_dto: &AwsAccountDto, request: &KinesisListShardsRequest) -> Result<KinesisListShardsResponse, AppError> {
+        let client = self.aws_service.create_kinesis_client(aws_account_dto).await?;
 
         let mut list_shards_request = client.list_shards();
 

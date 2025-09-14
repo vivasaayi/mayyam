@@ -130,60 +130,58 @@ impl CostAndUsage for AwsCostService {
         let mut results = Vec::new();
         
         // Iterate over the results by time
-        if let Some(results_by_time) = response.results_by_time() {
-            for result_by_time in results_by_time {
-                let mut result_json = json!({});
-                
-                // Handle time period
-                if let Some(time_period) = result_by_time.time_period() {
-                    result_json["timePeriod"] = json!({
-                        "start": time_period.start().unwrap_or_default(),
-                        "end": time_period.end().unwrap_or_default(),
+        for result_by_time in response.results_by_time() {
+            let mut result_json = json!({});
+            
+            // Handle time period
+            if let Some(time_period) = result_by_time.time_period() {
+                result_json["timePeriod"] = json!({
+                    "start": time_period.start().unwrap_or_default(),
+                    "end": time_period.end().unwrap_or_default(),
+                });
+            }
+            
+            // Handle totals
+            if let Some(total) = result_by_time.total() {
+                let mut total_json = json!({});
+                for (metric_name, metric_value) in total {
+                    total_json[metric_name] = json!({
+                        "amount": metric_value.amount().unwrap_or("0"),
+                        "unit": metric_value.unit().unwrap_or("USD")
                     });
                 }
-                
-                // Handle totals
-                if let Some(total) = result_by_time.total() {
-                    let mut total_json = json!({});
-                    for (metric_name, metric_value) in total {
-                        total_json[metric_name] = json!({
-                            "amount": metric_value.amount().unwrap_or("0"),
-                            "unit": metric_value.unit().unwrap_or("USD")
-                        });
-                    }
-                    result_json["total"] = total_json;
-                }
-                
-                // Handle groups
-                if let Some(groups) = result_by_time.groups() {
-                    let mut groups_json = Vec::new();
-                    for group in groups {
-                        let mut group_json = json!({});
-                        
-                        // Handle keys
-                        if let Some(keys) = group.keys() {
-                            group_json["keys"] = json!(keys);
-                        }
-                        
-                        // Handle metrics
-                        if let Some(metrics) = group.metrics() {
-                            let mut metrics_json = json!({});
-                            for (metric_name, metric_value) in metrics {
-                                metrics_json[metric_name] = json!({
-                                    "amount": metric_value.amount().unwrap_or("0"),
-                                    "unit": metric_value.unit().unwrap_or("USD")
-                                });
-                            }
-                            group_json["metrics"] = metrics_json;
-                        }
-                        
-                        groups_json.push(group_json);
-                    }
-                    result_json["groups"] = json!(groups_json);
-                }
-                
-                results.push(result_json);
+                result_json["total"] = total_json;
             }
+            
+            // Handle groups
+            if let Some(groups) = result_by_time.groups() {
+                let mut groups_json = Vec::new();
+                for group in groups {
+                    let mut group_json = json!({});
+                    
+                    // Handle keys
+                    if let Some(keys) = group.keys() {
+                        group_json["keys"] = json!(keys);
+                    }
+                    
+                    // Handle metrics
+                    if let Some(metrics) = group.metrics() {
+                        let mut metrics_json = json!({});
+                        for (metric_name, metric_value) in metrics {
+                            metrics_json[metric_name] = json!({
+                                "amount": metric_value.amount().unwrap_or("0"),
+                                "unit": metric_value.unit().unwrap_or("USD")
+                            });
+                        }
+                        group_json["metrics"] = metrics_json;
+                    }
+                    
+                    groups_json.push(group_json);
+                }
+                result_json["groups"] = json!(groups_json);
+            }
+            
+            results.push(result_json);
         }
         
         Ok(json!({
@@ -195,14 +193,14 @@ impl CostAndUsage for AwsCostService {
     async fn get_cost_for_date(
         &self,
         account_id: &str,
-        profile: Option<&str>,
+        aws_account_dto: AwsAccountDto,
         region: &str,
         date: &str,
         group_by: Option<Vec<GroupDefinition>>,
     ) -> Result<Value, AppError> {
         self.get_cost_and_usage(
             account_id,
-            profile,
+            aws_account_dto,
             region,
             date,
             date,
@@ -215,7 +213,7 @@ impl CostAndUsage for AwsCostService {
     async fn get_cost_for_hour(
         &self,
         account_id: &str,
-        profile: Option<&str>,
+        aws_account_dto: AwsAccountDto,
         region: &str,
         date: &str,
         hour: u32,
@@ -223,7 +221,7 @@ impl CostAndUsage for AwsCostService {
     ) -> Result<Value, AppError> {
         // AWS Cost Explorer doesn't support hourly granularity directly
         // We'll get daily data and add a note about this limitation
-        let result = self.get_cost_for_date(account_id, profile, region, date, group_by).await?;
+        let result = self.get_cost_for_date(account_id, aws_account_dto, region, date, group_by).await?;
         
         let result_with_note = json!({
             "note": "AWS Cost Explorer does not support hourly granularity. Showing daily cost instead.",
@@ -237,7 +235,7 @@ impl CostAndUsage for AwsCostService {
     async fn get_cost_for_month(
         &self,
         account_id: &str,
-        profile: Option<&str>,
+        aws_account_dto: AwsAccountDto,
         region: &str,
         year: i32,
         month: u32,
@@ -248,7 +246,7 @@ impl CostAndUsage for AwsCostService {
         
         self.get_cost_and_usage(
             account_id,
-            profile,
+            aws_account_dto,
             region,
             &start_date,
             &end_date,
@@ -261,7 +259,7 @@ impl CostAndUsage for AwsCostService {
     async fn get_cost_for_preset(
         &self,
         account_id: &str,
-        profile: Option<&str>,
+        aws_account_dto: AwsAccountDto,
         region: &str,
         preset: DatePreset,
         group_by: Option<Vec<GroupDefinition>>,
@@ -270,7 +268,7 @@ impl CostAndUsage for AwsCostService {
         
         self.get_cost_and_usage(
             account_id,
-            profile,
+            aws_account_dto,
             region,
             &start_date,
             &end_date,
@@ -283,14 +281,14 @@ impl CostAndUsage for AwsCostService {
     async fn compare_costs(
         &self,
         account_id: &str,
-        profile: Option<&str>,
+        aws_account_dto: AwsAccountDto,
         region: &str,
         date1: DatePreset,
         date2: DatePreset,
         group_by: Option<Vec<GroupDefinition>>,
     ) -> Result<Value, AppError> {
-        let result1 = self.get_cost_for_preset(account_id, profile, region, date1.clone(), group_by.clone()).await?;
-        let result2 = self.get_cost_for_preset(account_id, profile, region, date2.clone(), group_by.clone()).await?;
+        let result1 = self.get_cost_for_preset(account_id, aws_account_dto.clone(), region, date1.clone(), group_by.clone()).await?;
+        let result2 = self.get_cost_for_preset(account_id, aws_account_dto, region, date2.clone(), group_by.clone()).await?;
 
         Ok(json!({
             "comparison": {

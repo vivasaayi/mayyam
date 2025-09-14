@@ -414,29 +414,27 @@ impl CloudWatchMetrics for CloudWatchService {
             
         let mut result_metrics = Vec::new();
         
-        if let Some(results) = response.metric_data_results() {
-            for result in results {
-                if let Some(id) = result.id() {
-                    let mut datapoints = Vec::new();
-                    if let (Some(timestamps), Some(values)) = (result.timestamps(), result.values()) {
-                        for (j, timestamp) in timestamps.iter().enumerate() {
-                            if j < values.len() {
-                                datapoints.push(CloudWatchDatapoint {
-                                    timestamp: from_aws_datetime(timestamp),
-                                    value: values[j],
-                                    unit: "Count".to_string(),
-                                });
-                            }
+        for result in response.metric_data_results() {
+            if let Some(id) = result.id() {
+                let mut datapoints = Vec::new();
+                if let (Some(timestamps), Some(values)) = (result.timestamps(), result.values()) {
+                    for (j, timestamp) in timestamps.iter().enumerate() {
+                        if j < values.len() {
+                            datapoints.push(CloudWatchDatapoint {
+                                timestamp: from_aws_datetime(timestamp),
+                                value: values[j],
+                                unit: "Count".to_string(),
+                            });
                         }
                     }
-                    
-                    result_metrics.push(CloudWatchMetricData {
-                        namespace: namespace.to_string(),
-                        metric_name: id.to_string(),
-                        unit: "Count".to_string(),
-                        datapoints,
-                    });
                 }
+                
+                result_metrics.push(CloudWatchMetricData {
+                    namespace: namespace.to_string(),
+                    metric_name: id.to_string(),
+                    unit: "Count".to_string(),
+                    datapoints,
+                });
             }
         }
         

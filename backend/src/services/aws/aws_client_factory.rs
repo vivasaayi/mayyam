@@ -21,18 +21,18 @@ use crate::models::aws_auth::AccountAuthInfo;
 // Client factory trait for AWS service clients
 #[async_trait]
 pub trait AwsClientFactory {
-    async fn create_cloudwatch_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<CloudWatchClient, AppError>;    
-    async fn create_cloudwatch_logs_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<CloudWatchLogsClient, AppError>;
-    async fn create_cost_explorer_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<CostExplorerClient, AppError>;
-    async fn create_ec2_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<Ec2Client, AppError>;
-    async fn create_s3_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<S3Client, AppError>;
-    async fn create_rds_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<RdsClient, AppError>;
-    async fn create_dynamodb_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<DynamoDbClient, AppError>;
-    async fn create_kinesis_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<KinesisClient, AppError>;
-    async fn create_sqs_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<SqsClient, AppError>;
-    async fn create_sns_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<SnsClient, AppError>;
-    async fn create_lambda_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<LambdaClient, AppError>;
-    async fn create_elasticache_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<ElasticacheClient, AppError>;
-    async fn create_opensearch_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<OpenSearchClient, AppError>;
-    async fn create_sts_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<StsClient, AppError>;
+    async fn create_cloudwatch_client(&self, aws_account_dto: &AwsAccountDto) -> Result<CloudWatchClient, AppError>;    
+    async fn create_cloudwatch_logs_client(&self, aws_account_dto: &AwsAccountDto) -> Result<CloudWatchLogsClient, AppError>;
+    async fn create_cost_explorer_client(&self, aws_account_dto: &AwsAccountDto) -> Result<CostExplorerClient, AppError>;
+    async fn create_ec2_client(&self, aws_account_dto: &AwsAccountDto) -> Result<Ec2Client, AppError>;
+    async fn create_s3_client(&self, aws_account_dto: &AwsAccountDto) -> Result<S3Client, AppError>;
+    async fn create_rds_client(&self, aws_account_dto: &AwsAccountDto) -> Result<RdsClient, AppError>;
+    async fn create_dynamodb_client(&self, aws_account_dto: &AwsAccountDto) -> Result<DynamoDbClient, AppError>;
+    async fn create_kinesis_client(&self, aws_account_dto: &AwsAccountDto) -> Result<KinesisClient, AppError>;
+    async fn create_sqs_client(&self, aws_account_dto: &AwsAccountDto) -> Result<SqsClient, AppError>;
+    async fn create_sns_client(&self, aws_account_dto: &AwsAccountDto) -> Result<SnsClient, AppError>;
+    async fn create_lambda_client(&self, aws_account_dto: &AwsAccountDto) -> Result<LambdaClient, AppError>;
+    async fn create_elasticache_client(&self, aws_account_dto: &AwsAccountDto) -> Result<ElasticacheClient, AppError>;
+    async fn create_opensearch_client(&self, aws_account_dto: &AwsAccountDto) -> Result<OpenSearchClient, AppError>;
+    async fn create_sts_client(&self, aws_account_dto: &AwsAccountDto) -> Result<StsClient, AppError>;
 }

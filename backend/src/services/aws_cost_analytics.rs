@@ -78,7 +78,8 @@ impl AwsCostAnalyticsService {
         let time_period = DateInterval::builder()
             .start(request.start_date.format("%Y-%m-%d").to_string())
             .end(request.end_date.format("%Y-%m-%d").to_string())
-            .build();
+            .build()
+            .map_err(|e| AppError::CloudProvider(format!("Failed to build time period: {}", e)))?;
 
         // Create granularity 
         let granularity = Granularity::from(request.granularity.as_str());
@@ -130,11 +131,11 @@ impl AwsCostAnalyticsService {
                     AppError::Validation("Missing time period in response".to_string())
                 )?;
                 let start_date = NaiveDate::parse_from_str(
-                    &time_period.start.ok_or_else(|| AppError::Validation("Missing start date".to_string()))?, 
+                    &time_period.start, 
                     "%Y-%m-%d"
                 ).map_err(|e| AppError::Validation(format!("Invalid date format: {}", e)))?;
                 let end_date = NaiveDate::parse_from_str(
-                    &time_period.end.ok_or_else(|| AppError::Validation("Missing end date".to_string()))?, 
+                    &time_period.end, 
                     "%Y-%m-%d"
                 ).map_err(|e| AppError::Validation(format!("Invalid date format: {}", e)))?;
 

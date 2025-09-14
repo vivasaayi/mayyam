@@ -1,10 +1,14 @@
+use aws_sdk_kinesis::types::StreamSummary;
 use serde::{Deserialize, Serialize};
 
 // Kinesis-specific types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KinesisStreamInfo {
-    pub stream_name: String,
-    pub stream_status: String,
+    pub stre    pub adjacent_parent_shard_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KinesisListShardsResponse {    pub stream_status: String,
     pub retention_period_hours: i32,
     pub shard_count: i32,
     pub enhanced_monitoring: Vec<String>,
@@ -211,20 +215,20 @@ pub struct KinesisSequenceNumberRange {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KinesisListStreamsResponse {
-    pub stream_names: Vec<String>,
-    pub has_more_streams: bool,
-    pub next_token: Option<String>,
-    pub stream_summaries: Vec<StreamSummary>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KinesisStreamSummary {
     pub stream_name: String,
     pub stream_arn: String,
     pub stream_status: String,
-    pub stream_mode_details: KinesisStreamModeDetails,
+    pub stream_mode_details: Option<KinesisStreamModeDetails>,
     pub stream_creation_timestamp: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KinesisListStreamsResponse {
+    pub stream_names: Vec<String>,
+    pub has_more_streams: bool,
+    pub next_token: Option<String>,
+    pub stream_summaries: Vec<KinesisStreamSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -298,8 +302,29 @@ pub struct KinesisConsumerSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KinesisShard {
+    pub shard_id: String,
+    pub parent_shard_id: Option<String>,
+    pub adjacent_parent_shard_id: Option<String>,
+    pub hash_key_range: KinesisHashKeyRange,
+    pub sequence_number_range: KinesisSequenceNumberRange,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KinesisHashKeyRange {
+    pub starting_hash_key: String,
+    pub ending_hash_key: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KinesisSequenceNumberRange {
+    pub starting_sequence_number: String,
+    pub ending_sequence_number: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KinesisListShardsResponse {
-    pub shards: Vec<aws_sdk_kinesis::types::Shard>,
+    pub shards: Vec<KinesisShard>,
     pub next_token: Option<String>,
     pub stream_name: Option<String>,
     pub stream_arn: Option<String>,

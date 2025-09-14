@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use chrono::Utc;
 use crate::errors::AppError;
+use crate::models::aws_account::AwsAccountDto;
 use crate::models::aws_auth::AccountAuthInfo;
 use crate::models::aws_resource::{AwsResourceDto, AwsResourceType, Model as AwsResourceModel};
 use crate::services::aws::AwsService;
@@ -25,111 +26,141 @@ impl AwsControlPlane {
         Self { aws_service }
     }
 
+    fn to_aws_account_dto(&self, account_id: Option<&str>, profile: Option<&str>, region: Option<&str>) -> Result<AwsAccountDto, AppError> {
+        Ok(AwsAccountDto {
+            id: uuid::Uuid::nil(),
+            account_id: account_id.unwrap_or_default().to_string(),
+            account_name: "".to_string(),
+            profile: profile.map(|p| p.to_string()),
+            default_region: region.unwrap_or("us-east-1").to_string(),
+            use_role: false,
+            role_arn: Some("".to_string()),
+            external_id: Some("".to_string()),
+            has_access_key: false,
+            access_key_id: Some("".to_string()),
+            secret_access_key: Some("".to_string()),
+            last_synced_at: Some(Utc::now()),
+            created_at: Some(Utc::now()),
+            updated_at: Some(Utc::now()),
+        })
+    }
+
     async fn sync_ec2_resources(&self, account_id: &str, profile: Option<&str>, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<Vec<AwsResourceModel>, AppError> {
         let ec2 = Ec2ControlPlane::new(self.aws_service.clone());
-        ec2.sync_instances_with_auth(account_id, profile, region, account_auth).await
+        ec2.sync_instances(account_id, profile, region).await
     }
 
     async fn sync_s3_buckets(&self, account_id: &str, profile: Option<&str>, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<Vec<AwsResourceModel>, AppError> {
         let s3 = S3ControlPlane::new(self.aws_service.clone());
-        s3.sync_buckets_with_auth(account_id, profile, region, account_auth).await
+        s3.sync_buckets(account_id, profile, region, account_auth).await
     }
 
     async fn sync_rds_resources(&self, account_id: &str, profile: Option<&str>, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<Vec<AwsResourceModel>, AppError> {
         let rds = RdsControlPlane::new(self.aws_service.clone());
-        rds.sync_instances_with_auth(account_id, profile, region, account_auth).await
+        rds.sync_instances(account_id, profile, region, account_auth).await
     }
 
     async fn sync_dynamodb_resources(&self, account_id: &str, profile: Option<&str>, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<Vec<AwsResourceModel>, AppError> {
         let dynamodb = DynamoDbControlPlane::new(self.aws_service.clone());
-        dynamodb.sync_tables_with_auth(account_id, profile, region, account_auth).await
+        dynamodb.sync_tables(account_id, profile, region, account_auth).await
     }
 
     async fn sync_kinesis_resources(&self, account_id: &str, profile: Option<&str>, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<Vec<AwsResourceModel>, AppError> {
         let kinesis = KinesisControlPlane::new(self.aws_service.clone());
-        kinesis.sync_streams_with_auth(account_id, profile, region, account_auth).await
+        kinesis.sync_streams(account_id, profile, region, account_auth).await
     }
 
     async fn sync_sqs_resources(&self, account_id: &str, profile: Option<&str>, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<Vec<AwsResourceModel>, AppError> {
         let sqs = SqsControlPlane::new(self.aws_service.clone());
-        sqs.sync_queues_with_auth(account_id, profile, region, account_auth).await
+        sqs.sync_queues(account_id, profile, region, account_auth).await
     }
 
     async fn sync_elasticache_resources(&self, account_id: &str, profile: Option<&str>, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<Vec<AwsResourceModel>, AppError> {
         let elasticache = ElasticacheControlPlane::new(self.aws_service.clone());
-        elasticache.sync_clusters_with_auth(account_id, profile, region, account_auth).await
+        elasticache.sync_clusters(account_id, profile, region, account_auth).await
     }
 
     // Kinesis control plane operations
     pub async fn kinesis_create_stream(&self, profile: Option<&str>, region: &str, request: &crate::services::aws::aws_types::kinesis::KinesisCreateStreamRequest) -> Result<serde_json::Value, AppError> {
         let kinesis = KinesisControlPlane::new(self.aws_service.clone());
-        let response = kinesis.create_stream(profile, region, request).await?;
+        let response = kinesis.create_stream(self.to_aws_account_dto(profile, region), request).await?;
         Ok(serde_json::to_value(response)?)
     }
 
-    pub async fn kinesis_delete_stream(&self, profile: Option<&str>, region: &str, request: &crate::services::aws::aws_types::kinesis::KinesisDeleteStreamRequest) -> Result<serde_json::Value, AppError> {
+    pub async fn kinesis_delete_stream(&self, profile: Option<&str>, region: Option<&str>, request: &crate::services::aws::aws_types::kinesis::KinesisDeleteStreamRequest) -> Result<serde_json::Value, AppError> {
         let kinesis = KinesisControlPlane::new(self.aws_service.clone());
-        let response = kinesis.delete_stream(profile, region, request).await?;
+        let account_dto = self.to_aws_account_dto(None, profile, region).expect("Failed to create AWS account DTO");
+        let response = kinesis.delete_stream(&account_dto, request).await?;
         Ok(serde_json::to_value(response)?)
     }
 
-    pub async fn kinesis_describe_stream(&self, profile: Option<&str>, region: &str, request: &crate::services::aws::aws_types::kinesis::KinesisDescribeStreamRequest) -> Result<serde_json::Value, AppError> {
+    pub async fn kinesis_describe_stream(&self, profile: Option<&str>, region: Option<&str>, request: &crate::services::aws::aws_types::kinesis::KinesisDescribeStreamRequest) -> Result<serde_json::Value, AppError> {
         let kinesis = KinesisControlPlane::new(self.aws_service.clone());
-        let response = kinesis.describe_stream(profile, region, request).await?;
+        let account_dto = self.to_aws_account_dto(None, profile, region).expect("Failed to create AWS account DTO");
+        let response = kinesis.describe_stream(&account_dto, request).await?;
         Ok(serde_json::to_value(response)?)
     }
 
-    pub async fn kinesis_list_streams(&self, profile: Option<&str>, region: &str, request: &crate::services::aws::aws_types::kinesis::KinesisListStreamsRequest) -> Result<serde_json::Value, AppError> {
+    pub async fn kinesis_list_streams(&self, profile: Option<&str>, region: Option<&str>, request: &crate::services::aws::aws_types::kinesis::KinesisListStreamsRequest) -> Result<serde_json::Value, AppError> {
         let kinesis = KinesisControlPlane::new(self.aws_service.clone());
-        let response = kinesis.list_streams(profile, region, request).await?;
+        let account_dto = self.to_aws_account_dto(None, profile, region).expect("Failed to create AWS account DTO");
+        let response = kinesis.list_streams(&account_dto, request).await?;
         Ok(serde_json::to_value(response)?)
     }
 
-    pub async fn kinesis_describe_limits(&self, profile: Option<&str>, region: &str) -> Result<serde_json::Value, AppError> {
+    pub async fn kinesis_describe_limits(&self, profile: Option<&str>, region: Option<&str>) -> Result<serde_json::Value, AppError> {
         let kinesis = KinesisControlPlane::new(self.aws_service.clone());
-        let response = kinesis.describe_limits(profile, region).await?;
+        let account_dto = self.to_aws_account_dto(None, profile, region).expect("Failed to create AWS account DTO");
+        let response = kinesis.describe_limits(&account_dto).await?;
         Ok(serde_json::to_value(response)?)
     }
 
-    pub async fn kinesis_describe_stream_summary(&self, profile: Option<&str>, region: &str, stream_name: &str) -> Result<serde_json::Value, AppError> {
+    pub async fn kinesis_describe_stream_summary(&self, profile: Option<&str>, region: Option<&str>, stream_name: &str) -> Result<serde_json::Value, AppError> {
         let kinesis = KinesisControlPlane::new(self.aws_service.clone());
-        let response = kinesis.describe_stream_summary(profile, region, stream_name).await?;
+        let account_dto = self.to_aws_account_dto(None, profile, region).expect("Failed to create AWS account DTO");
+        let response = kinesis.describe_stream_summary(&account_dto, stream_name).await?;
         Ok(serde_json::to_value(response)?)
     }
 
-    pub async fn kinesis_update_shard_count(&self, profile: Option<&str>, region: &str, request: &crate::services::aws::aws_types::kinesis::KinesisUpdateShardCountRequest) -> Result<serde_json::Value, AppError> {
+    pub async fn kinesis_update_shard_count(&self, profile: Option<&str>, region: Option<&str>, request: &crate::services::aws::aws_types::kinesis::KinesisUpdateShardCountRequest) -> Result<serde_json::Value, AppError> {
         let kinesis = KinesisControlPlane::new(self.aws_service.clone());
-        let response = kinesis.update_shard_count(profile, region, request).await?;
+        let account_dto = self.to_aws_account_dto(None, profile, region).expect("Failed to create AWS account DTO");
+        let response = kinesis.update_shard_count(&account_dto, request).await?;
         Ok(serde_json::to_value(response)?)
     }
 
-    pub async fn kinesis_increase_retention_period(&self, profile: Option<&str>, region: &str, request: &crate::services::aws::aws_types::kinesis::KinesisRetentionPeriodRequest) -> Result<serde_json::Value, AppError> {
+    pub async fn kinesis_increase_retention_period(&self, profile: Option<&str>, region: Option<&str>, request: &crate::services::aws::aws_types::kinesis::KinesisRetentionPeriodRequest) -> Result<serde_json::Value, AppError> {
         let kinesis = KinesisControlPlane::new(self.aws_service.clone());
-        let response = kinesis.increase_stream_retention_period(profile, region, request).await?;
+        let account_dto = self.to_aws_account_dto(None, profile, region).expect("Failed to create AWS account DTO");
+        let response = kinesis.increase_stream_retention_period(&account_dto, request).await?;
         Ok(serde_json::to_value(response)?)
     }
 
-    pub async fn kinesis_decrease_retention_period(&self, profile: Option<&str>, region: &str, request: &crate::services::aws::aws_types::kinesis::KinesisRetentionPeriodRequest) -> Result<serde_json::Value, AppError> {
+    pub async fn kinesis_decrease_retention_period(&self, profile: Option<&str>, region: Option<&str>, request: &crate::services::aws::aws_types::kinesis::KinesisRetentionPeriodRequest) -> Result<serde_json::Value, AppError> {
         let kinesis = KinesisControlPlane::new(self.aws_service.clone());
-        let response = kinesis.decrease_stream_retention_period(profile, region, request).await?;
+        let account_dto = self.to_aws_account_dto(None, profile, region).expect("Failed to create AWS account DTO");
+        let response = kinesis.decrease_stream_retention_period(&account_dto, request).await?;
         Ok(serde_json::to_value(response)?)
     }
 
-    pub async fn kinesis_enable_enhanced_monitoring(&self, profile: Option<&str>, region: &str, request: &crate::services::aws::aws_types::kinesis::KinesisEnhancedMonitoringRequest) -> Result<serde_json::Value, AppError> {
+    pub async fn kinesis_enable_enhanced_monitoring(&self, profile: Option<&str>, region: Option<&str>, request: &crate::services::aws::aws_types::kinesis::KinesisEnhancedMonitoringRequest) -> Result<serde_json::Value, AppError> {
         let kinesis = KinesisControlPlane::new(self.aws_service.clone());
-        let response = kinesis.enable_enhanced_monitoring(profile, region, request).await?;
+        let account_dto = self.to_aws_account_dto(None, profile, region).expect("Failed to create AWS account DTO");
+        let response = kinesis.enable_enhanced_monitoring(&account_dto, request).await?;
         Ok(serde_json::to_value(response)?)
     }
 
-    pub async fn kinesis_disable_enhanced_monitoring(&self, profile: Option<&str>, region: &str, request: &crate::services::aws::aws_types::kinesis::KinesisEnhancedMonitoringRequest) -> Result<serde_json::Value, AppError> {
+    pub async fn kinesis_disable_enhanced_monitoring(&self, profile: Option<&str>, region: Option<&str>, request: &crate::services::aws::aws_types::kinesis::KinesisEnhancedMonitoringRequest) -> Result<serde_json::Value, AppError> {
         let kinesis = KinesisControlPlane::new(self.aws_service.clone());
-        let response = kinesis.disable_enhanced_monitoring(profile, region, request).await?;
+        let account_dto = self.to_aws_account_dto(None, profile, region).expect("Failed to create AWS account DTO");
+        let response = kinesis.disable_enhanced_monitoring(&account_dto, request).await?;
         Ok(serde_json::to_value(response)?)
     }
 
-    pub async fn kinesis_list_shards(&self, profile: Option<&str>, region: &str, request: &crate::services::aws::aws_types::kinesis::KinesisListShardsRequest) -> Result<serde_json::Value, AppError> {
+    pub async fn kinesis_list_shards(&self, profile: Option<&str>, region: Option<&str>, request: &crate::services::aws::aws_types::kinesis::KinesisListShardsRequest) -> Result<serde_json::Value, AppError> {
         let kinesis = KinesisControlPlane::new(self.aws_service.clone());
-        let response = kinesis.list_shards(profile, region, request).await?;
+        let account_dto = self.to_aws_account_dto(None, profile, region).expect("Failed to create AWS account DTO");
+        let response = kinesis.list_shards(&account_dto, request).await?;
         Ok(serde_json::to_value(response)?)
     }
 

@@ -17,16 +17,9 @@ impl LambdaControlPlane {
         Self { aws_service }
     }
 
-    pub async fn sync_functions(&self, account_id: &str, profile: &AwsAccountDto, region: &str) -> Result<Vec<aws_resource::Model>, AppError> {
-        self.sync_functions_with_auth(account_id, profile, region, None).await
-    }
+    pub async fn sync_functions(&self, account_id: &str, aws_account_dto: &AwsAccountDto) -> Result<Vec<aws_resource::Model>, AppError> {
+        let client = self.aws_service.create_lambda_client(aws_account_dto).await?;
 
-    pub async fn sync_functions_with_auth(&self, account_id: &str, profile: &AwsAccountDto, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<Vec<aws_resource::Model>, AppError> {
-        let client = self.aws_service.create_lambda_client(profile, region).await?;
-        self.sync_functions_with_client(account_id, profile, region, client).await
-    }
-
-    pub async fn sync_functions_with_client(&self, account_id: &str, profile: &AwsAccountDto, region: &str, client: aws_sdk_lambda::Client) -> Result<Vec<aws_resource::Model>, AppError> {
         let repo = &self.aws_service.aws_resource_repo;
         
         let mut functions = Vec::new();

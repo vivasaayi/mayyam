@@ -49,8 +49,7 @@ impl CloudWatchLogs for CloudWatchService {
             .map_err(|e| AppError::ExternalService(format!("Failed to get CloudWatch logs: {}", e)))?;
             
         let mut events = Vec::new();
-        if let Some(log_events) = response.events() {
-            for event in log_events {
+        for event in response.events() {
                 let mut event_data = json!({});
                 
                 if let Some(timestamp) = event.timestamp() {
@@ -84,7 +83,9 @@ impl CloudWatchLogs for CloudWatchService {
         
         Ok(json!({
             "events": events,
-            "logGroupName": log_group
+            "logGroupName": log_group,
+            "startTime": request.start_time,
+            "endTime": request.end_time
         }))
     }
 
@@ -172,4 +173,3 @@ impl CloudWatchLogs for CloudWatchService {
             "endTime": request.end_time
         }))
     }
-}

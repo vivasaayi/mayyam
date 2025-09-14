@@ -8,7 +8,7 @@ pub trait CostForecasting {
     async fn get_cost_forecast(
         &self,
         account_id: &str,
-        profile: Option<&str>,
+        aws_account_dto: AwsAccountDto,
         region: &str,
         start_date: &str,
         end_date: &str,
@@ -19,7 +19,7 @@ pub trait CostForecasting {
     async fn get_monthly_forecast(
         &self,
         account_id: &str,
-        profile: Option<&str>,
+        aws_account_dto: AwsAccountDto,
         region: &str,
         months_ahead: u32,
     ) -> Result<Value, AppError>;
@@ -29,19 +29,20 @@ impl CostForecasting for AwsCostService {
     async fn get_cost_forecast(
         &self,
         account_id: &str,
-        profile: Option<&str>,
+        aws_account_dto: AwsAccountDto,
         region: &str,
         start_date: &str,
         end_date: &str,
         metric: Option<&str>,
         granularity: Option<Granularity>,
     ) -> Result<Value, AppError> {
-        let client = self.create_client(profile, region).await?;
+        let client = self.create_client(aws_account_dto, region).await?;
         
         let time_period = DateInterval::builder()
             .start(start_date)
             .end(end_date)
-            .build();
+            .build()
+            .map_err(|e| AppError::ExternalService(format!("Failed to build time period: {}", e)))?;
         
         let metric_str = metric.unwrap_or("UNBLENDED_COST");
         
@@ -74,7 +75,7 @@ impl CostForecasting for AwsCostService {
         
         let predictions = result["forecast"]["predictions"].as_array_mut().unwrap();
         
-        for forecast_result in response.forecast_results_by_time().unwrap_or_default() {
+        for forecast_result in response.forecast_results_by_time().as_deref().unwrap_or(&[]) {
             predictions.push(json!({
                 "timePeriod": forecast_result.time_period().map(|tp| json!({
                     "start": tp.start(),
@@ -96,7 +97,7 @@ impl CostForecasting for AwsCostService {
     async fn get_monthly_forecast(
         &self,
         account_id: &str,
-        profile: Option<&str>,
+        aws_account_dto: AwsAccountDto,
         region: &str,
         months_ahead: u32,
     ) -> Result<Value, AppError> {
@@ -109,7 +110,7 @@ impl CostForecasting for AwsCostService {
         
         self.get_cost_forecast(
             account_id,
-            profile,
+            aws_account_dto,
             region,
             &start_date,
             &end_date,

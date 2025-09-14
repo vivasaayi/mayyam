@@ -21,16 +21,9 @@ impl Ec2ControlPlane {
         Self { aws_service }
     }
 
-    pub async fn sync_instances(&self, account_id: &str, profile: &AwsAccountDto, region: &str) -> Result<Vec<AwsResourceModel>, AppError> {
-        self.sync_instances_with_auth(account_id, profile, region, None).await
-    }
-    
-    pub async fn sync_instances_with_auth(&self, account_id: &str, profile: &AwsAccountDto, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<Vec<AwsResourceModel>, AppError> {
-        let client = self.aws_service.create_ec2_client_with_auth(profile, region).await?;
-        self.sync_instances_with_client(account_id, profile, region, client).await
-    }
-    
-    async fn sync_instances_with_client(&self, account_id: &str, profile: &AwsAccountDto, region: &str, client: Ec2Client) -> Result<Vec<AwsResourceModel>, AppError> {
+    pub async fn sync_instances(&self, account_id: &str, profile: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
+        let client = self.aws_service.create_ec2_client(profile).await?;
+
         // Get instances from AWS
         let response = client.describe_instances()
             .send()
@@ -40,95 +33,94 @@ impl Ec2ControlPlane {
         let mut instances = Vec::new();
         
         // Process each reservation and its instances
-        if let Some(reservations) = response.reservations() {
-            for reservation in reservations {
-                if let Some(ec2_instances) = reservation.instances() {
-                    for ec2_instance in ec2_instances {
-                        let instance_id = ec2_instance.instance_id().unwrap_or_default().to_string();
-                        
-                        // Extract tags
-                        let mut tags_map = serde_json::Map::new();
-                        let mut name = None;
-                        
-                        if let Some(tags) = ec2_instance.tags() {
-                            for tag in tags {
-                                if let (Some(key), Some(value)) = (tag.key(), tag.value()) {
-                                    if key == "Name" {
-                                        name = Some(value.to_string());
-                                    }
-                                    tags_map.insert(key.to_string(), json!(value));
-                                }
-                            }
-                        }
-                        
-                        // Build resource data
-                        let mut resource_data = serde_json::Map::new();
-                        
-                        resource_data.insert("instance_id".to_string(), json!(instance_id));
-                        
-                        if let Some(instance_type) = ec2_instance.instance_type().map(|t| t.as_str()) {
-                            resource_data.insert("instance_type".to_string(), json!(instance_type));
-                        }
-                        
-                        if let Some(state) = ec2_instance.state().and_then(|s| s.name()).map(|n| n.as_str()) {
-                            resource_data.insert("state".to_string(), json!(state));
-                        }
-                        
-                        if let Some(az) = ec2_instance.placement().and_then(|p| p.availability_zone()) {
-                            resource_data.insert("availability_zone".to_string(), json!(az));
-                        }
-                        
-                        if let Some(public_ip) = ec2_instance.public_ip_address() {
-                            resource_data.insert("public_ip".to_string(), json!(public_ip));
-                        }
-                        
-                        if let Some(private_ip) = ec2_instance.private_ip_address() {
-                            resource_data.insert("private_ip".to_string(), json!(private_ip));
-                        }
-                        
-                        if let Some(launch_time) = ec2_instance.launch_time() {
-                            if let Ok(formatted_time) = launch_time.fmt(aws_smithy_types::date_time::Format::DateTime) {
-                                resource_data.insert("launch_time".to_string(), json!(formatted_time));
-                            } else {
-                                // Convert DateTime to a standard format we can represent as a string
-                            let launch_time_str = launch_time.as_secs_f64().to_string();
-                            resource_data.insert("launch_time".to_string(), json!(launch_time_str));
-                            }
-                        }
-                        
-                        if let Some(vpc_id) = ec2_instance.vpc_id() {
-                            resource_data.insert("vpc_id".to_string(), json!(vpc_id));
-                        }
-                        
-                        if let Some(subnet_id) = ec2_instance.subnet_id() {
-                            resource_data.insert("subnet_id".to_string(), json!(subnet_id));
-                        }
-                        
-                        // Create resource DTO
-                        let instance = AwsResourceDto {
-                            id: None,
-                            account_id: account_id.to_string(),
-                            profile: profile.map(|p| p.to_string()),
-                            region: region.to_string(),
-                            resource_type: "EC2Instance".to_string(),
-                            resource_id: instance_id.clone(),
-                            arn: format!("arn:aws:ec2:{}:{}:instance/{}", region, account_id, instance_id),
-                            name,
-                            tags: serde_json::Value::Object(tags_map),
-                            resource_data: serde_json::Value::Object(resource_data),
-                        };
-                        
-                        instances.push(instance);
+        
+        for reservation in response.reservations() {
+        
+            for ec2_instance in reservation.instances() {
+                let instance_id = ec2_instance.instance_id().unwrap_or_default().to_string();
+                
+                // Extract tags
+                let mut tags_map = serde_json::Map::new();
+                let mut name = None;
+                
+                for tag in ec2_instance.tags() {
+                    // FIX ME
+
+                    // if let (Some(key), Some(value)) = (tag.key(), tag.value()) {
+                    //     if key == "Name" {
+                    //         name = Some(value.to_string());
+                    //     }
+                    //     tags_map.insert(key.to_string(), json!(value));
+                    // }
+                }
+                
+                // Build resource data
+                let mut resource_data = serde_json::Map::new();
+                
+                resource_data.insert("instance_id".to_string(), json!(instance_id));
+                
+                if let Some(instance_type) = ec2_instance.instance_type().map(|t| t.as_str()) {
+                    resource_data.insert("instance_type".to_string(), json!(instance_type));
+                }
+                
+                if let Some(state) = ec2_instance.state().and_then(|s| s.name()).map(|n| n.as_str()) {
+                    resource_data.insert("state".to_string(), json!(state));
+                }
+                
+                if let Some(az) = ec2_instance.placement().and_then(|p| p.availability_zone()) {
+                    resource_data.insert("availability_zone".to_string(), json!(az));
+                }
+                
+                if let Some(public_ip) = ec2_instance.public_ip_address() {
+                    resource_data.insert("public_ip".to_string(), json!(public_ip));
+                }
+                
+                if let Some(private_ip) = ec2_instance.private_ip_address() {
+                    resource_data.insert("private_ip".to_string(), json!(private_ip));
+                }
+                
+                if let Some(launch_time) = ec2_instance.launch_time() {
+                    if let Ok(formatted_time) = launch_time.fmt(aws_smithy_types::date_time::Format::DateTime) {
+                        resource_data.insert("launch_time".to_string(), json!(formatted_time));
+                    } else {
+                        // Convert DateTime to a standard format we can represent as a string
+                    let launch_time_str = launch_time.as_secs_f64().to_string();
+                    resource_data.insert("launch_time".to_string(), json!(launch_time_str));
                     }
                 }
+                
+                if let Some(vpc_id) = ec2_instance.vpc_id() {
+                    resource_data.insert("vpc_id".to_string(), json!(vpc_id));
+                }
+                
+                if let Some(subnet_id) = ec2_instance.subnet_id() {
+                    resource_data.insert("subnet_id".to_string(), json!(subnet_id));
+                }
+                
+                // Create resource DTO
+                let instance = AwsResourceDto {
+                    id: None,
+                    account_id: account_id.to_string(),
+                    profile: profile.profile.clone(),
+                    region: region.to_string(),
+                    resource_type: "EC2Instance".to_string(),
+                    resource_id: instance_id.clone(),
+                    arn: format!("arn:aws:ec2:{}:{}:instance/{}", region, account_id, instance_id),
+                    name,
+                    tags: serde_json::Value::Object(tags_map),
+                    resource_data: serde_json::Value::Object(resource_data),
+                };
+                
+                instances.push(instance);
             }
+            
         }
 
         Ok(instances.into_iter().map(|i| i.into()).collect())
     }
 
-    pub async fn launch_instances(&self, profile: &AwsAccountDto, region: &str, request: &Ec2LaunchInstanceRequest) -> Result<Vec<Ec2InstanceInfo>, AppError> {
-        let client = self.aws_service.create_ec2_client(profile, region).await?;
+    pub async fn launch_instances(&self, aws_account_dto: &AwsAccountDto, request: &Ec2LaunchInstanceRequest) -> Result<Vec<Ec2InstanceInfo>, AppError> {
+        let client = self.aws_service.create_ec2_client(aws_account_dto).await?;
         
         // Prepare run instances request
         let mut run_instances_req = client.run_instances()
@@ -165,38 +157,37 @@ impl Ec2ControlPlane {
         // Process the response
         let mut instances = Vec::new();
         
-        if let Some(ec2_instances) = response.instances() {
-            for ec2_instance in ec2_instances {
-                let instance_info = Ec2InstanceInfo {
-                    instance_id: ec2_instance.instance_id().unwrap_or_default().to_string(),
-                    instance_type: ec2_instance.instance_type().map_or_else(|| "unknown".to_string(), |t| t.as_str().to_string()),
-                    state: ec2_instance.state().and_then(|s| s.name()).map_or_else(|| "unknown".to_string(), |s| s.as_str().to_string()),
-                    availability_zone: ec2_instance.placement().and_then(|p| p.availability_zone()).unwrap_or_default().to_string(),
-                    public_ip: ec2_instance.public_ip_address().map(|s| s.to_string()),
-                    private_ip: ec2_instance.private_ip_address().map(|s| s.to_string()),
-                    launch_time: ec2_instance.launch_time().map_or_else(
-                        || chrono::Utc::now().to_rfc3339(), 
-                        |t| if let Ok(formatted) = t.fmt(aws_smithy_types::date_time::Format::DateTime) {
-                            formatted
-                        } else {
-                            // Fall back to seconds since epoch
-                            t.as_secs_f64().to_string()
-                        }
-                    ),
-                    vpc_id: ec2_instance.vpc_id().map(|s| s.to_string()),
-                    subnet_id: ec2_instance.subnet_id().map(|s| s.to_string()),
-                };
-                
-                instances.push(instance_info);
-            }
+        
+        for ec2_instance in response.instances() {
+            let instance_info = Ec2InstanceInfo {
+                instance_id: ec2_instance.instance_id().unwrap_or_default().to_string(),
+                instance_type: ec2_instance.instance_type().map_or_else(|| "unknown".to_string(), |t| t.as_str().to_string()),
+                state: ec2_instance.state().and_then(|s| s.name()).map_or_else(|| "unknown".to_string(), |s| s.as_str().to_string()),
+                availability_zone: ec2_instance.placement().and_then(|p| p.availability_zone()).unwrap_or_default().to_string(),
+                public_ip: ec2_instance.public_ip_address().map(|s| s.to_string()),
+                private_ip: ec2_instance.private_ip_address().map(|s| s.to_string()),
+                launch_time: ec2_instance.launch_time().map_or_else(
+                    || chrono::Utc::now().to_rfc3339(), 
+                    |t| if let Ok(formatted) = t.fmt(aws_smithy_types::date_time::Format::DateTime) {
+                        formatted
+                    } else {
+                        // Fall back to seconds since epoch
+                        t.as_secs_f64().to_string()
+                    }
+                ),
+                vpc_id: ec2_instance.vpc_id().map(|s| s.to_string()),
+                subnet_id: ec2_instance.subnet_id().map(|s| s.to_string()),
+            };
+            
+            instances.push(instance_info);
         }
         
         Ok(instances)
     }
 
-    pub async fn start_instances(&self, profile: &AwsAccountDto, region: &str, instance_ids: &[String]) -> Result<Vec<(String, String)>, AppError> {
-        let client = self.aws_service.create_ec2_client(profile, region).await?;
-        
+    pub async fn start_instances(&self, aws_account_dto: &AwsAccountDto, instance_ids: &[String]) -> Result<Vec<(String, String)>, AppError> {
+        let client = self.aws_service.create_ec2_client(aws_account_dto).await?;
+
         let mut request = client.start_instances();
         
         // Add all instance IDs to the request
@@ -213,23 +204,23 @@ impl Ec2ControlPlane {
         // Process response to extract instance states
         let mut result = Vec::new();
         
-        if let Some(instances) = response.starting_instances() {
-            for instance in instances {
-                let id = instance.instance_id().unwrap_or_default().to_string();
-                let state = instance.current_state()
-                    .and_then(|s| s.name())
-                    .map_or_else(|| "unknown".to_string(), |s| s.as_str().to_string());
-                
-                result.push((id, state));
-            }
+        
+        for instance in response.starting_instances() {
+            let id = instance.instance_id().unwrap_or_default().to_string();
+            let state = instance.current_state()
+                .and_then(|s| s.name())
+                .map_or_else(|| "unknown".to_string(), |s| s.as_str().to_string());
+            
+            result.push((id, state));
         }
+        
         
         Ok(result)
     }
 
-    pub async fn stop_instances(&self, profile: &AwsAccountDto, region: &str, instance_ids: &[String], force: bool) -> Result<Vec<(String, String)>, AppError> {
-        let client = self.aws_service.create_ec2_client(profile, region).await?;
-        
+    pub async fn stop_instances(&self, aws_account_dto: &AwsAccountDto, instance_ids: &[String], force: bool) -> Result<Vec<(String, String)>, AppError> {
+        let client = self.aws_service.create_ec2_client(aws_account_dto).await?;
+
         let mut stopping_instances = Vec::new();
         for id in instance_ids {
             if force {
@@ -249,10 +240,10 @@ impl Ec2ControlPlane {
         
         Ok(stopping_instances)
     }
-    
-    pub async fn reboot_instances(&self, profile: &AwsAccountDto, region: &str, instance_ids: &[String]) -> Result<Vec<(String, String)>, AppError> {
-        let client = self.aws_service.create_ec2_client(profile, region).await?;
-        
+
+    pub async fn reboot_instances(&self, aws_account_dto: &AwsAccountDto, instance_ids: &[String]) -> Result<Vec<(String, String)>, AppError> {
+        let client = self.aws_service.create_ec2_client(aws_account_dto).await?;
+
         let mut rebooting_instances = Vec::new();
         for id in instance_ids {
             let _ = client.reboot_instances()
@@ -264,10 +255,10 @@ impl Ec2ControlPlane {
         
         Ok(rebooting_instances)
     }
-    
-    pub async fn get_instance_tags(&self, profile: &AwsAccountDto, region: &str, instance_id: &String) -> Result<Vec<Tag>, AppError> {
-        let client = self.aws_service.create_ec2_client(profile, region).await?;
-        
+
+    pub async fn get_instance_tags(&self, aws_account_dto: &AwsAccountDto, instance_id: &String) -> Result<Vec<Tag>, AppError> {
+        let client = self.aws_service.create_ec2_client(aws_account_dto).await?;
+
         let sdk_tags = client.describe_instances()
             .instance_ids(instance_id)
             .send()
@@ -289,10 +280,10 @@ impl Ec2ControlPlane {
         
         Ok(tags)
     }
-    
-    pub async fn update_instance_tags(&self, profile: &AwsAccountDto, region: &str, instance_id: &String, tags: Vec<Tag>) -> Result<(), AppError> {
-        let client = self.aws_service.create_ec2_client(profile, region).await?;
-        
+
+    pub async fn update_instance_tags(&self, aws_account_dto: &AwsAccountDto, instance_id: &String, tags: Vec<Tag>) -> Result<(), AppError> {
+        let client = self.aws_service.create_ec2_client(aws_account_dto).await?;
+
         // Convert our custom Tag type to AWS SDK Tag type
         let sdk_tags: Vec<aws_sdk_ec2::types::Tag> = tags.into_iter()
             .map(|tag| aws_sdk_ec2::types::Tag::builder()
@@ -310,9 +301,9 @@ impl Ec2ControlPlane {
         Ok(())
     }
 
-    pub async fn terminate_instances(&self, profile: &AwsAccountDto, region: &str, instance_ids: &[String]) -> Result<Vec<(String, String)>, AppError> {
-        let client = self.aws_service.create_ec2_client(profile, region).await?;
-        
+    pub async fn terminate_instances(&self, aws_account_dto: &AwsAccountDto, instance_ids: &[String]) -> Result<Vec<(String, String)>, AppError> {
+        let client = self.aws_service.create_ec2_client(aws_account_dto).await?;
+
         let mut request = client.terminate_instances();
         
         // Add all instance IDs to the request
@@ -329,23 +320,23 @@ impl Ec2ControlPlane {
         // Process response to extract instance states
         let mut result = Vec::new();
         
-        if let Some(instances) = response.terminating_instances() {
-            for instance in instances {
-                let id = instance.instance_id().unwrap_or_default().to_string();
-                let state = instance.current_state()
-                    .and_then(|s| s.name())
-                    .map_or_else(|| "unknown".to_string(), |s| s.as_str().to_string());
-                
-                result.push((id, state));
-            }
+        
+        for instance in response.terminating_instances() {
+            let id = instance.instance_id().unwrap_or_default().to_string();
+            let state = instance.current_state()
+                .and_then(|s| s.name())
+                .map_or_else(|| "unknown".to_string(), |s| s.as_str().to_string());
+            
+            result.push((id, state));
         }
+        
         
         Ok(result)
     }
 
-    pub async fn describe_instances(&self, profile: &AwsAccountDto, region: &str, instance_ids: Option<&[String]>) -> Result<Vec<Ec2InstanceInfo>, AppError> {
-        let client = self.aws_service.create_ec2_client(profile, region).await?;
-        
+    pub async fn describe_instances(&self, aws_account_dto: &AwsAccountDto, instance_ids: Option<&[String]>) -> Result<Vec<Ec2InstanceInfo>, AppError> {
+        let client = self.aws_service.create_ec2_client(aws_account_dto).await?;
+
         let mut request = client.describe_instances();
         
         // Add instance IDs to filter if provided
@@ -364,40 +355,39 @@ impl Ec2ControlPlane {
         let mut instances = Vec::new();
         
         // Process each reservation and its instances
-        if let Some(reservations) = response.reservations() {
-            for reservation in reservations {
-                if let Some(ec2_instances) = reservation.instances() {
-                    for ec2_instance in ec2_instances {
-                        let instance_info = Ec2InstanceInfo {
-                            instance_id: ec2_instance.instance_id().unwrap_or_default().to_string(),
-                            instance_type: ec2_instance.instance_type().map_or_else(|| "unknown".to_string(), |t| t.as_str().to_string()),
-                            state: ec2_instance.state().and_then(|s| s.name()).map_or_else(|| "unknown".to_string(), |s| s.as_str().to_string()),
-                            availability_zone: ec2_instance.placement().and_then(|p| p.availability_zone()).unwrap_or_default().to_string(),
-                            public_ip: ec2_instance.public_ip_address().map(|s| s.to_string()),
-                            private_ip: ec2_instance.private_ip_address().map(|s| s.to_string()),
-                            launch_time: ec2_instance.launch_time().map_or_else(
-                                || chrono::Utc::now().to_rfc3339(), 
-                                |t| if let Ok(formatted) = t.fmt(aws_smithy_types::date_time::Format::DateTime) {
-                                    formatted
-                                } else {
-                                    t.as_secs_f64().to_string()
-                                }
-                            ),
-                            vpc_id: ec2_instance.vpc_id().map(|s| s.to_string()),
-                            subnet_id: ec2_instance.subnet_id().map(|s| s.to_string()),
-                        };
-                        
-                        instances.push(instance_info);
-                    }
-                }
+        
+        for reservation in response.reservations() {
+        
+            for ec2_instance in reservation.instances() {
+                let instance_info = Ec2InstanceInfo {
+                    instance_id: ec2_instance.instance_id().unwrap_or_default().to_string(),
+                    instance_type: ec2_instance.instance_type().map_or_else(|| "unknown".to_string(), |t| t.as_str().to_string()),
+                    state: ec2_instance.state().and_then(|s| s.name()).map_or_else(|| "unknown".to_string(), |s| s.as_str().to_string()),
+                    availability_zone: ec2_instance.placement().and_then(|p| p.availability_zone()).unwrap_or_default().to_string(),
+                    public_ip: ec2_instance.public_ip_address().map(|s| s.to_string()),
+                    private_ip: ec2_instance.private_ip_address().map(|s| s.to_string()),
+                    launch_time: ec2_instance.launch_time().map_or_else(
+                        || chrono::Utc::now().to_rfc3339(), 
+                        |t| if let Ok(formatted) = t.fmt(aws_smithy_types::date_time::Format::DateTime) {
+                            formatted
+                        } else {
+                            t.as_secs_f64().to_string()
+                        }
+                    ),
+                    vpc_id: ec2_instance.vpc_id().map(|s| s.to_string()),
+                    subnet_id: ec2_instance.subnet_id().map(|s| s.to_string()),
+                };
+                
+                instances.push(instance_info);
             }
-        }
+        
+        } 
         
         Ok(instances)
     }
 
-    pub async fn create_security_group(&self, profile: &AwsAccountDto, region: &str, request: &Ec2SecurityGroupRequest) -> Result<String, AppError> {
-        let client = self.aws_service.create_ec2_client(profile, region).await?;
+    pub async fn create_security_group(&self, aws_account_dto: &AwsAccountDto, request: &Ec2SecurityGroupRequest) -> Result<String, AppError> {
+        let client = self.aws_service.create_ec2_client(aws_account_dto).await?;
         
         // Create the security group
         let create_response = client.create_security_group()
@@ -479,9 +469,9 @@ impl Ec2ControlPlane {
         Ok(group_id)
     }
 
-    pub async fn create_volume(&self, profile: &AwsAccountDto, region: &str, request: &Ec2VolumeRequest) -> Result<String, AppError> {
-        let client = self.aws_service.create_ec2_client(profile, region).await?;
-        
+    pub async fn create_volume(&self, aws_account_dto: &AwsAccountDto, request: &Ec2VolumeRequest) -> Result<String, AppError> {
+        let client = self.aws_service.create_ec2_client(aws_account_dto).await?;
+
         let mut create_volume_req = client.create_volume()
             .availability_zone(&request.availability_zone)
             .volume_type(aws_sdk_ec2::types::VolumeType::from(request.volume_type.as_str()))
@@ -533,9 +523,9 @@ impl Ec2ControlPlane {
         Ok(volume_id)
     }
 
-    pub async fn attach_volume(&self, profile: &AwsAccountDto, region: &str, modification: &Ec2InstanceVolumeModification) -> Result<(), AppError> {
-        let client = self.aws_service.create_ec2_client(profile, region).await?;
-        
+    pub async fn attach_volume(&self, aws_account_dto: &AwsAccountDto, modification: &Ec2InstanceVolumeModification) -> Result<(), AppError> {
+        let client = self.aws_service.create_ec2_client(aws_account_dto).await?;
+
         let mut request = client.attach_volume()
             .instance_id(&modification.instance_id)
             .volume_id(&modification.volume_id)
@@ -554,12 +544,12 @@ impl Ec2ControlPlane {
         }
     }
 
-    pub async fn modify_instance_attribute(&self, profile: &AwsAccountDto, region: &str, 
+    pub async fn modify_instance_attribute(&self, aws_account_dto: &AwsAccountDto,
         instance_id: &str,
         attribute: &str,
         value: &str) -> Result<(), AppError> {
-        
-        let client = self.aws_service.create_ec2_client(profile, region).await?;
+
+        let client = self.aws_service.create_ec2_client(aws_account_dto).await?;
         
         // Create the appropriate modify request based on the attribute
         match attribute {
