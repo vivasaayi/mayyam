@@ -102,7 +102,7 @@ pub struct DynamoDBAnalysisResponse {
 pub async fn chat(
     req: web::Json<ChatRequest>,
     config: web::Data<crate::config::Config>,
-    llm_integration_service: web::Data<Arc<crate::services::llm_integration::LlmIntegrationService>>,
+    llm_integration_service: web::Data<Arc<crate::services::llm::LlmIntegrationService>>,
     llm_provider_repo: web::Data<Arc<crate::repositories::llm_provider::LlmProviderRepository>>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
@@ -125,7 +125,7 @@ pub async fn chat(
         .find(|m| m.role == "system")
         .map(|m| m.content.clone());
 
-    let llm_request = crate::services::llm_integration::LlmRequest {
+    let llm_request = crate::services::llm::LlmRequest {
         prompt,
         system_prompt,
         temperature: req.temperature,
@@ -370,7 +370,7 @@ pub async fn analyze_rds_instance(
     path: web::Path<(String, String)>,
     claims: web::ReqData<Claims>,
     config: web::Data<crate::config::Config>,
-    llm_integration_service: web::Data<Arc<crate::services::llm_integration::LlmIntegrationService>>,
+    llm_integration_service: web::Data<Arc<crate::services::llm::LlmIntegrationService>>,
     llm_provider_repo: web::Data<Arc<crate::repositories::llm_provider::LlmProviderRepository>>,
 ) -> Result<impl Responder, AppError> {
     let (instance_id, workflow) = path.into_inner();
@@ -430,7 +430,7 @@ pub async fn analyze_rds_instance(
     };
     
     // Make real LLM call
-    let llm_request = crate::services::llm_integration::LlmRequest {
+    let llm_request = crate::services::llm::LlmRequest {
         prompt,
         system_prompt: Some("You are an expert AWS RDS database performance analyst. Provide detailed, actionable analysis and recommendations.".to_string()),
         temperature: Some(0.7),
@@ -455,7 +455,7 @@ pub async fn answer_rds_question(
     req: web::Json<RelatedQuestionRequest>,
     _claims: web::ReqData<Claims>,
     config: web::Data<crate::config::Config>,
-    llm_integration_service: web::Data<Arc<crate::services::llm_integration::LlmIntegrationService>>,
+    llm_integration_service: web::Data<Arc<crate::services::llm::LlmIntegrationService>>,
     llm_provider_repo: web::Data<Arc<crate::repositories::llm_provider::LlmProviderRepository>>,
 ) -> Result<impl Responder, AppError> {
     info!("Answering question about RDS instance {}: {}", req.instance_id, req.question);
@@ -473,7 +473,7 @@ pub async fn answer_rds_question(
     );
     
     // Make real LLM call
-    let llm_request = crate::services::llm_integration::LlmRequest {
+    let llm_request = crate::services::llm::LlmRequest {
         prompt,
         system_prompt: Some("You are an expert AWS RDS database administrator. Answer user questions with detailed, practical advice.".to_string()),
         temperature: Some(0.7),
@@ -503,7 +503,7 @@ pub async fn analyze_dynamodb_table(
     path: web::Path<(String, String)>,
     _claims: web::ReqData<Claims>,
     config: web::Data<crate::config::Config>,
-    llm_integration_service: web::Data<Arc<crate::services::llm_integration::LlmIntegrationService>>,
+    llm_integration_service: web::Data<Arc<crate::services::llm::LlmIntegrationService>>,
     llm_provider_repo: web::Data<Arc<crate::repositories::llm_provider::LlmProviderRepository>>,
 ) -> Result<impl Responder, AppError> {
     let (table_id, workflow) = path.into_inner();
@@ -563,7 +563,7 @@ pub async fn analyze_dynamodb_table(
     };
     
     // Make real LLM call
-    let llm_request = crate::services::llm_integration::LlmRequest {
+    let llm_request = crate::services::llm::LlmRequest {
         prompt,
         system_prompt: Some("You are an expert AWS DynamoDB performance and cost optimization analyst. Provide detailed, actionable analysis and recommendations.".to_string()),
         temperature: Some(0.7),
@@ -589,7 +589,7 @@ pub async fn answer_dynamodb_question(
     req: web::Json<RelatedQuestionRequest>,
     _claims: web::ReqData<Claims>,
     config: web::Data<crate::config::Config>,
-    llm_integration_service: web::Data<Arc<crate::services::llm_integration::LlmIntegrationService>>,
+    llm_integration_service: web::Data<Arc<crate::services::llm::LlmIntegrationService>>,
     llm_provider_repo: web::Data<Arc<crate::repositories::llm_provider::LlmProviderRepository>>,
 ) -> Result<impl Responder, AppError> {
     info!("Answering question about DynamoDB table {}: {}", req.instance_id, req.question);
@@ -607,7 +607,7 @@ pub async fn answer_dynamodb_question(
     );
     
     // Make real LLM call
-    let llm_request = crate::services::llm_integration::LlmRequest {
+    let llm_request = crate::services::llm::LlmRequest {
         prompt,
         system_prompt: Some("You are an expert AWS DynamoDB architect and performance analyst. Answer user questions with detailed, practical advice.".to_string()),
         temperature: Some(0.7),

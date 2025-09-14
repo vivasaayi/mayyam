@@ -3,6 +3,7 @@ use aws_sdk_s3::Client as S3Client;
 
 use serde_json::json;
 use crate::errors::AppError;
+use crate::models::aws_account::AwsAccountDto;
 use crate::models::aws_auth::AccountAuthInfo;
 use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel};
 use crate::services::aws::client_factory::AwsClientFactory;
@@ -18,16 +19,16 @@ impl S3ControlPlane {
         Self { aws_service }
     }
 
-    pub async fn sync_buckets(&self, account_id: &str, profile: Option<&str>, region: &str) -> Result<Vec<AwsResourceModel>, AppError> {
+    pub async fn sync_buckets(&self, account_id: &str, profile: &AwsAccountDto, region: &str) -> Result<Vec<AwsResourceModel>, AppError> {
         self.sync_buckets_with_auth(account_id, profile, region, None).await
     }
     
-    pub async fn sync_buckets_with_auth(&self, account_id: &str, profile: Option<&str>, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<Vec<AwsResourceModel>, AppError> {
-        let client = self.aws_service.create_s3_client_with_auth(profile, region, account_auth).await?;
+    pub async fn sync_buckets_with_auth(&self, account_id: &str, profile: &AwsAccountDto, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<Vec<AwsResourceModel>, AppError> {
+        let client = self.aws_service.create_s3_client_with_auth(profile, region).await?;
         self.sync_buckets_with_client(account_id, profile, region, client).await
     }
     
-    async fn sync_buckets_with_client(&self, account_id: &str, profile: Option<&str>, region: &str, client: S3Client) -> Result<Vec<AwsResourceModel>, AppError> {
+    async fn sync_buckets_with_client(&self, account_id: &str, profile: &AwsAccountDto, region: &str, client: S3Client) -> Result<Vec<AwsResourceModel>, AppError> {
         // Get buckets from AWS
         let response = client.list_buckets()
             .send()

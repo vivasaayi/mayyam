@@ -35,7 +35,7 @@ impl AwsAnalyticsService {
         aws_service: Arc<AwsService>,
         aws_data_plane: Arc<AwsDataPlane>,
         aws_resource_repo: Arc<AwsResourceRepository>,
-        llm_integration_service: Arc<crate::services::llm_integration::LlmIntegrationService>,
+        llm_integration_service: Arc<crate::services::llm::LlmIntegrationService>,
         cloudwatch_service: Arc<crate::services::aws::aws_data_plane::cloudwatch::CloudWatchService>,
     ) -> Self {
         // Initialize CloudWatch analyzer with real LLM services

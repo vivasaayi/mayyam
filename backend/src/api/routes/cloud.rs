@@ -93,9 +93,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .route("/profiles/{profile}/regions/{region}/kinesis/streams/summary", 
                web::post().to(cloud::kinesis_describe_stream_summary))
         .route("/profiles/{profile}/regions/{region}/kinesis/streams/retention/increase", 
-               web::post().to(cloud::kinesis_increase_stream_retention_period))
+               web::post().to(cloud::kinesis_increase_retention_period))
         .route("/profiles/{profile}/regions/{region}/kinesis/streams/retention/decrease", 
-               web::post().to(cloud::kinesis_decrease_stream_retention_period))
+               web::post().to(cloud::kinesis_decrease_retention_period))
         .route("/profiles/{profile}/regions/{region}/kinesis/streams/monitoring/enable", 
                web::post().to(cloud::kinesis_enable_enhanced_monitoring))
         .route("/profiles/{profile}/regions/{region}/kinesis/streams/monitoring/disable", 

@@ -2,7 +2,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc, Duration};
 use serde_json::json;
 use crate::errors::AppError;
-use crate::services::llm_integration::LlmIntegrationService;
+use crate::services::llm::LlmIntegrationService;
 use crate::services::aws::aws_data_plane::cloudwatch::{CloudWatchMetrics, CloudWatchService, CloudWatchMetricsRequest, CloudWatchMetricData};
 
 #[derive(Debug, Clone)]

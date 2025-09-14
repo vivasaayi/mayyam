@@ -10,7 +10,7 @@ use sea_orm::prelude::Decimal;
 use sea_orm::ActiveValue;
 
 use crate::repositories::cost_analytics::CostAnalyticsRepository;
-use crate::services::llm_integration::LlmIntegrationService;
+use crate::services::llm::LlmIntegrationService;
 use crate::models::{
     aws_cost_data::ActiveModel as CostDataActiveModel,
     aws_monthly_cost_aggregates::ActiveModel as MonthlyCostAggregateActiveModel,

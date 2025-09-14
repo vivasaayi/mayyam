@@ -39,6 +39,7 @@ impl AwsAccountService {
         // Include access key ID when fetching a specific account for editing
         if !account.use_role {
             dto.access_key_id = account.access_key_id.clone();
+            dto.secret_access_key = account.secret_access_key.clone();
         }
         
         Ok(dto)

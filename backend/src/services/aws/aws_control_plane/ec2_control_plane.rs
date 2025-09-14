@@ -4,6 +4,7 @@ use aws_sdk_ec2::Client as Ec2Client;
 use serde_json::json;
 use base64;
 use crate::errors::AppError;
+use crate::models::aws_account::AwsAccountDto;
 use crate::models::aws_auth::AccountAuthInfo;
 use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel};
 use crate::services::aws::aws_types::ec2::{Ec2InstanceInfo, Ec2InstanceVolumeModification, Ec2LaunchInstanceRequest, Ec2SecurityGroupRequest, Ec2VolumeRequest, Tag};
@@ -20,16 +21,16 @@ impl Ec2ControlPlane {
         Self { aws_service }
     }
 
-    pub async fn sync_instances(&self, account_id: &str, profile: Option<&str>, region: &str) -> Result<Vec<AwsResourceModel>, AppError> {
+    pub async fn sync_instances(&self, account_id: &str, profile: &AwsAccountDto, region: &str) -> Result<Vec<AwsResourceModel>, AppError> {
         self.sync_instances_with_auth(account_id, profile, region, None).await
     }
     
-    pub async fn sync_instances_with_auth(&self, account_id: &str, profile: Option<&str>, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<Vec<AwsResourceModel>, AppError> {
-        let client = self.aws_service.create_ec2_client_with_auth(profile, region, account_auth).await?;
+    pub async fn sync_instances_with_auth(&self, account_id: &str, profile: &AwsAccountDto, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<Vec<AwsResourceModel>, AppError> {
+        let client = self.aws_service.create_ec2_client_with_auth(profile, region).await?;
         self.sync_instances_with_client(account_id, profile, region, client).await
     }
     
-    async fn sync_instances_with_client(&self, account_id: &str, profile: Option<&str>, region: &str, client: Ec2Client) -> Result<Vec<AwsResourceModel>, AppError> {
+    async fn sync_instances_with_client(&self, account_id: &str, profile: &AwsAccountDto, region: &str, client: Ec2Client) -> Result<Vec<AwsResourceModel>, AppError> {
         // Get instances from AWS
         let response = client.describe_instances()
             .send()
@@ -126,7 +127,7 @@ impl Ec2ControlPlane {
         Ok(instances.into_iter().map(|i| i.into()).collect())
     }
 
-    pub async fn launch_instances(&self, profile: Option<&str>, region: &str, request: &Ec2LaunchInstanceRequest) -> Result<Vec<Ec2InstanceInfo>, AppError> {
+    pub async fn launch_instances(&self, profile: &AwsAccountDto, region: &str, request: &Ec2LaunchInstanceRequest) -> Result<Vec<Ec2InstanceInfo>, AppError> {
         let client = self.aws_service.create_ec2_client(profile, region).await?;
         
         // Prepare run instances request
@@ -193,7 +194,7 @@ impl Ec2ControlPlane {
         Ok(instances)
     }
 
-    pub async fn start_instances(&self, profile: Option<&str>, region: &str, instance_ids: &[String]) -> Result<Vec<(String, String)>, AppError> {
+    pub async fn start_instances(&self, profile: &AwsAccountDto, region: &str, instance_ids: &[String]) -> Result<Vec<(String, String)>, AppError> {
         let client = self.aws_service.create_ec2_client(profile, region).await?;
         
         let mut request = client.start_instances();
@@ -226,7 +227,7 @@ impl Ec2ControlPlane {
         Ok(result)
     }
 
-    pub async fn stop_instances(&self, profile: Option<&str>, region: &str, instance_ids: &[String], force: bool) -> Result<Vec<(String, String)>, AppError> {
+    pub async fn stop_instances(&self, profile: &AwsAccountDto, region: &str, instance_ids: &[String], force: bool) -> Result<Vec<(String, String)>, AppError> {
         let client = self.aws_service.create_ec2_client(profile, region).await?;
         
         let mut stopping_instances = Vec::new();
@@ -249,7 +250,7 @@ impl Ec2ControlPlane {
         Ok(stopping_instances)
     }
     
-    pub async fn reboot_instances(&self, profile: Option<&str>, region: &str, instance_ids: &[String]) -> Result<Vec<(String, String)>, AppError> {
+    pub async fn reboot_instances(&self, profile: &AwsAccountDto, region: &str, instance_ids: &[String]) -> Result<Vec<(String, String)>, AppError> {
         let client = self.aws_service.create_ec2_client(profile, region).await?;
         
         let mut rebooting_instances = Vec::new();
@@ -264,7 +265,7 @@ impl Ec2ControlPlane {
         Ok(rebooting_instances)
     }
     
-    pub async fn get_instance_tags(&self, profile: Option<&str>, region: &str, instance_id: &String) -> Result<Vec<Tag>, AppError> {
+    pub async fn get_instance_tags(&self, profile: &AwsAccountDto, region: &str, instance_id: &String) -> Result<Vec<Tag>, AppError> {
         let client = self.aws_service.create_ec2_client(profile, region).await?;
         
         let sdk_tags = client.describe_instances()
@@ -289,7 +290,7 @@ impl Ec2ControlPlane {
         Ok(tags)
     }
     
-    pub async fn update_instance_tags(&self, profile: Option<&str>, region: &str, instance_id: &String, tags: Vec<Tag>) -> Result<(), AppError> {
+    pub async fn update_instance_tags(&self, profile: &AwsAccountDto, region: &str, instance_id: &String, tags: Vec<Tag>) -> Result<(), AppError> {
         let client = self.aws_service.create_ec2_client(profile, region).await?;
         
         // Convert our custom Tag type to AWS SDK Tag type
@@ -309,7 +310,7 @@ impl Ec2ControlPlane {
         Ok(())
     }
 
-    pub async fn terminate_instances(&self, profile: Option<&str>, region: &str, instance_ids: &[String]) -> Result<Vec<(String, String)>, AppError> {
+    pub async fn terminate_instances(&self, profile: &AwsAccountDto, region: &str, instance_ids: &[String]) -> Result<Vec<(String, String)>, AppError> {
         let client = self.aws_service.create_ec2_client(profile, region).await?;
         
         let mut request = client.terminate_instances();
@@ -342,7 +343,7 @@ impl Ec2ControlPlane {
         Ok(result)
     }
 
-    pub async fn describe_instances(&self, profile: Option<&str>, region: &str, instance_ids: Option<&[String]>) -> Result<Vec<Ec2InstanceInfo>, AppError> {
+    pub async fn describe_instances(&self, profile: &AwsAccountDto, region: &str, instance_ids: Option<&[String]>) -> Result<Vec<Ec2InstanceInfo>, AppError> {
         let client = self.aws_service.create_ec2_client(profile, region).await?;
         
         let mut request = client.describe_instances();
@@ -395,7 +396,7 @@ impl Ec2ControlPlane {
         Ok(instances)
     }
 
-    pub async fn create_security_group(&self, profile: Option<&str>, region: &str, request: &Ec2SecurityGroupRequest) -> Result<String, AppError> {
+    pub async fn create_security_group(&self, profile: &AwsAccountDto, region: &str, request: &Ec2SecurityGroupRequest) -> Result<String, AppError> {
         let client = self.aws_service.create_ec2_client(profile, region).await?;
         
         // Create the security group
@@ -478,7 +479,7 @@ impl Ec2ControlPlane {
         Ok(group_id)
     }
 
-    pub async fn create_volume(&self, profile: Option<&str>, region: &str, request: &Ec2VolumeRequest) -> Result<String, AppError> {
+    pub async fn create_volume(&self, profile: &AwsAccountDto, region: &str, request: &Ec2VolumeRequest) -> Result<String, AppError> {
         let client = self.aws_service.create_ec2_client(profile, region).await?;
         
         let mut create_volume_req = client.create_volume()
@@ -532,7 +533,7 @@ impl Ec2ControlPlane {
         Ok(volume_id)
     }
 
-    pub async fn attach_volume(&self, profile: Option<&str>, region: &str, modification: &Ec2InstanceVolumeModification) -> Result<(), AppError> {
+    pub async fn attach_volume(&self, profile: &AwsAccountDto, region: &str, modification: &Ec2InstanceVolumeModification) -> Result<(), AppError> {
         let client = self.aws_service.create_ec2_client(profile, region).await?;
         
         let mut request = client.attach_volume()
@@ -553,7 +554,7 @@ impl Ec2ControlPlane {
         }
     }
 
-    pub async fn modify_instance_attribute(&self, profile: Option<&str>, region: &str, 
+    pub async fn modify_instance_attribute(&self, profile: &AwsAccountDto, region: &str, 
         instance_id: &str,
         attribute: &str,
         value: &str) -> Result<(), AppError> {

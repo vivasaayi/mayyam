@@ -24,9 +24,8 @@ use crate::services::{
     aws_account::AwsAccountService,
     kafka::KafkaService,
     user::UserService,
-    llm_integration::LlmIntegrationService,
+    llm::{LlmIntegrationService, LlmAnalyticsService},
     data_collection::DataCollectionService,
-    llm_analytics::LlmAnalyticsService,
     aws_cost_analytics::AwsCostAnalyticsService,
 };
 use crate::controllers::{
@@ -117,8 +116,13 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
         None, // CloudWatch client - will be initialized when needed
         config.clone(),
     ));
+    // Initialize Unified LLM Manager
+    let mut unified_llm_manager = crate::services::llm::UnifiedLlmManager::new(llm_provider_repo.clone());
+    unified_llm_manager.initialize_common_providers().await?;
+    let unified_llm_manager = Arc::new(unified_llm_manager);
+
     let llm_analytics_service = Arc::new(LlmAnalyticsService::new(
-        llm_integration_service.clone(),
+        unified_llm_manager.clone(),
         data_collection_service.clone(),
         data_source_repo.clone(),
         llm_provider_repo.clone(),
@@ -171,6 +175,9 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     ));
     let llm_analytics_controller = Arc::new(LlmAnalyticsController::new(
         llm_analytics_service.clone(),
+    ));
+    let unified_llm_controller = Arc::new(crate::controllers::unified_llm::UnifiedLlmController::new(
+        unified_llm_manager.clone(),
     ));
 
     let s3_data_plane = Arc::new(S3DataPlane::new(aws_service.clone()));
@@ -226,6 +233,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             .app_data(web::Data::new(llm_integration_service.clone()))
             .app_data(web::Data::new(data_collection_service.clone()))
             .app_data(web::Data::new(llm_analytics_service.clone()))
+            .app_data(web::Data::new(unified_llm_manager.clone()))
             .app_data(web::Data::new(aws_cost_analytics_service.clone()))
             // Kubernetes Services
             .app_data(web::Data::new(deployments_service.clone()))
@@ -245,6 +253,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             .app_data(web::Data::new(llm_provider_controller.clone()))
             .app_data(web::Data::new(prompt_template_controller.clone()))
             .app_data(web::Data::new(llm_analytics_controller.clone()))
+            .app_data(web::Data::new(unified_llm_controller.clone()))
             .app_data(web::Data::new(s3_data_plane.clone()))
             .app_data(web::Data::new(s3_control_plane.clone()))
             .app_data(web::Data::new(dynamodb_data_plane.clone()))
@@ -270,6 +279,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
                 routes::prompt_template::configure(cfg_param, prompt_template_controller.clone());
                 routes::query_template::configure(cfg_param);
                 routes::llm_analytics::configure(cfg_param, llm_analytics_controller.clone());
+                routes::unified_llm::configure(cfg_param, unified_llm_controller.clone());
                 
                 info!("Registering AWS Cost Analytics routes");
                 routes::cost_analytics::configure_routes(cfg_param);

@@ -5,6 +5,7 @@ use chrono::{NaiveDateTime, Local, Duration, Datelike};
 use crate::errors::AppError;
 use super::base::AwsCostService;
 use aws_sdk_costexplorer::types::{DateInterval, GroupDefinition, Granularity};
+use crate::models::aws_account::AwsAccountDto;
 
 #[derive(Debug, Clone)]
 pub enum DatePreset {
@@ -24,7 +25,7 @@ pub trait CostAndUsage {
     async fn get_cost_and_usage(
         &self,
         account_id: &str,
-        profile: Option<&str>,
+        aws_account_dto: AwsAccountDto,
         region: &str,
         start_date: &str,
         end_date: &str,
@@ -36,7 +37,7 @@ pub trait CostAndUsage {
     async fn get_cost_for_date(
         &self,
         account_id: &str,
-        profile: Option<&str>,
+        aws_account_dto: AwsAccountDto,
         region: &str,
         date: &str,
         group_by: Option<Vec<GroupDefinition>>,
@@ -45,7 +46,7 @@ pub trait CostAndUsage {
     async fn get_cost_for_hour(
         &self,
         account_id: &str,
-        profile: Option<&str>,
+        aws_account_dto: AwsAccountDto,
         region: &str,
         date: &str,
         hour: u32,
@@ -55,7 +56,7 @@ pub trait CostAndUsage {
     async fn get_cost_for_month(
         &self,
         account_id: &str,
-        profile: Option<&str>,
+        aws_account_dto: AwsAccountDto,
         region: &str,
         year: i32,
         month: u32,
@@ -65,7 +66,7 @@ pub trait CostAndUsage {
     async fn get_cost_for_preset(
         &self,
         account_id: &str,
-        profile: Option<&str>,
+        aws_account_dto: AwsAccountDto,
         region: &str,
         preset: DatePreset,
         group_by: Option<Vec<GroupDefinition>>,
@@ -74,7 +75,7 @@ pub trait CostAndUsage {
     async fn compare_costs(
         &self,
         account_id: &str,
-        profile: Option<&str>,
+        aws_account_dto: AwsAccountDto,
         region: &str,
         date1: DatePreset,
         date2: DatePreset,
@@ -86,7 +87,7 @@ impl CostAndUsage for AwsCostService {
     async fn get_cost_and_usage(
         &self,
         account_id: &str,
-        profile: Option<&str>,
+        aws_account_dto: AwsAccountDto,
         region: &str,
         start_date: &str,
         end_date: &str,
@@ -94,12 +95,12 @@ impl CostAndUsage for AwsCostService {
         metrics: Vec<&str>,
         group_by: Option<Vec<GroupDefinition>>,
     ) -> Result<Value, AppError> {
-        let client = self.create_client(profile, region).await?;
+        let client = self.create_client(aws_account_dto, region).await?;
         
         let time_period = DateInterval::builder()
             .start(start_date)
             .end(end_date)
-            .build();
+            .build()?;
         
         let mut request = client.get_cost_and_usage()
             .time_period(time_period)

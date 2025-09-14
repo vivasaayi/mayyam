@@ -7,7 +7,7 @@ use tracing::info;
 use chrono::Utc;
 
 use crate::services::aws::{
-    AwsControlPlane, AwsCostService,
+    AwsControlPlane, AwsCostService, AwsDataPlane,
 };
 use crate::models::aws_resource::{AwsResourceQuery, AwsResourceType};
 use crate::services::aws::aws_data_plane::cloudwatch::{CloudWatchService, CloudWatchMetrics, CloudWatchLogs, CloudWatchLogsRequest, CloudWatchMetricsRequest};
@@ -20,7 +20,8 @@ use crate::services::aws::aws_types::kinesis::{
     KinesisPutRecordRequest, KinesisCreateStreamRequest, KinesisDeleteStreamRequest, 
     KinesisDescribeStreamRequest, KinesisListStreamsRequest, KinesisUpdateShardCountRequest,
     KinesisRetentionPeriodRequest, KinesisEnhancedMonitoringRequest, KinesisListShardsRequest,
-    KinesisPutRecordsRequest, KinesisGetRecordsRequest, KinesisGetShardIteratorRequest
+    KinesisPutRecordsRequest, KinesisGetRecordsRequest, KinesisGetShardIteratorRequest,
+    KinesisPutRecordsResponse, KinesisGetRecordsResponse, KinesisGetShardIteratorResponse
 };
 use crate::services::aws::aws_data_plane::kinesis_data_plane::KinesisDataPlane;
 use crate::services::aws::aws_control_plane::kinesis_control_plane::KinesisControlPlane;

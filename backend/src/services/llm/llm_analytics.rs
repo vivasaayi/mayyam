@@ -1,13 +1,17 @@
 use crate::models::{Insight, InsightSeverity, Recommendation, RecommendationPriority};
 use chrono::{DateTime, Utc};
 use serde::{Serialize, Deserialize};
-use serde_json::json;
+use serde_json::{Value, json};
 use std::sync::Arc;
-use crate::services::llm_integration::LlmIntegrationService;
+use reqwest::Client;
 use crate::services::data_collection::DataCollectionService;
 use crate::repositories::data_source::DataSourceRepository;
 use crate::repositories::llm_provider::LlmProviderRepository;
 use crate::repositories::prompt_template::PromptTemplateRepository;
+use crate::models::llm_provider::LlmProviderModel;
+use crate::errors::AppError;
+use crate::services::llm::manager::UnifiedLlmManager;
+use crate::services::llm::interface::UnifiedLlmRequest;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AnalysisType {
@@ -22,7 +26,7 @@ pub struct TimeRange {
 }
 
 pub struct LlmAnalyticsService {
-    pub llm_integration_service: Arc<LlmIntegrationService>,
+    pub llm_manager: Arc<UnifiedLlmManager>,
     pub data_collection_service: Arc<DataCollectionService>,
     pub data_source_repo: Arc<DataSourceRepository>,
     pub llm_provider_repo: Arc<LlmProviderRepository>,
@@ -42,14 +46,14 @@ pub struct ServiceAnalyticsRequest {
 
 impl LlmAnalyticsService {
     pub fn new(
-        llm_integration_service: Arc<LlmIntegrationService>,
+        llm_manager: Arc<UnifiedLlmManager>,
         data_collection_service: Arc<DataCollectionService>,
         data_source_repo: Arc<DataSourceRepository>,
         llm_provider_repo: Arc<LlmProviderRepository>,
         prompt_template_repo: Arc<PromptTemplateRepository>,
     ) -> Self {
         Self {
-            llm_integration_service,
+            llm_manager,
             data_collection_service,
             data_source_repo,
             llm_provider_repo,
@@ -123,21 +127,29 @@ impl LlmAnalyticsService {
             uuid::Uuid::new_v4() // Placeholder
         });
         
-        // Call LLM
-        let llm_request = crate::services::llm_integration::LlmRequest {
+        // Call LLM using unified interface
+        let llm_request = UnifiedLlmRequest {
             prompt,
             system_prompt: Some("You are an expert AWS cloud analyst. Provide detailed, actionable insights based on the metrics data provided.".to_string()),
             temperature: Some(0.3),
             max_tokens: Some(2000),
-            variables: None,
+            top_p: None,
+            top_k: None,
+            frequency_penalty: None,
+            presence_penalty: None,
+            stop: None,
+            enable_thinking: None,
+            stream: None,
+            extra_params: None,
+            context: None,
         };
         
-        let llm_response = self.llm_integration_service
-            .generate_response(provider_id, llm_request)
+        let llm_response = self.llm_manager
+            .generate_smart(llm_request)
             .await?;
         
         // Parse LLM response and structure it
-        let analysis_result = self.parse_llm_response(&llm_response.content)?;
+        let analysis_result = self.parse_llm_response(&llm_response.response.content)?;
         
         Ok(serde_json::json!({
             "resource_id": req.resource_id,
@@ -147,10 +159,10 @@ impl LlmAnalyticsService {
                 "start": req.time_range.start_time,
                 "end": req.time_range.end_time
             },
-            "metrics_analyzed": all_metrics.len(),
-            "llm_provider": llm_response.provider,
-            "analysis": analysis_result,
-            "raw_response": llm_response.content
+            "analysis_result": analysis_result,
+            "llm_provider": llm_response.response.provider,
+            "timestamp": llm_response.response.timestamp,
+            "raw_response": llm_response.response.content
         }))
     }
     

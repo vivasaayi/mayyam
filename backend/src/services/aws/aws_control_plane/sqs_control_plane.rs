@@ -2,6 +2,7 @@ use std::sync::Arc;
 use aws_sdk_sqs::Client as SqsClient;
 use serde_json::json;
 use crate::errors::AppError;
+use crate::models::aws_account::AwsAccountDto;
 use crate::models::aws_auth::AccountAuthInfo;
 use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel};
 use crate::services::aws::client_factory::AwsClientFactory;
@@ -16,16 +17,16 @@ impl SqsControlPlane {
         Self { aws_service }
     }
 
-    pub async fn sync_queues(&self, account_id: &str, profile: Option<&str>, region: &str) -> Result<Vec<AwsResourceModel>, AppError> {
+    pub async fn sync_queues(&self, account_id: &str, profile: &AwsAccountDto, region: &str) -> Result<Vec<AwsResourceModel>, AppError> {
         self.sync_queues_with_auth(account_id, profile, region, None).await
     }
 
-    pub async fn sync_queues_with_auth(&self, account_id: &str, profile: Option<&str>, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<Vec<AwsResourceModel>, AppError> {
-        let client = self.aws_service.create_sqs_client_with_auth(profile, region, account_auth).await?;
+    pub async fn sync_queues_with_auth(&self, account_id: &str, profile: &AwsAccountDto, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<Vec<AwsResourceModel>, AppError> {
+        let client = self.aws_service.create_sqs_client_with_auth(profile, region).await?;
         self.sync_queues_with_client(account_id, profile, region, client).await
     }
 
-    async fn sync_queues_with_client(&self, account_id: &str, profile: Option<&str>, region: &str, client: SqsClient) -> Result<Vec<AwsResourceModel>, AppError> {
+    async fn sync_queues_with_client(&self, account_id: &str, profile: &AwsAccountDto, region: &str, client: SqsClient) -> Result<Vec<AwsResourceModel>, AppError> {
         // List all queues from AWS
         let response = client.list_queues()
             .send()

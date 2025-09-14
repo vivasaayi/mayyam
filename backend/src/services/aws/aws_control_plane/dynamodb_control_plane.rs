@@ -3,6 +3,7 @@ use aws_sdk_dynamodb::Client as DynamoDbClient;
 
 use serde_json::json;
 use crate::errors::AppError;
+use crate::models::aws_account::AwsAccountDto;
 use crate::models::aws_auth::AccountAuthInfo;
 use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel};
 use crate::services::aws::aws_types::dynamodb::{DynamoDbAttributeDefinition, DynamoDbKeySchema, DynamoDbProvisionedThroughput, DynamoDbTableInfo};
@@ -19,16 +20,16 @@ impl DynamoDbControlPlane {
         Self { aws_service }
     }
 
-    pub async fn sync_tables(&self, account_id: &str, profile: Option<&str>, region: &str) -> Result<Vec<AwsResourceModel>, AppError> {
+    pub async fn sync_tables(&self, account_id: &str, profile: &AwsAccountDto, region: &str) -> Result<Vec<AwsResourceModel>, AppError> {
         self.sync_tables_with_auth(account_id, profile, region, None).await
     }
     
-    pub async fn sync_tables_with_auth(&self, account_id: &str, profile: Option<&str>, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<Vec<AwsResourceModel>, AppError> {
-        let client = self.aws_service.create_dynamodb_client_with_auth(profile, region, account_auth).await?;
+    pub async fn sync_tables_with_auth(&self, account_id: &str, profile: &AwsAccountDto, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<Vec<AwsResourceModel>, AppError> {
+        let client = self.aws_service.create_dynamodb_client_with_auth(profile, region).await?;
         self.sync_tables_with_client(account_id, profile, region, client).await
     }
     
-    async fn sync_tables_with_client(&self, account_id: &str, profile: Option<&str>, region: &str, client: DynamoDbClient) -> Result<Vec<AwsResourceModel>, AppError> {
+    async fn sync_tables_with_client(&self, account_id: &str, profile: &AwsAccountDto, region: &str, client: DynamoDbClient) -> Result<Vec<AwsResourceModel>, AppError> {
         // Get the list of tables from AWS
         let list_response = client.list_tables()
             .send()
@@ -181,7 +182,7 @@ impl DynamoDbControlPlane {
         Ok(tables.into_iter().map(|t| t.into()).collect())
     }
 
-    pub async fn list_tables(&self, profile: Option<&str>, region: &str, exclusive_start_table_name: Option<String>, limit: Option<i32>) -> Result<Vec<String>, AppError> {
+    pub async fn list_tables(&self, profile: &AwsAccountDto, region: &str, exclusive_start_table_name: Option<String>, limit: Option<i32>) -> Result<Vec<String>, AppError> {
         let client = self.aws_service.create_dynamodb_client(profile, region).await?;
         
         // Build the request with optional parameters
@@ -207,7 +208,7 @@ impl DynamoDbControlPlane {
         Ok(table_names)
     }
 
-    pub async fn describe_table(&self, profile: Option<&str>, region: &str, table_name: &str) -> Result<DynamoDbTableInfo, AppError> {
+    pub async fn describe_table(&self, profile: &AwsAccountDto, region: &str, table_name: &str) -> Result<DynamoDbTableInfo, AppError> {
         let client = self.aws_service.create_dynamodb_client(profile, region).await?;
         
         // Send describe table request to AWS
@@ -270,7 +271,7 @@ impl DynamoDbControlPlane {
         })
     }
 
-    pub async fn create_table(&self, profile: Option<&str>, region: &str, table_name: &str, 
+    pub async fn create_table(&self, profile: &AwsAccountDto, region: &str, table_name: &str, 
         key_schema: Vec<DynamoDbKeySchema>,
         attribute_definitions: Vec<DynamoDbAttributeDefinition>,
         provisioned_throughput: DynamoDbProvisionedThroughput) -> Result<DynamoDbTableInfo, AppError> {
@@ -325,7 +326,7 @@ impl DynamoDbControlPlane {
         })
     }
 
-    pub async fn delete_table(&self, profile: Option<&str>, region: &str, table_name: &str) -> Result<(), AppError> {
+    pub async fn delete_table(&self, profile: &AwsAccountDto, region: &str, table_name: &str) -> Result<(), AppError> {
         let client = self.aws_service.create_dynamodb_client(profile, region).await?;
         
         // Send delete table request to AWS
@@ -338,7 +339,7 @@ impl DynamoDbControlPlane {
         Ok(())
     }
 
-    pub async fn update_table(&self, profile: Option<&str>, region: &str, 
+    pub async fn update_table(&self, profile: &AwsAccountDto, region: &str, 
         table_name: &str,
         provisioned_throughput: Option<DynamoDbProvisionedThroughput>) -> Result<DynamoDbTableInfo, AppError> {
         

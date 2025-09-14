@@ -15,6 +15,7 @@ pub mod prompt_template;
 pub mod query_template;
 pub mod llm_analytics;
 pub mod cost_analytics;
+pub mod unified_llm;
 
 use actix_web::web;
 use sea_orm::DatabaseConnection; // Ensure this is imported
