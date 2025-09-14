@@ -59,6 +59,9 @@ use crate::services::kubernetes::{
     persistent_volume_claims_service::PersistentVolumeClaimsService,
     persistent_volumes_service::PersistentVolumesService,
 };
+use crate::services::kubernetes::jobs_service::JobsService;
+use crate::services::kubernetes::cronjobs_service::CronJobsService;
+use crate::services::kubernetes::ingress_service::IngressService;
 
 
 pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), Box<dyn Error>> {
@@ -128,6 +131,9 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     let persistent_volumes_service = Arc::new(PersistentVolumesService::new());
     let configmaps_service = Arc::new(crate::services::kubernetes::configmaps_service::ConfigMapsService::new());
     let secrets_service = Arc::new(crate::services::kubernetes::secrets_service::SecretsService::new());
+    let jobs_service = Arc::new(JobsService::new());
+    let cronjobs_service = Arc::new(CronJobsService::new());
+    let ingress_service = Arc::new(IngressService::new());
     
     // Initialize controllers
     let auth_controller = Arc::new(AuthController::new(user_service.clone(), config.clone()));
@@ -214,6 +220,9 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             .app_data(web::Data::new(persistent_volumes_service.clone()))
             .app_data(web::Data::new(configmaps_service.clone()))
             .app_data(web::Data::new(secrets_service.clone()))
+            .app_data(web::Data::new(jobs_service.clone()))
+            .app_data(web::Data::new(cronjobs_service.clone()))
+            .app_data(web::Data::new(ingress_service.clone()))
             // Controllers
             .app_data(web::Data::new(auth_controller.clone()))
             .app_data(web::Data::new(aws_analytics_controller.clone()))

@@ -80,5 +80,26 @@ pub fn configure(cfg: &mut web::ServiceConfig, db: Arc<DatabaseConnection>) {
         .route("/clusters/{cluster_id}/namespaces/{namespace}/secrets/{name}", web::put().to(crate::controllers::secrets::upsert_secret_plaintext_controller))
         .route("/clusters/{cluster_id}/namespaces/{namespace}/secrets/{name}", web::delete().to(crate::controllers::secrets::delete_secret_controller));
 
+    // Jobs
+    let scope = scope
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/jobs", web::get().to(crate::controllers::jobs::list_jobs_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/jobs/{name}", web::get().to(crate::controllers::jobs::get_job_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/jobs/{name}", web::put().to(crate::controllers::jobs::upsert_job_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/jobs/{name}", web::delete().to(crate::controllers::jobs::delete_job_controller));
+
+    // CronJobs
+    let scope = scope
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/cronjobs", web::get().to(crate::controllers::cronjobs::list_cronjobs_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/cronjobs/{name}", web::get().to(crate::controllers::cronjobs::get_cronjob_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/cronjobs/{name}", web::put().to(crate::controllers::cronjobs::upsert_cronjob_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/cronjobs/{name}", web::delete().to(crate::controllers::cronjobs::delete_cronjob_controller));
+
+    // Ingress
+    let scope = scope
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/ingress", web::get().to(crate::controllers::ingress::list_ingress_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/ingress/{name}", web::get().to(crate::controllers::ingress::get_ingress_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/ingress/{name}", web::put().to(crate::controllers::ingress::upsert_ingress_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/ingress/{name}", web::delete().to(crate::controllers::ingress::delete_ingress_controller));
+
     cfg.service(scope);
 }
