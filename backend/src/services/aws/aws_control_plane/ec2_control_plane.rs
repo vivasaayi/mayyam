@@ -21,8 +21,8 @@ impl Ec2ControlPlane {
         Self { aws_service }
     }
 
-    pub async fn sync_instances(&self, profile: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
-        let client = self.aws_service.create_ec2_client(profile).await?;
+    pub async fn sync_instances(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
+        let client = self.aws_service.create_ec2_client(aws_account_dto).await?;
 
         // Get instances from AWS
         let response = client.describe_instances()
@@ -38,7 +38,9 @@ impl Ec2ControlPlane {
         
             for ec2_instance in reservation.instances() {
                 let instance_id = ec2_instance.instance_id().unwrap_or_default().to_string();
-                
+
+                let arn = format!("arn:aws:ec2:{}:{}:instance/{}", aws_account_dto.default_region, aws_account_dto.account_id, instance_id);
+
                 // Extract tags
                 let mut tags_map = serde_json::Map::new();
                 let mut name = None;
@@ -100,12 +102,12 @@ impl Ec2ControlPlane {
                 // Create resource DTO
                 let instance = AwsResourceDto {
                     id: None,
-                    account_id: account_id.to_string(),
-                    profile: profile.profile.clone(),
-                    region: region.to_string(),
+                    account_id: aws_account_dto.account_id.clone(),
+                    profile: aws_account_dto.profile.clone(),
+                    region: aws_account_dto.default_region.clone().to_string(),
                     resource_type: "EC2Instance".to_string(),
                     resource_id: instance_id.clone(),
-                    arn: format!("arn:aws:ec2:{}:{}:instance/{}", region, account_id, instance_id),
+                    arn: arn.clone(),
                     name,
                     tags: serde_json::Value::Object(tags_map),
                     resource_data: serde_json::Value::Object(resource_data),

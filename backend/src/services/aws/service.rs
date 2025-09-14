@@ -100,16 +100,16 @@ impl AwsService {
         
         let aws_config = AwsConfig {
             name: "fallback".to_string(),
-            profile: aws_account_dto.profile.map(String::from),
-            region: aws_account_dto.default_region,
+            profile: aws_account_dto.profile.clone(),
+            region: aws_account_dto.default_region.clone(),
             access_key_id: aws_account_dto.access_key_id.clone().map(String::from),
-            secret_access_key: aws_account_dto.access_key_id.clone().map(String::from),
-            role_arn: aws_account_dto.role_arn.map(String::from),
+            secret_access_key: aws_account_dto.secret_access_key.clone().map(String::from),
+            role_arn: Some("FIX_ME".to_string()),
         };
         
         let config_builder = aws_config::from_env()
-            .region(aws_types::region::Region::new(aws_account_dto.default_region));
-        
+            .region(aws_types::region::Region::new(aws_account_dto.default_region.clone()));
+
         let config = if let (Some(access_key), Some(secret_key)) = (&aws_config.access_key_id, &aws_config.secret_access_key) {
             debug!("Using access key authentication");
             let credentials_provider = aws_sdk_s3::config::Credentials::new(

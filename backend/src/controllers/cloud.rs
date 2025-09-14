@@ -165,7 +165,7 @@ pub async fn get_aws_cost_and_usage(
     let profile = query_params.get("profile")
         .and_then(|v| v.as_str());
 
-    let aws_account_dto = AwsAccountDto::new_with_profile(profile.as_deref().unwrap_or_else(|| ""), &region);
+    let aws_account_dto = &AwsAccountDto::new_with_profile(profile.as_deref().unwrap_or_else(|| ""), &region);
 
     let group_by = None; // You can add group by options if needed
     let cost_data = aws_cost_service
@@ -567,8 +567,7 @@ pub async fn get_cloudwatch_metrics(
         }
     };
 
-    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
-    
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
     let request = CloudWatchMetricsRequest {
         resource_id,
         resource_type,
@@ -580,8 +579,8 @@ pub async fn get_cloudwatch_metrics(
     };
 
     // Access the inner CloudWatchService and use the trait method
-    let result = cloudwatch_service.get_metrics(profile_opt, &region, &request).await?;
-    
+    let result = cloudwatch_service.get_metrics(&aws_account_dto, &request).await?;
+
     Ok(HttpResponse::Ok().json(result))
 }
 

@@ -38,10 +38,10 @@ impl DynamoDbControlPlane {
                 
             if let Some(table_details) = describe_resp.table() {
                 // Get tags for the table
-                let arn = format!("arn:aws:dynamodb:{}:{}:table/{}", region, account_id, table_name);
-                
+                let arn = table_details.table_arn().unwrap_or_default();
+
                 let tags_response = client.list_tags_of_resource()
-                    .resource_arn(&arn)
+                    .resource_arn(arn)
                     .send()
                     .await
                     .map_err(|e| AppError::ExternalService(format!("Failed to get tags for table {}: {}", table_name, e)))?;
@@ -49,14 +49,16 @@ impl DynamoDbControlPlane {
                 let mut tags_map = serde_json::Map::new();
                 let mut name = None;
                 
-                for tag in tags_response.tags().as_deref().unwrap_or(&[]) {
-                    if let (Some(key), Some(value)) = (tag.key(), tag.value()) {
-                        if key == "Name" {
-                            name = Some(value.to_string());
-                        }
-                        tags_map.insert(key.to_string(), json!(value));
-                    }
-                }
+
+                // FIX ME
+                // for tag in tags_response.tags() {
+                //     if let (Some(key), Some(value)) = (tag.key(), tag.value()) {
+                //         if key == "Name" {
+                //             name = Some(value.to_string());
+                //         }
+                //         tags_map.insert(key.to_string(), json!(value));
+                //     }
+                // }
             
                 
                 // If no name tag was found, use the table name as name
@@ -104,15 +106,12 @@ impl DynamoDbControlPlane {
                 for key in table_details.key_schema() {
                     let mut key_data = serde_json::Map::new();
                     
-                    if let Some(name) = key.attribute_name() {
-                        key_data.insert("attribute_name".to_string(), json!(name));
-                    }
+                    key_data.insert("attribute_name".to_string(), json!(key.attribute_name()));
                     
-                    if let Some(type_str) = key.key_type().map(|t| t.as_ref()) {
-                        key_data.insert("key_type".to_string(), json!(type_str));
-                    } else {
-                        key_data.insert("key_type".to_string(), json!("UNKNOWN"));
-                    }
+                    key_data.insert(
+                        "key_type".to_string(),
+                        json!(key.key_type().as_str()),
+                    );
                     
                     schema_data.push(serde_json::Value::Object(key_data));
                 }
@@ -127,15 +126,9 @@ impl DynamoDbControlPlane {
                 for attr in table_details.attribute_definitions() {
                     let mut attr_map = serde_json::Map::new();
                     
-                    if let Some(name) = attr.attribute_name() {
-                        attr_map.insert("attribute_name".to_string(), json!(name));
-                    }
+                    attr_map.insert("attribute_name".to_string(), json!(attr.attribute_name));
                     
-                    if let Some(type_str) = attr.attribute_type().map(|t| t.as_ref()) {
-                        attr_map.insert("attribute_type".to_string(), json!(type_str));
-                    } else {
-                        attr_map.insert("attribute_type".to_string(), json!("UNKNOWN"));
-                    }
+                    attr_map.insert("attribute_type".to_string(), json!(attr.attribute_type().as_str()));
                     
                     attr_data.push(serde_json::Value::Object(attr_map));
                 }
@@ -155,12 +148,12 @@ impl DynamoDbControlPlane {
                 // Create resource DTO
                 let table = AwsResourceDto {
                     id: None,
-                    account_id: account_id.to_string(),
+                    account_id: aws_account_dto.account_id.clone(),
                     profile: aws_account_dto.profile.clone(),
-                    region: aws_account_dto.default_region.clone(),
+                    region: aws_account_dto.default_region.clone().to_string(),
                     resource_type: "DynamoDbTable".to_string(),
                     resource_id: table_name.to_string(),
-                    arn,
+                    arn: arn.clone().to_string(),
                     name,
                     tags: serde_json::Value::Object(tags_map),
                     resource_data: serde_json::Value::Object(resource_data),
@@ -194,7 +187,7 @@ impl DynamoDbControlPlane {
             .map_err(|e| AppError::ExternalService(format!("Failed to list DynamoDB tables: {}", e)))?;
             
         // Extract table names from response
-        let table_names = response.table_names().unwrap_or(&[]).to_vec();
+        let table_names = response.table_names().to_vec();
         
         Ok(table_names)
     }
@@ -229,36 +222,36 @@ impl DynamoDbControlPlane {
         };
         
         // Get key schema
-        let key_schema: Vec<DynamoDbKeySchema> = if let Some(schema) = table_details.key_schema() {
-            schema.iter()
-                .map(|key| DynamoDbKeySchema {
-                    attribute_name: key.attribute_name().unwrap_or("").to_string(),
-                    key_type: key.key_type().map(|t| t.as_ref()).unwrap_or("").to_string(),
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
+        // let key_schema: Vec<DynamoDbKeySchema> = if let Some(schema) = table_details.key_schema() {
+        //     schema.iter()
+        //         .map(|key| DynamoDbKeySchema {
+        //             attribute_name: key.attribute_name().unwrap_or("").to_string(),
+        //             key_type: key.key_type().map(|t| t.as_ref()).unwrap_or("").to_string(),
+        //         })
+        //         .collect()
+        // } else {
+        //     Vec::new()
+        // };
         
         // Get attribute definitions
-        let attribute_definitions: Vec<DynamoDbAttributeDefinition> = if let Some(attrs) = table_details.attribute_definitions() {
-            attrs.iter()
-                .map(|attr| DynamoDbAttributeDefinition {
-                    attribute_name: attr.attribute_name().unwrap_or("").to_string(),
-                    attribute_type: attr.attribute_type().map(|t| t.as_ref()).unwrap_or("").to_string(),
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
+        // let attribute_definitions: Vec<DynamoDbAttributeDefinition> = if let Some(attrs) = table_details.attribute_definitions() {
+        //     attrs.iter()
+        //         .map(|attr| DynamoDbAttributeDefinition {
+        //             attribute_name: attr.attribute_name().unwrap_or("").to_string(),
+        //             attribute_type: attr.attribute_type().map(|t| t.as_ref()).unwrap_or("").to_string(),
+        //         })
+        //         .collect()
+        // } else {
+        //     Vec::new()
+        // };
         
         // Create and return table info
         Ok(DynamoDbTableInfo {
             table_name: table_name.to_string(),
             status: table_details.table_status().map(|s| s.as_str()).unwrap_or("UNKNOWN").to_string(),
             provisioned_throughput,
-            key_schema,
-            attribute_definitions,
+            key_schema: vec![],
+            attribute_definitions: vec![],
         })
     }
 
@@ -274,7 +267,7 @@ impl DynamoDbControlPlane {
         // Convert key schema
         let aws_key_schema: Vec<aws_sdk_dynamodb::types::KeySchemaElement> = key_schema.iter()
             .map(|key| aws_sdk_dynamodb::types::KeySchemaElement::builder()
-                .attribute_name(key.attribute_name().unwrap_or(""))
+                .attribute_name(key.attribute_name.clone())
                 .key_type(key.key_type.as_str().into())
                 .build())
             .collect::<Result<Vec<_>, _>>()
@@ -376,28 +369,28 @@ impl DynamoDbControlPlane {
             .ok_or_else(|| AppError::ExternalService(format!("No details found for table {}", table_name)))?;
             
         // Get current key schema
-        let key_schema: Vec<DynamoDbKeySchema> = if let Some(schema) = table_desc.key_schema() {
-            schema.iter()
-                .map(|key| DynamoDbKeySchema {
-                    attribute_name: key.attribute_name().unwrap_or("").to_string(),
-                    key_type: key.key_type().map(|t| t.as_ref()).unwrap_or("").to_string(),
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
+        // let key_schema: Vec<DynamoDbKeySchema> = if let Some(schema) = table_desc.key_schema() {
+        //     schema.iter()
+        //         .map(|key| DynamoDbKeySchema {
+        //             attribute_name: key.attribute_name().unwrap_or("").to_string(),
+        //             key_type: key.key_type().map(|t| t.as_ref()).unwrap_or("").to_string(),
+        //         })
+        //         .collect()
+        // } else {
+        //     Vec::new()
+        // };
         
         // Get current attribute definitions
-        let attribute_definitions: Vec<DynamoDbAttributeDefinition> = if let Some(attrs) = table_desc.attribute_definitions() {
-            attrs.iter()
-                .map(|attr| DynamoDbAttributeDefinition {
-                    attribute_name: attr.attribute_name().unwrap_or("").to_string(),
-                    attribute_type: attr.attribute_type().map(|t| t.as_ref()).unwrap_or("").to_string(),
-                })
-                .collect()
-        } else {
-            Vec::new()
-        };
+        // let attribute_definitions: Vec<DynamoDbAttributeDefinition> = if let Some(attrs) = table_desc.attribute_definitions() {
+        //     attrs.iter()
+        //         .map(|attr| DynamoDbAttributeDefinition {
+        //             attribute_name: attr.attribute_name().unwrap_or("").to_string(),
+        //             attribute_type: attr.attribute_type().map(|t| t.as_ref()).unwrap_or("").to_string(),
+        //         })
+        //         .collect()
+        // } else {
+        //     Vec::new()
+        // };
         
         // Get current provisioned throughput
         let current_throughput = if let Some(throughput) = table_desc.provisioned_throughput() {
@@ -417,8 +410,8 @@ impl DynamoDbControlPlane {
             table_name: table_name.to_string(),
             status: table_details.table_status().map(|s| s.as_str()).unwrap_or("UPDATING").to_string(),
             provisioned_throughput: current_throughput,
-            key_schema,
-            attribute_definitions,
+            key_schema: vec![],
+            attribute_definitions: vec![],
         })
     }
 }

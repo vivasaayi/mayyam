@@ -131,12 +131,12 @@ impl KinesisControlPlane {
             // Create resource DTO
             let stream = AwsResourceDto {
                 id: None,
-                account_id: account_id.to_string(),
-                profile: Some("".to_string()),
+                account_id: aws_account_dto.account_id.clone(),
+                profile: aws_account_dto.profile.clone(),
                 region: aws_account_dto.default_region.clone().to_string(),
                 resource_type: "KinesisStream".to_string(),
                 resource_id: stream_name.to_string(),
-                arn: stream_desc.stream_arn,
+                arn: stream_desc.stream_arn.clone(),
                 name: Some("".to_string()),
                 tags: serde_json::Value::Null,
                 resource_data: serde_json::Value::Object(resource_data),
@@ -229,7 +229,7 @@ impl KinesisControlPlane {
             stream_names: response.stream_names().to_vec(),
             has_more_streams: response.has_more_streams(),
             next_token: response.next_token().map(|s| s.to_string()),
-            stream_summaries: response.stream_summaries().to_vec(),
+            stream_summaries: vec![], //response.stream_summaries().to_vec(),
         })
     }
 
@@ -455,8 +455,8 @@ impl KinesisControlPlane {
 
         Ok(KinesisEnhancedMonitoringResponse {
             stream_name: request.stream_name.clone(),
-            current_shard_level_metrics: response.current_shard_level_metrics(),
-            desired_shard_level_metrics: response.desired_shard_level_metrics(),
+            current_shard_level_metrics: vec![], //response.current_shard_level_metrics(),
+            desired_shard_level_metrics: vec![], //response.desired_shard_level_metrics(),
             stream_arn: response.stream_arn().map(|s| s.to_string()),
         })
     }
@@ -488,8 +488,8 @@ impl KinesisControlPlane {
 
         Ok(KinesisEnhancedMonitoringResponse {
             stream_name: request.stream_name.clone(),
-            current_shard_level_metrics: response.current_shard_level_metrics(),
-            desired_shard_level_metrics: response.desired_shard_level_metrics(),
+            current_shard_level_metrics: vec![], //response.current_shard_level_metrics(),
+            desired_shard_level_metrics: vec![], //response.desired_shard_level_metrics(),
             stream_arn: response.stream_arn().map(|s| s.to_string()),
         })
     }
@@ -523,10 +523,11 @@ impl KinesisControlPlane {
         let shards = response.shards();
 
         Ok(KinesisListShardsResponse {
-            stream_status: "".to_string(),
-            retention_period_hours: 0,
-            shard_count: shards.len() as i32,
-            enhanced_monitoring: vec![],
+            shards: vec![],
+            next_token: todo!(),
+            stream_name: todo!(),
+            stream_arn: todo!(),
+            stream_creation_timestamp: todo!(),
         })
     }
 }

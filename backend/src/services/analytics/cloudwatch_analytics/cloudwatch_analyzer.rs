@@ -2,6 +2,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc, Duration};
 use serde_json::json;
 use crate::errors::AppError;
+use crate::models::aws_account::AwsAccountDto;
 use crate::services::llm::LlmIntegrationService;
 use crate::services::aws::aws_data_plane::cloudwatch::{CloudWatchMetrics, CloudWatchService, CloudWatchMetricsRequest, CloudWatchMetricData};
 
@@ -156,7 +157,9 @@ impl CloudWatchAnalyzer {
             period: 300, // 5 minutes
         };
 
-        let result = self.cloudwatch_service.get_metrics(None, region, &request).await?;
+        let aws_account_dto = AwsAccountDto::new_with_profile("", "us-east-1");
+
+        let result = self.cloudwatch_service.get_metrics(&aws_account_dto, &request).await?;
         Ok(result.metrics)
     }
 

@@ -34,11 +34,11 @@ impl ElasticacheControlPlane {
             let cluster_id = cache_cluster.cache_cluster_id().unwrap_or_default();
             
             // Get ARN for the cluster
-            let arn = format!("arn:aws:elasticache:{}:{}:cluster:{}", region, account_id, cluster_id);
-            
+            let arn = cache_cluster.arn().unwrap_or_default();
+
             // Get tags for the cluster
             let tags_response = client.list_tags_for_resource()
-                .resource_name(&arn)
+                .resource_name(arn)
                 .send()
                 .await
                 .map_err(|e| AppError::ExternalService(format!("Failed to get tags for ElastiCache cluster {}: {}", cluster_id, e)))?;
@@ -133,12 +133,12 @@ impl ElasticacheControlPlane {
             // Create resource DTO
             let cluster = AwsResourceDto {
                 id: None,
-                account_id: account_id.to_string(),
-                profile: profile.profile.clone(),
-                region: region.to_string(),
+                account_id: aws_account_dto.account_id.clone(),
+                profile: aws_account_dto.profile.clone(),
+                region: aws_account_dto.default_region.clone().to_string(),
                 resource_type: "ElasticacheCluster".to_string(),
                 resource_id: cluster_id.to_string(),
-                arn,
+                arn: arn.to_string(),
                 name,
                 tags: serde_json::Value::Object(tags_map),
                 resource_data: serde_json::Value::Object(resource_data),

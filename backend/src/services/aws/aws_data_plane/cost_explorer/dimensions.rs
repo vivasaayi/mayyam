@@ -1,6 +1,6 @@
 use serde_json::{json, Value};
 use tracing::{debug, error};
-use crate::errors::AppError;
+use crate::{errors::AppError, models::aws_account::AwsAccountDto};
 use super::base::AwsCostService;
 use aws_sdk_costexplorer::types::{DateInterval, Context};
 
@@ -8,7 +8,7 @@ pub trait DimensionValues {
     async fn get_dimension_values(
         &self,
         account_id: &str,
-        aws_account_dto: AwsAccountDto,
+        aws_account_dto: &AwsAccountDto,
         region: &str,
         dimension: &str,
         start_date: &str,
@@ -18,7 +18,7 @@ pub trait DimensionValues {
     async fn get_available_dimensions(
         &self,
         account_id: &str,
-        aws_account_dto: AwsAccountDto,
+        aws_account_dto: &AwsAccountDto,
         region: &str,
     ) -> Result<Vec<String>, AppError>;
 }
@@ -27,7 +27,7 @@ impl DimensionValues for AwsCostService {
     async fn get_dimension_values(
         &self,
         account_id: &str,
-        aws_account_dto: AwsAccountDto,
+        aws_account_dto: &AwsAccountDto,
         region: &str,
         dimension: &str,
         start_date: &str,
@@ -56,8 +56,8 @@ impl DimensionValues for AwsCostService {
             "account_id": account_id,
             "values": []
         });
-        
-        for dimension_value in response.dimension_values().as_deref().unwrap_or(&[]) {
+
+        for dimension_value in response.dimension_values() {
             if let Some(value) = dimension_value.value() {
                 if let Some(values) = result["values"].as_array_mut() {
                     values.push(json!(value));
@@ -71,7 +71,7 @@ impl DimensionValues for AwsCostService {
     async fn get_available_dimensions(
         &self,
         _account_id: &str,
-        _aws_account_dto: AwsAccountDto,
+        _aws_account_dto: &AwsAccountDto,
         _region: &str,
     ) -> Result<Vec<String>, AppError> {
         // AWS Cost Explorer supports these standard dimensions

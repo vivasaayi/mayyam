@@ -7,6 +7,7 @@ use std::sync::Arc;
 use crate::config::Config;
 use crate::api::routes;
 use crate::middleware::auth::AuthMiddleware;
+use crate::models::aws_account::AwsAccountDto;
 use crate::utils::database;
 use crate::repositories::{
     aws_account::AwsAccountRepository,
@@ -131,7 +132,8 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
 
     // AWS Cost Analytics service
     let aws_cost_analytics_service = {
-        let aws_sdk_config = aws_service.load_aws_sdk_config(None, "us-east-1").await
+        let aws_account_dto = AwsAccountDto::new_with_profile("", "us-east-1");
+        let aws_sdk_config = aws_service.get_aws_sdk_config(&aws_account_dto).await
             .unwrap_or_else(|e| {
                 tracing::warn!("Failed to load AWS SDK config for cost analytics: {}. Using default config.", e);
                 // Create a minimal default config

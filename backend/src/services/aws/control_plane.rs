@@ -1,5 +1,8 @@
 use std::sync::Arc;
 use chrono::Utc;
+use serde_json::{json, Value};
+use aws_sdk_kinesis::types::StreamDescription;
+use crate::api::routes::aws_account;
 use crate::errors::AppError;
 use crate::models::aws_account::AwsAccountDto;
 use crate::models::aws_auth::AccountAuthInfo;
@@ -15,6 +18,25 @@ use crate::services::aws::aws_control_plane::kinesis_control_plane::KinesisContr
 use crate::services::aws::aws_control_plane::sqs_control_plane::SqsControlPlane;
 use crate::services::aws::aws_types::resource_sync::{ResourceSyncRequest, ResourceSyncResponse, ResourceTypeSyncSummary};
 use crate::services::aws::aws_control_plane::elasticache_control_plane::ElasticacheControlPlane;
+
+// Helper function to convert StreamDescription to JSON
+fn stream_description_to_json(stream_desc: &StreamDescription) -> Value {
+    json!({
+        "stream_name": stream_desc.stream_name(),
+        "stream_arn": stream_desc.stream_arn(),
+        "stream_status": stream_desc.stream_status().as_str(),
+        "stream_mode_details": {
+            "stream_mode": stream_desc.stream_mode_details().map(|smd| smd.stream_mode().as_str())
+        },
+        "shards": stream_desc.shards().len(), // Just return count for now
+        "has_more_shards": stream_desc.has_more_shards(),
+        "retention_period_hours": stream_desc.retention_period_hours(),
+        "stream_creation_timestamp": None::<String>,
+        "enhanced_monitoring": stream_desc.enhanced_monitoring().len(), // Just return count for now
+        "encryption_type": stream_desc.encryption_type().map(|e| e.as_str()),
+        "key_id": stream_desc.key_id()
+    })
+}
 
 // Base control plane for AWS resources
 pub struct AwsControlPlane {
@@ -77,7 +99,7 @@ impl AwsControlPlane {
     pub async fn kinesis_describe_stream(&self, aws_account_dto: &AwsAccountDto, request: &crate::services::aws::aws_types::kinesis::KinesisDescribeStreamRequest) -> Result<serde_json::Value, AppError> {
         let kinesis = KinesisControlPlane::new(self.aws_service.clone());
         let response = kinesis.describe_stream(&aws_account_dto, request).await?;
-        Ok(serde_json::to_value(response)?)
+        Ok(stream_description_to_json(&response))
     }
 
     pub async fn kinesis_list_streams(&self, aws_account_dto: &AwsAccountDto, request: &crate::services::aws::aws_types::kinesis::KinesisListStreamsRequest) -> Result<serde_json::Value, AppError> {
@@ -94,8 +116,11 @@ impl AwsControlPlane {
 
     pub async fn kinesis_describe_stream_summary(&self, aws_account_dto: &AwsAccountDto, stream_name: &str) -> Result<serde_json::Value, AppError> {
         let kinesis = KinesisControlPlane::new(self.aws_service.clone());
-        let response = kinesis.describe_stream(&aws_account_dto, stream_name).await?;
-        Ok(serde_json::to_value(response)?)
+        let request = crate::services::aws::aws_types::kinesis::KinesisDescribeStreamRequest {
+            stream_name: stream_name.to_string(),
+        };
+        let response = kinesis.describe_stream(&aws_account_dto, &request).await?;
+        Ok(stream_description_to_json(&response))
     }
 
     pub async fn kinesis_update_shard_count(&self, aws_account_dto: &AwsAccountDto, request: &crate::services::aws::aws_types::kinesis::KinesisUpdateShardCountRequest) -> Result<serde_json::Value, AppError> {
@@ -141,6 +166,8 @@ impl AwsControlPlane {
         let region = &request.region;
         let account_auth = AccountAuthInfo::from(request);
 
+        let aws_account_dto = &AwsAccountDto::new_with_profile(request.profile.as_deref().unwrap_or_default(), region);
+
         let resource_types = match &request.resource_types {
             Some(types) => types.clone(),
             None => vec![
@@ -162,13 +189,13 @@ impl AwsControlPlane {
             // Note: The actual resource syncing will be handled by individual service modules
             // This provides the orchestration layer
             let result = match resource_type.as_str() {
-                "EC2Instance" => self.sync_ec2_resources(account_id, profile, Some(region), Some(&account_auth)).await,
-                "S3Bucket" => self.sync_s3_buckets(account_id, profile, Some(region), Some(&account_auth)).await,
-                "RdsInstance" => self.sync_rds_resources(account_id, profile, Some(region), Some(&account_auth)).await,
-                "DynamoDbTable" => self.sync_dynamodb_resources(account_id, profile, Some(region), Some(&account_auth)).await,
-                "KinesisStream" => self.sync_kinesis_resources(account_id, profile, Some(region), Some(&account_auth)).await,
-                "SqsQueue" => self.sync_sqs_resources(account_id, profile, Some(region), Some(&account_auth)).await,
-                "ElasticacheCluster" => self.sync_elasticache_resources(account_id, profile, Some(region), Some(&account_auth)).await,
+                "EC2Instance" => self.sync_ec2_resources(aws_account_dto).await,
+                "S3Bucket" => self.sync_s3_buckets(aws_account_dto).await,
+                "RdsInstance" => self.sync_rds_resources(aws_account_dto).await,
+                "DynamoDbTable" => self.sync_dynamodb_resources(aws_account_dto).await,
+                "KinesisStream" => self.sync_kinesis_resources(aws_account_dto).await,
+                "SqsQueue" => self.sync_sqs_resources(aws_account_dto).await,
+                "ElasticacheCluster" => self.sync_elasticache_resources(aws_account_dto).await,
                 _ => Ok(vec![]),
             };
 

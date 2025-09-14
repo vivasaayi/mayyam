@@ -36,10 +36,8 @@ impl KinesisDataPlane {
             .await
             .map_err(|e| AppError::ExternalService(format!("Failed to put record to Kinesis stream: {}", e)))?;
         
-        let sequence_number = response.sequence_number()
-            .ok_or_else(|| AppError::ExternalService("Missing sequence number in put_record response".to_string()))?;
-        let shard_id = response.shard_id()
-            .ok_or_else(|| AppError::ExternalService("Missing shard ID in put_record response".to_string()))?;
+        let sequence_number = response.sequence_number();
+        let shard_id = response.shard_id();
 
         Ok(json!({
             "sequence_number": sequence_number,
@@ -66,7 +64,7 @@ impl KinesisDataPlane {
             let entry = PutRecordsRequestEntry::builder()
                 .data(data_blob)
                 .partition_key(&record.partition_key)
-                .build();
+                .build()?;
             
             records.push(entry);
         }
@@ -83,15 +81,14 @@ impl KinesisDataPlane {
         
         // Convert response
         let mut result_records = Vec::new();
-        if let Some(records) = response.records() {
-            for record in records {
-                result_records.push(crate::services::aws::aws_types::kinesis::KinesisPutRecordsResultEntry {
-                    sequence_number: record.sequence_number().map(|s| s.to_string()),
-                    shard_id: record.shard_id().map(|s| s.to_string()),
-                    error_code: record.error_code().map(|s| s.to_string()),
-                    error_message: record.error_message().map(|s| s.to_string()),
-                });
-            }
+        
+        for record in response.records() {
+            result_records.push(crate::services::aws::aws_types::kinesis::KinesisPutRecordsResultEntry {
+                sequence_number: record.sequence_number().map(|s| s.to_string()),
+                shard_id: record.shard_id().map(|s| s.to_string()),
+                error_code: record.error_code().map(|s| s.to_string()),
+                error_message: record.error_message().map(|s| s.to_string()),
+            });
         }
         
         Ok(KinesisPutRecordsResponse {
@@ -118,20 +115,19 @@ impl KinesisDataPlane {
         
         // Convert records
         let mut result_records = Vec::new();
-        if let Some(records) = response.records() {
-            for record in records {
-                let data = record.data().map(|blob| BASE64.encode(blob.as_ref())).unwrap_or_default();
-                
-                result_records.push(crate::services::aws::aws_types::kinesis::KinesisRecord {
-                    sequence_number: record.sequence_number().unwrap_or("").to_string(),
-                    data,
-                    partition_key: record.partition_key().unwrap_or("").to_string(),
-                    approximate_arrival_timestamp: record.approximate_arrival_timestamp()
-                        .map(|ts| ts.secs().to_string())
-                        .unwrap_or_else(|| "0".to_string()),
-                    encryption_type: record.encryption_type().map(|et| et.as_str().to_string()),
-                });
-            }
+        
+        for record in response.records() {
+            let data = record.data();
+            
+            result_records.push(crate::services::aws::aws_types::kinesis::KinesisRecord {
+                sequence_number: record.sequence_number().to_string(),
+                data: BASE64.encode(data.as_ref()),
+                partition_key: record.partition_key().to_string(),
+                approximate_arrival_timestamp: record.approximate_arrival_timestamp()
+                    .map(|ts| ts.secs().to_string())
+                    .unwrap_or_else(|| "0".to_string()),
+                encryption_type: record.encryption_type().map(|et| et.as_str().to_string()),
+            });
         }
         
         Ok(KinesisGetRecordsResponse {
@@ -143,7 +139,7 @@ impl KinesisDataPlane {
     }
 
     pub async fn get_shard_iterator(&self, aws_account_dto: &AwsAccountDto, request: &KinesisGetShardIteratorRequest) -> Result<KinesisGetShardIteratorResponse, AppError> {
-        let client = self.aws_service.create_kinesis_client_with_profile(aws_account_dto).await?;
+        let client = self.aws_service.create_kinesis_client(aws_account_dto).await?;
 
         let shard_iterator_type = match request.shard_iterator_type.as_str() {
             "TRIM_HORIZON" => aws_sdk_kinesis::types::ShardIteratorType::TrimHorizon,

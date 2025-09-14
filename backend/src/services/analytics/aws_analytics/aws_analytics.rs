@@ -1,8 +1,10 @@
 use std::sync::Arc;
 use chrono::Utc;
 use tracing::info;
+use crate::api::routes::aws_account;
 use crate::errors::AppError;
 use crate::config::Config;
+use crate::models::aws_account::AwsAccountDto;
 use crate::services::aws::{self, AwsDataPlane, AwsService};
 use crate::models::aws_resource;
 use crate::repositories::aws_resource::AwsResourceRepository;
@@ -74,8 +76,11 @@ impl AwsAnalyticsService {
             request.time_range.clone(),
         ).await;
 
+        // FIXME
+        let aws_account_dto = AwsAccountDto::new_with_profile("", "us-east-1");
+
         let metrics = self.aws_data_plane
-            .get_cloudwatch_metrics(&metrics_request)
+            .get_cloudwatch_metrics(&aws_account_dto, &metrics_request)
             .await?;
 
         // Parse the workflow type
@@ -405,8 +410,10 @@ impl AwsAnalyticsService {
             None,
         ).await;
 
+        let aws_account_dto = AwsAccountDto::new_with_profile("", "us-east-1");
+
         let metrics = self.aws_data_plane
-            .get_cloudwatch_metrics(&metrics_request)
+            .get_cloudwatch_metrics(&aws_account_dto, &metrics_request)
             .await?;
 
         // Generate answer based on question and context

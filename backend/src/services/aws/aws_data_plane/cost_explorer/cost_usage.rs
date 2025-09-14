@@ -24,7 +24,7 @@ pub enum DatePreset {
 pub trait CostAndUsage {
     async fn get_cost_and_usage(
         &self,
-        aws_account_dto: AwsAccountDto,
+        aws_account_dto: &AwsAccountDto,
         start_date: &str,
         end_date: &str,
         granularity: Option<Granularity>,
@@ -34,14 +34,14 @@ pub trait CostAndUsage {
     
     async fn get_cost_for_date(
         &self,
-        aws_account_dto: AwsAccountDto,
+        aws_account_dto: &AwsAccountDto,
         date: &str,
         group_by: Option<Vec<GroupDefinition>>,
     ) -> Result<Value, AppError>;
     
     async fn get_cost_for_hour(
         &self,
-        aws_account_dto: AwsAccountDto,
+        aws_account_dto: &AwsAccountDto,
         date: &str,
         hour: u32,
         group_by: Option<Vec<GroupDefinition>>,
@@ -49,7 +49,7 @@ pub trait CostAndUsage {
     
     async fn get_cost_for_month(
         &self,
-        aws_account_dto: AwsAccountDto,
+        aws_account_dto: &AwsAccountDto,
         year: i32,
         month: u32,
         group_by: Option<Vec<GroupDefinition>>,
@@ -57,14 +57,14 @@ pub trait CostAndUsage {
 
     async fn get_cost_for_preset(
         &self,
-        aws_account_dto: AwsAccountDto,
+        aws_account_dto: &AwsAccountDto,
         preset: DatePreset,
         group_by: Option<Vec<GroupDefinition>>,
     ) -> Result<Value, AppError>;
 
     async fn compare_costs(
         &self,
-        aws_account_dto: AwsAccountDto,
+        aws_account_dto: &AwsAccountDto,
         date1: DatePreset,
         date2: DatePreset,
         group_by: Option<Vec<GroupDefinition>>,
@@ -74,7 +74,7 @@ pub trait CostAndUsage {
 impl CostAndUsage for AwsCostService {
     async fn get_cost_and_usage(
         &self,
-        aws_account_dto: AwsAccountDto,
+        aws_account_dto: &AwsAccountDto,
         start_date: &str,
         end_date: &str,
         granularity: Option<Granularity>,
@@ -122,8 +122,8 @@ impl CostAndUsage for AwsCostService {
             // Handle time period
             if let Some(time_period) = result_by_time.time_period() {
                 result_json["timePeriod"] = json!({
-                    "start": time_period.start().unwrap_or_default(),
-                    "end": time_period.end().unwrap_or_default(),
+                    "start": time_period.start(),
+                    "end": time_period.end(),
                 });
             }
             
@@ -139,33 +139,28 @@ impl CostAndUsage for AwsCostService {
                 result_json["total"] = total_json;
             }
             
-            // Handle groups
-            if let Some(groups) = result_by_time.groups() {
-                let mut groups_json = Vec::new();
-                for group in groups {
-                    let mut group_json = json!({});
-                    
-                    // Handle keys
-                    if let Some(keys) = group.keys() {
-                        group_json["keys"] = json!(keys);
+            let mut groups_json = Vec::new();
+            for group in result_by_time.groups() {
+                let mut group_json = json!({});
+                
+                group_json["keys"] = json!(group.keys());
+                
+                // Handle metrics
+                if let Some(metrics) = group.metrics() {
+                    let mut metrics_json = json!({});
+                    for (metric_name, metric_value) in metrics {
+                        metrics_json[metric_name] = json!({
+                            "amount": metric_value.amount().unwrap_or("0"),
+                            "unit": metric_value.unit().unwrap_or("USD")
+                        });
                     }
-                    
-                    // Handle metrics
-                    if let Some(metrics) = group.metrics() {
-                        let mut metrics_json = json!({});
-                        for (metric_name, metric_value) in metrics {
-                            metrics_json[metric_name] = json!({
-                                "amount": metric_value.amount().unwrap_or("0"),
-                                "unit": metric_value.unit().unwrap_or("USD")
-                            });
-                        }
-                        group_json["metrics"] = metrics_json;
-                    }
-                    
-                    groups_json.push(group_json);
+                    group_json["metrics"] = metrics_json;
                 }
-                result_json["groups"] = json!(groups_json);
+                
+                groups_json.push(group_json);
             }
+            result_json["groups"] = json!(groups_json);
+            
             
             results.push(result_json);
         }
@@ -178,7 +173,7 @@ impl CostAndUsage for AwsCostService {
 
     async fn get_cost_for_date(
         &self,
-        aws_account_dto: AwsAccountDto,
+        aws_account_dto: &AwsAccountDto,
         date: &str,
         group_by: Option<Vec<GroupDefinition>>,
     ) -> Result<Value, AppError> {
@@ -194,7 +189,7 @@ impl CostAndUsage for AwsCostService {
 
     async fn get_cost_for_hour(
         &self,
-        aws_account_dto: AwsAccountDto,
+        aws_account_dto: &AwsAccountDto,
         date: &str,
         hour: u32,
         group_by: Option<Vec<GroupDefinition>>,
@@ -214,7 +209,7 @@ impl CostAndUsage for AwsCostService {
 
     async fn get_cost_for_month(
         &self,
-        aws_account_dto: AwsAccountDto,
+        aws_account_dto: &AwsAccountDto,
         year: i32,
         month: u32,
         group_by: Option<Vec<GroupDefinition>>,
@@ -234,7 +229,7 @@ impl CostAndUsage for AwsCostService {
 
     async fn get_cost_for_preset(
         &self,
-        aws_account_dto: AwsAccountDto,
+        aws_account_dto: &AwsAccountDto,
         preset: DatePreset,
         group_by: Option<Vec<GroupDefinition>>,
     ) -> Result<Value, AppError> {
@@ -252,7 +247,7 @@ impl CostAndUsage for AwsCostService {
 
     async fn compare_costs(
         &self,
-        aws_account_dto: AwsAccountDto,
+        aws_account_dto: &AwsAccountDto,
         date1: DatePreset,
         date2: DatePreset,
         group_by: Option<Vec<GroupDefinition>>,

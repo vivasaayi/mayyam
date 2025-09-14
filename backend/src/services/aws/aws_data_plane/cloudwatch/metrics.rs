@@ -96,6 +96,7 @@ impl CloudWatchMetrics for CloudWatchService {
         let dimensions = self.create_dimensions_for_resource(&request.resource_type, &request.resource_id);
         
         let mut metric_data_queries = Vec::new();
+        let mut metric_names = Vec::new();
         
         for (i, metric_name) in request.metrics.iter().enumerate() {
             let query_id = format!("m{}", i);
@@ -119,6 +120,7 @@ impl CloudWatchMetrics for CloudWatchService {
                 .build();
                 
             metric_data_queries.push(query);
+            metric_names.push(metric_name.clone());
         }
 
         debug!("Executing CloudWatch GetMetricData request");
@@ -133,28 +135,25 @@ impl CloudWatchMetrics for CloudWatchService {
             
         let mut result_metrics = Vec::new();
         
-        if let Some(results) = response.metric_data_results() {
-            for (i, result) in results.iter().enumerate() {
-                if i >= request.metrics.len() {
-                    continue;
+        for (i, result) in response.metric_data_results().iter().enumerate() {
+            let mut datapoints = Vec::new();
+            let timestamps = result.timestamps();
+            let values = result.values();
+            
+            for (j, timestamp) in timestamps.iter().enumerate() {
+                if j < values.len() {
+                    datapoints.push(CloudWatchDatapoint {
+                        timestamp: from_aws_datetime(timestamp),
+                        value: values[j],
+                        unit: "Count".to_string(),
+                    });
                 }
-                
-                let mut datapoints = Vec::new();
-                if let (Some(timestamps), Some(values)) = (result.timestamps(), result.values()) {
-                    for (j, timestamp) in timestamps.iter().enumerate() {
-                        if j < values.len() {
-                            datapoints.push(CloudWatchDatapoint {
-                                timestamp: from_aws_datetime(timestamp),
-                                value: values[j],
-                                unit: "Count".to_string(),
-                            });
-                        }
-                    }
-                }
-                
+            }
+            
+            if i < metric_names.len() {
                 result_metrics.push(CloudWatchMetricData {
                     namespace: namespace.to_string(),
-                    metric_name: request.metrics[i].clone(),
+                    metric_name: metric_names[i].clone(),
                     unit: "Count".to_string(),
                     datapoints,
                 });
@@ -218,32 +217,31 @@ impl CloudWatchMetrics for CloudWatchService {
             
         let mut result_metrics = Vec::new();
         
-        if let Some(results) = response.metric_data_results() {
-            for (i, result) in results.iter().enumerate() {
-                if i >= metrics.len() {
-                    continue;
-                }
-                
-                let mut datapoints = Vec::new();
-                if let (Some(timestamps), Some(values)) = (result.timestamps(), result.values()) {
-                    for (j, timestamp) in timestamps.iter().enumerate() {
-                        if j < values.len() {
-                            datapoints.push(CloudWatchDatapoint {
-                                timestamp: from_aws_datetime(timestamp),
-                                value: values[j],
-                                unit: "Count".to_string(),
-                            });
-                        }
-                    }
-                }
-                
-                result_metrics.push(CloudWatchMetricData {
-                    namespace: namespace.to_string(),
-                    metric_name: metrics[i].to_string(),
-                    unit: "Count".to_string(),
-                    datapoints,
-                });
+        for (i, result) in response.metric_data_results().iter().enumerate() {
+            if i >= metrics.len() {
+                continue;
             }
+            
+            let mut datapoints = Vec::new();
+            let timestamps = result.timestamps();
+            let values = result.values();
+            
+            for (j, timestamp) in timestamps.iter().enumerate() {
+                if j < values.len() {
+                    datapoints.push(CloudWatchDatapoint {
+                        timestamp: from_aws_datetime(timestamp),
+                        value: values[j],
+                        unit: "Count".to_string(),
+                    });
+                }
+            }
+            
+            result_metrics.push(CloudWatchMetricData {
+                namespace: namespace.to_string(),
+                metric_name: metrics[i].to_string(),
+                unit: "Count".to_string(),
+                datapoints,
+            });
         }
         
         Ok(result_metrics)
@@ -278,25 +276,23 @@ impl CloudWatchMetrics for CloudWatchService {
             
         let mut datapoints = Vec::new();
         
-        if let Some(aws_datapoints) = response.datapoints() {
-            for datapoint in aws_datapoints {
-                if let Some(timestamp) = datapoint.timestamp() {
-                    let value = datapoint.average()
-                        .or_else(|| datapoint.sum())
-                        .or_else(|| datapoint.maximum())
-                        .or_else(|| datapoint.minimum())
-                        .unwrap_or(0.0);
-                        
-                    let unit = datapoint.unit()
-                        .map(|u| u.as_str().to_string())
-                        .unwrap_or_else(|| "Count".to_string());
-                        
-                    datapoints.push(CloudWatchDatapoint {
-                        timestamp: from_aws_datetime(timestamp),
-                        value,
-                        unit,
-                    });
-                }
+        for datapoint in response.datapoints() {
+            if let Some(timestamp) = datapoint.timestamp() {
+                let value = datapoint.average()
+                    .or_else(|| datapoint.sum())
+                    .or_else(|| datapoint.maximum())
+                    .or_else(|| datapoint.minimum())
+                    .unwrap_or(0.0);
+                    
+                let unit = datapoint.unit()
+                    .map(|u| u.as_str().to_string())
+                    .unwrap_or_else(|| "Count".to_string());
+                    
+                datapoints.push(CloudWatchDatapoint {
+                    timestamp: from_aws_datetime(timestamp),
+                    value,
+                    unit,
+                });
             }
         }
         
@@ -339,7 +335,7 @@ impl CloudWatchMetrics for CloudWatchService {
             .await
             .map_err(|e| AppError::ExternalService(format!("Failed to list metrics: {}", e)))?;
             
-        Ok(response.metrics().unwrap_or_default().to_vec())
+        Ok(response.metrics().to_vec())
     }
     
     async fn get_metric_math(
@@ -408,15 +404,16 @@ impl CloudWatchMetrics for CloudWatchService {
         for result in response.metric_data_results() {
             if let Some(id) = result.id() {
                 let mut datapoints = Vec::new();
-                if let (Some(timestamps), Some(values)) = (result.timestamps(), result.values()) {
-                    for (j, timestamp) in timestamps.iter().enumerate() {
-                        if j < values.len() {
-                            datapoints.push(CloudWatchDatapoint {
-                                timestamp: from_aws_datetime(timestamp),
-                                value: values[j],
-                                unit: "Count".to_string(),
-                            });
-                        }
+                let timestamps = result.timestamps();
+                let values = result.values();
+                
+                for (j, timestamp) in timestamps.iter().enumerate() {
+                    if j < values.len() {
+                        datapoints.push(CloudWatchDatapoint {
+                            timestamp: from_aws_datetime(timestamp),
+                            value: values[j],
+                            unit: "Count".to_string(),
+                        });
                     }
                 }
                 
@@ -449,8 +446,7 @@ impl CloudWatchMetrics for CloudWatchService {
         let statistics = vec![Statistic::Average, Statistic::Maximum, Statistic::Minimum];
         
         let datapoints = self.get_metric_statistics(
-            profile,
-            region,
+            aws_account_dto,
             namespace,
             metric_name,
             dimensions,

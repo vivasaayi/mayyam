@@ -87,28 +87,25 @@ impl CloudWatchAlarms for CloudWatchService {
         let mut alarms = Vec::new();
         
         for alarm in response.metric_alarms() {
-            // Check if alarm is associated with the resource
-            if let Some(dimensions) = alarm.dimensions() {
-                for dimension in dimensions {
-                    if dimension.value() == Some(resource_id) {
-                        alarms.push(json!({
-                            "alarmName": alarm.alarm_name().unwrap_or_default(),
-                            "namespace": alarm.namespace().unwrap_or_default(),
-                            "metricName": alarm.metric_name().unwrap_or_default(),
-                            "dimensions": dimensions.iter().map(|d| json!({
-                                "name": d.name().unwrap_or_default(),
-                                "value": d.value().unwrap_or_default()
-                            })).collect::<Vec<_>>(),
-                            "statistic": alarm.statistic().map(|s| s.as_str()),
-                            "period": alarm.period(),
-                            "threshold": alarm.threshold(),
-                            "comparisonOperator": alarm.comparison_operator().map(|c| c.as_str()),
-                            "evaluationPeriods": alarm.evaluation_periods(),
-                            "state": alarm.state_value().map(|s| s.as_str()),
-                            "stateReason": alarm.state_reason().unwrap_or_default(),
-                        }));
-                        break;
-                    }
+            for dimension in alarm.dimensions() {
+                if dimension.value() == Some(resource_id) {
+                    alarms.push(json!({
+                        "alarmName": alarm.alarm_name().unwrap_or_default(),
+                        "namespace": alarm.namespace().unwrap_or_default(),
+                        "metricName": alarm.metric_name().unwrap_or_default(),
+                        "dimensions": json!({
+                            "name": dimension.name().unwrap_or_default(),
+                            "value": dimension.value().unwrap_or_default()
+                        }),
+                        "statistic": alarm.statistic().map(|s| s.as_str()),
+                        "period": alarm.period(),
+                        "threshold": alarm.threshold(),
+                        "comparisonOperator": alarm.comparison_operator().map(|c| c.as_str()),
+                        "evaluationPeriods": alarm.evaluation_periods(),
+                        "state": alarm.state_value().map(|s| s.as_str()),
+                        "stateReason": alarm.state_reason().unwrap_or_default(),
+                    }));
+                    break;
                 }
             }
         }

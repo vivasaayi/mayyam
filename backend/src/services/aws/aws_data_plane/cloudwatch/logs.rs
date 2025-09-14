@@ -48,35 +48,34 @@ impl CloudWatchLogs for CloudWatchService {
             
         let mut events = Vec::new();
         for event in response.events() {
-                let mut event_data = json!({});
-                
-                if let Some(timestamp) = event.timestamp() {
-                    let dt = DateTime::<Utc>::from_timestamp_millis(timestamp)
-                        .unwrap_or_else(|| Utc::now());
-                    event_data["timestamp"] = json!(dt.to_rfc3339());
-                }
-                
-                if let Some(message) = event.message() {
-                    // Try to parse message as JSON if possible
-                    if message.starts_with("{") && message.ends_with("}") {
-                        if let Ok(json_value) = serde_json::from_str(message) {
-                            event_data["message"] = json_value;
-                        } else {
-                            event_data["message"] = json!(message);
-                        }
+            let mut event_data = json!({});
+            
+            if let Some(timestamp) = event.timestamp() {
+                let dt = DateTime::<Utc>::from_timestamp_millis(timestamp)
+                    .unwrap_or_else(|| Utc::now());
+                event_data["timestamp"] = json!(dt.to_rfc3339());
+            }
+            
+            if let Some(message) = event.message() {
+                // Try to parse message as JSON if possible
+                if message.starts_with("{") && message.ends_with("}") {
+                    if let Ok(json_value) = serde_json::from_str(message) {
+                        event_data["message"] = json_value;
                     } else {
                         event_data["message"] = json!(message);
                     }
+                } else {
+                    event_data["message"] = json!(message);
                 }
-                
-                if let Some(ingestion_time) = event.ingestion_time() {
-                    let dt = DateTime::<Utc>::from_timestamp_millis(ingestion_time)
-                        .unwrap_or_else(|| Utc::now());
-                    event_data["ingestionTime"] = json!(dt.to_rfc3339());
-                }
-                
-                events.push(event_data);
             }
+            
+            if let Some(ingestion_time) = event.ingestion_time() {
+                let dt = DateTime::<Utc>::from_timestamp_millis(ingestion_time)
+                    .unwrap_or_else(|| Utc::now());
+                event_data["ingestionTime"] = json!(dt.to_rfc3339());
+            }
+            
+            events.push(event_data);
         }
         
         Ok(json!({
@@ -123,37 +122,35 @@ impl CloudWatchLogs for CloudWatchService {
                 .send()
                 .await
                 .map_err(|e| AppError::ExternalService(format!("Failed to get CloudWatch logs: {}", e)))?;
+
+            for event in response.events() {
+                let mut event_data = json!({});
                 
-            if let Some(log_events) = response.events() {
-                for event in log_events {
-                    let mut event_data = json!({});
-                    
-                    if let Some(timestamp) = event.timestamp() {
-                        let dt = DateTime::<Utc>::from_timestamp_millis(timestamp)
-                            .unwrap_or_else(|| Utc::now());
-                        event_data["timestamp"] = json!(dt.to_rfc3339());
-                    }
-                    
-                    if let Some(message) = event.message() {
-                        if message.starts_with("{") && message.ends_with("}") {
-                            if let Ok(json_value) = serde_json::from_str(message) {
-                                event_data["message"] = json_value;
-                            } else {
-                                event_data["message"] = json!(message);
-                            }
+                if let Some(timestamp) = event.timestamp() {
+                    let dt = DateTime::<Utc>::from_timestamp_millis(timestamp)
+                        .unwrap_or_else(|| Utc::now());
+                    event_data["timestamp"] = json!(dt.to_rfc3339());
+                }
+                
+                if let Some(message) = event.message() {
+                    if message.starts_with("{") && message.ends_with("}") {
+                        if let Ok(json_value) = serde_json::from_str(message) {
+                            event_data["message"] = json_value;
                         } else {
                             event_data["message"] = json!(message);
                         }
+                    } else {
+                        event_data["message"] = json!(message);
                     }
-                    
-                    if let Some(ingestion_time) = event.ingestion_time() {
-                        let dt = DateTime::<Utc>::from_timestamp_millis(ingestion_time)
-                            .unwrap_or_else(|| Utc::now());
-                        event_data["ingestionTime"] = json!(dt.to_rfc3339());
-                    }
-                    
-                    events.push(event_data);
                 }
+                
+                if let Some(ingestion_time) = event.ingestion_time() {
+                    let dt = DateTime::<Utc>::from_timestamp_millis(ingestion_time)
+                        .unwrap_or_else(|| Utc::now());
+                    event_data["ingestionTime"] = json!(dt.to_rfc3339());
+                }
+                
+                events.push(event_data);
             }
             
             match response.next_token() {
@@ -170,3 +167,4 @@ impl CloudWatchLogs for CloudWatchService {
             "endTime": request.end_time
         }))
     }
+}

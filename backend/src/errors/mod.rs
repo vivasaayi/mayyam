@@ -3,8 +3,7 @@ use sea_orm::DbErr;
 use thiserror::Error;
 use serde::{Serialize, Deserialize};
 use tracing::error;
-use aws_smithy_http::operation::error::BuildError;
-use aws_smithy_http::result::SdkError;
+use aws_smithy_types::error::operation::BuildError;
 
 #[derive(Error, Debug)]
 pub enum AppError {
@@ -185,15 +184,20 @@ impl From<jsonwebtoken::errors::Error> for AppError {
     }
 }
 
-// Generic AWS SDK error handling
-impl<E> From<SdkError<E>> for AppError {
-    fn from(err: SdkError<E>) -> Self {
+// AWS SDK error handling
+impl From<BuildError> for AppError {
+    fn from(err: BuildError) -> Self {
         AppError::CloudProvider(err.to_string())
     }
 }
 
-impl From<BuildError> for AppError {
-    fn from(err: BuildError) -> Self {
-        AppError::CloudProvider(err.to_string())
+// Generic SdkError conversion
+impl<E, R> From<aws_smithy_runtime_api::client::result::SdkError<E, R>> for AppError
+where
+    E: std::fmt::Debug,
+    R: std::fmt::Debug,
+{
+    fn from(err: aws_smithy_runtime_api::client::result::SdkError<E, R>) -> Self {
+        AppError::CloudProvider(format!("AWS SDK error: {:?}", err))
     }
 }
