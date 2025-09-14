@@ -1,10 +1,7 @@
 use std::sync::Arc;
-use aws_sdk_dynamodb::Client as DynamoDbClient;
-
 use serde_json::json;
 use crate::errors::AppError;
 use crate::models::aws_account::AwsAccountDto;
-use crate::models::aws_auth::AccountAuthInfo;
 use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel};
 use crate::services::aws::aws_types::dynamodb::{DynamoDbAttributeDefinition, DynamoDbKeySchema, DynamoDbProvisionedThroughput, DynamoDbTableInfo};
 use crate::services::aws::client_factory::AwsClientFactory;
@@ -20,8 +17,8 @@ impl DynamoDbControlPlane {
         Self { aws_service }
     }
 
-    pub async fn sync_tables(&self, account_id: &str, aws_account_dto: AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
-        let client = self.aws_service.create_dynamodb_client(&aws_account_dto).await?;
+    pub async fn sync_tables(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
+        let client = self.aws_service.create_dynamodb_client(aws_account_dto).await?;
 
         // Get the list of tables from AWS
         let list_response = client.list_tables()

@@ -19,7 +19,7 @@ impl S3ControlPlane {
         Self { aws_service }
     }
 
-    pub async fn sync_buckets(&self, account_id: &str, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
+    pub async fn sync_buckets(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
         let client = self.aws_service.create_s3_client(aws_account_dto).await?;
 
         // Get buckets from AWS

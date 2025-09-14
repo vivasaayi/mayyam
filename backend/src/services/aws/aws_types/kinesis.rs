@@ -1,17 +1,22 @@
-use aws_sdk_kinesis::types::StreamSummary;
 use serde::{Deserialize, Serialize};
 
 // Kinesis-specific types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KinesisStreamInfo {
-    pub stre    pub adjacent_parent_shard_id: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KinesisListShardsResponse {    pub stream_status: String,
+    pub stream_name: String,
+    pub stream_status: String,
     pub retention_period_hours: i32,
     pub shard_count: i32,
     pub enhanced_monitoring: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KinesisListShardsResponse {
+    pub shards: Vec<KinesisShard>,
+    pub next_token: Option<String>,
+    pub stream_name: Option<String>,
+    pub stream_arn: Option<String>,
+    pub stream_creation_timestamp: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -266,8 +271,8 @@ pub struct KinesisStreamSummaryResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KinesisEnhancedMonitoringResponse {
     pub stream_name: String,
-    pub current_shard_level_metrics: Vec<crate::types::MetricsName>,
-    pub desired_shard_level_metrics: Vec<crate::types::MetricsName>,
+    pub current_shard_level_metrics: Vec<String>,
+    pub desired_shard_level_metrics: Vec<String>,
     pub stream_arn: Option<String>,
 }
 
@@ -308,27 +313,6 @@ pub struct KinesisShard {
     pub adjacent_parent_shard_id: Option<String>,
     pub hash_key_range: KinesisHashKeyRange,
     pub sequence_number_range: KinesisSequenceNumberRange,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KinesisHashKeyRange {
-    pub starting_hash_key: String,
-    pub ending_hash_key: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KinesisSequenceNumberRange {
-    pub starting_sequence_number: String,
-    pub ending_sequence_number: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct KinesisListShardsResponse {
-    pub shards: Vec<KinesisShard>,
-    pub next_token: Option<String>,
-    pub stream_name: Option<String>,
-    pub stream_arn: Option<String>,
-    pub stream_creation_timestamp: Option<String>,
 }
 
 // Data Plane Response Types

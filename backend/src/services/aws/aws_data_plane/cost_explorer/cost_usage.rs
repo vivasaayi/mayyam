@@ -95,7 +95,7 @@ impl CostAndUsage for AwsCostService {
         metrics: Vec<&str>,
         group_by: Option<Vec<GroupDefinition>>,
     ) -> Result<Value, AppError> {
-        let client = self.create_client(aws_account_dto, region).await?;
+        let client = self.create_client(aws_account_dto).await?;
         
         let time_period = DateInterval::builder()
             .start(start_date)

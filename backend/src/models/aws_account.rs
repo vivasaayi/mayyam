@@ -215,3 +215,24 @@ impl From<(AwsAccountUpdateDto, Option<String>, Uuid)> for ActiveModel {
         }
     }
 }
+
+impl AwsAccountDto {
+    pub fn new_with_profile(profile: &str, region: &str) -> Self {
+        AwsAccountDto {
+            id: todo!(),
+            account_id: todo!(),
+            account_name: todo!(),
+            profile: Some(profile.to_string()),
+            default_region: region.to_string(),
+            use_role: todo!(),
+            role_arn: todo!(),
+            external_id: todo!(),
+            has_access_key: todo!(),
+            access_key_id: todo!(),
+            secret_access_key: todo!(),
+            last_synced_at: todo!(),
+            created_at: todo!(),
+            updated_at: todo!(),
+        }
+    }
+}

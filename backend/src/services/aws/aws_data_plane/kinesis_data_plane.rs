@@ -9,6 +9,7 @@ use crate::services::aws::aws_types::kinesis::{
 use crate::services::aws::aws_types::cloud_watch::{CloudWatchMetricsRequest, CloudWatchMetricsResult};
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::AwsService;
+use crate::models::aws_account::AwsAccountDto;
 use aws_sdk_kinesis::primitives::Blob;
 use aws_sdk_kinesis::types::PutRecordsRequestEntry;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
@@ -23,9 +24,9 @@ impl KinesisDataPlane {
         Self { aws_service }
     }
 
-    pub async fn put_record(&self, profile: Option<&str>, region: &str, request: &KinesisPutRecordRequest) -> Result<serde_json::Value, AppError> {
-        let client = self.aws_service.create_kinesis_client(profile, region).await?;
-        
+    pub async fn put_record(&self, aws_account_dto: &AwsAccountDto, request: &KinesisPutRecordRequest) -> Result<serde_json::Value, AppError> {
+        let client = self.aws_service.create_kinesis_client(aws_account_dto).await?;
+
         // Actually call AWS Kinesis put_record API
         let response = client.put_record()
             .stream_name(&request.stream_name)
@@ -51,9 +52,9 @@ impl KinesisDataPlane {
         return Err(AppError::ExternalService("get_stream_metrics not implemented - use CloudWatch data plane directly".to_string()));
     }
 
-    pub async fn put_records(&self, profile: Option<&str>, region: &str, request: &KinesisPutRecordsRequest) -> Result<KinesisPutRecordsResponse, AppError> {
-        let client = self.aws_service.create_kinesis_client(profile, region).await?;
-        
+    pub async fn put_records(&self, aws_account_dto: &AwsAccountDto, request: &KinesisPutRecordsRequest) -> Result<KinesisPutRecordsResponse, AppError> {
+        let client = self.aws_service.create_kinesis_client(aws_account_dto).await?;
+
         // Convert records to AWS SDK format
         let mut records = Vec::new();
         for record in &request.records {
@@ -100,9 +101,9 @@ impl KinesisDataPlane {
         })
     }
 
-    pub async fn get_records(&self, profile: Option<&str>, region: &str, request: &KinesisGetRecordsRequest) -> Result<KinesisGetRecordsResponse, AppError> {
-        let client = self.aws_service.create_kinesis_client(profile, region).await?;
-        
+    pub async fn get_records(&self, aws_account_dto: &AwsAccountDto, request: &KinesisGetRecordsRequest) -> Result<KinesisGetRecordsResponse, AppError> {
+        let client = self.aws_service.create_kinesis_client(aws_account_dto).await?;
+
         let mut get_records_request = client.get_records()
             .shard_iterator(&request.shard_iterator);
             
@@ -141,9 +142,9 @@ impl KinesisDataPlane {
         })
     }
 
-    pub async fn get_shard_iterator(&self, profile: Option<&str>, region: &str, request: &KinesisGetShardIteratorRequest) -> Result<KinesisGetShardIteratorResponse, AppError> {
-        let client = self.aws_service.create_kinesis_client(profile, region).await?;
-        
+    pub async fn get_shard_iterator(&self, aws_account_dto: &AwsAccountDto, request: &KinesisGetShardIteratorRequest) -> Result<KinesisGetShardIteratorResponse, AppError> {
+        let client = self.aws_service.create_kinesis_client_with_profile(aws_account_dto).await?;
+
         let shard_iterator_type = match request.shard_iterator_type.as_str() {
             "TRIM_HORIZON" => aws_sdk_kinesis::types::ShardIteratorType::TrimHorizon,
             "LATEST" => aws_sdk_kinesis::types::ShardIteratorType::Latest,

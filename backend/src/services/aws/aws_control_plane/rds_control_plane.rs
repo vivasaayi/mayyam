@@ -18,7 +18,7 @@ impl RdsControlPlane {
         Self { aws_service }
     }
 
-    pub async fn sync_instances(&self, account_id: &str, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
+    pub async fn sync_instances(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
         let client = self.aws_service.create_rds_client(aws_account_dto).await?;
 
         // Get DB instances from AWS

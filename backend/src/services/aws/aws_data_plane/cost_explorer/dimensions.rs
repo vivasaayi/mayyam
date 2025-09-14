@@ -33,7 +33,7 @@ impl DimensionValues for AwsCostService {
         start_date: &str,
         end_date: &str,
     ) -> Result<Value, AppError> {
-        let client = self.create_client(aws_account_dto, region).await?;
+        let client = self.create_client(aws_account_dto).await?;
         
         let time_period = DateInterval::builder()
             .start(start_date)

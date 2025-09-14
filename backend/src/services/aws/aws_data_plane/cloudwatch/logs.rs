@@ -11,30 +11,28 @@ use aws_sdk_cloudwatchlogs::{
 };
 
 
-use crate::errors::AppError;
+use crate::{errors::AppError, models::aws_account::AwsAccountDto};
 use super::base::CloudWatchService;
 use super::types::CloudWatchLogsRequest;
 
 pub trait CloudWatchLogs {
     async fn get_logs(
         &self,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto,
         log_group: &str
     ) -> Result<Value, AppError>;
     
     async fn get_filtered_logs(
         &self,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto,
         request: &CloudWatchLogsRequest
     ) -> Result<Value, AppError>;
 }
 
 impl CloudWatchLogs for CloudWatchService {
-    async fn get_logs(&self, profile: Option<&str>, region: &str, log_group: &str) -> Result<Value, AppError> {
-        let client = self.create_cloudwatch_logs_client(profile, region).await?;
-        
+    async fn get_logs(&self, aws_account_dto: &AwsAccountDto, log_group: &str) -> Result<Value, AppError> {
+        let client = self.create_cloudwatch_logs_client(aws_account_dto).await?;
+
         let start_time = (Utc::now() - Duration::hours(1)).timestamp_millis();
         let end_time = Utc::now().timestamp_millis();
         
@@ -84,18 +82,17 @@ impl CloudWatchLogs for CloudWatchService {
         Ok(json!({
             "events": events,
             "logGroupName": log_group,
-            "startTime": request.start_time,
-            "endTime": request.end_time
+            "startTime": start_time,
+            "endTime": end_time
         }))
     }
 
     async fn get_filtered_logs(
         &self,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto,
         request: &CloudWatchLogsRequest
     ) -> Result<Value, AppError> {
-        let client = self.create_cloudwatch_logs_client(profile, region).await?;
+        let client = self.create_cloudwatch_logs_client(aws_account_dto).await?;
         
         let start_millis = request.start_time.timestamp_millis();
         let end_millis = request.end_time.timestamp_millis();

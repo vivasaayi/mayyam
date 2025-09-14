@@ -37,7 +37,7 @@ impl KinesisControlPlane {
         Self { aws_service }
     }
 
-    pub async fn sync_streams(&self, account_id: &str, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
+    pub async fn sync_streams(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
         let client: KinesisClient = self.aws_service.create_kinesis_client(aws_account_dto).await?;
         // List streams from AWS
         let response = client.list_streams()
@@ -60,8 +60,6 @@ impl KinesisControlPlane {
             let stream_desc = describe_resp.stream_description_summary()
                 .ok_or_else(|| AppError::ExternalService(format!("No description found for stream {}", stream_name)))?;
                 
-            // Get tags for the stream
-            let arn = format!("arn:aws:kinesis:{}:{}:stream/{}", region, account_id, stream_name);
 
             let tags = self.list_tags_for_stream(aws_account_dto, stream_name).await?;
 
@@ -135,10 +133,10 @@ impl KinesisControlPlane {
                 id: None,
                 account_id: account_id.to_string(),
                 profile: Some("".to_string()),
-                region: region.to_string(),
+                region: aws_account_dto.default_region.clone().to_string(),
                 resource_type: "KinesisStream".to_string(),
                 resource_id: stream_name.to_string(),
-                arn,
+                arn: stream_desc.stream_arn,
                 name: Some("".to_string()),
                 tags: serde_json::Value::Null,
                 resource_data: serde_json::Value::Object(resource_data),
@@ -165,8 +163,8 @@ impl KinesisControlPlane {
         })
     }
 
-    pub async fn create_stream(&self, aws_account_dto: &AwsAccountDto, region: &str, request: &KinesisCreateStreamRequest) -> Result<KinesisOperationResponse, AppError> {
-        let client = self.aws_service.create_kinesis_client(aws_account_dto, region).await?;
+    pub async fn create_stream(&self, aws_account_dto: &AwsAccountDto, request: &KinesisCreateStreamRequest) -> Result<KinesisOperationResponse, AppError> {
+        let client = self.aws_service.create_kinesis_client(aws_account_dto).await?;
 
         let shard_count = request.shard_count
             .ok_or_else(|| AppError::ExternalService("Missing shard_count in create stream request".to_string()))?;
@@ -181,7 +179,7 @@ impl KinesisControlPlane {
         // Wait a moment for the stream to appear in AWS
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
-        self.return_current_status_as_response(aws_account_dto, region, &request.stream_name).await
+        self.return_current_status_as_response(aws_account_dto, &request.stream_name).await
     }
 
     pub async fn delete_stream(&self, aws_account_dto: &AwsAccountDto, request: &KinesisDeleteStreamRequest) -> Result<KinesisOperationResponse, AppError> {
@@ -525,11 +523,10 @@ impl KinesisControlPlane {
         let shards = response.shards();
 
         Ok(KinesisListShardsResponse {
-            shards: shards.to_vec(),
-            next_token: response.next_token().map(|s| s.to_string()),
-            stream_name: request.stream_name.clone(),
-            stream_arn: request.stream_arn.clone(),
-            stream_creation_timestamp: request.stream_creation_timestamp.clone(),
+            stream_status: "".to_string(),
+            retention_period_hours: 0,
+            shard_count: shards.len() as i32,
+            enhanced_monitoring: vec![],
         })
     }
 }

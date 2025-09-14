@@ -38,10 +38,10 @@ impl AwsService {
     }
 
     // Get AWS configuration based on profile/region
-    async fn get_aws_config_impl(&self, profile: &AwsAccountDto) -> Result<AwsConfig, AppError> {
+    async fn get_aws_config_impl(&self, aws_account_dto: &AwsAccountDto) -> Result<AwsConfig, AppError> {
         let aws_configs = &self.config.cloud.aws;
         
-        match profile {
+        match &aws_account_dto.profile {
             Some(profile_name) => {
                 let config = aws_configs.iter()
                     .find(|c| c.profile.as_ref().map_or(false, |p| p == profile_name))
@@ -62,7 +62,7 @@ impl AwsService {
             },
             None => aws_configs.first().cloned(),
         }.ok_or_else(|| {
-            AppError::Config(format!("AWS configuration not found for profile: {:?}", profile))
+            AppError::Config(format!("AWS configuration not found for profile: {:?}", aws_account_dto.profile))
         })
     }
     

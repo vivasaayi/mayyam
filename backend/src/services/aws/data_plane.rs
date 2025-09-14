@@ -1,6 +1,10 @@
 use std::sync::Arc;
+use uuid::Uuid;
+use chrono::Utc;
+use crate::api::routes::aws_account;
 use crate::errors::AppError;
 use crate::services::aws::AwsService;
+use crate::models::aws_account::AwsAccountDto;
 use crate::services::aws::aws_types::cloud_watch::{CloudWatchMetricsRequest, CloudWatchMetricsResult};
 use crate::services::aws::aws_types::kinesis::{
     KinesisPutRecordsRequest, KinesisGetRecordsRequest, KinesisGetShardIteratorRequest,
@@ -20,9 +24,9 @@ impl AwsDataPlane {
     }
 
     // CloudWatch metrics operation - this is a common operation that works across services
-    pub async fn get_cloudwatch_metrics(&self, request: &CloudWatchMetricsRequest) -> Result<CloudWatchMetricsResult, AppError> {
-        let client = self.aws_service.create_cloudwatch_client(None, &request.region).await?;
-        
+    pub async fn get_cloudwatch_metrics(&self, aws_account_dto: &AwsAccountDto, request: &CloudWatchMetricsRequest) -> Result<CloudWatchMetricsResult, AppError> {
+        let client = self.aws_service.create_cloudwatch_client(aws_account_dto).await?;
+
         let namespace = match request.resource_type.as_str() {
             "EC2Instance" => "AWS/EC2",
             "RdsInstance" => "AWS/RDS",
@@ -47,18 +51,18 @@ impl AwsDataPlane {
     }
 
     // Kinesis Data Plane Operations
-    pub async fn kinesis_put_records(&self, profile: Option<&str>, region: &str, request: &KinesisPutRecordsRequest) -> Result<KinesisPutRecordsResponse, AppError> {
+    pub async fn kinesis_put_records(&self, aws_account_dto: &AwsAccountDto, request: &KinesisPutRecordsRequest) -> Result<KinesisPutRecordsResponse, AppError> {
         let kinesis_data_plane = KinesisDataPlane::new(self.aws_service.clone());
-        kinesis_data_plane.put_records(profile, region, request).await
+        kinesis_data_plane.put_records(aws_account_dto, request).await
     }
 
-    pub async fn kinesis_get_records(&self, profile: Option<&str>, region: &str, request: &KinesisGetRecordsRequest) -> Result<KinesisGetRecordsResponse, AppError> {
+    pub async fn kinesis_get_records(&self, aws_account_dto: &AwsAccountDto, request: &KinesisGetRecordsRequest) -> Result<KinesisGetRecordsResponse, AppError> {
         let kinesis_data_plane = KinesisDataPlane::new(self.aws_service.clone());
-        kinesis_data_plane.get_records(profile, region, request).await
+        kinesis_data_plane.get_records(aws_account_dto, request).await
     }
 
-    pub async fn kinesis_get_shard_iterator(&self, profile: Option<&str>, region: &str, request: &KinesisGetShardIteratorRequest) -> Result<KinesisGetShardIteratorResponse, AppError> {
+    pub async fn kinesis_get_shard_iterator(&self, aws_account_dto: &AwsAccountDto, request: &KinesisGetShardIteratorRequest) -> Result<KinesisGetShardIteratorResponse, AppError> {
         let kinesis_data_plane = KinesisDataPlane::new(self.aws_service.clone());
-        kinesis_data_plane.get_shard_iterator(profile, region, request).await
+        kinesis_data_plane.get_shard_iterator(aws_account_dto, request).await
     }
 }

@@ -17,7 +17,7 @@ impl SqsControlPlane {
         Self { aws_service }
     }
 
-    pub async fn sync_queues(&self, account_id: &str, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
+    pub async fn sync_queues(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
         let client = self.aws_service.create_sqs_client(aws_account_dto).await?;
 
         // List all queues from AWS

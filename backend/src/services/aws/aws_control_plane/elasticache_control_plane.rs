@@ -17,7 +17,7 @@ impl ElasticacheControlPlane {
         Self { aws_service }
     }
 
-    pub async fn sync_clusters(&self, account_id: &str, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
+    pub async fn sync_clusters(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
         let client = self.aws_service.create_elasticache_client(aws_account_dto).await?;
 
         // Get ElastiCache clusters from AWS
