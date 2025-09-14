@@ -99,7 +99,100 @@ pub fn configure(cfg: &mut web::ServiceConfig, db: Arc<DatabaseConnection>) {
         .route("/clusters/{cluster_id}/namespaces/{namespace}/ingress", web::get().to(crate::controllers::ingress::list_ingress_controller))
         .route("/clusters/{cluster_id}/namespaces/{namespace}/ingress/{name}", web::get().to(crate::controllers::ingress::get_ingress_controller))
         .route("/clusters/{cluster_id}/namespaces/{namespace}/ingress/{name}", web::put().to(crate::controllers::ingress::upsert_ingress_controller))
-        .route("/clusters/{cluster_id}/namespaces/{namespace}/ingress/{name}", web::delete().to(crate::controllers::ingress::delete_ingress_controller));
+    .route("/clusters/{cluster_id}/namespaces/{namespace}/ingress/{name}", web::delete().to(crate::controllers::ingress::delete_ingress_controller))
+    // Aliases with canonical plural "/ingresses"
+    .route("/clusters/{cluster_id}/namespaces/{namespace}/ingresses", web::get().to(crate::controllers::ingress::list_ingress_controller))
+    .route("/clusters/{cluster_id}/namespaces/{namespace}/ingresses/{name}", web::get().to(crate::controllers::ingress::get_ingress_controller))
+    .route("/clusters/{cluster_id}/namespaces/{namespace}/ingresses/{name}", web::put().to(crate::controllers::ingress::upsert_ingress_controller))
+    .route("/clusters/{cluster_id}/namespaces/{namespace}/ingresses/{name}", web::delete().to(crate::controllers::ingress::delete_ingress_controller));
+
+    // Endpoints & EndpointSlices
+    let scope = scope
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/endpoints", web::get().to(crate::controllers::endpoints::list_endpoints_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/endpointslices", web::get().to(crate::controllers::endpoints::list_endpoint_slices_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/endpoints/{name}", web::get().to(crate::controllers::endpoints::get_endpoints_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/endpoints/{name}", web::put().to(crate::controllers::endpoints::upsert_endpoints_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/endpoints/{name}", web::delete().to(crate::controllers::endpoints::delete_endpoints_controller));
+
+    // NetworkPolicies
+    let scope = scope
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/networkpolicies", web::get().to(crate::controllers::network_policies::list_network_policies_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/networkpolicies/{name}", web::get().to(crate::controllers::network_policies::get_network_policy_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/networkpolicies/{name}", web::put().to(crate::controllers::network_policies::upsert_network_policy_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/networkpolicies/{name}", web::delete().to(crate::controllers::network_policies::delete_network_policy_controller));
+
+    // HPA
+    let scope = scope
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/hpa", web::get().to(crate::controllers::hpa::list_hpa_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/hpa/{name}", web::get().to(crate::controllers::hpa::get_hpa_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/hpa/{name}", web::put().to(crate::controllers::hpa::upsert_hpa_controller))
+    .route("/clusters/{cluster_id}/namespaces/{namespace}/hpa/{name}", web::delete().to(crate::controllers::hpa::delete_hpa_controller))
+    // Aliases using full resource name
+    .route("/clusters/{cluster_id}/namespaces/{namespace}/horizontalpodautoscalers", web::get().to(crate::controllers::hpa::list_hpa_controller))
+    .route("/clusters/{cluster_id}/namespaces/{namespace}/horizontalpodautoscalers/{name}", web::get().to(crate::controllers::hpa::get_hpa_controller))
+    .route("/clusters/{cluster_id}/namespaces/{namespace}/horizontalpodautoscalers/{name}", web::put().to(crate::controllers::hpa::upsert_hpa_controller))
+    .route("/clusters/{cluster_id}/namespaces/{namespace}/horizontalpodautoscalers/{name}", web::delete().to(crate::controllers::hpa::delete_hpa_controller));
+
+    // PodDisruptionBudget
+    let scope = scope
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/poddisruptionbudgets", web::get().to(crate::controllers::pdb::list_pdb_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/poddisruptionbudgets/{name}", web::get().to(crate::controllers::pdb::get_pdb_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/poddisruptionbudgets/{name}", web::put().to(crate::controllers::pdb::upsert_pdb_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/poddisruptionbudgets/{name}", web::delete().to(crate::controllers::pdb::delete_pdb_controller));
+
+    // ResourceQuota
+    let scope = scope
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/resourcequotas", web::get().to(crate::controllers::resource_quotas::list_resource_quotas_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/resourcequotas/{name}", web::get().to(crate::controllers::resource_quotas::get_resource_quota_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/resourcequotas/{name}", web::put().to(crate::controllers::resource_quotas::upsert_resource_quota_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/resourcequotas/{name}", web::delete().to(crate::controllers::resource_quotas::delete_resource_quota_controller));
+
+    // LimitRanges
+    let scope = scope
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/limitranges", web::get().to(crate::controllers::limit_ranges::list_limit_ranges_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/limitranges/{name}", web::get().to(crate::controllers::limit_ranges::get_limit_range_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/limitranges/{name}", web::put().to(crate::controllers::limit_ranges::upsert_limit_range_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/limitranges/{name}", web::delete().to(crate::controllers::limit_ranges::delete_limit_range_controller));
+
+    // ServiceAccounts
+    let scope = scope
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/serviceaccounts", web::get().to(crate::controllers::service_accounts::list_service_accounts_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/serviceaccounts/{name}", web::get().to(crate::controllers::service_accounts::get_service_account_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/serviceaccounts/{name}", web::put().to(crate::controllers::service_accounts::upsert_service_account_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/serviceaccounts/{name}", web::delete().to(crate::controllers::service_accounts::delete_service_account_controller));
+
+    // RBAC - namespaced
+    let scope = scope
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/roles", web::get().to(crate::controllers::rbac::list_roles_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/roles/{name}", web::get().to(crate::controllers::rbac::get_role_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/roles/{name}", web::put().to(crate::controllers::rbac::upsert_role_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/roles/{name}", web::delete().to(crate::controllers::rbac::delete_role_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/rolebindings", web::get().to(crate::controllers::rbac::list_role_bindings_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/rolebindings/{name}", web::get().to(crate::controllers::rbac::get_role_binding_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/rolebindings/{name}", web::put().to(crate::controllers::rbac::upsert_role_binding_controller))
+        .route("/clusters/{cluster_id}/namespaces/{namespace}/rolebindings/{name}", web::delete().to(crate::controllers::rbac::delete_role_binding_controller));
+
+    // RBAC - cluster scoped
+    let scope = scope
+        .route("/clusters/{cluster_id}/clusterroles", web::get().to(crate::controllers::rbac::list_cluster_roles_controller))
+        .route("/clusters/{cluster_id}/clusterroles/{name}", web::get().to(crate::controllers::rbac::get_cluster_role_controller))
+        .route("/clusters/{cluster_id}/clusterroles/{name}", web::put().to(crate::controllers::rbac::upsert_cluster_role_controller))
+        .route("/clusters/{cluster_id}/clusterroles/{name}", web::delete().to(crate::controllers::rbac::delete_cluster_role_controller))
+        .route("/clusters/{cluster_id}/clusterrolebindings", web::get().to(crate::controllers::rbac::list_cluster_role_bindings_controller))
+        .route("/clusters/{cluster_id}/clusterrolebindings/{name}", web::get().to(crate::controllers::rbac::get_cluster_role_binding_controller))
+        .route("/clusters/{cluster_id}/clusterrolebindings/{name}", web::put().to(crate::controllers::rbac::upsert_cluster_role_binding_controller))
+        .route("/clusters/{cluster_id}/clusterrolebindings/{name}", web::delete().to(crate::controllers::rbac::delete_cluster_role_binding_controller));
+
+    // AuthZ check
+    let scope = scope
+        .route("/clusters/{cluster_id}/authz:can", web::post().to(crate::controllers::authz::authz_can_controller));
+
+    // Node ops
+    let scope = scope
+        .route("/clusters/{cluster_id}/nodes/{node}:cordon", web::post().to(crate::controllers::node_ops::cordon_node_controller))
+        .route("/clusters/{cluster_id}/nodes/{node}:uncordon", web::post().to(crate::controllers::node_ops::uncordon_node_controller))
+        .route("/clusters/{cluster_id}/nodes/{node}:addTaint", web::post().to(crate::controllers::node_ops::add_taint_controller))
+        .route("/clusters/{cluster_id}/nodes/{node}:removeTaint", web::post().to(crate::controllers::node_ops::remove_taint_controller));
 
     cfg.service(scope);
 }

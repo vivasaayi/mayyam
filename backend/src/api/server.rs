@@ -62,6 +62,16 @@ use crate::services::kubernetes::{
 use crate::services::kubernetes::jobs_service::JobsService;
 use crate::services::kubernetes::cronjobs_service::CronJobsService;
 use crate::services::kubernetes::ingress_service::IngressService;
+use crate::services::kubernetes::endpoints_service::EndpointsService;
+use crate::services::kubernetes::network_policies_service::NetworkPoliciesService;
+use crate::services::kubernetes::hpa_service::HorizontalPodAutoscalerService;
+use crate::services::kubernetes::pdb_service::PodDisruptionBudgetsService;
+use crate::services::kubernetes::resource_quotas_service::ResourceQuotasService;
+use crate::services::kubernetes::limit_ranges_service::LimitRangesService;
+use crate::services::kubernetes::service_accounts_service::ServiceAccountsService;
+use crate::services::kubernetes::rbac_service::RbacService;
+use crate::services::kubernetes::authz_service::AuthorizationService;
+use crate::services::kubernetes::nodes_ops_service::NodeOpsService;
 
 
 pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), Box<dyn Error>> {
@@ -134,6 +144,16 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     let jobs_service = Arc::new(JobsService::new());
     let cronjobs_service = Arc::new(CronJobsService::new());
     let ingress_service = Arc::new(IngressService::new());
+    let endpoints_service = Arc::new(EndpointsService::new());
+    let network_policies_service = Arc::new(NetworkPoliciesService::new());
+    let hpa_service = Arc::new(HorizontalPodAutoscalerService::new());
+    let pdb_service = Arc::new(PodDisruptionBudgetsService::new());
+    let resource_quotas_service = Arc::new(ResourceQuotasService::new());
+    let limit_ranges_service = Arc::new(LimitRangesService::new());
+    let service_accounts_service = Arc::new(ServiceAccountsService::new());
+    let rbac_service = Arc::new(RbacService::new());
+    let authorization_service = Arc::new(AuthorizationService::new());
+    let node_ops_service = Arc::new(NodeOpsService::new());
     
     // Initialize controllers
     let auth_controller = Arc::new(AuthController::new(user_service.clone(), config.clone()));
@@ -223,6 +243,16 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             .app_data(web::Data::new(jobs_service.clone()))
             .app_data(web::Data::new(cronjobs_service.clone()))
             .app_data(web::Data::new(ingress_service.clone()))
+            .app_data(web::Data::new(endpoints_service.clone()))
+            .app_data(web::Data::new(network_policies_service.clone()))
+            .app_data(web::Data::new(hpa_service.clone()))
+            .app_data(web::Data::new(pdb_service.clone()))
+            .app_data(web::Data::new(resource_quotas_service.clone()))
+            .app_data(web::Data::new(limit_ranges_service.clone()))
+            .app_data(web::Data::new(service_accounts_service.clone()))
+            .app_data(web::Data::new(rbac_service.clone()))
+            .app_data(web::Data::new(authorization_service.clone()))
+            .app_data(web::Data::new(node_ops_service.clone()))
             // Controllers
             .app_data(web::Data::new(auth_controller.clone()))
             .app_data(web::Data::new(aws_analytics_controller.clone()))
