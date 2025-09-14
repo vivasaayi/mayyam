@@ -1,6 +1,8 @@
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::sync::OnceLock;
+use crate::integration::helpers::ensure_server;
+use crate::integration::helpers::auth::get_auth_token;
 
 /// Global HTTP client for all tests to avoid connection issues
 static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
@@ -24,43 +26,13 @@ fn get_shared_client() -> &'static Client {
     })
 }
 
-/// Get JWT token for authentication by logging in
-async fn get_auth_token() -> String {
-    let client = get_shared_client();
-    let base_url = get_base_url();
-
-    let login_data = json!({
-        "username": "admin",
-        "password": "admin123"
-    });
-
-    let response = client
-        .post(&format!("{}/api/auth/login", base_url))
-        .header("Content-Type", "application/json")
-        .json(&login_data)
-        .send()
-        .await
-        .expect("Failed to login for authentication");
-
-    if !response.status().is_success() {
-        panic!("Login failed with status: {}", response.status());
-    }
-
-    let auth_response: serde_json::Value = response
-        .json()
-        .await
-        .expect("Failed to parse login response");
-
-    auth_response["token"]
-        .as_str()
-        .expect("No token in login response")
-        .to_string()
-}
+// Use shared auth helper's get_auth_token()
 
 #[tokio::test]
 async fn test_llm_integration_initialization() {
     println!("🔍 Testing LLM Integration Initialization...");
     
+    ensure_server().await;
     let client = get_shared_client();
     let base_url = get_base_url();
     let token = get_auth_token().await;
@@ -94,6 +66,7 @@ async fn test_llm_integration_initialization() {
 async fn test_real_llm_rds_analysis_no_mocking() {
     println!("🧪 Testing Real LLM RDS Analysis (No Mocking)...");
     
+    ensure_server().await;
     let client = get_shared_client();
     let base_url = get_base_url();
     let token = get_auth_token().await;
@@ -382,7 +355,7 @@ async fn test_end_to_end_llm_workflow_validation() {
     let mut success_count = 0;
     let mut llm_required_count = 0;
 
-    for (service, resource_id, workflow) in test_cases {
+    for (service, resource_id, workflow) in &test_cases {
         println!("Testing {}/{}/{}", service, resource_id, workflow);
         
         let response = client

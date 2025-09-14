@@ -132,6 +132,16 @@ docker-compose --profile uat up --build
 docker-compose -f docker-compose.prod.yml up -d
 ```
 
+### Integration tests (gated)
+
+Some integration tests depend on external services. They are gated with environment variables so your CI can opt in selectively:
+
+- ENABLE_AWS_TESTS=1 to run AWS tests
+- ENABLE_KAFKA_TESTS=1 to run Kafka tests
+- ENABLE_K8S_TESTS=1 to run extended Kubernetes tests
+
+The test harness auto-starts the backend on an ephemeral port and waits for `/health`. If the backend can't become healthy (for example, no local Postgres is running for `config.test.yml`), Kubernetes smoke tests will skip gracefully with a message. To get full coverage locally, bring up the dev compose stack first so DB/Kafka are available, then run `cargo test` in `backend/`.
+
 ### Development Setup
 
 #### Backend

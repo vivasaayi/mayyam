@@ -2,11 +2,13 @@ use reqwest::Client;
 use serde_json::json;
 use std::sync::OnceLock;
 use base64::{Engine as _, engine::general_purpose};
+use crate::integration::helpers::ensure_server;
+use crate::integration::helpers::auth::get_auth_token;
 
 /// Global HTTP client for all tests to avoid connection issues
 static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
 
-/// Get base URL for API calls
+/// Get base URL for API calls (env set by ensure_server())
 fn get_base_url() -> String {
     std::env::var("TEST_API_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".to_string())
 }
@@ -25,38 +27,7 @@ fn get_shared_client() -> &'static Client {
     })
 }
 
-/// Get JWT token for authentication by logging in
-async fn get_auth_token() -> String {
-    let client = get_shared_client();
-    let base_url = get_base_url();
-
-    let login_data = json!({
-        "username": "admin",
-        "password": "admin123"
-    });
-
-    let response = client
-        .post(&format!("{}/api/auth/login", base_url))
-        .header("Content-Type", "application/json")
-        .json(&login_data)
-        .send()
-        .await
-        .expect("Failed to login for authentication");
-
-    if !response.status().is_success() {
-        panic!("Login failed with status: {}", response.status());
-    }
-
-    let auth_response: serde_json::Value = response
-        .json()
-        .await
-        .expect("Failed to parse login response");
-
-    auth_response["token"]
-        .as_str()
-        .expect("Token not found in login response")
-        .to_string()
-}
+// Use shared auth helper's get_auth_token()
 
 /// Get real AWS credentials from environment variables
 /// Panics if required environment variables are not set
@@ -108,6 +79,11 @@ fn get_test_base_url() -> String {
     std::env::var("TEST_API_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".to_string())
 }
 
+/// Check if AWS-dependent integration tests are enabled
+fn aws_tests_enabled() -> bool {
+    std::env::var("ENABLE_AWS_TESTS").ok().as_deref() == Some("1")
+}
+
 /// Add small delay to prevent overwhelming the server
 async fn test_delay() {
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -122,9 +98,14 @@ mod aws_account_integration_tests {
     /// Test creating AWS account via API
     #[tokio::test]
     async fn test_create_aws_account_api() {
+        if !aws_tests_enabled() {
+            eprintln!("Skipping AWS test: set ENABLE_AWS_TESTS=1 to run");
+            return;
+        }
         test_delay().await; // Small delay to prevent overwhelming server
-        let client = setup_http_client().await;
-        let base_url = get_test_base_url();
+    ensure_server().await;
+    let client = setup_http_client().await;
+    let base_url = get_base_url();
         let auth_token = get_auth_token().await;
 
         println!("Auth token: {}", auth_token);
@@ -163,8 +144,9 @@ mod aws_account_integration_tests {
     #[tokio::test]
     async fn test_get_all_aws_accounts_api() {
         test_delay().await; // Small delay to prevent overwhelming server
-        let client = setup_http_client().await;
-        let base_url = get_test_base_url();
+    ensure_server().await;
+    let client = setup_http_client().await;
+    let base_url = get_base_url();
         let token = get_auth_token().await;
 
         let response = client
@@ -184,9 +166,14 @@ mod aws_account_integration_tests {
     /// Test getting AWS account by ID via API
     #[tokio::test]
     async fn test_get_aws_account_by_id_api() {
+        if !aws_tests_enabled() {
+            eprintln!("Skipping AWS test: set ENABLE_AWS_TESTS=1 to run");
+            return;
+        }
         test_delay().await; // Small delay to prevent overwhelming server
-        let client = create_test_client().await;
-        let base_url = get_test_base_url();
+    ensure_server().await;
+    let client = create_test_client().await;
+    let base_url = get_base_url();
         let token = get_auth_token().await;
 
         // First create an account
@@ -242,9 +229,14 @@ mod aws_account_integration_tests {
     /// Test updating AWS account via API
     #[tokio::test]
     async fn test_update_aws_account_api() {
+        if !aws_tests_enabled() {
+            eprintln!("Skipping AWS test: set ENABLE_AWS_TESTS=1 to run");
+            return;
+        }
         test_delay().await; // Small delay to prevent overwhelming server
-        let client = setup_http_client().await;
-        let base_url = get_test_base_url();
+    ensure_server().await;
+    let client = setup_http_client().await;
+    let base_url = get_base_url();
         let token = get_auth_token().await;
 
         // First create an account to update
@@ -306,9 +298,14 @@ mod aws_account_integration_tests {
     /// Test deleting AWS account via API
     #[tokio::test]
     async fn test_delete_aws_account_api() {
+        if !aws_tests_enabled() {
+            eprintln!("Skipping AWS test: set ENABLE_AWS_TESTS=1 to run");
+            return;
+        }
         test_delay().await; // Small delay to prevent overwhelming server
-        let client = setup_http_client().await;
-        let base_url = get_test_base_url();
+    ensure_server().await;
+    let client = setup_http_client().await;
+    let base_url = get_base_url();
         let token = get_auth_token().await;
 
         // First create an account
@@ -459,6 +456,10 @@ mod kinesis_integration_tests {
     /// Test Kinesis stream analysis workflow
     #[tokio::test]
     async fn test_kinesis_stream_analysis_workflow() {
+        if !aws_tests_enabled() {
+            eprintln!("Skipping AWS test: set ENABLE_AWS_TESTS=1 to run");
+            return;
+        }
         let client = setup_http_client().await;
         let base_url = get_test_base_url();
         let token = get_auth_token().await;
@@ -638,6 +639,10 @@ mod kinesis_integration_tests {
     /// Test comprehensive Kinesis stream lifecycle management
     #[tokio::test]
     async fn test_kinesis_stream_lifecycle() {
+        if !aws_tests_enabled() {
+            eprintln!("Skipping AWS test: set ENABLE_AWS_TESTS=1 to run");
+            return;
+        }
         let client = get_shared_client();
         let base_url = get_base_url();
         let auth_token = get_auth_token().await;
@@ -771,6 +776,10 @@ mod kinesis_integration_tests {
     /// Test Kinesis analysis with different time ranges
     #[tokio::test]
     async fn test_kinesis_analysis_time_ranges() {
+        if !aws_tests_enabled() {
+            eprintln!("Skipping AWS test: set ENABLE_AWS_TESTS=1 to run");
+            return;
+        }
         let client = setup_http_client().await;
         let base_url = get_test_base_url();
         let token = get_auth_token().await;
@@ -816,6 +825,10 @@ mod kinesis_integration_tests {
     /// Test Kinesis analysis error handling
     #[tokio::test]
     async fn test_kinesis_analysis_error_handling() {
+        if !aws_tests_enabled() {
+            eprintln!("Skipping AWS test: set ENABLE_AWS_TESTS=1 to run");
+            return;
+        }
         let client = setup_http_client().await;
         let base_url = get_test_base_url();
         let token = get_auth_token().await;

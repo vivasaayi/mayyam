@@ -3,8 +3,7 @@
 # Frontend development runner
 # Usage: ./dev_frontend.sh [backend_port] [frontend_port]
 
-BACKEND_PORT=3005
-FRONTEND_PORT=3006
+source ../.env
 
 echo "Starting frontend on port $FRONTEND_PORT..."
 echo "Connecting to backend on port $BACKEND_PORT..."

@@ -96,7 +96,11 @@ impl KafkaTestHelper {
             record = record.headers(owned_headers);
         }
 
-        let delivery_status = self.producer.send(record, Duration::from_secs(10)).await?;
+        let delivery_status = self
+            .producer
+            .send(record, Duration::from_secs(10))
+            .await
+            .map_err(|(e, _msg)| -> Box<dyn std::error::Error> { Box::new(e) })?;
         Ok((delivery_status.0, delivery_status.1))
     }
 
@@ -193,7 +197,8 @@ impl KafkaTestHelper {
 
         if !test_topics.is_empty() {
             let options = AdminOptions::new().request_timeout(Some(Duration::from_secs(30)));
-            let results = self.admin_client.delete_topics(&test_topics, &options).await?;
+            let topic_refs: Vec<&str> = test_topics.iter().map(|s| s.as_str()).collect();
+            let results = self.admin_client.delete_topics(&topic_refs, &options).await?;
 
             for result in results {
                 match result {
