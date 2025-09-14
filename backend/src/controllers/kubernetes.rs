@@ -1,15 +1,14 @@
 use actix_web::{web, HttpResponse, Responder};
 use crate::errors::AppError;
 use crate::middleware::auth::Claims; // Assuming you have auth middleware
-use crate::models::cluster::{KubernetesClusterConfig, CreateKubernetesClusterRequest, Model as ClusterModel};
+use crate::models::cluster::{KubernetesClusterConfig, CreateKubernetesClusterRequest};
 use crate::services::kubernetes::prelude::*;
 use std::sync::Arc;
+use serde::Deserialize;
 use sea_orm::{DatabaseConnection, EntityTrait, ColumnTrait, QueryFilter, ActiveModelTrait, Set};
 use uuid::Uuid;
-use tracing::{debug, info, error}; // Added error for logging
-use k8s_openapi::api::core::v1::{Pod, Event}; // Event is used
-use kube::Api; // Added for Api type
-use kube::api::ListParams; // ListParams is used
+use tracing::{debug, info};
+use std::collections::BTreeMap;
 
 // Helper function to get cluster config (you'll need to implement this based on your DB structure)
 // This is a simplified example. You'd typically fetch this from a database.
@@ -295,6 +294,35 @@ pub async fn get_pod_events_controller(
     Ok(HttpResponse::Ok().json(events))
 }
 
+#[derive(Deserialize)]
+pub struct ExecQuery {
+    pub command: String,
+    pub container: Option<String>,
+    pub tty: Option<bool>,
+}
+
+pub async fn exec_pod_command_controller(
+    claims: web::ReqData<Claims>,
+    db: web::Data<Arc<DatabaseConnection>>, 
+    path: web::Path<(String, String, String)>, // (cluster_id, namespace_name, pod_name)
+    query: web::Query<ExecQuery>,
+    pod_service: web::Data<Arc<PodService>>,
+) -> Result<impl Responder, AppError> {
+    let (cluster_id, namespace_name, pod_name) = path.into_inner();
+    let ExecQuery { command, container, tty } = query.into_inner();
+    debug!(target: "mayyam::controllers::kubernetes", user_id = %claims.username, %cluster_id, %namespace_name, %pod_name, %command, "Exec into pod");
+
+    let cluster_config = get_cluster_config_by_id(db.get_ref().as_ref(), &cluster_id).await?;
+    let opts = crate::services::kubernetes::pod::ExecOptions {
+        command: shlex::split(&command).unwrap_or_else(|| vec![command.clone()]),
+        container,
+        tty,
+        stdin: Some(false),
+    };
+    let result = pod_service.exec_command(&cluster_config, &namespace_name, &pod_name, opts).await?;
+    Ok(HttpResponse::Ok().json(result))
+}
+
 pub async fn list_services_controller(
     claims: web::ReqData<Claims>, // Changed _claims to claims to use it in log
     db: web::Data<Arc<DatabaseConnection>>,
@@ -371,6 +399,88 @@ pub async fn get_deployment_details_controller(
     Ok(HttpResponse::Ok().json(deployment_details))
 }
 
+#[derive(Deserialize)]
+pub struct ScaleDeploymentBody {
+    pub replicas: i32,
+}
+
+pub async fn scale_deployment_controller(
+    claims: web::ReqData<Claims>,
+    db: web::Data<Arc<DatabaseConnection>>,
+    path: web::Path<(String, String, String)>, // (cluster_id, namespace_name, deployment_name)
+    body: web::Json<ScaleDeploymentBody>,
+    deployments_service: web::Data<Arc<DeploymentsService>>,
+) -> Result<impl Responder, AppError> {
+    let (cluster_id, namespace_name, deployment_name) = path.into_inner();
+    let replicas = body.replicas;
+    debug!(target: "mayyam::controllers::kubernetes", user_id = %claims.username, %cluster_id, %namespace_name, %deployment_name, replicas = replicas, "Scaling deployment");
+    let cluster_config = get_cluster_config_by_id(db.get_ref().as_ref(), &cluster_id).await?;
+    deployments_service
+        .scale_deployment(&cluster_config, &namespace_name, &deployment_name, replicas)
+        .await?;
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "status": "scaled",
+        "replicas": replicas,
+    })))
+}
+
+pub async fn restart_deployment_controller(
+    claims: web::ReqData<Claims>,
+    db: web::Data<Arc<DatabaseConnection>>,
+    path: web::Path<(String, String, String)>, // (cluster_id, namespace_name, deployment_name)
+    deployments_service: web::Data<Arc<DeploymentsService>>,
+) -> Result<impl Responder, AppError> {
+    let (cluster_id, namespace_name, deployment_name) = path.into_inner();
+    debug!(target: "mayyam::controllers::kubernetes", user_id = %claims.username, %cluster_id, %namespace_name, %deployment_name, "Restarting deployment");
+    let cluster_config = get_cluster_config_by_id(db.get_ref().as_ref(), &cluster_id).await?;
+    deployments_service
+        .restart_deployment(&cluster_config, &namespace_name, &deployment_name)
+        .await?;
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "status": "restarted",
+    })))
+}
+
+#[derive(Deserialize)]
+pub struct CreateNamespaceBody {
+    pub name: String,
+    pub labels: Option<BTreeMap<String, String>>,
+}
+
+pub async fn create_namespace_controller(
+    claims: web::ReqData<Claims>,
+    db: web::Data<Arc<DatabaseConnection>>,
+    path: web::Path<String>, // cluster_id
+    body: web::Json<CreateNamespaceBody>,
+    namespaces_service: web::Data<Arc<NamespacesService>>,
+) -> Result<impl Responder, AppError> {
+    let cluster_id = path.into_inner();
+    debug!(target: "mayyam::controllers::kubernetes", user_id = %claims.username, %cluster_id, ns = %body.name, "Creating namespace");
+    let cluster_config = get_cluster_config_by_id(db.get_ref().as_ref(), &cluster_id).await?;
+    let ns = namespaces_service
+        .create_namespace(&cluster_config, &body.name, body.labels.clone())
+        .await?;
+    Ok(HttpResponse::Ok().json(ns))
+}
+
+pub async fn delete_namespace_controller(
+    claims: web::ReqData<Claims>,
+    db: web::Data<Arc<DatabaseConnection>>,
+    path: web::Path<(String, String)>, // (cluster_id, namespace_name)
+    namespaces_service: web::Data<Arc<NamespacesService>>,
+) -> Result<impl Responder, AppError> {
+    let (cluster_id, namespace_name) = path.into_inner();
+    debug!(target: "mayyam::controllers::kubernetes", user_id = %claims.username, %cluster_id, %namespace_name, "Deleting namespace");
+    let cluster_config = get_cluster_config_by_id(db.get_ref().as_ref(), &cluster_id).await?;
+    namespaces_service
+        .delete_namespace(&cluster_config, &namespace_name)
+        .await?;
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "status": "deleted",
+        "name": namespace_name,
+    })))
+}
+
 // New controller to list all deployments in a cluster, across all namespaces
 pub async fn list_all_deployments_controller(
     claims: web::ReqData<Claims>,
@@ -390,7 +500,7 @@ pub async fn list_all_deployments_controller(
 
 
 pub async fn get_pods_for_deployment_controller(
-    claims: web::ReqData<Claims>, // Changed _claims to claims to use it in log
+    claims: web::ReqData<Claims>,
     db: web::Data<Arc<DatabaseConnection>>,
     path: web::Path<(String, String, String)>, // (cluster_id, namespace_name, deployment_name)
     deployments_service: web::Data<Arc<DeploymentsService>>,
@@ -400,10 +510,10 @@ pub async fn get_pods_for_deployment_controller(
     let cluster_config = get_cluster_config_by_id(db.get_ref().as_ref(), &cluster_id).await?;
     debug!(target: "mayyam::controllers::kubernetes", %cluster_id, %namespace_name, %deployment_name, "Successfully retrieved cluster config for pods for deployment");
         
-    let pod_service = web::Data::new(Arc::new(PodService::new())); 
-    let pods = pod_service.list_pods(&cluster_config, &namespace_name).await?; // This lists ALL pods in namespace
-    // TODO: Replace with actual deployments_service.get_pods_for_deployment call when implemented
-    debug!(target: "mayyam::controllers::kubernetes", %cluster_id, %namespace_name, %deployment_name, count = pods.len(), "Successfully retrieved pods for deployment (currently all pods in namespace)");
+    let pods = deployments_service
+        .get_pods_for_deployment(&cluster_config, &namespace_name, &deployment_name)
+        .await?;
+    debug!(target: "mayyam::controllers::kubernetes", %cluster_id, %namespace_name, %deployment_name, count = pods.len(), "Successfully retrieved pods for deployment");
     Ok(HttpResponse::Ok().json(pods))
 }
 
@@ -500,18 +610,19 @@ pub async fn get_daemon_set_details_controller(
 }
 
 pub async fn get_pods_for_daemon_set_controller(
-    claims: web::ReqData<Claims>, // Changed _claims to claims to use it in log
+    claims: web::ReqData<Claims>,
     db: web::Data<Arc<DatabaseConnection>>,
     path: web::Path<(String, String, String)>, // (cluster_id, namespace_name, daemon_set_name)
-    pod_service: web::Data<Arc<PodService>>,
+    daemon_sets_service: web::Data<Arc<DaemonSetsService>>,
 ) -> Result<impl Responder, AppError> {
     let (cluster_id, namespace_name, daemon_set_name) = path.into_inner();
     debug!(target: "mayyam::controllers::kubernetes", user_id = %claims.username, %cluster_id, %namespace_name, %daemon_set_name, "Attempting to get pods for daemon set");
     let cluster_config = get_cluster_config_by_id(db.get_ref().as_ref(), &cluster_id).await?;
     debug!(target: "mayyam::controllers::kubernetes", %cluster_id, %namespace_name, %daemon_set_name, "Successfully retrieved cluster config for pods for daemon set");
-    // TODO: Replace with actual daemon_sets_service.get_pods_for_daemon_set call when implemented
-    let pods = pod_service.list_pods(&cluster_config, &namespace_name).await?; 
-    debug!(target: "mayyam::controllers::kubernetes", %cluster_id, %namespace_name, %daemon_set_name, count = pods.len(), "Successfully retrieved pods for daemon set (currently all pods in namespace)");
+    let pods = daemon_sets_service
+        .get_pods_for_daemon_set(&cluster_config, &namespace_name, &daemon_set_name)
+        .await?;
+    debug!(target: "mayyam::controllers::kubernetes", %cluster_id, %namespace_name, %daemon_set_name, count = pods.len(), "Successfully retrieved pods for daemon set");
     Ok(HttpResponse::Ok().json(pods))
 }
 

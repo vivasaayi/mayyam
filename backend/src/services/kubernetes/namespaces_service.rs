@@ -1,6 +1,6 @@
 use kube::{Client, Api, ResourceExt};
-use kube::api::ListParams;
-use kube::config::{Kubeconfig, KubeConfigOptions, Config as KubeConfig};
+use kube::api::{ListParams, PostParams, DeleteParams};
+use crate::services::kubernetes::client::ClientFactory;
 use k8s_openapi::api::core::v1::Namespace;
 use serde::{Serialize, Deserialize};
 use chrono::Utc;
@@ -23,20 +23,7 @@ impl NamespacesService {
     }
 
     async fn get_kube_client(cluster_config: &KubernetesClusterConfig) -> Result<Client, AppError> {
-        let kubeconfig = if let Some(path) = &cluster_config.kube_config_path {
-            Kubeconfig::read_from(path).map_err(|e| AppError::ExternalService(format!("Failed to read kubeconfig from path: {}", e)))?
-        } else {
-            let infer_config = kube::Config::infer().await.map_err(|e| AppError::ExternalService(format!("Failed to infer Kubernetes config: {}", e)))?;
-            return Client::try_from(infer_config).map_err(|e| AppError::ExternalService(format!("Failed to create Kubernetes client from inferred config: {}", e)));
-        };
-        
-        let client_config = KubeConfig::from_custom_kubeconfig(kubeconfig, &KubeConfigOptions {
-            context: cluster_config.kube_context.clone(),
-            cluster: None,
-            user: None,
-        }).await.map_err(|e| AppError::ExternalService(format!("Failed to create Kubernetes client config: {}", e)))?;
-
-        Client::try_from(client_config).map_err(|e| AppError::ExternalService(format!("Failed to create Kubernetes client: {}", e)))
+        ClientFactory::get_client(cluster_config).await
     }
 
     pub async fn list_namespaces(
@@ -86,5 +73,39 @@ impl NamespacesService {
         api.get(name).await.map_err(|e| {
             AppError::ExternalService(format!("Failed to get namespace '{}': {}", name, e))
         })
+    }
+
+    pub async fn create_namespace(
+        &self,
+        cluster_config: &KubernetesClusterConfig,
+        name: &str,
+        labels: Option<std::collections::BTreeMap<String, String>>,
+    ) -> Result<Namespace, AppError> {
+        let client = Self::get_kube_client(cluster_config).await?;
+        let api: Api<Namespace> = Api::all(client);
+        let ns = Namespace {
+            metadata: kube::api::ObjectMeta {
+                name: Some(name.to_string()),
+                labels,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        api.create(&PostParams::default(), &ns).await.map_err(|e| {
+            AppError::ExternalService(format!("Failed to create namespace '{}': {}", name, e))
+        })
+    }
+
+    pub async fn delete_namespace(
+        &self,
+        cluster_config: &KubernetesClusterConfig,
+        name: &str,
+    ) -> Result<(), AppError> {
+        let client = Self::get_kube_client(cluster_config).await?;
+        let api: Api<Namespace> = Api::all(client);
+        api.delete(name, &DeleteParams::default()).await.map_err(|e| {
+            AppError::ExternalService(format!("Failed to delete namespace '{}': {}", name, e))
+        })?;
+        Ok(())
     }
 }

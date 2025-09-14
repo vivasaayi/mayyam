@@ -1,10 +1,8 @@
 // filepath: /Users/rajanpanneerselvam/work/mayyam/backend/src/services/kubernetes/deployments_service.rs
 use kube::{Client, Api, ResourceExt}; // Added ResourceExt
 use kube::api::{ListParams, Patch, PatchParams, DeleteParams};
-use kube::config::{Kubeconfig, KubeConfigOptions, Config as KubeConfig};
 use k8s_openapi::api::apps::v1::Deployment;
 use k8s_openapi::api::core::v1::Pod;
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use serde::{Serialize, Deserialize};
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -13,7 +11,8 @@ use chrono::Utc;
 use crate::errors::AppError;
 use crate::models::cluster::KubernetesClusterConfig;
 // Use the PodInfo and convert_kube_pod_to_pod_info from the pod module
-use crate::services::kubernetes::pod::{PodInfo, convert_kube_pod_to_pod_info};
+use crate::services::kubernetes::pod::PodInfo;
+use crate::services::kubernetes::client::ClientFactory;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DeploymentInfo {
@@ -34,20 +33,7 @@ impl DeploymentsService {
     }
 
     async fn get_kube_client(cluster_config: &KubernetesClusterConfig) -> Result<Client, AppError> {
-        let kubeconfig = if let Some(path) = &cluster_config.kube_config_path {
-            Kubeconfig::read_from(path).map_err(|e| AppError::ExternalService(format!("Failed to read kubeconfig from path: {}", e)))?
-        } else {
-            let infer_config = kube::Config::infer().await.map_err(|e| AppError::ExternalService(format!("Failed to infer Kubernetes config: {}", e)))?;
-            return Client::try_from(infer_config).map_err(|e| AppError::ExternalService(format!("Failed to create Kubernetes client from inferred config: {}", e)));
-        };
-        
-        let client_config = KubeConfig::from_custom_kubeconfig(kubeconfig, &KubeConfigOptions {
-            context: cluster_config.kube_context.clone(),
-            cluster: None,
-            user: None,
-        }).await.map_err(|e| AppError::ExternalService(format!("Failed to create Kubernetes client config: {}", e)))?;
-
-        Client::try_from(client_config).map_err(|e| AppError::ExternalService(format!("Failed to create Kubernetes client: {}", e)))
+        ClientFactory::get_client(cluster_config).await
     }
 
     pub async fn list_deployments(
