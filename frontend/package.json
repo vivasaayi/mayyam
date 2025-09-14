@@ -12,6 +12,12 @@
     "start:custom": "REACT_APP_BACKEND_HOST=localhost REACT_APP_BACKEND_PORT=${BACKEND_PORT:-3000} PORT=${FRONTEND_PORT:-3001} react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:report": "playwright show-report",
+    "test:e2e:codegen": "playwright codegen localhost:3000",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {
@@ -57,5 +63,8 @@
     "react-scripts": "^5.0.1",
     "reactstrap": "^9.2.3",
     "sass": "^1.88.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
   }
 }

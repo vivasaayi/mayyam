@@ -99,6 +99,8 @@ pub struct AwsAccountDto {
     pub has_access_key: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub access_key_id: Option<String>,
+    #[serde(skip_serializing)]
+    pub secret_access_key: Option<String>,
     pub last_synced_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -149,6 +151,7 @@ impl From<DomainModel> for AwsAccountDto {
             external_id: model.external_id,
             has_access_key: model.access_key_id.is_some(),
             access_key_id: None, // Initially None, set only when needed for editing
+            secret_access_key: None, // Initially None, set only when needed for editing
             last_synced_at: model.last_synced_at,
             created_at: model.created_at,
             updated_at: model.updated_at,
@@ -209,6 +212,27 @@ impl From<(AwsAccountUpdateDto, Option<String>, Uuid)> for ActiveModel {
             last_synced_at: sea_orm::ActiveValue::NotSet,
             created_at: sea_orm::ActiveValue::NotSet,
             updated_at: Set(now),
+        }
+    }
+}
+
+impl AwsAccountDto {
+    pub fn new_with_profile(profile: &str, region: &str) -> Self {
+        AwsAccountDto {
+            id: todo!(),
+            account_id: todo!(),
+            account_name: todo!(),
+            profile: Some(profile.to_string()),
+            default_region: region.to_string(),
+            use_role: todo!(),
+            role_arn: todo!(),
+            external_id: todo!(),
+            has_access_key: todo!(),
+            access_key_id: todo!(),
+            secret_access_key: todo!(),
+            last_synced_at: todo!(),
+            created_at: todo!(),
+            updated_at: todo!(),
         }
     }
 }

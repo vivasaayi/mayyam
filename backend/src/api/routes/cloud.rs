@@ -79,7 +79,37 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         
         // Kinesis operations
         .route("/profiles/{profile}/regions/{region}/kinesis", 
-               web::post().to(cloud::kinesis_put_record));
+               web::post().to(cloud::kinesis_put_record))
+        .route("/profiles/{profile}/regions/{region}/kinesis/streams", 
+               web::post().to(cloud::kinesis_create_stream))
+        .route("/profiles/{profile}/regions/{region}/kinesis/streams", 
+               web::delete().to(cloud::kinesis_delete_stream))
+        .route("/profiles/{profile}/regions/{region}/kinesis/streams/describe", 
+               web::post().to(cloud::kinesis_describe_stream))
+        
+        // New comprehensive Kinesis operations
+        .route("/profiles/{profile}/regions/{region}/kinesis/limits", 
+               web::get().to(cloud::kinesis_describe_limits))
+        .route("/profiles/{profile}/regions/{region}/kinesis/streams/summary", 
+               web::post().to(cloud::kinesis_describe_stream_summary))
+        .route("/profiles/{profile}/regions/{region}/kinesis/streams/retention/increase", 
+               web::post().to(cloud::kinesis_increase_retention_period))
+        .route("/profiles/{profile}/regions/{region}/kinesis/streams/retention/decrease", 
+               web::post().to(cloud::kinesis_decrease_retention_period))
+        .route("/profiles/{profile}/regions/{region}/kinesis/streams/monitoring/enable", 
+               web::post().to(cloud::kinesis_enable_enhanced_monitoring))
+        .route("/profiles/{profile}/regions/{region}/kinesis/streams/monitoring/disable", 
+               web::post().to(cloud::kinesis_disable_enhanced_monitoring))
+        .route("/profiles/{profile}/regions/{region}/kinesis/shards", 
+               web::post().to(cloud::kinesis_list_shards))
+        
+        // Kinesis data plane operations
+        .route("/profiles/{profile}/regions/{region}/kinesis/records/put", 
+               web::post().to(cloud::kinesis_put_records))
+        .route("/profiles/{profile}/regions/{region}/kinesis/records/get", 
+               web::post().to(cloud::kinesis_get_records))
+        .route("/profiles/{profile}/regions/{region}/kinesis/shard-iterator", 
+               web::post().to(cloud::kinesis_get_shard_iterator));
     
     // Register the scopes
     cfg.service(cloud_scope);

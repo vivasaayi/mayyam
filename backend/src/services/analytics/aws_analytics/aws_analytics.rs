@@ -1,8 +1,10 @@
 use std::sync::Arc;
 use chrono::Utc;
 use tracing::info;
+use crate::api::routes::aws_account;
 use crate::errors::AppError;
 use crate::config::Config;
+use crate::models::aws_account::AwsAccountDto;
 use crate::services::aws::{self, AwsDataPlane, AwsService};
 use crate::models::aws_resource;
 use crate::repositories::aws_resource::AwsResourceRepository;
@@ -14,12 +16,19 @@ use crate::services::analytics::aws_analytics::models::resource_workflows::*;
 use crate::services::analytics::aws_analytics::metrics::MetricsAnalyzer;
 use crate::services::analytics::aws_analytics::questions::QuestionGenerator;
 use crate::services::analytics::aws_analytics::resources::*;
+use crate::services::analytics::cloudwatch_analytics::{
+    CloudWatchAnalyzer, 
+    KinesisAnalyzer as CloudWatchKinesisAnalyzer, 
+    SqsAnalyzer, 
+    RdsAnalyzer
+};
 
 pub struct AwsAnalyticsService {
     config: Config,
     aws_service: Arc<AwsService>,
     aws_data_plane: Arc<AwsDataPlane>,
     aws_resource_repo: Arc<AwsResourceRepository>,
+    cloudwatch_analyzer: Option<CloudWatchAnalyzer>,
 }
 
 impl AwsAnalyticsService {
@@ -28,12 +37,21 @@ impl AwsAnalyticsService {
         aws_service: Arc<AwsService>,
         aws_data_plane: Arc<AwsDataPlane>,
         aws_resource_repo: Arc<AwsResourceRepository>,
+        llm_integration_service: Arc<crate::services::llm::LlmIntegrationService>,
+        cloudwatch_service: Arc<crate::services::aws::aws_data_plane::cloudwatch::CloudWatchService>,
     ) -> Self {
+        // Initialize CloudWatch analyzer with real LLM services
+        let cloudwatch_analyzer = Some(CloudWatchAnalyzer::new(
+            llm_integration_service,
+            cloudwatch_service,
+        ));
+        
         Self {
             config,
             aws_service,
             aws_data_plane,
             aws_resource_repo,
+            cloudwatch_analyzer,
         }
     }
 
@@ -58,8 +76,11 @@ impl AwsAnalyticsService {
             request.time_range.clone(),
         ).await;
 
+        // FIXME
+        let aws_account_dto = AwsAccountDto::new_with_profile("", "us-east-1");
+
         let metrics = self.aws_data_plane
-            .get_cloudwatch_metrics(&metrics_request)
+            .get_cloudwatch_metrics(&aws_account_dto, &metrics_request)
             .await?;
 
         // Parse the workflow type
@@ -70,6 +91,45 @@ impl AwsAnalyticsService {
 
         // Generate analysis based on resource type and workflow
         let analysis = match resource.resource_type.as_str() {
+            "KinesisStream" | "Kinesis" => {
+                if let Some(ref analyzer) = self.cloudwatch_analyzer {
+                    // Use LLM-powered CloudWatch analyzer for advanced workflows
+                    CloudWatchKinesisAnalyzer::analyze_kinesis_stream(
+                        analyzer,
+                        &resource,
+                        &request.workflow,
+                    ).await?
+                } else {
+                    // Fallback to metrics-based analyzer
+                    KinesisAnalyzer::analyze_kinesis_stream(
+                        &resource,
+                        &workflow,
+                        &metrics
+                    ).await?
+                }
+            },
+            "SQS" | "SQSQueue" => {
+                if let Some(ref analyzer) = self.cloudwatch_analyzer {
+                    SqsAnalyzer::analyze_sqs_queue(
+                        analyzer,
+                        &resource,
+                        &request.workflow,
+                    ).await?
+                } else {
+                    "# CloudWatch Analyzer Not Available\n\nPlease configure LLM services to enable CloudWatch analysis.".to_string()
+                }
+            },
+            "RDS" | "RDSInstance" => {
+                if let Some(ref analyzer) = self.cloudwatch_analyzer {
+                    RdsAnalyzer::analyze_rds_instance(
+                        analyzer,
+                        &resource,
+                        &request.workflow,
+                    ).await?
+                } else {
+                    "# CloudWatch Analyzer Not Available\n\nPlease configure LLM services to enable CloudWatch analysis.".to_string()
+                }
+            },
             "EC2Instance" => Ec2Analyzer::analyze_ec2_instance(
                 &resource,
                 &workflow,
@@ -80,22 +140,12 @@ impl AwsAnalyticsService {
                 &workflow,
                 &metrics
             ).await?,
-            "RdsInstance" => RdsAnalyzer::analyze_rds_instance(
-                &resource,
-                &workflow,
-                &metrics
-            ).await?,
             "DynamoDbTable" => DynamoDbAnalyzer::analyze_dynamodb_table(
                 &resource,
                 &workflow,
                 &metrics
             ).await?,
             "ElastiCache" => ElastiCacheAnalyzer::analyze_elasticache_cluster(
-                &resource,
-                &workflow,
-                &metrics
-            ).await?,
-            "KinesisStream" => KinesisAnalyzer::analyze_kinesis_stream(
                 &resource,
                 &workflow,
                 &metrics
@@ -360,8 +410,10 @@ impl AwsAnalyticsService {
             None,
         ).await;
 
+        let aws_account_dto = AwsAccountDto::new_with_profile("", "us-east-1");
+
         let metrics = self.aws_data_plane
-            .get_cloudwatch_metrics(&metrics_request)
+            .get_cloudwatch_metrics(&aws_account_dto, &metrics_request)
             .await?;
 
         // Generate answer based on question and context

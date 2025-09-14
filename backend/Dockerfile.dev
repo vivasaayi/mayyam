@@ -60,5 +60,13 @@ EXPOSE 8080
 # Set library path for librdkafka
 ENV LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
 
-# Default command for development with hot reloading
-CMD ["cargo", "watch", "-x", "run -- server"]
+# Default command for development with stable hot reloading
+CMD ["cargo", "watch", \
+     "--watch", "src", \
+     "--watch", "Cargo.toml", \
+     "--ignore", "target", \
+     "--ignore", "*.log", \
+     "--ignore", "logs", \
+     "--ignore", "**/.*", \
+     "--delay", "2000", \
+     "-x", "run -- server"]

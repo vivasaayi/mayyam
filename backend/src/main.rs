@@ -8,9 +8,9 @@ mod controllers;
 pub mod errors;
 mod integrations;
 mod middleware;
-mod models;
-mod repositories;
-mod services;
+pub mod models;
+pub mod repositories;
+pub mod services;
 mod utils;
 #[cfg(test)]
 mod tests;
@@ -28,7 +28,7 @@ enum Commands {
     /// Run as a web server
     Server {
         /// Port to listen on
-        #[arg(short, long, default_value_t = 8080)]
+        #[arg(short, long, default_value_t = 8085)]
         port: u16,
         
         /// Host to bind to

@@ -3,7 +3,10 @@ use aws_sdk_cloudwatch::types::Dimension;
 use crate::errors::AppError;
 use crate::services::AwsService;
 use crate::services::aws::client_factory::AwsClientFactory;
+use crate::models::aws_account::AwsAccountDto;
+use uuid;
 
+#[derive(Debug)]
 pub struct CloudWatchService {
     aws_service: Arc<AwsService>,
 }
@@ -81,17 +84,15 @@ impl CloudWatchService {
 
     pub(crate) async fn create_cloudwatch_client(
         &self,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto
     ) -> Result<aws_sdk_cloudwatch::Client, AppError> {
-        self.aws_service.create_cloudwatch_client(profile, region).await
+        self.aws_service.create_cloudwatch_client(aws_account_dto).await
     }
 
     pub(crate) async fn create_cloudwatch_logs_client(
         &self,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto
     ) -> Result<aws_sdk_cloudwatchlogs::Client, AppError> {
-        self.aws_service.create_cloudwatch_logs_client(profile, region).await
+        self.aws_service.create_cloudwatch_logs_client(aws_account_dto).await
     }
 }

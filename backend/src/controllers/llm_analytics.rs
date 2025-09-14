@@ -3,10 +3,10 @@ use actix_web::{web, HttpResponse, Result};
 use uuid::Uuid;
 use serde::{Deserialize, Serialize};
 use tracing::{info, error};
-use crate::services::llm_analytics::{AnalysisType, TimeRange};
+use crate::services::llm::{AnalysisType, TimeRange};
 use chrono::Utc;
 
-use crate::services::llm_analytics::{LlmAnalyticsService, ServiceAnalyticsRequest};
+use crate::services::llm::{LlmAnalyticsService, ServiceAnalyticsRequest};
 use crate::models::data_source::{ResourceType, SourceType};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -107,7 +107,7 @@ impl LlmAnalyticsController {
     ) -> Result<HttpResponse> {
         info!("Received analytics request: {:?}", request);
         let service_request = ServiceAnalyticsRequest::from(request.into_inner());
-        match Arc::as_ref(&self.llm_analytics_service).analyze(service_request).await {
+        match self.llm_analytics_service.analyze(service_request).await {
             Ok(response) => {
                 info!("Analytics completed successfully");
                 Ok(HttpResponse::Ok().json(response))
@@ -129,7 +129,7 @@ impl LlmAnalyticsController {
     ) -> Result<HttpResponse> {
         info!("Received resource analytics request: {:?}", request);
         let service_request = ServiceAnalyticsRequest::from(request.into_inner());
-        match Arc::as_ref(&self.llm_analytics_service).analyze(service_request).await {
+        match self.llm_analytics_service.analyze(service_request).await {
             Ok(response) => {
                 info!("Resource analysis completed successfully");
                 Ok(HttpResponse::Ok().json(response))
@@ -156,7 +156,7 @@ impl LlmAnalyticsController {
         let batch_id = Uuid::new_v4();
         let start = std::time::Instant::now();
         for req in service_requests {
-            match Arc::as_ref(&self.llm_analytics_service).analyze(req).await {
+            match self.llm_analytics_service.analyze(req).await {
                 Ok(res) => results.push(res),
                 Err(e) => failed_analyses.push(e.to_string()),
             }

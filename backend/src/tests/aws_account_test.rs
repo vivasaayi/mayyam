@@ -43,13 +43,13 @@ async fn test_aws_account_crud() {
     let create_dto = AwsAccountCreateDto {
         account_id: "123456789012".to_string(),
         account_name: "Test AWS Account".to_string(),
-        profile: Some("test-profile".to_string()),
-        default_region: "us-west-2".to_string(),
+        profile: Some("default".to_string()),
+        default_region: "us-east-1".to_string(),
         use_role: false,
         role_arn: None,
         external_id: None,
-        access_key_id: Some("AKIAIOSFODNN7EXAMPLE".to_string()),
-        secret_access_key: Some("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_string()),
+        access_key_id: Some(std::env::var("AWS_ACCESS_KEY_ID").unwrap_or_else(|_| "AKIAIOSFODNN7EXAMPLE".to_string())),
+        secret_access_key: Some(std::env::var("AWS_SECRET_ACCESS_KEY").unwrap_or_else(|_| "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY".to_string())),
     };
     
     // Test Account Creation

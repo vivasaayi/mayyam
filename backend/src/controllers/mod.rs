@@ -28,3 +28,5 @@ pub mod service_accounts;
 pub mod rbac;
 pub mod authz;
 pub mod node_ops;
+pub mod cost_analytics;
+pub mod unified_llm;

@@ -5,6 +5,7 @@ use crate::models::prompt_template::{CreatePromptTemplateDto, UpdatePromptTempla
 use crate::errors::AppError;
 use tracing::{info, error};
 
+#[derive(Debug)]
 pub struct PromptTemplateRepository {
     db: DatabaseConnection,
 }

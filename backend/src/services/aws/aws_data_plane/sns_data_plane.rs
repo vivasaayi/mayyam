@@ -5,6 +5,8 @@ use crate::errors::AppError;
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::aws::aws_types::sns::SnsPublishRequest;
 use crate::services::AwsService;
+use crate::models::aws_account::AwsAccountDto;
+use uuid;
 
 pub struct SnsDataPlane {
     aws_service: Arc<AwsService>,
@@ -15,9 +17,9 @@ impl SnsDataPlane {
         Self { aws_service }
     }
 
-    pub async fn publish_message(&self, profile: Option<&str>, region: &str, request: &SnsPublishRequest) -> Result<serde_json::Value, AppError> {
-        let client = self.aws_service.create_sns_client(profile, region).await?;
-        
+    pub async fn publish_message(&self, aws_account_dto: &AwsAccountDto, request: &SnsPublishRequest) -> Result<serde_json::Value, AppError> {
+        let client = self.aws_service.create_sns_client(aws_account_dto).await?;
+
         // Mock implementation for now
         info!("Publishing message to topic {}", request.topic_arn);
         

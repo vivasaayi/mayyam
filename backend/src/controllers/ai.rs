@@ -102,7 +102,7 @@ pub struct DynamoDBAnalysisResponse {
 pub async fn chat(
     req: web::Json<ChatRequest>,
     config: web::Data<crate::config::Config>,
-    llm_integration_service: web::Data<Arc<crate::services::llm_integration::LlmIntegrationService>>,
+    llm_integration_service: web::Data<Arc<crate::services::llm::LlmIntegrationService>>,
     llm_provider_repo: web::Data<Arc<crate::repositories::llm_provider::LlmProviderRepository>>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
@@ -125,7 +125,7 @@ pub async fn chat(
         .find(|m| m.role == "system")
         .map(|m| m.content.clone());
 
-    let llm_request = crate::services::llm_integration::LlmRequest {
+    let llm_request = crate::services::llm::LlmRequest {
         prompt,
         system_prompt,
         temperature: req.temperature,
@@ -370,65 +370,82 @@ pub async fn analyze_rds_instance(
     path: web::Path<(String, String)>,
     claims: web::ReqData<Claims>,
     config: web::Data<crate::config::Config>,
+    llm_integration_service: web::Data<Arc<crate::services::llm::LlmIntegrationService>>,
+    llm_provider_repo: web::Data<Arc<crate::repositories::llm_provider::LlmProviderRepository>>,
 ) -> Result<impl Responder, AppError> {
     let (instance_id, workflow) = path.into_inner();
     
-    // In a production implementation, we would:
-    // 1. Get the RDS instance details from our database or AWS
-    // 2. Fetch metrics, logs, and other data based on the workflow type
-    // 3. Pass this data to an AI model along with predefined prompts
-    // 4. Process the AI response and return it
-    
     info!("Analyzing RDS instance {} with workflow {}", instance_id, workflow);
     
-    // For this demo, generate mock responses based on the workflow
-    let response = match workflow.as_str() {
-        "memory-usage" => RdsAnalysisResponse {
-            format: "markdown".to_string(),
-            content: get_mock_memory_analysis(),
-            related_questions: vec![
+    // Get the default LLM provider
+    let model_name = config.ai.model.clone();
+    let provider = llm_provider_repo
+        .find_by_model_name(&model_name)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("LLM provider for model '{}' not found", model_name)))?;
+    
+    // Create real LLM analysis based on workflow
+    let (prompt, related_questions) = match workflow.as_str() {
+        "memory-usage" => (
+            format!("Analyze the memory usage patterns for RDS instance '{}'. Provide detailed insights on current memory utilization, identify potential memory bottlenecks, suggest optimization strategies, and recommend proper memory configuration settings. Format the response in markdown.", instance_id),
+            vec![
                 "How can I optimize my memory configuration?".to_string(),
                 "Is my current memory allocation sufficient?".to_string(),
                 "What are the peak memory usage patterns?".to_string(),
-            ],
-        },
-        "cpu-usage" => RdsAnalysisResponse {
-            format: "markdown".to_string(),
-            content: get_mock_cpu_analysis(),
-            related_questions: vec![
+            ]
+        ),
+        "cpu-usage" => (
+            format!("Analyze the CPU usage patterns for RDS instance '{}'. Examine CPU utilization trends, identify resource-intensive queries, suggest CPU optimization strategies, and provide recommendations for scaling CPU resources. Format the response in markdown.", instance_id),
+            vec![
                 "Which queries are consuming the most CPU?".to_string(),
                 "How to scale my CPU resources efficiently?".to_string(),
                 "When do CPU spikes occur most frequently?".to_string(),
-            ],
-        },
-        "disk-usage" => RdsAnalysisResponse {
-            format: "markdown".to_string(),
-            content: get_mock_disk_analysis(),
-            related_questions: vec![
+            ]
+        ),
+        "disk-usage" => (
+            format!("Analyze the disk usage and I/O patterns for RDS instance '{}'. Review storage utilization, identify I/O bottlenecks, suggest storage optimizations, and recommend appropriate storage configurations. Format the response in markdown.", instance_id),
+            vec![
                 "What objects are taking up the most space?".to_string(),
                 "How can I improve IO performance?".to_string(),
                 "Should I consider storage autoscaling?".to_string(),
-            ],
-        },
-        "performance" => RdsAnalysisResponse {
-            format: "markdown".to_string(),
-            content: get_mock_performance_analysis(),
-            related_questions: vec![
+            ]
+        ),
+        "performance" => (
+            format!("Perform a comprehensive performance analysis for RDS instance '{}'. Analyze overall database performance metrics, identify performance bottlenecks, review configuration settings against best practices, and provide actionable optimization recommendations. Format the response in markdown.", instance_id),
+            vec![
                 "What is affecting my overall database performance?".to_string(),
                 "How do my current settings compare to best practices?".to_string(),
                 "What optimizations would provide the biggest performance gains?".to_string(),
-            ],
-        },
-        "slow-queries" => RdsAnalysisResponse {
-            format: "markdown".to_string(),
-            content: get_mock_slow_query_analysis(),
-            related_questions: vec![
+            ]
+        ),
+        "slow-queries" => (
+            format!("Analyze slow query patterns for RDS instance '{}'. Identify the slowest-performing queries, analyze execution plans, suggest query optimizations, recommend index strategies, and provide best practices for query performance. Format the response in markdown.", instance_id),
+            vec![
                 "How can I optimize my slowest queries?".to_string(),
                 "What indexes should I add to improve performance?".to_string(),
                 "Are there query patterns that should be redesigned?".to_string(),
-            ],
-        },
+            ]
+        ),
         _ => return Err(AppError::BadRequest(format!("Unknown workflow: {}", workflow))),
+    };
+    
+    // Make real LLM call
+    let llm_request = crate::services::llm::LlmRequest {
+        prompt,
+        system_prompt: Some("You are an expert AWS RDS database performance analyst. Provide detailed, actionable analysis and recommendations.".to_string()),
+        temperature: Some(0.7),
+        max_tokens: Some(2000),
+        variables: None,
+    };
+
+    let llm_response = llm_integration_service
+        .generate_response(provider.id, llm_request)
+        .await?;
+
+    let response = RdsAnalysisResponse {
+        format: "markdown".to_string(),
+        content: llm_response.content,
+        related_questions,
     };
     
     Ok(HttpResponse::Ok().json(response))
@@ -436,20 +453,41 @@ pub async fn analyze_rds_instance(
 
 pub async fn answer_rds_question(
     req: web::Json<RelatedQuestionRequest>,
-    claims: web::ReqData<Claims>,
+    _claims: web::ReqData<Claims>,
     config: web::Data<crate::config::Config>,
+    llm_integration_service: web::Data<Arc<crate::services::llm::LlmIntegrationService>>,
+    llm_provider_repo: web::Data<Arc<crate::repositories::llm_provider::LlmProviderRepository>>,
 ) -> Result<impl Responder, AppError> {
-    // In a production implementation, we would:
-    // 1. Parse the question
-    // 2. Fetch relevant data for the question
-    // 3. Generate an answer using AI
-    
     info!("Answering question about RDS instance {}: {}", req.instance_id, req.question);
     
-    // Mock response 
+    // Get the default LLM provider
+    let model_name = config.ai.model.clone();
+    let provider = llm_provider_repo
+        .find_by_model_name(&model_name)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("LLM provider for model '{}' not found", model_name)))?;
+    
+    let prompt = format!(
+        "Answer this specific question about RDS instance '{}': {}\n\nProvide a detailed, actionable response based on AWS RDS best practices and performance optimization principles. Format the response in markdown.",
+        req.instance_id, req.question
+    );
+    
+    // Make real LLM call
+    let llm_request = crate::services::llm::LlmRequest {
+        prompt,
+        system_prompt: Some("You are an expert AWS RDS database administrator. Answer user questions with detailed, practical advice.".to_string()),
+        temperature: Some(0.7),
+        max_tokens: Some(1500),
+        variables: None,
+    };
+
+    let llm_response = llm_integration_service
+        .generate_response(provider.id, llm_request)
+        .await?;
+
     let response = RdsAnalysisResponse {
         format: "markdown".to_string(),
-        content: format!("# Answer to: {}\n\nThis is a placeholder response to your question. In a real implementation, this would be generated by an AI model based on your RDS instance data.", req.question),
+        content: llm_response.content,
         related_questions: vec![
             "How does this compare to other similar workloads?".to_string(),
             "What metrics should I monitor after applying these changes?".to_string(),
@@ -463,60 +501,84 @@ pub async fn answer_rds_question(
 // New endpoint for analyzing DynamoDB tables
 pub async fn analyze_dynamodb_table(
     path: web::Path<(String, String)>,
-    claims: web::ReqData<Claims>,
+    _claims: web::ReqData<Claims>,
     config: web::Data<crate::config::Config>,
+    llm_integration_service: web::Data<Arc<crate::services::llm::LlmIntegrationService>>,
+    llm_provider_repo: web::Data<Arc<crate::repositories::llm_provider::LlmProviderRepository>>,
 ) -> Result<impl Responder, AppError> {
     let (table_id, workflow) = path.into_inner();
     
     info!("Analyzing DynamoDB table {} with workflow {}", table_id, workflow);
     
-    let response = match workflow.as_str() {
-        "provisioned-capacity" => DynamoDBAnalysisResponse {
-            format: "markdown".to_string(),
-            content: get_mock_dynamodb_capacity_analysis(),
-            related_questions: vec![
+    // Get the default LLM provider
+    let model_name = config.ai.model.clone();
+    let provider = llm_provider_repo
+        .find_by_model_name(&model_name)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("LLM provider for model '{}' not found", model_name)))?;
+    
+    // Create real LLM analysis based on workflow
+    let (prompt, related_questions) = match workflow.as_str() {
+        "provisioned-capacity" => (
+            format!("Analyze the provisioned capacity configuration for DynamoDB table '{}'. Review current read/write capacity units, examine utilization patterns, identify over or under-provisioning, suggest optimal capacity settings, and compare with on-demand pricing. Format the response in markdown.", table_id),
+            vec![
                 "How does my current capacity compare to usage?".to_string(),
                 "When do I experience throttling?".to_string(),
                 "Should I consider on-demand pricing?".to_string(),
-            ],
-        },
-        "read-patterns" => DynamoDBAnalysisResponse {
-            format: "markdown".to_string(),
-            content: get_mock_dynamodb_read_analysis(),
-            related_questions: vec![
+            ]
+        ),
+        "read-patterns" => (
+            format!("Analyze the read access patterns for DynamoDB table '{}'. Examine query and scan operations, identify inefficient read patterns, analyze partition key distribution, suggest query optimizations, and recommend best practices for read performance. Format the response in markdown.", table_id),
+            vec![
                 "Which queries are most expensive?".to_string(),
                 "Are my partition keys distributed well?".to_string(),
                 "How can I optimize my scan operations?".to_string(),
-            ],
-        },
-        "write-patterns" => DynamoDBAnalysisResponse {
-            format: "markdown".to_string(),
-            content: get_mock_dynamodb_write_analysis(),
-            related_questions: vec![
+            ]
+        ),
+        "write-patterns" => (
+            format!("Analyze the write access patterns for DynamoDB table '{}'. Review write operations, identify hot partitions, examine batch write efficiency, analyze write throttling patterns, and suggest optimizations for write performance. Format the response in markdown.", table_id),
+            vec![
                 "What are my peak write periods?".to_string(),
                 "Am I having hot partition issues?".to_string(),
                 "How can I optimize batch writes?".to_string(),
-            ],
-        },
-        "hotspots-analysis" => DynamoDBAnalysisResponse {
-            format: "markdown".to_string(),
-            content: get_mock_dynamodb_hotspots_analysis(),
-            related_questions: vec![
+            ]
+        ),
+        "hotspots-analysis" => (
+            format!("Analyze partition hotspots and access patterns for DynamoDB table '{}'. Identify hot partitions, examine uneven data distribution, analyze access pattern irregularities, suggest partition key strategy improvements, and recommend solutions for balancing load. Format the response in markdown.", table_id),
+            vec![
                 "How do I reduce partition contention?".to_string(),
                 "Should I revise my partition key strategy?".to_string(),
                 "What's causing the uneven access patterns?".to_string(),
-            ],
-        },
-        "cost-optimization" => DynamoDBAnalysisResponse {
-            format: "markdown".to_string(),
-            content: get_mock_dynamodb_cost_analysis(),
-            related_questions: vec![
+            ]
+        ),
+        "cost-optimization" => (
+            format!("Perform cost optimization analysis for DynamoDB table '{}'. Analyze current pricing model, examine capacity utilization vs cost, suggest cost-saving strategies, recommend optimal capacity mode, and provide insights on features that can reduce costs. Format the response in markdown.", table_id),
+            vec![
                 "How can I reduce my DynamoDB costs?".to_string(),
                 "Am I using the right capacity mode?".to_string(),
                 "Which features can save me money?".to_string(),
-            ],
-        },
+            ]
+        ),
         _ => return Err(AppError::BadRequest(format!("Unknown workflow: {}", workflow))),
+    };
+    
+    // Make real LLM call
+    let llm_request = crate::services::llm::LlmRequest {
+        prompt,
+        system_prompt: Some("You are an expert AWS DynamoDB performance and cost optimization analyst. Provide detailed, actionable analysis and recommendations.".to_string()),
+        temperature: Some(0.7),
+        max_tokens: Some(2000),
+        variables: None,
+    };
+
+    let llm_response = llm_integration_service
+        .generate_response(provider.id, llm_request)
+        .await?;
+
+    let response = DynamoDBAnalysisResponse {
+        format: "markdown".to_string(),
+        content: llm_response.content,
+        related_questions,
     };
     
     Ok(HttpResponse::Ok().json(response))
@@ -525,14 +587,41 @@ pub async fn analyze_dynamodb_table(
 // Answer follow-up questions about a DynamoDB table
 pub async fn answer_dynamodb_question(
     req: web::Json<RelatedQuestionRequest>,
-    claims: web::ReqData<Claims>,
+    _claims: web::ReqData<Claims>,
     config: web::Data<crate::config::Config>,
+    llm_integration_service: web::Data<Arc<crate::services::llm::LlmIntegrationService>>,
+    llm_provider_repo: web::Data<Arc<crate::repositories::llm_provider::LlmProviderRepository>>,
 ) -> Result<impl Responder, AppError> {
     info!("Answering question about DynamoDB table {}: {}", req.instance_id, req.question);
     
+    // Get the default LLM provider
+    let model_name = config.ai.model.clone();
+    let provider = llm_provider_repo
+        .find_by_model_name(&model_name)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("LLM provider for model '{}' not found", model_name)))?;
+    
+    let prompt = format!(
+        "Answer this specific question about DynamoDB table '{}': {}\n\nProvide a detailed, actionable response based on AWS DynamoDB best practices, performance optimization, and cost management principles. Format the response in markdown.",
+        req.instance_id, req.question
+    );
+    
+    // Make real LLM call
+    let llm_request = crate::services::llm::LlmRequest {
+        prompt,
+        system_prompt: Some("You are an expert AWS DynamoDB architect and performance analyst. Answer user questions with detailed, practical advice.".to_string()),
+        temperature: Some(0.7),
+        max_tokens: Some(1500),
+        variables: None,
+    };
+
+    let llm_response = llm_integration_service
+        .generate_response(provider.id, llm_request)
+        .await?;
+
     let response = DynamoDBAnalysisResponse {
         format: "markdown".to_string(),
-        content: format!("# Answer to: {}\n\nThis is a placeholder response to your question about DynamoDB. In a real implementation, this would be generated by an AI model based on your table's metrics and configurations.", req.question),
+        content: llm_response.content,
         related_questions: vec![
             "How does this compare to best practices?".to_string(),
             "What monitoring should I set up for this?".to_string(),
@@ -545,23 +634,7 @@ pub async fn answer_dynamodb_question(
 
 // Mock response content generators
 fn get_mock_memory_analysis() -> String {
-    r#"# Memory Usage Analysis
-
-## Current Status
-The RDS instance is currently using 72% of its allocated memory, with peak usage reaching 89% during high traffic periods.
-
-## Findings
-- **Buffer Pool Utilization**: 65% (Healthy)
-- **Page Eviction Rate**: Moderate (15 pages/second)
-- **Memory-Bound Queries**: 3 identified
-
-## Recommendations
-1. **Consider Increasing Buffer Pool Size**: Current setting is 75% of instance memory, consider increasing to 80%.
-2. **Query Optimization Opportunity**: The query 'SELECT * FROM large_table WHERE...' is causing excessive memory usage.
-3. **Monitoring**: Set up an alert when memory usage exceeds 85% for more than 5 minutes.
-
-## Long-term Planning
-Based on your current growth rate of 5% per month, consider upgrading instance size in approximately 3 months."#.to_string()
+    r#"}"#.to_string()
 }
 
 fn get_mock_cpu_analysis() -> String {

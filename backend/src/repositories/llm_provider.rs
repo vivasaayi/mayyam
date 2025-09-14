@@ -15,6 +15,7 @@ use crate::models::llm_provider::{self, Entity as LlmProvider, Model as LlmProvi
 use crate::errors::AppError;
 use crate::config::Config;
 
+#[derive(Debug)]
 pub struct LlmProviderRepository {
     db: Arc<DatabaseConnection>,
     config: Config,

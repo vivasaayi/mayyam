@@ -2,12 +2,14 @@ import React, { useState } from "react";
 import { 
   Row, Col, Nav, NavItem, NavLink, TabContent, TabPane, Card, CardBody, Button
 } from "reactstrap";
+import { useNavigate } from "react-router-dom";
 import classnames from "classnames";
 import PageHeader from "../components/layout/PageHeader";
 import AwsResourceBrowser from "../components/cloud/AwsResourceBrowser";
 import AwsAccountManagement from "../components/cloud/AwsAccountManagement";
 
 const Cloud = () => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("aws");
 
   const toggleTab = (tab) => {
@@ -55,6 +57,28 @@ const Cloud = () => {
           <Row className="mb-4">
             <Col>
               <AwsAccountManagement />
+            </Col>
+          </Row>
+          <Row className="mb-3">
+            <Col>
+              <Card>
+                <CardBody>
+                  <h5>Quick Actions</h5>
+                  <p className="text-muted">Specialized analysis tools for AWS services</p>
+                  <Button 
+                    color="primary" 
+                    className="me-2"
+                    onClick={() => navigate('/kinesis-analysis')}
+                  >
+                    <i className="fas fa-stream me-2"></i>
+                    Kinesis Stream Analysis
+                  </Button>
+                  <Button color="outline-secondary" disabled>
+                    <i className="fas fa-database me-2"></i>
+                    RDS Analysis (Coming Soon)
+                  </Button>
+                </CardBody>
+              </Card>
             </Col>
           </Row>
           <Row>

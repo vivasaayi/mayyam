@@ -130,6 +130,8 @@ pub enum ResourceType {
     CloudFront,
     ALB,
     ELB,
+    Kinesis,
+    SQS,
     Custom,
 }
 
@@ -265,6 +267,8 @@ impl std::fmt::Display for ResourceType {
             ResourceType::CloudFront => write!(f, "CloudFront"),
             ResourceType::ALB => write!(f, "ALB"),
             ResourceType::ELB => write!(f, "ELB"),
+            ResourceType::Kinesis => write!(f, "Kinesis"),
+            ResourceType::SQS => write!(f, "SQS"),
             ResourceType::Custom => write!(f, "Custom"),
         }
     }

@@ -14,3 +14,4 @@ pub use aws_data_plane::cost_explorer::AwsCostService;
 pub mod aws_types;
 pub mod aws_control_plane;
 pub mod aws_data_plane;
+mod aws_config_service;

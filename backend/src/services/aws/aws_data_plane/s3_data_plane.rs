@@ -5,6 +5,8 @@ use crate::services::aws::aws_types::s3::{S3GetObjectRequest, S3PutObjectRequest
 use crate::services::aws::aws_types::cloud_watch::{CloudWatchMetricsRequest, CloudWatchMetricsResult};
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::AwsService;
+use crate::models::aws_account::AwsAccountDto;
+use uuid;
 
 // Data plane implementation for S3
 pub struct S3DataPlane {
@@ -16,9 +18,9 @@ impl S3DataPlane {
         Self { aws_service }
     }
 
-    pub async fn get_object(&self, profile: Option<&str>, region: &str, request: &S3GetObjectRequest) -> Result<serde_json::Value, AppError> {
-        let client = self.aws_service.create_s3_client(profile, region).await?;
-        
+    pub async fn get_object(&self, aws_account_dto: &AwsAccountDto, request: &S3GetObjectRequest) -> Result<serde_json::Value, AppError> {
+        let client = self.aws_service.create_s3_client(aws_account_dto).await?;
+
         // In a real implementation, this would call get_object
         let response = json!({
             "body": "This is sample content for the S3 object",
@@ -34,9 +36,9 @@ impl S3DataPlane {
         Ok(response)
     }
 
-    pub async fn put_object(&self, profile: Option<&str>, region: &str, request: &S3PutObjectRequest) -> Result<serde_json::Value, AppError> {
-        let client = self.aws_service.create_s3_client(profile, region).await?;
-        
+    pub async fn put_object(&self, aws_account_dto: &AwsAccountDto, request: &S3PutObjectRequest) -> Result<serde_json::Value, AppError> {
+        let client = self.aws_service.create_s3_client(aws_account_dto).await?;
+
         // In a real implementation, this would call put_object
         let response = json!({
             "etag": "\"abcdef1234567890\"",
@@ -48,9 +50,9 @@ impl S3DataPlane {
         Ok(response)
     }
 
-    pub async fn get_bucket_metrics(&self, request: &CloudWatchMetricsRequest) -> Result<CloudWatchMetricsResult, AppError> {
-        let client = self.aws_service.create_cloudwatch_client(None, &request.region).await?;
-        
+    pub async fn get_bucket_metrics(&self, aws_account_dto: &AwsAccountDto, request: &CloudWatchMetricsRequest) -> Result<CloudWatchMetricsResult, AppError> {
+        let client = self.aws_service.create_cloudwatch_client(aws_account_dto).await?;
+
         // S3-specific metric collection logic would go here
         // For now returning empty result
         Ok(CloudWatchMetricsResult {

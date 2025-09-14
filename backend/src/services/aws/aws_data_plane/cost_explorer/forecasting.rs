@@ -1,15 +1,13 @@
 use serde_json::{json, Value};
 use tracing::{debug, error};
-use crate::errors::AppError;
+use crate::{errors::AppError, models::aws_account::AwsAccountDto};
 use super::base::AwsCostService;
 use aws_sdk_costexplorer::types::{DateInterval, Granularity};
 
 pub trait CostForecasting {
     async fn get_cost_forecast(
         &self,
-        account_id: &str,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto,
         start_date: &str,
         end_date: &str,
         metric: Option<&str>,
@@ -18,9 +16,7 @@ pub trait CostForecasting {
 
     async fn get_monthly_forecast(
         &self,
-        account_id: &str,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto,
         months_ahead: u32,
     ) -> Result<Value, AppError>;
 }
@@ -28,20 +24,19 @@ pub trait CostForecasting {
 impl CostForecasting for AwsCostService {
     async fn get_cost_forecast(
         &self,
-        account_id: &str,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto,
         start_date: &str,
         end_date: &str,
         metric: Option<&str>,
         granularity: Option<Granularity>,
     ) -> Result<Value, AppError> {
-        let client = self.create_client(profile, region).await?;
+        let client = self.create_client(aws_account_dto).await?;
         
         let time_period = DateInterval::builder()
             .start(start_date)
             .end(end_date)
-            .build();
+            .build()
+            .map_err(|e| AppError::ExternalService(format!("Failed to build time period: {}", e)))?;
         
         let metric_str = metric.unwrap_or("UNBLENDED_COST");
         
@@ -61,7 +56,7 @@ impl CostForecasting for AwsCostService {
         };
         
         let mut result = json!({
-            "account_id": account_id,
+            "account_id": aws_account_dto.account_id.clone(),
             "metric": metric_str,
             "forecast": {
                 "total": response.total().map(|t| json!({
@@ -74,7 +69,7 @@ impl CostForecasting for AwsCostService {
         
         let predictions = result["forecast"]["predictions"].as_array_mut().unwrap();
         
-        for forecast_result in response.forecast_results_by_time().unwrap_or_default() {
+        for forecast_result in response.forecast_results_by_time() {
             predictions.push(json!({
                 "timePeriod": forecast_result.time_period().map(|tp| json!({
                     "start": tp.start(),
@@ -95,9 +90,7 @@ impl CostForecasting for AwsCostService {
 
     async fn get_monthly_forecast(
         &self,
-        account_id: &str,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto,
         months_ahead: u32,
     ) -> Result<Value, AppError> {
         use chrono::{Local, Duration};
@@ -108,9 +101,7 @@ impl CostForecasting for AwsCostService {
             .to_string();
         
         self.get_cost_forecast(
-            account_id,
-            profile,
-            region,
+            aws_account_dto,
             &start_date,
             &end_date,
             Some("UNBLENDED_COST"),
