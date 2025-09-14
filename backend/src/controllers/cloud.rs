@@ -1,23 +1,31 @@
 use actix_web::{web, HttpResponse, Responder};
 use crate::errors::AppError;
 use crate::middleware::auth::Claims;
+use crate::models::aws_resource::{AwsResourceQuery, AwsResourceType};
 use std::sync::Arc;
 use uuid::Uuid;
 use tracing::info;
 use chrono::Utc;
 
 use crate::services::aws::{
-    AwsControlPlane, AwsCostService,
+    AwsControlPlane, AwsCostService, AwsDataPlane,
 };
-use crate::models::aws_resource::{AwsResourceQuery, AwsResourceType};
+use crate::models::aws_account::AwsAccountDto;
 use crate::services::aws::aws_data_plane::cloudwatch::{CloudWatchService, CloudWatchMetrics, CloudWatchLogs, CloudWatchLogsRequest, CloudWatchMetricsRequest};
 use crate::services::aws::aws_data_plane::cost_explorer::CostAndUsage;
 use crate::services::aws::aws_data_plane::sqs_data_plane::SqsDataPlane;
 use crate::services::aws::aws_types::dynamodb::{DynamoDBGetItemRequest, DynamoDBPutItemRequest, DynamoDBQueryRequest};
 use crate::services::aws::aws_types::sqs::{SqsReceiveMessageRequest, SqsSendMessageRequest};
 use crate::services::aws::aws_data_plane::dynamodb_data_plane::DynamoDBDataPlane;
-use crate::services::aws::aws_types::kinesis::KinesisPutRecordRequest;
+use crate::services::aws::aws_types::kinesis::{
+    KinesisPutRecordRequest, KinesisCreateStreamRequest, KinesisDeleteStreamRequest, 
+    KinesisDescribeStreamRequest, KinesisListStreamsRequest, KinesisUpdateShardCountRequest,
+    KinesisRetentionPeriodRequest, KinesisEnhancedMonitoringRequest, KinesisListShardsRequest,
+    KinesisPutRecordsRequest, KinesisGetRecordsRequest, KinesisGetShardIteratorRequest,
+    KinesisPutRecordsResponse, KinesisGetRecordsResponse, KinesisGetShardIteratorResponse
+};
 use crate::services::aws::aws_data_plane::kinesis_data_plane::KinesisDataPlane;
+use crate::services::aws::aws_control_plane::kinesis_control_plane::KinesisControlPlane;
 use crate::services::aws::aws_types::s3::{S3GetObjectRequest, S3PutObjectRequest};
 use crate::services::aws::aws_data_plane::s3_data_plane::S3DataPlane;
 use crate::services::aws::aws_types::resource_sync::ResourceSyncRequest;
@@ -156,10 +164,12 @@ pub async fn get_aws_cost_and_usage(
     
     let profile = query_params.get("profile")
         .and_then(|v| v.as_str());
-    
+
+    let aws_account_dto = &AwsAccountDto::new_with_profile(profile.as_deref().unwrap_or_else(|| ""), &region);
+
     let group_by = None; // You can add group by options if needed
     let cost_data = aws_cost_service
-        .get_cost_for_date(&account_id, profile, &region, date, group_by)
+        .get_cost_for_date(aws_account_dto, date, group_by)
         .await?;
     
     Ok(HttpResponse::Ok().json(cost_data))
@@ -183,9 +193,9 @@ pub async fn s3_get_object(
         key,
     };
     
-    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
-    let response = aws_data_plane.as_ref().get_object(profile_opt, region, &request).await?;
-    
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+    let response = aws_data_plane.as_ref().get_object(&aws_account_dto, &request).await?;
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -196,9 +206,10 @@ pub async fn s3_put_object(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let (profile, region) = path.into_inner();
-    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
-    
-    let response = aws_data_plane.put_object(profile_opt, &region, &req).await?;
+
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+
+    let response = aws_data_plane.put_object(&aws_account_dto, &req).await?;
     
     Ok(HttpResponse::Ok().json(response))
 }
@@ -211,14 +222,15 @@ pub async fn dynamodb_get_item(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let (profile, region, table) = path.into_inner();
-    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
     
     // Override the table name in the path
     let mut request = req.into_inner();
     request.table_name = table;
     
-    let response = aws_data_plane.get_item(profile_opt, &region, &request).await?;
-    
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+
+    let response = aws_data_plane.get_item(&aws_account_dto, &request).await?;
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -229,14 +241,14 @@ pub async fn dynamodb_put_item(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let (profile, region, table) = path.into_inner();
-    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
     
     // Override the table name in the path
     let mut request = req.into_inner();
     request.table_name = table;
-    
-    let response = aws_data_plane.put_item(profile_opt, &region, &request).await?;
-    
+
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+    let response = aws_data_plane.put_item(&aws_account_dto, &request).await?;
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -247,14 +259,14 @@ pub async fn dynamodb_query(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let (profile, region, table) = path.into_inner();
-    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
     
     // Override the table name in the path
     let mut request = req.into_inner();
     request.table_name = table;
-    
-    let response = aws_data_plane.query(profile_opt, &region, &request).await?;
-    
+
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+    let response = aws_data_plane.query(&aws_account_dto, &request).await?;
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -266,10 +278,10 @@ pub async fn sqs_send_message(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let (profile, region) = path.into_inner();
-    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
-    
-    let response = aws_data_plane.send_message(profile_opt, &region, &req).await?;
-    
+
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+    let response = aws_data_plane.send_message(&aws_account_dto, &req).await?;
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -280,10 +292,10 @@ pub async fn sqs_receive_messages(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let (profile, region) = path.into_inner();
-    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
-    
-    let response = aws_data_plane.receive_messages(profile_opt, &region, &req).await?;
-    
+
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+    let response = aws_data_plane.receive_messages(&aws_account_dto, &req).await?;
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -295,10 +307,197 @@ pub async fn kinesis_put_record(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let (profile, region) = path.into_inner();
-    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
+
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+    let response = aws_data_plane.put_record(&aws_account_dto, &req).await?;
+
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn kinesis_create_stream(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisCreateStreamRequest>,
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
     
-    let response = aws_data_plane.put_record(profile_opt, &region, &req).await?;
-    
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+    let response = aws_control_plane.kinesis_create_stream(&aws_account_dto, &req).await?;
+
+    Ok(HttpResponse::Created().json(response))
+}
+
+pub async fn kinesis_delete_stream(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisDeleteStreamRequest>,
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+    let response = aws_control_plane.kinesis_delete_stream(&aws_account_dto, &req).await?;
+
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn kinesis_describe_stream(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisDescribeStreamRequest>,
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+    let response = aws_control_plane.kinesis_describe_stream(&aws_account_dto, &req).await?;
+
+    Ok(HttpResponse::Ok().json(response))
+}
+
+// Additional Kinesis Control Plane Endpoints
+pub async fn kinesis_list_streams(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisListStreamsRequest>,
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+    let response = aws_control_plane.kinesis_list_streams(&aws_account_dto, &req).await?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn kinesis_describe_limits(
+    path: web::Path<(String, String)>,
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+    let response = aws_control_plane.kinesis_describe_limits(&aws_account_dto).await?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn kinesis_describe_stream_summary(
+    path: web::Path<(String, String, String)>, // (profile, region, stream_name)
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region, stream_name) = path.into_inner();
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+    let response = aws_control_plane.kinesis_describe_stream_summary(&aws_account_dto, &stream_name).await?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn kinesis_update_shard_count(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisUpdateShardCountRequest>,
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+    let response = aws_control_plane.kinesis_update_shard_count(&aws_account_dto, &req).await?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn kinesis_increase_retention_period(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisRetentionPeriodRequest>,
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+    let response = aws_control_plane.kinesis_increase_retention_period(&aws_account_dto, &req).await?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn kinesis_decrease_retention_period(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisRetentionPeriodRequest>,
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+    let response = aws_control_plane.kinesis_decrease_retention_period(&aws_account_dto, &req).await?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn kinesis_enable_enhanced_monitoring(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisEnhancedMonitoringRequest>,
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+    let response = aws_control_plane.kinesis_enable_enhanced_monitoring(&aws_account_dto, &req).await?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn kinesis_disable_enhanced_monitoring(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisEnhancedMonitoringRequest>,
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+    let response = aws_control_plane.kinesis_disable_enhanced_monitoring(&aws_account_dto, &req).await?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn kinesis_list_shards(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisListShardsRequest>,
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+    let response = aws_control_plane.kinesis_list_shards(&aws_account_dto, &req).await?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+// Kinesis Data Plane Endpoints
+pub async fn kinesis_put_records(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisPutRecordsRequest>,
+    aws_data_plane: web::Data<Arc<AwsDataPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+
+    let response = aws_data_plane.kinesis_put_records(&aws_account_dto, &req).await?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn kinesis_get_records(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisGetRecordsRequest>,
+    aws_data_plane: web::Data<Arc<AwsDataPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+
+    let response = aws_data_plane.kinesis_get_records(&aws_account_dto, &req).await?;
+    Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn kinesis_get_shard_iterator(
+    path: web::Path<(String, String)>,
+    req: web::Json<KinesisGetShardIteratorRequest>,
+    aws_data_plane: web::Data<Arc<AwsDataPlane>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (profile, region) = path.into_inner();
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+
+    let response = aws_data_plane.kinesis_get_shard_iterator(&aws_account_dto, &req).await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -368,8 +567,7 @@ pub async fn get_cloudwatch_metrics(
         }
     };
 
-    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
-    
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
     let request = CloudWatchMetricsRequest {
         resource_id,
         resource_type,
@@ -381,8 +579,8 @@ pub async fn get_cloudwatch_metrics(
     };
 
     // Access the inner CloudWatchService and use the trait method
-    let result = cloudwatch_service.get_metrics(profile_opt, &region, &request).await?;
-    
+    let result = cloudwatch_service.get_metrics(&aws_account_dto, &request).await?;
+
     Ok(HttpResponse::Ok().json(result))
 }
 
@@ -414,8 +612,6 @@ pub async fn get_cloudwatch_logs(
         .and_then(|v| v.as_str())
         .map(String::from);
     
-    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
-    
     let request = CloudWatchLogsRequest {
         log_group_name: log_group,
         start_time,
@@ -423,10 +619,12 @@ pub async fn get_cloudwatch_logs(
         filter_pattern,
         limit: Some(1000), // Add a default limit
     };
-    
+
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+
     // Access the inner CloudWatchService and use the trait method
-    let result = cloudwatch_service.get_logs(profile_opt, &region, &request.log_group_name).await?;
-    
+    let result = cloudwatch_service.get_logs(&aws_account_dto, &request.log_group_name).await?;
+
     Ok(HttpResponse::Ok().json(result))
 }
 

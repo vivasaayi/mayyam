@@ -11,30 +11,28 @@ use aws_sdk_cloudwatchlogs::{
 };
 
 
-use crate::errors::AppError;
+use crate::{errors::AppError, models::aws_account::AwsAccountDto};
 use super::base::CloudWatchService;
 use super::types::CloudWatchLogsRequest;
 
 pub trait CloudWatchLogs {
     async fn get_logs(
         &self,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto,
         log_group: &str
     ) -> Result<Value, AppError>;
     
     async fn get_filtered_logs(
         &self,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto,
         request: &CloudWatchLogsRequest
     ) -> Result<Value, AppError>;
 }
 
 impl CloudWatchLogs for CloudWatchService {
-    async fn get_logs(&self, profile: Option<&str>, region: &str, log_group: &str) -> Result<Value, AppError> {
-        let client = self.create_cloudwatch_logs_client(profile, region).await?;
-        
+    async fn get_logs(&self, aws_account_dto: &AwsAccountDto, log_group: &str) -> Result<Value, AppError> {
+        let client = self.create_cloudwatch_logs_client(aws_account_dto).await?;
+
         let start_time = (Utc::now() - Duration::hours(1)).timestamp_millis();
         let end_time = Utc::now().timestamp_millis();
         
@@ -49,52 +47,51 @@ impl CloudWatchLogs for CloudWatchService {
             .map_err(|e| AppError::ExternalService(format!("Failed to get CloudWatch logs: {}", e)))?;
             
         let mut events = Vec::new();
-        if let Some(log_events) = response.events() {
-            for event in log_events {
-                let mut event_data = json!({});
-                
-                if let Some(timestamp) = event.timestamp() {
-                    let dt = DateTime::<Utc>::from_timestamp_millis(timestamp)
-                        .unwrap_or_else(|| Utc::now());
-                    event_data["timestamp"] = json!(dt.to_rfc3339());
-                }
-                
-                if let Some(message) = event.message() {
-                    // Try to parse message as JSON if possible
-                    if message.starts_with("{") && message.ends_with("}") {
-                        if let Ok(json_value) = serde_json::from_str(message) {
-                            event_data["message"] = json_value;
-                        } else {
-                            event_data["message"] = json!(message);
-                        }
+        for event in response.events() {
+            let mut event_data = json!({});
+            
+            if let Some(timestamp) = event.timestamp() {
+                let dt = DateTime::<Utc>::from_timestamp_millis(timestamp)
+                    .unwrap_or_else(|| Utc::now());
+                event_data["timestamp"] = json!(dt.to_rfc3339());
+            }
+            
+            if let Some(message) = event.message() {
+                // Try to parse message as JSON if possible
+                if message.starts_with("{") && message.ends_with("}") {
+                    if let Ok(json_value) = serde_json::from_str(message) {
+                        event_data["message"] = json_value;
                     } else {
                         event_data["message"] = json!(message);
                     }
+                } else {
+                    event_data["message"] = json!(message);
                 }
-                
-                if let Some(ingestion_time) = event.ingestion_time() {
-                    let dt = DateTime::<Utc>::from_timestamp_millis(ingestion_time)
-                        .unwrap_or_else(|| Utc::now());
-                    event_data["ingestionTime"] = json!(dt.to_rfc3339());
-                }
-                
-                events.push(event_data);
             }
+            
+            if let Some(ingestion_time) = event.ingestion_time() {
+                let dt = DateTime::<Utc>::from_timestamp_millis(ingestion_time)
+                    .unwrap_or_else(|| Utc::now());
+                event_data["ingestionTime"] = json!(dt.to_rfc3339());
+            }
+            
+            events.push(event_data);
         }
         
         Ok(json!({
             "events": events,
-            "logGroupName": log_group
+            "logGroupName": log_group,
+            "startTime": start_time,
+            "endTime": end_time
         }))
     }
 
     async fn get_filtered_logs(
         &self,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto,
         request: &CloudWatchLogsRequest
     ) -> Result<Value, AppError> {
-        let client = self.create_cloudwatch_logs_client(profile, region).await?;
+        let client = self.create_cloudwatch_logs_client(aws_account_dto).await?;
         
         let start_millis = request.start_time.timestamp_millis();
         let end_millis = request.end_time.timestamp_millis();
@@ -125,37 +122,35 @@ impl CloudWatchLogs for CloudWatchService {
                 .send()
                 .await
                 .map_err(|e| AppError::ExternalService(format!("Failed to get CloudWatch logs: {}", e)))?;
+
+            for event in response.events() {
+                let mut event_data = json!({});
                 
-            if let Some(log_events) = response.events() {
-                for event in log_events {
-                    let mut event_data = json!({});
-                    
-                    if let Some(timestamp) = event.timestamp() {
-                        let dt = DateTime::<Utc>::from_timestamp_millis(timestamp)
-                            .unwrap_or_else(|| Utc::now());
-                        event_data["timestamp"] = json!(dt.to_rfc3339());
-                    }
-                    
-                    if let Some(message) = event.message() {
-                        if message.starts_with("{") && message.ends_with("}") {
-                            if let Ok(json_value) = serde_json::from_str(message) {
-                                event_data["message"] = json_value;
-                            } else {
-                                event_data["message"] = json!(message);
-                            }
+                if let Some(timestamp) = event.timestamp() {
+                    let dt = DateTime::<Utc>::from_timestamp_millis(timestamp)
+                        .unwrap_or_else(|| Utc::now());
+                    event_data["timestamp"] = json!(dt.to_rfc3339());
+                }
+                
+                if let Some(message) = event.message() {
+                    if message.starts_with("{") && message.ends_with("}") {
+                        if let Ok(json_value) = serde_json::from_str(message) {
+                            event_data["message"] = json_value;
                         } else {
                             event_data["message"] = json!(message);
                         }
+                    } else {
+                        event_data["message"] = json!(message);
                     }
-                    
-                    if let Some(ingestion_time) = event.ingestion_time() {
-                        let dt = DateTime::<Utc>::from_timestamp_millis(ingestion_time)
-                            .unwrap_or_else(|| Utc::now());
-                        event_data["ingestionTime"] = json!(dt.to_rfc3339());
-                    }
-                    
-                    events.push(event_data);
                 }
+                
+                if let Some(ingestion_time) = event.ingestion_time() {
+                    let dt = DateTime::<Utc>::from_timestamp_millis(ingestion_time)
+                        .unwrap_or_else(|| Utc::now());
+                    event_data["ingestionTime"] = json!(dt.to_rfc3339());
+                }
+                
+                events.push(event_data);
             }
             
             match response.next_token() {

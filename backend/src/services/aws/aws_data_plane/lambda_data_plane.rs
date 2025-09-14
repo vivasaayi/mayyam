@@ -5,6 +5,8 @@ use crate::errors::AppError;
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::aws::aws_types::lambda::LambdaInvokeRequest;
 use crate::services::AwsService;
+use crate::models::aws_account::AwsAccountDto;
+use uuid;
 
 pub struct LambdaDataPlane {
     aws_service: Arc<AwsService>,
@@ -15,9 +17,9 @@ impl LambdaDataPlane {
         Self { aws_service }
     }
 
-    pub async fn invoke_function(&self, profile: Option<&str>, region: &str, request: &LambdaInvokeRequest) -> Result<serde_json::Value, AppError> {
-        let client = self.aws_service.create_lambda_client(profile, region).await?;
-        
+    pub async fn invoke_function(&self, aws_account_dto: &AwsAccountDto, request: &LambdaInvokeRequest) -> Result<serde_json::Value, AppError> {
+        let client = self.aws_service.create_lambda_client(aws_account_dto).await?;
+
         info!("Invoking Lambda function {}", request.function_name);
         
         // Mock implementation

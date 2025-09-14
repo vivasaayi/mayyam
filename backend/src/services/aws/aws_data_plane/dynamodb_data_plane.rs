@@ -4,6 +4,8 @@ use crate::errors::AppError;
 use crate::services::aws::aws_types::dynamodb::{DynamoDBGetItemRequest, DynamoDBPutItemRequest, DynamoDBQueryRequest};
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::AwsService;
+use crate::models::aws_account::AwsAccountDto;
+use uuid;
 
 // Data plane implementation for DynamoDB
 pub struct DynamoDBDataPlane {
@@ -15,9 +17,9 @@ impl DynamoDBDataPlane {
         Self { aws_service }
     }
 
-    pub async fn get_item(&self, profile: Option<&str>, region: &str, request: &DynamoDBGetItemRequest) -> Result<serde_json::Value, AppError> {
-        let client = self.aws_service.create_dynamodb_client(profile, region).await?;
-        
+    pub async fn get_item(&self, aws_account_dto: &AwsAccountDto, request: &DynamoDBGetItemRequest) -> Result<serde_json::Value, AppError> {
+        let client = self.aws_service.create_dynamodb_client(aws_account_dto).await?;
+
         // In a real implementation, this would call get_item
         let response = json!({
             "Item": {
@@ -30,9 +32,9 @@ impl DynamoDBDataPlane {
         Ok(response)
     }
 
-    pub async fn put_item(&self, profile: Option<&str>, region: &str, request: &DynamoDBPutItemRequest) -> Result<serde_json::Value, AppError> {
-        let client = self.aws_service.create_dynamodb_client(profile, region).await?;
-        
+    pub async fn put_item(&self, aws_account_dto: &AwsAccountDto, request: &DynamoDBPutItemRequest) -> Result<serde_json::Value, AppError> {
+        let client = self.aws_service.create_dynamodb_client(aws_account_dto).await?;
+
         // In a real implementation, this would call put_item
         let response = json!({
             "ConsumedCapacity": {
@@ -44,9 +46,9 @@ impl DynamoDBDataPlane {
         Ok(response)
     }
 
-    pub async fn query(&self, profile: Option<&str>, region: &str, request: &DynamoDBQueryRequest) -> Result<serde_json::Value, AppError> {
-        let client = self.aws_service.create_dynamodb_client(profile, region).await?;
-        
+    pub async fn query(&self, aws_account_dto: &AwsAccountDto, request: &DynamoDBQueryRequest) -> Result<serde_json::Value, AppError> {
+        let client = self.aws_service.create_dynamodb_client(aws_account_dto).await?;
+
         // In a real implementation, this would call query
         let response = json!({
             "Items": [

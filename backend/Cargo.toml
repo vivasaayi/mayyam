@@ -56,30 +56,26 @@ crc32fast = "1.3"  # CRC32 checksum for data integrity
 walkdir = "2.4"    # Directory traversal for backup management
 tempfile = "3.8"   # Temporary file creation for safe operations
 
-# AWS SDK
-aws-config = "0.55"
-aws-sdk-ec2 = "0.28"
-aws-smithy-http = "0.55"  # Added for AWS SDK core types
-aws-smithy-types = "0.55"  # Added for AWS SDK date time formatting
-aws-sdk-s3 = "0.28"
-aws-sdk-rds = "0.28"
-aws-sdk-dynamodb = "0.28"
-aws-sdk-kinesis = "0.28"
-aws-sdk-sqs = "0.28"
-aws-sdk-sns = "0.28"
-aws-sdk-lambda = "0.28"
-aws-sdk-cloudwatch = "0.28"
-aws-sdk-cloudwatchlogs = "0.28.0"
-aws-sdk-elasticache = "0.28"
-aws-sdk-opensearch = "0.28"
-aws-sdk-costexplorer = "0.28"
-aws-types = "0.55"
-
-# Azure SDK
-azure_core = "0.14"
-azure_identity = "0.14"
-azure_mgmt_compute = "0.14"
-azure_mgmt_storage = "0.14"
+# AWS SDKX
+aws-config = "1.8.6"
+aws-sdk-ec2 = "1.166.0"
+aws-smithy-http = "0.62.3"  # Added for AWS SDK core types
+aws-smithy-types = "1.3.2"  # Added for AWS SDK date time formatting
+aws-sdk-s3 = "1.105.0"
+aws-sdk-rds = "1.107.0"
+aws-sdk-dynamodb = "1.92.0"
+aws-sdk-kinesis = "1.88.0"
+aws-sdk-sqs = "1.83.0"
+aws-sdk-sns = "1.84.0"
+aws-sdk-lambda = "1.96.0"
+aws-sdk-cloudwatch = "1.90.0"
+aws-sdk-cloudwatchlogs = "1.101.0"
+aws-sdk-elasticache = "1.89.0"
+aws-sdk-opensearch = "1.97.0"
+aws-sdk-costexplorer = "1.92.0"
+aws-sdk-sts = "1.85.0"
+aws-types = "1.3.8"
+aws-credential-types = "1.2.6"
 
 # Kubernetes
 kube = { version = "0.85", features = ["runtime", "derive"] }
@@ -110,14 +106,24 @@ rand = "0.8"
 async-trait = "0.1"
 aes-gcm = "0.10.1"
 base64 = "0.21"
+regex = "1.10"
+aws-smithy-runtime-api = "1.9.0"
 
 [dev-dependencies]
 mockall = "0.11"
 tokio-test = "0.4"
-# Integration testing dependencies
+reqwest = { version = "0.11", features = ["json"] }
+# Additional testing dependencies
+rstest = "0.18"
+proptest = "1.0"
+fake = "2.5"
+tempfile = "3.5"
+serial_test = "2.0"
+wiremock = "0.5"
+assert_matches = "1.5"
+
 testcontainers = "0.15"
 testcontainers-modules = { version = "0.1", features = ["kafka", "zookeeper"] }
-serial_test = "2.0"
 criterion = { version = "0.5", features = ["html_reports"] }
 
 [features]

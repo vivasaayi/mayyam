@@ -5,6 +5,8 @@ use crate::services::aws::aws_types::cloud_watch::{CloudWatchMetricsRequest, Clo
 use crate::services::aws::aws_types::sqs::{SqsReceiveMessageRequest, SqsSendMessageRequest};
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::AwsService;
+use crate::models::aws_account::AwsAccountDto;
+use uuid;
 
 // Data plane implementation for SQS
 pub struct SqsDataPlane {
@@ -16,9 +18,9 @@ impl SqsDataPlane {
         Self { aws_service }
     }
 
-    pub async fn send_message(&self, profile: Option<&str>, region: &str, request: &SqsSendMessageRequest) -> Result<serde_json::Value, AppError> {
-        let client = self.aws_service.create_sqs_client(profile, region).await?;
-        
+    pub async fn send_message(&self, aws_account_dto: &AwsAccountDto, request: &SqsSendMessageRequest) -> Result<serde_json::Value, AppError> {
+        let client = self.aws_service.create_sqs_client(aws_account_dto).await?;
+
         // In a real implementation, this would call send_message
         let response = json!({
             "MessageId": format!("msg-{}", chrono::Utc::now().timestamp()),
@@ -28,9 +30,9 @@ impl SqsDataPlane {
         Ok(response)
     }
 
-    pub async fn receive_messages(&self, profile: Option<&str>, region: &str, request: &SqsReceiveMessageRequest) -> Result<serde_json::Value, AppError> {
-        let client = self.aws_service.create_sqs_client(profile, region).await?;
-        
+    pub async fn receive_messages(&self, aws_account_dto: &AwsAccountDto, request: &SqsReceiveMessageRequest) -> Result<serde_json::Value, AppError> {
+        let client = self.aws_service.create_sqs_client(aws_account_dto).await?;
+
         // In a real implementation, this would call receive_message
         let response = json!({
             "Messages": [
@@ -46,9 +48,9 @@ impl SqsDataPlane {
         Ok(response)
     }
 
-    pub async fn get_queue_metrics(&self, request: &CloudWatchMetricsRequest) -> Result<CloudWatchMetricsResult, AppError> {
-        let client = self.aws_service.create_cloudwatch_client(None, &request.region).await?;
-        
+    pub async fn get_queue_metrics(&self, aws_account_dto: &AwsAccountDto, request: &CloudWatchMetricsRequest) -> Result<CloudWatchMetricsResult, AppError> {
+        let client = self.aws_service.create_cloudwatch_client(aws_account_dto).await?;
+
         // SQS-specific metric collection logic would go here
         // For now returning empty result
         Ok(CloudWatchMetricsResult {

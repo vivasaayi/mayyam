@@ -12,6 +12,7 @@ use crate::models::aws_resource::{
 use crate::errors::AppError;
 use crate::config::Config;
 
+#[derive(Debug)]
 pub struct AwsResourceRepository {
     db: Arc<DatabaseConnection>,
     config: Config,
