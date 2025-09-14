@@ -22,7 +22,7 @@ impl LambdaControlPlane {
     }
 
     pub async fn sync_functions_with_auth(&self, account_id: &str, profile: &AwsAccountDto, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<Vec<aws_resource::Model>, AppError> {
-        let client = self.aws_service.create_lambda_client_with_auth(profile, region).await?;
+        let client = self.aws_service.create_lambda_client(profile, region).await?;
         self.sync_functions_with_client(account_id, profile, region, client).await
     }
 

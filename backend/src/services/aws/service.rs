@@ -89,69 +89,15 @@ impl AwsService {
         }
     }
 
-    // Load AWS SDK configuration for a given profile and region - backward compatible version
-    pub async fn load_aws_sdk_config(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<aws_config::SdkConfig, AppError> {
-        self.load_aws_sdk_config_with_auth(aws_account_dto, region).await
-    }
-
-    pub async fn prepare_sdk_config(&self, aws_account_dto: &AwsAccountDto) -> Result<aws_config::SdkConfig, AppError> {
-        if(aws_account_dto.profile) {
-            
-        }
-    }
-
-    pub async fn load_aws_sdk_config_with_auth_old(&self, profile: &AwsAccountDto, region: &str) -> Result<aws_config::SdkConfig, AppError> {
-        let aws_config = match self.get_aws_config(profile, region).await {
-            Ok(config) => config,
-            Err(e) => {
-                debug!("Could not find AWS configuration for profile: {:?}. Using account credentials if available.", profile);
-                AwsConfig {
-                    name: "fallback".to_string(),
-                    profile: profile.map(String::from),
-                    region: region.to_string(),
-                    access_key_id: account_auth.and_then(|auth| auth.access_key_id.clone()),
-                    secret_access_key: account_auth.and_then(|auth| auth.secret_access_key.clone()),
-                    role_arn: account_auth.and_then(|auth| auth.role_arn.clone()),
-                }
-            }
-        };
-
-        let config_builder = aws_config::from_env()
-            .region(aws_types::region::Region::new(region.to_string()));
-
-        let config = if let (Some(access_key), Some(secret_key)) = (&aws_config.access_key_id, &aws_config.secret_access_key) {
-            debug!("Using access key authentication");
-            let credentials_provider = aws_sdk_s3::config::Credentials::new(
-                access_key,
-                secret_key,
-                None,
-                None,
-                "static-credentials"
-            );
-            config_builder.credentials_provider(credentials_provider).load().await
-        } else if let Some(role_arn) = aws_config.role_arn {
-            debug!("Using IAM role authentication with role: {}", role_arn);
-            config_builder.load().await
-        } else if let Some(profile_name) = &aws_config.profile {
-            debug!("Attempting to use AWS profile: {}", profile_name);
-            let provider = aws_config::profile::ProfileFileCredentialsProvider::builder()
-                .profile_name(profile_name)
-                .build();
-
-            config_builder.credentials_provider(provider).load().await
-        } else {
-            debug!("No explicit authentication method configured, using default credential provider chain");
-            config_builder.load().await
-        };
-
-        Ok(config)
-    }
-
-    pub async fn load_aws_sdk_config_with_auth(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<aws_config::SdkConfig, AppError> {
+    pub async fn get_aws_sdk_config(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<aws_config::SdkConfig, AppError> {
         // if(!aws_account_dto.profile) {
         //     // Throw error
         // }
 
+        // if aws_account_dto.profile.is_none() {
+        //     Err(AppError::InvalidInput("Missing AWS profile".to_string()))
+        // }
+        
         let aws_config = AwsConfig {
             name: "fallback".to_string(),
             profile: aws_account_dto.profile.map(String::from),
@@ -202,178 +148,79 @@ impl AwsService {
             .ok_or_else(|| AppError::ExternalService("Account ID not found in caller identity".to_string()))
             .map(|s| s.to_string())
     }
-
-    // Get AWS account ID with fallback to environment/config
-    pub async fn get_account_id_with_fallback(&self, profile: &AwsAccountDto, region: &str) -> String {
-        match self.get_account_id(profile, region).await {
-            Ok(account_id) => account_id,
-            Err(e) => {
-                debug!("Failed to get account ID from STS: {}. Using fallback.", e);
-                // Try to get from environment variable
-                std::env::var("AWS_ACCOUNT_ID")
-                    .unwrap_or_else(|_| {
-                        debug!("AWS_ACCOUNT_ID not set, using default test account");
-                        "123456789012".to_string()
-                    })
-            }
-        }
-    }
 }
 
 #[async_trait]
 impl AwsClientFactory for AwsService {
-    async fn get_aws_config(&self, profile: &AwsAccountDto, region: &str) -> Result<AwsConfig, AppError> {
-        self.get_aws_config_impl(profile, region).await
-    }
-
-    async fn get_aws_config_with_auth(&self, profile: &AwsAccountDto, region: &str) -> Result<AwsConfig, AppError> {
-        Ok(match self.get_aws_config_impl(profile, region).await {
-            Ok(config) => config,
-            Err(_) => {
-                debug!("Could not find AWS configuration for profile: {:?}. Using account credentials if available.", profile);
-                AwsConfig {
-                    name: "fallback".to_string(),
-                    profile: profile.map(String::from),
-                    region: region.to_string(),
-                    access_key_id: account_auth.and_then(|auth| auth.access_key_id.clone()),
-                    secret_access_key: account_auth.and_then(|auth| auth.secret_access_key.clone()),
-                    role_arn: account_auth.and_then(|auth| auth.role_arn.clone()),
-                }
-            }
-        })
-    }
-
     async fn create_cloudwatch_client(&self, profile: &AwsAccountDto, region: &str) -> Result<CloudWatchClient, AppError> {
-        self.create_cloudwatch_client_with_auth(profile, region).await
-    }
-
-    async fn create_cloudwatch_client_with_auth(&self, profile: &AwsAccountDto, region: &str) -> Result<CloudWatchClient, AppError> {
-        let config = self.load_aws_sdk_config_with_auth(profile, region).await?;
+        let config = self.get_aws_sdk_config(profile, region).await?;
         Ok(CloudWatchClient::new(&config))
     }
     
     async fn create_cloudwatch_logs_client(&self, profile: &AwsAccountDto, region: &str) -> Result<CloudWatchLogsClient, AppError> {
-        self.create_cloudwatch_logs_client_with_auth(profile, region).await
-    }
-
-    async fn create_cloudwatch_logs_client_with_auth(&self, profile: &AwsAccountDto, region: &str) -> Result<CloudWatchLogsClient, AppError> {
-        let config = self.load_aws_sdk_config_with_auth(profile, region).await?;
+        let config = self.get_aws_sdk_config(profile, region).await?;
         Ok(CloudWatchLogsClient::new(&config))
     }
 
-    async fn create_cost_explorer_client(&self, profile: &AwsAccountDto, region: &str) -> Result<CostExplorerClient, AppError> {
-        self.create_cost_explorer_client_with_auth(profile, region).await
-    }
 
-    async fn create_cost_explorer_client_with_auth(&self, profile: &AwsAccountDto, region: &str) -> Result<CostExplorerClient, AppError> {
-        let config = self.load_aws_sdk_config_with_auth(profile, region).await?;
+    async fn create_cost_explorer_client(&self, profile: &AwsAccountDto, region: &str) -> Result<CostExplorerClient, AppError> {
+        let config = self.get_aws_sdk_config(profile, region).await?;
         Ok(CostExplorerClient::new(&config))
     }
 
     async fn create_ec2_client(&self, profile: &AwsAccountDto, region: &str) -> Result<Ec2Client, AppError> {
-        self.create_ec2_client_with_auth(profile, region,).await
-    }
-
-    async fn create_ec2_client_with_auth(&self, profile: &AwsAccountDto, region: &str) -> Result<Ec2Client, AppError> {
-        let config = self.load_aws_sdk_config_with_auth(profile, region).await?;
+        let config = self.get_aws_sdk_config(profile, region).await?;
         Ok(Ec2Client::new(&config))
     }
 
     async fn create_s3_client(&self, profile: &AwsAccountDto, region: &str) -> Result<S3Client, AppError> {
-        self.create_s3_client_with_auth(profile, region).await
-    }
-
-    async fn create_s3_client_with_auth(&self, profile: &AwsAccountDto, region: &str) -> Result<S3Client, AppError> {
-        let config = self.load_aws_sdk_config_with_auth(profile, region).await?;
+        let config = self.get_aws_sdk_config(profile, region).await?;
         Ok(S3Client::new(&config))
     }
 
-    async fn create_rds_client(&self, profile: &AwsAccountDto, region: &str) -> Result<RdsClient, AppError> {
-        self.create_rds_client_with_auth(profile, region).await
-    }
 
-    async fn create_rds_client_with_auth(&self, profile: &AwsAccountDto, region: &str) -> Result<RdsClient, AppError> {
-        let config = self.load_aws_sdk_config_with_auth(profile, region).await?;
+    async fn create_rds_client(&self, profile: &AwsAccountDto, region: &str) -> Result<RdsClient, AppError> {
+        let config = self.get_aws_sdk_config(profile, region).await?;
         Ok(RdsClient::new(&config))
     }
 
     async fn create_dynamodb_client(&self, profile: &AwsAccountDto, region: &str) -> Result<DynamoDbClient, AppError> {
-        self.create_dynamodb_client_with_auth(profile, region).await
-    }
-
-    async fn create_dynamodb_client_with_auth(&self, profile: &AwsAccountDto, region: &str) -> Result<DynamoDbClient, AppError> {
-        let config = self.load_aws_sdk_config_with_auth(profile, region).await?;
+        let config = self.get_aws_sdk_config(profile, region).await?;
         Ok(DynamoDbClient::new(&config))
     }
 
     async fn create_kinesis_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<KinesisClient, AppError> {
-        self.create_kinesis_client_with_auth(aws_account_dto, region).await
-    }
-
-    async fn create_kinesis_client_with_auth(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<KinesisClient, AppError> {
-        let config = self.load_aws_sdk_config_with_auth(aws_account_dto, region).await?;
+        let config = self.get_aws_sdk_config(aws_account_dto, region).await?;
         Ok(KinesisClient::new(&config))
     }
 
     async fn create_sqs_client(&self, profile: &AwsAccountDto, region: &str) -> Result<SqsClient, AppError> {
-        self.create_sqs_client_with_auth(profile, region).await
-    }
-
-    async fn create_sqs_client_with_auth(&self, profile: &AwsAccountDto, region: &str) -> Result<SqsClient, AppError> {
-        let config = self.load_aws_sdk_config_with_auth(profile, region).await?;
+        let config = self.get_aws_sdk_config(profile, region).await?;
         Ok(SqsClient::new(&config))
     }
 
     async fn create_sns_client(&self, profile: &AwsAccountDto, region: &str) -> Result<SnsClient, AppError> {
-        self.create_sns_client_with_auth(profile, region).await
-    }
-
-    async fn create_sns_client_with_auth(&self, profile: &AwsAccountDto, region: &str) -> Result<SnsClient, AppError> {
-        let config = self.load_aws_sdk_config_with_auth(profile, region).await?;
+        let config = self.get_aws_sdk_config(profile, region).await?;
         Ok(SnsClient::new(&config))
     }
 
     async fn create_lambda_client(&self, profile: &AwsAccountDto, region: &str) -> Result<LambdaClient, AppError> {
-        self.create_lambda_client_with_auth(profile, region).await
-    }
-
-    async fn create_lambda_client_with_auth(&self, profile: &AwsAccountDto, region: &str) -> Result<LambdaClient, AppError> {
-        let config = self.load_aws_sdk_config_with_auth(profile, region).await?;
+        let config = self.get_aws_sdk_config(profile, region).await?;
         Ok(LambdaClient::new(&config))
     }
 
     async fn create_elasticache_client(&self, profile: &AwsAccountDto, region: &str) -> Result<ElasticacheClient, AppError> {
-        self.create_elasticache_client_with_auth(profile, region).await
-    }
-
-    async fn create_elasticache_client_with_auth(&self, profile: &AwsAccountDto, region: &str) -> Result<ElasticacheClient, AppError> {
-        let config = self.load_aws_sdk_config_with_auth(profile, region).await?;
+        let config = self.get_aws_sdk_config(profile, region).await?;
         Ok(ElasticacheClient::new(&config))
     }
 
     async fn create_opensearch_client(&self, profile: &AwsAccountDto, region: &str) -> Result<OpenSearchClient, AppError> {
-        self.create_opensearch_client_with_auth(profile, region).await
-    }
-
-    async fn create_opensearch_client_with_auth(&self, profile: &AwsAccountDto, region: &str) -> Result<OpenSearchClient, AppError> {
-        let config = self.load_aws_sdk_config_with_auth(profile, region).await?;
+        let config = self.get_aws_sdk_config(profile, region).await?;
         Ok(OpenSearchClient::new(&config))
     }
 
     async fn create_sts_client(&self, profile: &AwsAccountDto, region: &str) -> Result<StsClient, AppError> {
-        self.create_sts_client_with_auth(profile, region).await
-    }
-
-    async fn create_sts_client_with_auth(&self, profile: &AwsAccountDto, region: &str) -> Result<StsClient, AppError> {
-        let config = self.load_aws_sdk_config_with_auth(profile, region).await?;
+        let config = self.get_aws_sdk_config(profile, region).await?;
         Ok(StsClient::new(&config))
-    }
-
-    async fn create_client_with_auth<C>(&self, profile: &AwsAccountDto, region: &str) -> Result<C, AppError> 
-    where 
-        C: From<AwsConfig>
-    {
-        let aws_config = self.get_aws_config(profile, region).await?;
-        Ok(C::from(aws_config))
     }
 }

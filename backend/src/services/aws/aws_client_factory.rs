@@ -21,55 +21,18 @@ use crate::models::aws_auth::AccountAuthInfo;
 // Client factory trait for AWS service clients
 #[async_trait]
 pub trait AwsClientFactory {
-    async fn get_aws_config(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<AwsConfig, AppError>;
-    async fn get_aws_config_with_auth(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<AwsConfig, AppError>;
-
-    // Core AWS service client creation methods
-    async fn create_cloudwatch_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<CloudWatchClient, AppError>;
-    async fn create_cloudwatch_client_with_auth(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<CloudWatchClient, AppError>;
-    
-    // CloudWatch Logs client creation methods
+    async fn create_cloudwatch_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<CloudWatchClient, AppError>;    
     async fn create_cloudwatch_logs_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<CloudWatchLogsClient, AppError>;
-    async fn create_cloudwatch_logs_client_with_auth(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<CloudWatchLogsClient, AppError>;
-
     async fn create_cost_explorer_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<CostExplorerClient, AppError>;
-    async fn create_cost_explorer_client_with_auth(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<CostExplorerClient, AppError>;
-
     async fn create_ec2_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<Ec2Client, AppError>;
-    async fn create_ec2_client_with_auth(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<Ec2Client, AppError>;
-
     async fn create_s3_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<S3Client, AppError>;
-    async fn create_s3_client_with_auth(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<S3Client, AppError>;
-
     async fn create_rds_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<RdsClient, AppError>;
-    async fn create_rds_client_with_auth(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<RdsClient, AppError>;
-
     async fn create_dynamodb_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<DynamoDbClient, AppError>;
-    async fn create_dynamodb_client_with_auth(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<DynamoDbClient, AppError>;
-
     async fn create_kinesis_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<KinesisClient, AppError>;
-    async fn create_kinesis_client_with_auth(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<KinesisClient, AppError>;
-
     async fn create_sqs_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<SqsClient, AppError>;
-    async fn create_sqs_client_with_auth(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<SqsClient, AppError>;
-
     async fn create_sns_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<SnsClient, AppError>;
-    async fn create_sns_client_with_auth(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<SnsClient, AppError>;
-
     async fn create_lambda_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<LambdaClient, AppError>;
-    async fn create_lambda_client_with_auth(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<LambdaClient, AppError>;
-
     async fn create_elasticache_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<ElasticacheClient, AppError>;
-    async fn create_elasticache_client_with_auth(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<ElasticacheClient, AppError>;
-
     async fn create_opensearch_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<OpenSearchClient, AppError>;
-    async fn create_opensearch_client_with_auth(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<OpenSearchClient, AppError>;
-
     async fn create_sts_client(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<StsClient, AppError>;
-    async fn create_sts_client_with_auth(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<StsClient, AppError>;
-
-    // Generic client creation method for any AWS service client that can be created from AwsConfig
-    async fn create_client_with_auth<C>(&self, aws_account_dto: &AwsAccountDto, region: &str) -> Result<C, AppError>
-    where 
-        C: From<AwsConfig>;
 }

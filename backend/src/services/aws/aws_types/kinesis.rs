@@ -215,7 +215,7 @@ pub struct KinesisListStreamsResponse {
     pub stream_names: Vec<String>,
     pub has_more_streams: bool,
     pub next_token: Option<String>,
-    pub stream_summaries: Vec<KinesisStreamSummary>,
+    pub stream_summaries: Vec<StreamSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -262,8 +262,8 @@ pub struct KinesisStreamSummaryResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KinesisEnhancedMonitoringResponse {
     pub stream_name: String,
-    pub current_shard_level_metrics: Vec<String>,
-    pub desired_shard_level_metrics: Vec<String>,
+    pub current_shard_level_metrics: Vec<crate::types::MetricsName>,
+    pub desired_shard_level_metrics: Vec<crate::types::MetricsName>,
     pub stream_arn: Option<String>,
 }
 
@@ -299,7 +299,7 @@ pub struct KinesisConsumerSummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KinesisListShardsResponse {
-    pub shards: Vec<KinesisShardInfo>,
+    pub shards: Vec<aws_sdk_kinesis::types::Shard>,
     pub next_token: Option<String>,
     pub stream_name: Option<String>,
     pub stream_arn: Option<String>,

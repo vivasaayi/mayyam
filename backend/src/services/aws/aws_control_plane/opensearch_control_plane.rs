@@ -21,7 +21,7 @@ impl OpenSearchControlPlane {
     }
 
     pub async fn sync_domains_with_auth(&self, account_id: &str, profile: &AwsAccountDto, region: &str, account_auth: Option<&AccountAuthInfo>) -> Result<Vec<AwsResourceModel>, AppError> {
-        let client = self.aws_service.create_opensearch_client_with_auth(profile, region).await?;
+        let client = self.aws_service.create_opensearch_client(profile, region).await?;
         self.sync_domains_with_client(account_id, profile, region, client).await
     }
 
