@@ -24,9 +24,7 @@ pub enum DatePreset {
 pub trait CostAndUsage {
     async fn get_cost_and_usage(
         &self,
-        account_id: &str,
         aws_account_dto: AwsAccountDto,
-        region: &str,
         start_date: &str,
         end_date: &str,
         granularity: Option<Granularity>,
@@ -36,18 +34,14 @@ pub trait CostAndUsage {
     
     async fn get_cost_for_date(
         &self,
-        account_id: &str,
         aws_account_dto: AwsAccountDto,
-        region: &str,
         date: &str,
         group_by: Option<Vec<GroupDefinition>>,
     ) -> Result<Value, AppError>;
     
     async fn get_cost_for_hour(
         &self,
-        account_id: &str,
         aws_account_dto: AwsAccountDto,
-        region: &str,
         date: &str,
         hour: u32,
         group_by: Option<Vec<GroupDefinition>>,
@@ -55,9 +49,7 @@ pub trait CostAndUsage {
     
     async fn get_cost_for_month(
         &self,
-        account_id: &str,
         aws_account_dto: AwsAccountDto,
-        region: &str,
         year: i32,
         month: u32,
         group_by: Option<Vec<GroupDefinition>>,
@@ -65,18 +57,14 @@ pub trait CostAndUsage {
 
     async fn get_cost_for_preset(
         &self,
-        account_id: &str,
         aws_account_dto: AwsAccountDto,
-        region: &str,
         preset: DatePreset,
         group_by: Option<Vec<GroupDefinition>>,
     ) -> Result<Value, AppError>;
 
     async fn compare_costs(
         &self,
-        account_id: &str,
         aws_account_dto: AwsAccountDto,
-        region: &str,
         date1: DatePreset,
         date2: DatePreset,
         group_by: Option<Vec<GroupDefinition>>,
@@ -86,9 +74,7 @@ pub trait CostAndUsage {
 impl CostAndUsage for AwsCostService {
     async fn get_cost_and_usage(
         &self,
-        account_id: &str,
         aws_account_dto: AwsAccountDto,
-        region: &str,
         start_date: &str,
         end_date: &str,
         granularity: Option<Granularity>,
@@ -186,22 +172,18 @@ impl CostAndUsage for AwsCostService {
         
         Ok(json!({
             "results": results,
-            "account_id": account_id
+            "account_id": "FIX_ME".to_string()
         }))
     }
 
     async fn get_cost_for_date(
         &self,
-        account_id: &str,
         aws_account_dto: AwsAccountDto,
-        region: &str,
         date: &str,
         group_by: Option<Vec<GroupDefinition>>,
     ) -> Result<Value, AppError> {
         self.get_cost_and_usage(
-            account_id,
             aws_account_dto,
-            region,
             date,
             date,
             Some(Granularity::Daily),
@@ -212,17 +194,15 @@ impl CostAndUsage for AwsCostService {
 
     async fn get_cost_for_hour(
         &self,
-        account_id: &str,
         aws_account_dto: AwsAccountDto,
-        region: &str,
         date: &str,
         hour: u32,
         group_by: Option<Vec<GroupDefinition>>,
     ) -> Result<Value, AppError> {
         // AWS Cost Explorer doesn't support hourly granularity directly
         // We'll get daily data and add a note about this limitation
-        let result = self.get_cost_for_date(account_id, aws_account_dto, region, date, group_by).await?;
-        
+        let result = self.get_cost_for_date(aws_account_dto, date, group_by).await?;
+
         let result_with_note = json!({
             "note": "AWS Cost Explorer does not support hourly granularity. Showing daily cost instead.",
             "requested_hour": hour,
@@ -234,9 +214,7 @@ impl CostAndUsage for AwsCostService {
 
     async fn get_cost_for_month(
         &self,
-        account_id: &str,
         aws_account_dto: AwsAccountDto,
-        region: &str,
         year: i32,
         month: u32,
         group_by: Option<Vec<GroupDefinition>>,
@@ -245,9 +223,7 @@ impl CostAndUsage for AwsCostService {
         let end_date = format!("{:04}-{:02}-{:02}", year, month, days_in_month(year, month));
         
         self.get_cost_and_usage(
-            account_id,
             aws_account_dto,
-            region,
             &start_date,
             &end_date,
             Some(Granularity::Monthly),
@@ -258,18 +234,14 @@ impl CostAndUsage for AwsCostService {
 
     async fn get_cost_for_preset(
         &self,
-        account_id: &str,
         aws_account_dto: AwsAccountDto,
-        region: &str,
         preset: DatePreset,
         group_by: Option<Vec<GroupDefinition>>,
     ) -> Result<Value, AppError> {
         let (start_date, end_date) = get_preset_dates(preset)?;
         
         self.get_cost_and_usage(
-            account_id,
             aws_account_dto,
-            region,
             &start_date,
             &end_date,
             Some(Granularity::Daily),
@@ -280,15 +252,13 @@ impl CostAndUsage for AwsCostService {
 
     async fn compare_costs(
         &self,
-        account_id: &str,
         aws_account_dto: AwsAccountDto,
-        region: &str,
         date1: DatePreset,
         date2: DatePreset,
         group_by: Option<Vec<GroupDefinition>>,
     ) -> Result<Value, AppError> {
-        let result1 = self.get_cost_for_preset(account_id, aws_account_dto.clone(), region, date1.clone(), group_by.clone()).await?;
-        let result2 = self.get_cost_for_preset(account_id, aws_account_dto, region, date2.clone(), group_by.clone()).await?;
+        let result1 = self.get_cost_for_preset(aws_account_dto, date1.clone(), group_by.clone()).await?;
+        let result2 = self.get_cost_for_preset(aws_account_dto, date2.clone(), group_by.clone()).await?;
 
         Ok(json!({
             "comparison": {

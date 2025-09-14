@@ -138,9 +138,9 @@ impl LambdaControlPlane {
                     // Create resource DTO
                     let function = AwsResourceDto {
                         id: None,
-                        account_id: account_id.to_string(),
-                        profile: profile.profile.clone(),
-                        region: region.to_string(),
+                        account_id: aws_account_dto.account_id.clone(),
+                        profile: aws_account_dto.profile.clone(),
+                        region: aws_account_dto.default_region.clone(),
                         resource_type: AwsResourceType::LambdaFunction.to_string(),
                         resource_id: function_name.to_string(),
                         arn: function_arn.to_string(),

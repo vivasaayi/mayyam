@@ -31,13 +31,12 @@ impl RdsControlPlane {
 
         for db_instance in response.db_instances() {
             let db_identifier = db_instance.db_instance_identifier().unwrap_or_default();
-            
-            // Get resource ARN
-            let arn = format!("arn:aws:rds:{}:{}:db:{}", region, account_id, db_identifier);
-            
+
+            let arn = db_instance.db_instance_arn().unwrap_or_default();
+
             // Get tags for this instance
             let tags_response = client.list_tags_for_resource()
-                .resource_name(&arn)
+                .resource_name(arn)
                 .send()
                 .await
                 .map_err(|e| AppError::ExternalService(format!("Failed to get tags for RDS instance {}: {}", db_identifier, e)))?;
@@ -119,12 +118,12 @@ impl RdsControlPlane {
             // Create resource DTO
             let instance = AwsResourceDto {
                 id: None,
-                account_id: account_id.to_string(),
-                profile: profile.profile.clone(),
-                region: region.to_string(),
+                account_id: aws_account_dto.account_id.clone(),
+                profile: aws_account_dto.profile.clone(),
+                region: aws_account_dto.default_region.clone(),
                 resource_type: "RdsInstance".to_string(),
                 resource_id: db_identifier.to_string(),
-                arn,
+                arn: arn.to_string(),
                 name,
                 tags: serde_json::Value::Object(tags_map),
                 resource_data: serde_json::Value::Object(resource_data),

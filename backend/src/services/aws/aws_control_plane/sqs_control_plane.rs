@@ -80,8 +80,8 @@ impl SqsControlPlane {
             // Get queue ARN from our local HashMap
             let queue_arn = attributes.get("QueueArn")
                 .map(|s| s.to_string())
-                .unwrap_or_else(|| format!("arn:aws:sqs:{}:{}:{}", region, account_id, queue_name));
-            
+                .unwrap_or_else(|| "FIX_ME".to_string());
+
             // Build resource data
             let mut resource_data = serde_json::Map::new();
             
@@ -129,9 +129,9 @@ impl SqsControlPlane {
             // Create resource DTO
             let queue = AwsResourceDto {
                 id: None,
-                account_id: account_id.to_string(),
-                profile: profile.profile.clone(),
-                region: region.to_string(),
+                account_id: aws_account_dto.account_id.clone(),
+                profile: aws_account_dto.profile.clone(),
+                region: aws_account_dto.default_region.clone(),
                 resource_type: "SqsQueue".to_string(),
                 resource_id: queue_name.to_string(),
                 arn: queue_arn,

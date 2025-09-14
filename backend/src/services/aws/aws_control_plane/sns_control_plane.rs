@@ -125,9 +125,9 @@ impl SnsControlPlane {
                     // Create resource DTO
                     let topic_dto = AwsResourceDto {
                         id: None,
-                        account_id: account_id.to_string(),
-                        profile: profile.profile.clone(),
-                        region: region.to_string(),
+                        account_id: aws_account_dto.account_id.clone(),
+                        profile: aws_account_dto.profile.clone(),
+                        region: aws_account_dto.default_region.clone(),
                         resource_type: AwsResourceType::SnsTopics.to_string(),
                         resource_id: topic_name.to_string(),
                         arn: topic_arn.to_string(),

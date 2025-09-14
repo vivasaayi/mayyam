@@ -1,7 +1,7 @@
 use actix_web::{web, HttpResponse, Responder};
 use crate::errors::AppError;
 use crate::middleware::auth::Claims;
-use crate::models::aws_resource::AwsResourceType;
+use crate::models::aws_resource::{AwsResourceQuery, AwsResourceType};
 use std::sync::Arc;
 use uuid::Uuid;
 use tracing::info;
@@ -165,11 +165,11 @@ pub async fn get_aws_cost_and_usage(
     let profile = query_params.get("profile")
         .and_then(|v| v.as_str());
 
-    let aws_account_dto = AwsAccountDto::new_with_profile(profile.as_deref(), &region);
+    let aws_account_dto = AwsAccountDto::new_with_profile(profile.as_deref().unwrap_or_else(|| ""), &region);
 
     let group_by = None; // You can add group by options if needed
     let cost_data = aws_cost_service
-        .get_cost_for_date(&account_id, &aws_account_dto, date, group_by)
+        .get_cost_for_date(aws_account_dto, date, group_by)
         .await?;
     
     Ok(HttpResponse::Ok().json(cost_data))
@@ -613,8 +613,6 @@ pub async fn get_cloudwatch_logs(
         .and_then(|v| v.as_str())
         .map(String::from);
     
-    let profile_opt = if profile == "default" { None } else { Some(profile.as_str()) };
-    
     let request = CloudWatchLogsRequest {
         log_group_name: log_group,
         start_time,
@@ -622,10 +620,12 @@ pub async fn get_cloudwatch_logs(
         filter_pattern,
         limit: Some(1000), // Add a default limit
     };
-    
+
+    let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
+
     // Access the inner CloudWatchService and use the trait method
-    let result = cloudwatch_service.get_logs(profile_opt, &region, &request.log_group_name).await?;
-    
+    let result = cloudwatch_service.get_logs(&aws_account_dto, &request.log_group_name).await?;
+
     Ok(HttpResponse::Ok().json(result))
 }
 

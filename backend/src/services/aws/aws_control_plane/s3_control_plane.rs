@@ -43,9 +43,9 @@ impl S3ControlPlane {
                 
             let bucket_region = location_resp.location_constraint()
                 .map(|c| c.as_str())
-                .unwrap_or(region);
-            
-            if bucket_region != region && bucket_region != "us-east-1" {
+                .unwrap_or("FIX_ME");
+
+            if bucket_region != "us-east-1" {
                 // Skip buckets that don't match our region
                 continue;
             }
@@ -137,9 +137,9 @@ impl S3ControlPlane {
             // Create resource DTO
             let bucket = AwsResourceDto {
                 id: None,
-                account_id: account_id.to_string(),
-                profile: profile.profile.clone(),
-                region: region.to_string(),
+                account_id: aws_account_dto.account_id.clone(),
+                profile: aws_account_dto.profile.clone(),
+                region: aws_account_dto.default_region.clone(),
                 resource_type: "S3Bucket".to_string(),
                 resource_id: bucket_name.to_string(),
                 arn: format!("arn:aws:s3:::{}", bucket_name),

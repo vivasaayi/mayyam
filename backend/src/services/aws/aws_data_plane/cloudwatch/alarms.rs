@@ -2,22 +2,21 @@ use serde_json::{json, Value};
 use tracing::{debug, error};
 use aws_sdk_cloudwatch::types::{ComparisonOperator, Dimension, Statistic};
 use crate::errors::AppError;
+use crate::models::aws_account::AwsAccountDto;
 use super::base::CloudWatchService;
 use super::types::CloudWatchAlarmDetails;
 
 pub trait CloudWatchAlarms {
     async fn create_metric_alarm(
         &self,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto,
         alarm_details: CloudWatchAlarmDetails,
         dimensions: Vec<Dimension>,
     ) -> Result<(), AppError>;
     
     async fn get_alarms_by_resource(
         &self,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto,
         resource_id: &str,
     ) -> Result<Vec<Value>, AppError>;
 }
@@ -25,13 +24,12 @@ pub trait CloudWatchAlarms {
 impl CloudWatchAlarms for CloudWatchService {
     async fn create_metric_alarm(
         &self,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto,
         alarm_details: CloudWatchAlarmDetails,
         dimensions: Vec<Dimension>,
     ) -> Result<(), AppError> {
-        let client = self.create_cloudwatch_client(profile, region).await?;
-        
+        let client = self.create_cloudwatch_client(aws_account_dto).await?;
+
         let operator = match alarm_details.comparison_operator.as_str() {
             "GreaterThanThreshold" => ComparisonOperator::GreaterThanThreshold,
             "GreaterThanOrEqualToThreshold" => ComparisonOperator::GreaterThanOrEqualToThreshold,
@@ -76,11 +74,10 @@ impl CloudWatchAlarms for CloudWatchService {
     
     async fn get_alarms_by_resource(
         &self,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto,
         resource_id: &str,
     ) -> Result<Vec<Value>, AppError> {
-        let client = self.create_cloudwatch_client(profile, region).await?;
+        let client = self.create_cloudwatch_client(aws_account_dto).await?;
         
         let response = client.describe_alarms()
             .send()

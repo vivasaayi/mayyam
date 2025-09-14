@@ -21,7 +21,7 @@ use aws_sdk_cloudwatch::{
     }
 };
 
-use crate::errors::AppError;
+use crate::{errors::AppError, models::aws_account::AwsAccountDto};
 use super::base::CloudWatchService;
 use super::types::{
     CloudWatchMetricsRequest, CloudWatchMetricsResult, CloudWatchMetricData,
@@ -29,13 +29,12 @@ use super::types::{
 };
 
 pub trait CloudWatchMetrics {
-    async fn get_metrics(&self, profile: Option<&str>, region: &str, request: &CloudWatchMetricsRequest) 
+    async fn get_metrics(&self, aws_account_dto: &AwsAccountDto, request: &CloudWatchMetricsRequest) 
         -> Result<CloudWatchMetricsResult, AppError>;
         
     async fn get_metrics_with_dimensions(
         &self,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto,
         namespace: &str,
         metrics: Vec<&str>,
         dimensions: Vec<Dimension>,
@@ -46,8 +45,7 @@ pub trait CloudWatchMetrics {
     
     async fn get_metric_statistics(
         &self,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto,
         namespace: &str,
         metric_name: &str,
         dimensions: Vec<Dimension>,
@@ -59,8 +57,7 @@ pub trait CloudWatchMetrics {
     
     async fn list_metrics(
         &self,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto,
         namespace: Option<&str>,
         metric_name: Option<&str>,
         dimensions: Option<Vec<Dimension>>,
@@ -68,8 +65,7 @@ pub trait CloudWatchMetrics {
     
     async fn get_metric_math(
         &self,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto,
         namespace: &str,
         metrics: Vec<&str>,
         dimensions: Vec<Dimension>,
@@ -81,8 +77,7 @@ pub trait CloudWatchMetrics {
     
     async fn detect_metric_anomalies(
         &self,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto,
         namespace: &str,
         metric_name: &str,
         dimensions: Vec<Dimension>,
@@ -93,9 +88,9 @@ pub trait CloudWatchMetrics {
 }
 
 impl CloudWatchMetrics for CloudWatchService {
-    async fn get_metrics(&self, profile: Option<&str>, region: &str, request: &CloudWatchMetricsRequest) 
+    async fn get_metrics(&self, aws_account_dto: &AwsAccountDto, request: &CloudWatchMetricsRequest) 
         -> Result<CloudWatchMetricsResult, AppError> {
-        let client = self.create_cloudwatch_client(profile, region).await?;
+        let client = self.create_cloudwatch_client(aws_account_dto).await?;
         
         let namespace = self.get_namespace_for_resource_type(&request.resource_type);
         let dimensions = self.create_dimensions_for_resource(&request.resource_type, &request.resource_id);
@@ -175,8 +170,7 @@ impl CloudWatchMetrics for CloudWatchService {
 
     async fn get_metrics_with_dimensions(
         &self,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto,
         namespace: &str,
         metrics: Vec<&str>,
         dimensions: Vec<Dimension>,
@@ -184,7 +178,7 @@ impl CloudWatchMetrics for CloudWatchService {
         end_time: chrono::DateTime<chrono::Utc>,
         period: i32,
     ) -> Result<Vec<CloudWatchMetricData>, AppError> {
-        let client = self.create_cloudwatch_client(profile, region).await?;
+        let client = self.create_cloudwatch_client(aws_account_dto).await?;
         
         let mut metric_data_queries = Vec::new();
         
@@ -257,8 +251,7 @@ impl CloudWatchMetrics for CloudWatchService {
     
     async fn get_metric_statistics(
         &self,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto,
         namespace: &str,
         metric_name: &str,
         dimensions: Vec<Dimension>,
@@ -267,8 +260,8 @@ impl CloudWatchMetrics for CloudWatchService {
         period: i32,
         statistics: Vec<Statistic>,
     ) -> Result<Vec<CloudWatchDatapoint>, AppError> {
-        let client = self.create_cloudwatch_client(profile, region).await?;
-        
+        let client = self.create_cloudwatch_client(aws_account_dto).await?;
+
         debug!("Getting metric statistics for {}/{}", namespace, metric_name);
         
         let response = client.get_metric_statistics()
@@ -312,13 +305,12 @@ impl CloudWatchMetrics for CloudWatchService {
     
     async fn list_metrics(
         &self,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto,
         namespace: Option<&str>,
         metric_name: Option<&str>,
         dimensions: Option<Vec<Dimension>>,
     ) -> Result<Vec<Metric>, AppError> {
-        let client = self.create_cloudwatch_client(profile, region).await?;
+        let client = self.create_cloudwatch_client(aws_account_dto).await?;
         
         debug!("Listing metrics for namespace: {:?}", namespace);
         
@@ -352,8 +344,7 @@ impl CloudWatchMetrics for CloudWatchService {
     
     async fn get_metric_math(
         &self,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto,
         namespace: &str,
         metrics: Vec<&str>,
         dimensions: Vec<Dimension>,
@@ -362,8 +353,8 @@ impl CloudWatchMetrics for CloudWatchService {
         period: i32,
         math_expressions: Vec<(String, String)>,
     ) -> Result<Vec<CloudWatchMetricData>, AppError> {
-        let client = self.create_cloudwatch_client(profile, region).await?;
-        
+        let client = self.create_cloudwatch_client(aws_account_dto).await?;
+
         let mut metric_data_queries = Vec::new();
         
         // Add metric queries
@@ -443,8 +434,7 @@ impl CloudWatchMetrics for CloudWatchService {
     
     async fn detect_metric_anomalies(
         &self,
-        profile: Option<&str>,
-        region: &str,
+        aws_account_dto: &AwsAccountDto,
         namespace: &str,
         metric_name: &str,
         dimensions: Vec<Dimension>,
@@ -452,8 +442,8 @@ impl CloudWatchMetrics for CloudWatchService {
         end_time: chrono::DateTime<chrono::Utc>,
         period: i32,
     ) -> Result<CloudWatchMetricData, AppError> {
-        let client = self.create_cloudwatch_client(profile, region).await?;
-        
+        let client = self.create_cloudwatch_client(aws_account_dto).await?;
+
         // For anomaly detection, we'll use a simple approach of getting metric statistics
         // and identifying values that are significantly different from the average
         let statistics = vec![Statistic::Average, Statistic::Maximum, Statistic::Minimum];
