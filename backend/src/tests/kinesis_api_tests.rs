@@ -1,4 +1,4 @@
-#[cfg(test)]
+#[cfg(all(test, feature = "integration-tests"))]
 mod kinesis_api_tests {
     use std::time::Duration;
     use reqwest::Client;

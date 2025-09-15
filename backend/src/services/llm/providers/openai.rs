@@ -1,8 +1,9 @@
 use async_trait::async_trait;
 use serde_json::{json, Value};
 use reqwest::Client;
+use std::time::Duration;
 use std::time::Instant;
-use std::collections::HashMap;
+// use std::collections::HashMap; // not used currently
 
 use crate::services::llm::interface::{
     LlmProvider, UnifiedLlmRequest, UnifiedLlmResponse, 
@@ -25,7 +26,12 @@ impl OpenAIProvider {
             api_key,
             base_url: "https://api.openai.com/v1".to_string(),
             model,
-            http_client: Client::new(),
+            http_client: Client::builder()
+                .timeout(Duration::from_secs(60))
+                .pool_max_idle_per_host(16)
+                .tcp_nodelay(true)
+                .build()
+                .unwrap_or_else(|_| Client::new()),
         }
     }
     

@@ -1,3 +1,4 @@
+/* global BigInt */
 import React, { useState, useEffect, useRef } from 'react';
 import {
   CCard,
@@ -22,7 +23,7 @@ import {
   CModalBody,
   CModalFooter
 } from '@coreui/react';
-import { FaEye, FaRefresh, FaInfoCircle, FaChartBar } from 'react-icons/fa';
+import { FaEye, FaSync, FaInfoCircle, FaChartBar } from 'react-icons/fa';
 import KinesisService from '../../services/kinesisService';
 
 const ShardVisualization = ({ profile, region, streamName, shards }) => {
@@ -232,12 +233,12 @@ const ShardVisualization = ({ profile, region, streamName, shards }) => {
 
   // Calculate hash key range utilization
   const calculateHashKeyUtilization = (shard) => {
-    const startHash = BigInt(shard.hash_key_range.starting_hash_key);
-    const endHash = BigInt(shard.hash_key_range.ending_hash_key);
-    const maxHash = BigInt('340282366920938463463374607431768211455');
+  const startHash = BigInt(shard.hash_key_range.starting_hash_key);
+  const endHash = BigInt(shard.hash_key_range.ending_hash_key);
+  const maxHash = BigInt('340282366920938463463374607431768211455');
     
-    const range = endHash - startHash;
-    const utilization = Number((range * BigInt(100)) / maxHash);
+  const range = endHash - startHash;
+  const utilization = Number((range * BigInt(100)) / maxHash);
     return Math.round(utilization * 100) / 100;
   };
 
@@ -268,7 +269,7 @@ const ShardVisualization = ({ profile, region, streamName, shards }) => {
             onClick={loadShardMetrics}
             disabled={loading}
           >
-            {loading ? <CSpinner size="sm" /> : <FaRefresh />}
+            {loading ? <CSpinner size="sm" /> : <FaSync />}
             {loading ? ' Loading Metrics...' : ' Refresh Metrics'}
           </CButton>
         </CCol>

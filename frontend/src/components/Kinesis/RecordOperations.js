@@ -28,7 +28,7 @@ import {
   CInputGroupText,
   CButtonGroup
 } from '@coreui/react';
-import { FaDatabase, FaUpload, FaDownload, FaPlay, FaStop, FaRefresh } from 'react-icons/fa';
+import { FaDatabase, FaUpload, FaDownload, FaPlay, FaStop, FaSync } from 'react-icons/fa';
 import KinesisService from '../../services/kinesisService';
 
 const RecordOperations = ({ profile, region, streamName, shards }) => {

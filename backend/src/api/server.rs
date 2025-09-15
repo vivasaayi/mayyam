@@ -210,6 +210,8 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             .wrap(cors)
             .wrap(Logger::default())
             .wrap(AuthMiddleware::new(&config))
+            // Global JSON config: limit large payloads (256KB)
+            .app_data(web::JsonConfig::default().limit(256 * 1024))
             .app_data(web::Data::new(db_connection.clone())) // Now correctly Data<Arc<DatabaseConnection>>
             .app_data(web::Data::new(config.clone()))
             // Repositories

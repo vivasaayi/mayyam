@@ -4,6 +4,11 @@ use crate::middleware::auth::Claims;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::info;
+use regex::Regex;
+use actix_web::web::Bytes;
+use futures::{StreamExt, stream};
+use crate::services::llm::manager::{UnifiedLlmManager, LlmGenerationRequest};
+use crate::services::llm::interface::LlmRequestBuilder;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChatRequest {
@@ -101,12 +106,30 @@ pub struct DynamoDBAnalysisResponse {
 
 pub async fn chat(
     req: web::Json<ChatRequest>,
-    config: web::Data<crate::config::Config>,
-    llm_integration_service: web::Data<Arc<crate::services::llm::LlmIntegrationService>>,
-    llm_provider_repo: web::Data<Arc<crate::repositories::llm_provider::LlmProviderRepository>>,
-    _claims: web::ReqData<Claims>,
+    config: Option<web::Data<crate::config::Config>>,
+    llm_integration_service: Option<web::Data<Arc<crate::services::llm::LlmIntegrationService>>>,
+    llm_provider_repo: Option<web::Data<Arc<crate::repositories::llm_provider::LlmProviderRepository>>>,
+    _claims: Option<web::ReqData<Claims>>,
 ) -> Result<impl Responder, AppError> {
+    // Basic input validation & limits
+    const MAX_MESSAGE_LEN: usize = 4000;
+    const MAX_MESSAGES: usize = 50;
+    if req.messages.is_empty() {
+        return Err(AppError::BadRequest("At least one message is required".to_string()));
+    }
+    if req.messages.len() > MAX_MESSAGES {
+        return Err(AppError::BadRequest(format!("Too many messages (max {})", MAX_MESSAGES)));
+    }
+    let too_long = req.messages.iter().any(|m| m.content.len() > MAX_MESSAGE_LEN);
+    if too_long {
+        return Err(AppError::BadRequest(format!("Message too long (max {} chars)", MAX_MESSAGE_LEN)));
+    }
+    // Optional simple sanitization to avoid accidental HTML/script injection echoes
+    let strip_html = Regex::new(r"<[^>]+>").ok();
     // Find provider by model name (or fallback to default)
+    let config = config.ok_or_else(|| AppError::Internal("Missing Config in app state".to_string()))?;
+    let llm_provider_repo = llm_provider_repo.ok_or_else(|| AppError::Internal("Missing LlmProviderRepository in app state".to_string()))?;
+    let llm_integration_service = llm_integration_service.ok_or_else(|| AppError::Internal("Missing LlmIntegrationService in app state".to_string()))?;
     let model_name = req.model.clone().unwrap_or_else(|| config.ai.model.clone());
     let provider = llm_provider_repo
         .find_by_model_name(&model_name)
@@ -117,13 +140,21 @@ pub async fn chat(
     // Compose prompt from chat history (simple: join user messages)
     let prompt = req.messages.iter()
         .filter(|m| m.role == "user")
-        .map(|m| m.content.clone())
+        .map(|m| {
+            let mut c = m.content.clone();
+            if let Some(re) = &strip_html { c = re.replace_all(&c, "").to_string(); }
+            c
+        })
         .collect::<Vec<_>>()
         .join("\n");
 
     let system_prompt = req.messages.iter()
         .find(|m| m.role == "system")
-        .map(|m| m.content.clone());
+        .map(|m| {
+            let mut c = m.content.clone();
+            if let Some(re) = &strip_html { c = re.replace_all(&c, "").to_string(); }
+            c
+        });
 
     let llm_request = crate::services::llm::LlmRequest {
         prompt,
@@ -157,6 +188,99 @@ pub async fn chat(
         }
     });
     Ok(HttpResponse::Ok().json(response))
+}
+
+/// Streaming chat via Server-Sent Events (SSE)
+pub async fn chat_stream(
+    req: web::Json<ChatRequest>,
+    llm_manager: Option<web::Data<Arc<UnifiedLlmManager>>>,
+    llm_provider_repo: Option<web::Data<Arc<crate::repositories::llm_provider::LlmProviderRepository>>>,
+    _claims: Option<web::ReqData<Claims>>,
+    config: Option<web::Data<crate::config::Config>>,
+)
+-> Result<HttpResponse, AppError> {
+    // Validation (same limits as non-streaming)
+    const MAX_MESSAGE_LEN: usize = 4000;
+    const MAX_MESSAGES: usize = 50;
+    if req.messages.is_empty() {
+        return Err(AppError::BadRequest("At least one message is required".to_string()));
+    }
+    if req.messages.len() > MAX_MESSAGES {
+        return Err(AppError::BadRequest(format!("Too many messages (max {})", MAX_MESSAGES)));
+    }
+    if req.messages.iter().any(|m| m.content.len() > MAX_MESSAGE_LEN) {
+        return Err(AppError::BadRequest(format!("Message too long (max {} chars)", MAX_MESSAGE_LEN)));
+    }
+
+    // Only resolve dependencies after validation to keep tests simple
+    let config = config.ok_or_else(|| AppError::Internal("Missing Config in app state".to_string()))?;
+    let llm_provider_repo = llm_provider_repo.ok_or_else(|| AppError::Internal("Missing LlmProviderRepository in app state".to_string()))?;
+    let llm_manager = llm_manager.ok_or_else(|| AppError::Internal("Missing UnifiedLlmManager in app state".to_string()))?;
+
+    let model_name = req.model.clone().unwrap_or_else(|| config.ai.model.clone());
+    let provider = llm_provider_repo
+        .find_by_model_name(&model_name)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("LLM provider for model '{}' not found", model_name)))?;
+
+    // Build prompt/system
+    let strip_html = Regex::new(r"<[^>]+>").ok();
+    let prompt = req.messages.iter()
+        .filter(|m| m.role == "user")
+        .map(|m| {
+            let mut c = m.content.clone();
+            if let Some(re) = &strip_html { c = re.replace_all(&c, "").to_string(); }
+            c
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let system_prompt = req.messages.iter()
+        .find(|m| m.role == "system")
+        .map(|m| {
+            let mut c = m.content.clone();
+            if let Some(re) = &strip_html { c = re.replace_all(&c, "").to_string(); }
+            c
+        });
+
+    let mut builder = LlmRequestBuilder::new()
+        .prompt(prompt)
+        .temperature(req.temperature.unwrap_or(1.0))
+        .max_tokens(1000)
+        .stream(true);
+    if let Some(sp) = system_prompt { builder = builder.system_prompt(sp); }
+    let llm_request = builder.build();
+
+    // Request streaming from the provider via manager
+    let rx = llm_manager
+        .generate_stream(LlmGenerationRequest {
+            provider: provider.id.to_string(),
+            model: Some(provider.model_name.clone()),
+            request: llm_request,
+            format_response: Some(false),
+            formatting_options: None,
+        })
+        .await?;
+
+    // Convert mpsc Receiver into SSE stream
+    let sse_stream = stream::unfold(rx, |mut rx| async move {
+        match rx.recv().await {
+            Some(Ok(chunk)) => {
+                let line = format!("data: {}\n\n", chunk);
+                Some((Ok::<Bytes, actix_web::Error>(Bytes::from(line)), rx))
+            }
+            Some(Err(e)) => {
+                let line = format!("event: error\ndata: {}\n\n", e.to_string());
+                Some((Ok::<Bytes, actix_web::Error>(Bytes::from(line)), rx))
+            }
+            None => None,
+        }
+    });
+
+    Ok(HttpResponse::Ok()
+        .insert_header(("Content-Type", "text/event-stream"))
+        .insert_header(("Cache-Control", "no-cache"))
+        .insert_header(("Connection", "keep-alive"))
+        .streaming(sse_stream))
 }
 
 pub async fn analyze_logs(

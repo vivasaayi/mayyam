@@ -9,6 +9,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .route("/summary", web::post().to(generate_summary))
         .route("/explain", web::post().to(explain_data))
         .route("/chat", web::post().to(ai::chat))
+    .route("/chat/stream", web::post().to(ai::chat_stream))
         .route("/analyze/rds/{id}/{workflow}", web::get().to(ai::analyze_rds_instance))
         .route("/analyze/rds/question", web::post().to(ai::answer_rds_question));
     

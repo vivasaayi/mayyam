@@ -1,3 +1,5 @@
+#![cfg(feature = "integration-tests")]
+
 // Integration tests main entry point
 mod integration {
     pub mod api_tests;
