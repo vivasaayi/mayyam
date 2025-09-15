@@ -1,93 +1,7 @@
 use reqwest::Client;
 use serde_json::json;
-use std::sync::OnceLock;
 use base64::{Engine as _, engine::general_purpose};
-use crate::integration::helpers::ensure_server;
-use crate::integration::helpers::auth::get_auth_token;
-
-/// Global HTTP client for all tests to avoid connection issues
-static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
-
-/// Get base URL for API calls (env set by ensure_server())
-fn get_base_url() -> String {
-    std::env::var("TEST_API_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".to_string())
-}
-
-/// Get shared HTTP client for all tests
-fn get_shared_client() -> &'static Client {
-    HTTP_CLIENT.get_or_init(|| {
-        Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .http1_only()
-            .pool_max_idle_per_host(10) // Allow some connection reuse
-            .pool_idle_timeout(std::time::Duration::from_secs(30))
-            .tcp_nodelay(true)
-            .build()
-            .expect("Failed to create shared HTTP client")
-    })
-}
-
-// Use shared auth helper's get_auth_token()
-
-/// Get real AWS credentials from environment variables
-/// Panics if required environment variables are not set
-fn get_aws_credentials() -> (String, String, String, String) {
-    let access_key = std::env::var("AWS_ACCESS_KEY_ID")
-        .expect("AWS_ACCESS_KEY_ID environment variable must be set for integration tests. Set it to run tests against real AWS.");
-    let secret_key = std::env::var("AWS_SECRET_ACCESS_KEY")
-        .expect("AWS_SECRET_ACCESS_KEY environment variable must be set for integration tests. Set it to run tests against real AWS.");
-    let region = std::env::var("AWS_DEFAULT_REGION")
-        .unwrap_or_else(|_| "us-east-1".to_string());
-    let account_id = std::env::var("AWS_ACCOUNT_ID")
-        .expect("AWS_ACCOUNT_ID environment variable must be set for integration tests. Set it to run tests against real AWS.");
-
-    (access_key, secret_key, region, account_id)
-}
-
-/// Get test account ID (different from real account to avoid conflicts)
-fn get_test_account_id() -> String {
-    std::env::var("TEST_AWS_ACCOUNT_ID")
-        .unwrap_or_else(|_| "123456789012".to_string())
-}
-
-/// Create HTTP client for tests
-async fn create_test_client() -> Client {
-    Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .http1_only()
-        .pool_max_idle_per_host(5)
-        .pool_idle_timeout(std::time::Duration::from_secs(30))
-        .tcp_nodelay(true)
-        .build()
-        .expect("Failed to create test HTTP client")
-}
-
-/// Setup HTTP client for tests
-async fn setup_http_client() -> Client {
-    Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .http1_only()
-        .pool_max_idle_per_host(5)
-        .pool_idle_timeout(std::time::Duration::from_secs(30))
-        .tcp_nodelay(true)
-        .build()
-        .expect("Failed to create test HTTP client")
-}
-
-/// Get test base URL
-fn get_test_base_url() -> String {
-    std::env::var("TEST_API_BASE_URL").unwrap_or_else(|_| "http://localhost:8080".to_string())
-}
-
-/// Check if AWS-dependent integration tests are enabled
-fn aws_tests_enabled() -> bool {
-    std::env::var("ENABLE_AWS_TESTS").ok().as_deref() == Some("1")
-}
-
-/// Add small delay to prevent overwhelming the server
-async fn test_delay() {
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-}
+use crate::integration::helpers::{TestHarness, get_aws_credentials, get_test_account_id};
 
 /// Integration tests for AWS Account API endpoints
 /// These tests assume the server is already running on localhost:8080
@@ -98,18 +12,17 @@ mod aws_account_integration_tests {
     /// Test creating AWS account via API
     #[tokio::test]
     async fn test_create_aws_account_api() {
-        if !aws_tests_enabled() {
+        let harness = TestHarness::new().await;
+
+        if !harness.aws_tests_enabled() {
             eprintln!("Skipping AWS test: set ENABLE_AWS_TESTS=1 to run");
             return;
         }
-        test_delay().await; // Small delay to prevent overwhelming server
-    ensure_server().await;
-    let client = setup_http_client().await;
-    let base_url = get_base_url();
-        let auth_token = get_auth_token().await;
 
-        println!("Auth token: {}", auth_token);
-        println!("Token length: {}", auth_token.len());
+        harness.test_delay().await; // Small delay to prevent overwhelming server
+
+        println!("Auth token: {}", harness.auth_token());
+        println!("Token length: {}", harness.auth_token().len());
 
         let (access_key, secret_key, region, _) = get_aws_credentials();
         let test_account_id = get_test_account_id();
@@ -124,9 +37,9 @@ mod aws_account_integration_tests {
             "secret_access_key": secret_key
         });
 
-        let response = client
-            .post(&format!("{}/api/aws/accounts", base_url))
-            .header("Authorization", &format!("Bearer {}", auth_token))
+        let response = harness.client()
+            .post(&harness.build_url("/api/aws/accounts"))
+            .header("Authorization", &format!("Bearer {}", harness.auth_token()))
             .json(&account_data)
             .send()
             .await
@@ -143,15 +56,13 @@ mod aws_account_integration_tests {
     /// Test getting all AWS accounts via API
     #[tokio::test]
     async fn test_get_all_aws_accounts_api() {
-        test_delay().await; // Small delay to prevent overwhelming server
-    ensure_server().await;
-    let client = setup_http_client().await;
-    let base_url = get_base_url();
-        let token = get_auth_token().await;
+        let harness = TestHarness::new().await;
 
-        let response = client
-            .get(&format!("{}/api/aws/accounts", base_url))
-            .header("Authorization", format!("Bearer {}", token))
+        harness.test_delay().await; // Small delay to prevent overwhelming server
+
+        let response = harness.client()
+            .get(&harness.build_url("/api/aws/accounts"))
+            .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .send()
             .await
             .expect("Failed to send request");
@@ -166,15 +77,14 @@ mod aws_account_integration_tests {
     /// Test getting AWS account by ID via API
     #[tokio::test]
     async fn test_get_aws_account_by_id_api() {
-        if !aws_tests_enabled() {
+        let harness = TestHarness::new().await;
+
+        if !harness.aws_tests_enabled() {
             eprintln!("Skipping AWS test: set ENABLE_AWS_TESTS=1 to run");
             return;
         }
-        test_delay().await; // Small delay to prevent overwhelming server
-    ensure_server().await;
-    let client = create_test_client().await;
-    let base_url = get_base_url();
-        let token = get_auth_token().await;
+
+        harness.test_delay().await; // Small delay to prevent overwhelming server
 
         // First create an account
         let (access_key, secret_key, region, _) = get_aws_credentials();
@@ -190,9 +100,9 @@ mod aws_account_integration_tests {
             "secret_access_key": secret_key
         });
 
-        let create_response = client
-            .post(&format!("{}/api/aws/accounts", base_url))
-            .header("Authorization", format!("Bearer {}", token))
+        let create_response = harness.client()
+            .post(&harness.build_url("/api/aws/accounts"))
+            .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .json(&account_data)
             .send()
             .await
@@ -208,9 +118,9 @@ mod aws_account_integration_tests {
         let account_id = created_account["id"].as_str().unwrap();
 
         // Now get the account by ID
-        let get_response = client
-            .get(&format!("{}/api/aws/accounts/{}", base_url, account_id))
-            .header("Authorization", format!("Bearer {}", token))
+        let get_response = harness.client()
+            .get(&harness.build_url(&format!("/api/aws/accounts/{}", account_id)))
+            .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .send()
             .await
             .expect("Failed to get account by ID");
@@ -223,21 +133,20 @@ mod aws_account_integration_tests {
             .expect("Failed to parse retrieved account JSON");
 
         assert_eq!(retrieved_account["id"], account_id);
-        assert_eq!(retrieved_account["account_id"], "111111111111");
+        assert_eq!(retrieved_account["account_id"], test_account_id);
     }
 
     /// Test updating AWS account via API
     #[tokio::test]
     async fn test_update_aws_account_api() {
-        if !aws_tests_enabled() {
+        let harness = TestHarness::new().await;
+
+        if !harness.aws_tests_enabled() {
             eprintln!("Skipping AWS test: set ENABLE_AWS_TESTS=1 to run");
             return;
         }
-        test_delay().await; // Small delay to prevent overwhelming server
-    ensure_server().await;
-    let client = setup_http_client().await;
-    let base_url = get_base_url();
-        let token = get_auth_token().await;
+
+        harness.test_delay().await; // Small delay to prevent overwhelming server
 
         // First create an account to update
         let (access_key, secret_key, region, _) = get_aws_credentials();
@@ -253,9 +162,9 @@ mod aws_account_integration_tests {
             "secret_access_key": secret_key
         });
 
-        let create_response = client
-            .post(&format!("{}/api/aws/accounts", base_url))
-            .header("Authorization", format!("Bearer {}", token))
+        let create_response = harness.client()
+            .post(&harness.build_url("/api/aws/accounts"))
+            .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .json(&account_data)
             .send()
             .await
@@ -276,9 +185,9 @@ mod aws_account_integration_tests {
             "default_region": "us-west-2"
         });
 
-        let update_response = client
-            .put(&format!("{}/api/aws/accounts/{}", base_url, account_id))
-            .header("Authorization", format!("Bearer {}", token))
+        let update_response = harness.client()
+            .put(&harness.build_url(&format!("/api/aws/accounts/{}", account_id)))
+            .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .json(&update_data)
             .send()
             .await
@@ -298,15 +207,14 @@ mod aws_account_integration_tests {
     /// Test deleting AWS account via API
     #[tokio::test]
     async fn test_delete_aws_account_api() {
-        if !aws_tests_enabled() {
+        let harness = TestHarness::new().await;
+
+        if !harness.aws_tests_enabled() {
             eprintln!("Skipping AWS test: set ENABLE_AWS_TESTS=1 to run");
             return;
         }
-        test_delay().await; // Small delay to prevent overwhelming server
-    ensure_server().await;
-    let client = setup_http_client().await;
-    let base_url = get_base_url();
-        let token = get_auth_token().await;
+
+        harness.test_delay().await; // Small delay to prevent overwhelming server
 
         // First create an account
         let (access_key, secret_key, region, _) = get_aws_credentials();
@@ -322,9 +230,9 @@ mod aws_account_integration_tests {
             "secret_access_key": secret_key
         });
 
-        let create_response = client
-            .post(&format!("{}/api/aws/accounts", base_url))
-            .header("Authorization", format!("Bearer {}", token))
+        let create_response = harness.client()
+            .post(&harness.build_url("/api/aws/accounts"))
+            .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .json(&account_data)
             .send()
             .await
@@ -340,9 +248,9 @@ mod aws_account_integration_tests {
         let account_id = created_account["id"].as_str().unwrap();
 
         // Delete the account
-        let delete_response = client
-            .delete(&format!("{}/api/aws/accounts/{}", base_url, account_id))
-            .header("Authorization", format!("Bearer {}", token))
+        let delete_response = harness.client()
+            .delete(&harness.build_url(&format!("/api/aws/accounts/{}", account_id)))
+            .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .send()
             .await
             .expect("Failed to delete account");
@@ -350,9 +258,9 @@ mod aws_account_integration_tests {
         assert_eq!(delete_response.status(), 204);
 
         // Verify account is deleted
-        let get_response = client
-            .get(&format!("{}/api/aws/accounts/{}", base_url, account_id))
-            .header("Authorization", format!("Bearer {}", token))
+        let get_response = harness.client()
+            .get(&harness.build_url(&format!("/api/aws/accounts/{}", account_id)))
+            .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .send()
             .await
             .expect("Failed to get deleted account");
@@ -363,14 +271,13 @@ mod aws_account_integration_tests {
     /// Test API error handling for invalid account ID
     #[tokio::test]
     async fn test_get_nonexistent_account_api() {
-        test_delay().await; // Small delay to prevent overwhelming server
-        let client = setup_http_client().await;
-        let base_url = get_test_base_url();
-        let token = get_auth_token().await;
+        let harness = TestHarness::new().await;
 
-        let response = client
-            .get(&format!("{}/api/aws/accounts/550e8400-e29b-41d4-a716-446655440000", base_url))
-            .header("Authorization", format!("Bearer {}", token))
+        harness.test_delay().await; // Small delay to prevent overwhelming server
+
+        let response = harness.client()
+            .get(&harness.build_url("/api/aws/accounts/550e8400-e29b-41d4-a716-446655440000"))
+            .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .send()
             .await
             .expect("Failed to get nonexistent account");
@@ -388,10 +295,9 @@ mod aws_account_integration_tests {
     /// Test API validation for invalid data
     #[tokio::test]
     async fn test_create_account_invalid_data_api() {
-        test_delay().await; // Small delay to prevent overwhelming server
-        let client = setup_http_client().await;
-        let base_url = get_test_base_url();
-        let token = get_auth_token().await;
+        let harness = TestHarness::new().await;
+
+        harness.test_delay().await; // Small delay to prevent overwhelming server
 
         let invalid_data = json!({
             "account_id": "invalid", // Invalid account ID format
@@ -399,9 +305,9 @@ mod aws_account_integration_tests {
             "default_region": "invalid-region"
         });
 
-        let response = client
-            .post(&format!("{}/api/aws/accounts", base_url))
-            .header("Authorization", format!("Bearer {}", token))
+        let response = harness.client()
+            .post(&harness.build_url("/api/aws/accounts"))
+            .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .json(&invalid_data)
             .send()
             .await
@@ -422,14 +328,13 @@ mod aws_resource_integration_tests {
     /// Test getting AWS resources by account
     #[tokio::test]
     async fn test_get_aws_resources_by_account_api() {
-        test_delay().await; // Small delay to prevent overwhelming server
-        let client = setup_http_client().await;
-        let base_url = get_test_base_url();
-        let token = get_auth_token().await;
+        let harness = TestHarness::new().await;
 
-        let response = client
-            .get(&format!("{}/api/aws/resources/account/123456789012", base_url))
-            .header("Authorization", format!("Bearer {}", token))
+        harness.test_delay().await; // Small delay to prevent overwhelming server
+
+        let response = harness.client()
+            .get(&harness.build_url("/api/aws/resources/account/123456789012"))
+            .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .send()
             .await
             .expect("Failed to get AWS resources by account");
@@ -456,13 +361,12 @@ mod kinesis_integration_tests {
     /// Test Kinesis stream analysis workflow
     #[tokio::test]
     async fn test_kinesis_stream_analysis_workflow() {
-        if !aws_tests_enabled() {
+        let harness = TestHarness::new().await;
+
+        if !harness.aws_tests_enabled() {
             eprintln!("Skipping AWS test: set ENABLE_AWS_TESTS=1 to run");
             return;
         }
-        let client = setup_http_client().await;
-        let base_url = get_test_base_url();
-        let token = get_auth_token().await;
 
         let (_, _, region, account_id) = get_aws_credentials();
 
@@ -478,9 +382,9 @@ mod kinesis_integration_tests {
         for (stream_name, _) in &test_streams {
             println!("Creating stream: {}", stream_name);
 
-            let create_response = client
-                .post(&format!("{}/api/aws-data/profiles/default/regions/{}/kinesis/streams", base_url, region))
-                .header("Authorization", format!("Bearer {}", token))
+            let create_response = harness.client()
+                .post(&harness.build_url(&format!("/api/aws-data/profiles/default/regions/{}/kinesis/streams", region)))
+                .header("Authorization", format!("Bearer {}", harness.auth_token()))
                 .header("Content-Type", "application/json")
                 .json(&json!({
                     "stream_name": stream_name,
@@ -519,9 +423,9 @@ mod kinesis_integration_tests {
                     "partition_key": format!("partition-{}", i % 10)
                 });
 
-                let response = client
-                    .post(&format!("{}/api/aws-data/profiles/default/regions/{}/kinesis", base_url, region))
-                    .header("Authorization", format!("Bearer {}", token))
+                let response = harness.client()
+                    .post(&harness.build_url(&format!("/api/aws-data/profiles/default/regions/{}/kinesis", region)))
+                    .header("Authorization", format!("Bearer {}", harness.auth_token()))
                     .header("Content-Type", "application/json")
                     .json(&record_data)
                     .send()
@@ -560,9 +464,9 @@ mod kinesis_integration_tests {
                     "workflow": workflow
                 });
 
-                let response = client
-                    .post(&format!("{}/api/aws/analytics/analyze", base_url))
-                    .header("Authorization", format!("Bearer {}", token))
+                let response = harness.client()
+                    .post(&harness.build_url("/api/aws/analytics/analyze"))
+                    .header("Authorization", format!("Bearer {}", harness.auth_token()))
                     .header("Content-Type", "application/json")
                     .json(&analysis_request)
                     .send()
@@ -603,9 +507,9 @@ mod kinesis_integration_tests {
         for (stream_name, _) in &test_streams {
             println!("Deleting stream: {}", stream_name);
 
-            let delete_response = client
-                .delete(&format!("{}/api/aws-data/profiles/default/regions/{}/kinesis/streams", base_url, region))
-                .header("Authorization", format!("Bearer {}", token))
+            let delete_response = harness.client()
+                .delete(&harness.build_url(&format!("/api/aws-data/profiles/default/regions/{}/kinesis/streams", region)))
+                .header("Authorization", format!("Bearer {}", harness.auth_token()))
                 .header("Content-Type", "application/json")
                 .json(&json!({
                     "stream_name": stream_name,
@@ -639,13 +543,12 @@ mod kinesis_integration_tests {
     /// Test comprehensive Kinesis stream lifecycle management
     #[tokio::test]
     async fn test_kinesis_stream_lifecycle() {
-        if !aws_tests_enabled() {
+        let harness = TestHarness::new().await;
+
+        if !harness.aws_tests_enabled() {
             eprintln!("Skipping AWS test: set ENABLE_AWS_TESTS=1 to run");
             return;
         }
-        let client = get_shared_client();
-        let base_url = get_base_url();
-        let auth_token = get_auth_token().await;
 
         // Generate unique stream name for this test
         let stream_name = format!("test-stream-{}", chrono::Utc::now().timestamp());
@@ -654,9 +557,9 @@ mod kinesis_integration_tests {
 
         // Step 1: Create the stream
         println!("Step 1: Creating stream...");
-        let create_response = client
-            .post(&format!("{}/api/aws-data/profiles/default/regions/us-east-1/kinesis/streams", base_url))
-            .header("Authorization", format!("Bearer {}", auth_token))
+        let create_response = harness.client()
+            .post(&harness.build_url("/api/aws-data/profiles/default/regions/us-east-1/kinesis/streams"))
+            .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .header("Content-Type", "application/json")
             .json(&json!({
                 "stream_name": stream_name,
@@ -671,9 +574,9 @@ mod kinesis_integration_tests {
 
         // Step 2: Verify stream exists by describing it
         println!("Step 2: Verifying stream exists...");
-        let describe_response = client
-            .post(&format!("{}/api/aws-data/profiles/default/regions/us-east-1/kinesis/streams/describe", base_url))
-            .header("Authorization", format!("Bearer {}", auth_token))
+        let describe_response = harness.client()
+            .post(&harness.build_url("/api/aws-data/profiles/default/regions/us-east-1/kinesis/streams/describe"))
+            .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .header("Content-Type", "application/json")
             .json(&json!({
                 "stream_name": stream_name
@@ -694,9 +597,9 @@ mod kinesis_integration_tests {
 
         // Step 3: Put a record to the stream (test the existing functionality)
         println!("Step 3: Testing record insertion...");
-        let put_record_response = client
-            .post(&format!("{}/api/aws-data/profiles/default/regions/us-east-1/kinesis", base_url))
-            .header("Authorization", format!("Bearer {}", auth_token))
+        let put_record_response = harness.client()
+            .post(&harness.build_url("/api/aws-data/profiles/default/regions/us-east-1/kinesis"))
+            .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .header("Content-Type", "application/json")
             .json(&json!({
                 "stream_name": stream_name,
@@ -713,9 +616,9 @@ mod kinesis_integration_tests {
         // Step 4: Delete the stream
         println!("Step 4: Deleting stream...");
         
-        let delete_response = client
-            .delete(&format!("{}/api/aws-data/profiles/default/regions/us-east-1/kinesis/streams", base_url))
-            .header("Authorization", format!("Bearer {}", auth_token))
+        let delete_response = harness.client()
+            .delete(&harness.build_url("/api/aws-data/profiles/default/regions/us-east-1/kinesis/streams"))
+            .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .header("Content-Type", "application/json")
             .json(&json!({
                 "stream_name": stream_name,
@@ -738,9 +641,9 @@ mod kinesis_integration_tests {
         // Wait a moment for deletion to complete (deletion is asynchronous)
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
         
-        let verify_delete_response = client
-            .post(&format!("{}/api/aws-data/profiles/default/regions/us-east-1/kinesis/streams/describe", base_url))
-            .header("Authorization", format!("Bearer {}", auth_token))
+        let verify_delete_response = harness.client()
+            .post(&harness.build_url("/api/aws-data/profiles/default/regions/us-east-1/kinesis/streams/describe"))
+            .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .header("Content-Type", "application/json")
             .json(&json!({
                 "stream_name": stream_name
@@ -776,13 +679,12 @@ mod kinesis_integration_tests {
     /// Test Kinesis analysis with different time ranges
     #[tokio::test]
     async fn test_kinesis_analysis_time_ranges() {
-        if !aws_tests_enabled() {
+        let harness = TestHarness::new().await;
+
+        if !harness.aws_tests_enabled() {
             eprintln!("Skipping AWS test: set ENABLE_AWS_TESTS=1 to run");
             return;
         }
-        let client = setup_http_client().await;
-        let base_url = get_test_base_url();
-        let token = get_auth_token().await;
 
         let (_, _, region, account_id) = get_aws_credentials();
         let stream_name = "test-kinesis-medium-usage";
@@ -797,9 +699,9 @@ mod kinesis_integration_tests {
                 "time_range": time_range
             });
 
-            let response = client
-                .post(&format!("{}/api/aws/analytics/analyze", base_url))
-                .header("Authorization", format!("Bearer {}", token))
+            let response = harness.client()
+                .post(&harness.build_url("/api/aws/analytics/analyze"))
+                .header("Authorization", format!("Bearer {}", harness.auth_token()))
                 .header("Content-Type", "application/json")
                 .json(&analysis_request)
                 .send()
@@ -825,13 +727,12 @@ mod kinesis_integration_tests {
     /// Test Kinesis analysis error handling
     #[tokio::test]
     async fn test_kinesis_analysis_error_handling() {
-        if !aws_tests_enabled() {
+        let harness = TestHarness::new().await;
+
+        if !harness.aws_tests_enabled() {
             eprintln!("Skipping AWS test: set ENABLE_AWS_TESTS=1 to run");
             return;
         }
-        let client = setup_http_client().await;
-        let base_url = get_test_base_url();
-        let token = get_auth_token().await;
 
         let (_, _, region, account_id) = get_aws_credentials();
 
@@ -841,9 +742,9 @@ mod kinesis_integration_tests {
             "workflow": "performance"
         });
 
-        let response = client
-            .post(&format!("{}/api/aws/analytics/analyze", base_url))
-            .header("Authorization", format!("Bearer {}", token))
+        let response = harness.client()
+            .post(&harness.build_url("/api/aws/analytics/analyze"))
+            .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .header("Content-Type", "application/json")
             .json(&analysis_request)
             .send()
@@ -868,9 +769,9 @@ mod kinesis_integration_tests {
             "workflow": "invalid-workflow"
         });
 
-        let response = client
-            .post(&format!("{}/api/aws/analytics/analyze", base_url))
-            .header("Authorization", format!("Bearer {}", token))
+        let response = harness.client()
+            .post(&harness.build_url("/api/aws/analytics/analyze"))
+            .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .header("Content-Type", "application/json")
             .json(&invalid_workflow_request)
             .send()
