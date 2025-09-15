@@ -1,10 +1,10 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::io::{Read, Write};
-use rdkafka::admin::{AdminClient, NewTopic, TopicReplication};
+use rdkafka::admin::{AdminClient, AdminOptions, NewTopic, TopicReplication};
 use rdkafka::config::ClientConfig;
 use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
-use rdkafka::topic_partition_list::Offset;
+use rdkafka::topic_partition_list::{Offset, TopicPartitionList};
 use rdkafka::message::{Header, OwnedHeaders, Message, Headers};
 use rdkafka::producer::{FutureProducer, FutureRecord, Producer};
 use serde::{Deserialize, Serialize};
@@ -679,21 +679,23 @@ impl KafkaService {
 
     // Get a Kafka cluster configuration by ID or name
     pub async fn get_cluster(&self, id: &str, config: &crate::config::Config) -> Result<KafkaClusterConfig, AppError> {
-        // First try to find as a stored cluster in the database
-        let cluster_id = Uuid::parse_str(id).map_err(|e| AppError::Internal(format!("Invalid UUID: {}", e)))?;
-        let stored_cluster = self.cluster_repository.find_by_id(cluster_id).await?;
-        if let Some(cluster) = stored_cluster {
-            // Convert from stored cluster to KafkaClusterConfig
-            let kafka_config: KafkaClusterConfig = serde_json::from_value(cluster.config)
-                .map_err(|e| AppError::Validation(format!("Invalid cluster configuration: {}", e)))?;
-            return Ok(kafka_config);
+        // Try DB lookup if id is a UUID; otherwise fall back to config by name
+        if let Ok(cluster_uuid) = Uuid::parse_str(id) {
+            if let Some(cluster) = self.cluster_repository.find_by_id(cluster_uuid).await? {
+                let kafka_config: KafkaClusterConfig = serde_json::from_value(cluster.config)
+                    .map_err(|e| AppError::Validation(format!("Invalid cluster configuration: {}", e)))?;
+                return Ok(kafka_config);
+            }
         }
 
-        // If not found in database, look in configuration
-        config.kafka.clusters.iter()
+        // Look up by name in application config
+        config
+            .kafka
+            .clusters
+            .iter()
             .find(|c| c.name == id)
             .cloned()
-            .ok_or_else(|| AppError::NotFound(format!("Kafka cluster with ID {} not found", id)))
+            .ok_or_else(|| AppError::NotFound(format!("Kafka cluster '{}' not found (by id or name)", id)))
     }
 
     // Build Kafka client configuration
@@ -829,16 +831,25 @@ impl KafkaService {
             new_topic
         };
         
-        // In a real implementation, create the topic with a timeout
-        // For now, return a success response
-        let response = serde_json::json!({
-            "name": topic.name,
-            "partitions": topic.partitions,
-            "replication_factor": topic.replication_factor,
-            "message": "Topic created successfully"
-        });
-        
-        Ok(response)
+        // Create topic with timeout and return actual result
+        let opts = AdminOptions::new().operation_timeout(Some(Duration::from_secs(30)));
+        let results = admin
+            .create_topics(&[new_topic], &opts)
+            .await
+            .map_err(|e| AppError::ExternalService(format!("Failed to create topic: {}", e)))?;
+
+        match results.first() {
+            Some(Ok(name)) => Ok(serde_json::json!({
+                "name": name,
+                "partitions": topic.partitions,
+                "replication_factor": topic.replication_factor,
+                "message": "Topic creation initiated successfully"
+            })),
+            Some(Err((name, code))) => Err(AppError::ExternalService(format!(
+                "Failed to create topic '{}': {:?}", name, code
+            ))),
+            None => Err(AppError::ExternalService("Empty result from create_topics".to_string())),
+        }
     }
 
     // Get details about a specific topic
@@ -851,39 +862,45 @@ impl KafkaService {
         let cluster = self.get_cluster(cluster_id, config).await?;
         let client_config = self.build_client_config(&cluster);
         
-        // In a real implementation, use the admin client to get topic details
-        // This is a placeholder implementation
-        let topic_details = serde_json::json!({
+        // Fetch metadata and watermarks for topic details
+        let timeout = Duration::from_secs(30);
+        // Use a lightweight producer to access the underlying client for metadata
+        let producer: FutureProducer = client_config
+            .create()
+            .map_err(|e| AppError::ExternalService(format!("Failed to create Kafka producer: {}", e)))?;
+
+        let md = producer
+            .client()
+            .fetch_metadata(Some(topic_name), timeout)
+            .map_err(|e| AppError::ExternalService(format!("Failed to fetch metadata for topic {}: {}", topic_name, e)))?;
+
+        let topic_md = md
+            .topics()
+            .iter()
+            .find(|t| t.name() == topic_name)
+            .ok_or_else(|| AppError::NotFound(format!("Topic {} not found", topic_name)))?;
+
+        let mut partitions = Vec::new();
+        for p in topic_md.partitions() {
+            let (low, high) = producer
+                .client()
+                .fetch_watermarks(topic_name, p.id(), timeout)
+                .unwrap_or((0, 0));
+            let replicas: Vec<i32> = p.replicas().to_vec();
+            let isr: Vec<i32> = p.isr().to_vec();
+            partitions.push(serde_json::json!({
+                "id": p.id(),
+                "leader": p.leader(),
+                "replicas": replicas,
+                "isr": isr,
+                "offsets": {"earliest": low, "latest": high}
+            }));
+        }
+
+        Ok(serde_json::json!({
             "name": topic_name,
-            "partitions": [
-                {
-                    "id": 0,
-                    "leader": 1,
-                    "replicas": [1, 2],
-                    "isr": [1, 2],
-                    "offsets": {
-                        "earliest": 0,
-                        "latest": 1000
-                    }
-                },
-                {
-                    "id": 1,
-                    "leader": 2,
-                    "replicas": [2, 3],
-                    "isr": [2, 3],
-                    "offsets": {
-                        "earliest": 0,
-                        "latest": 850
-                    }
-                }
-            ],
-            "configs": {
-                "cleanup.policy": "delete",
-                "retention.ms": "604800000"
-            }
-        });
-        
-        Ok(topic_details)
+            "partitions": partitions,
+        }))
     }
 
     // Delete a topic
@@ -901,13 +918,22 @@ impl KafkaService {
             .create()
             .map_err(|e| AppError::ExternalService(format!("Failed to create Kafka admin client: {}", e)))?;
         
-        // In a real implementation, delete the topic
-        // This is a placeholder implementation
-        let response = serde_json::json!({
-            "message": format!("Topic {} deleted successfully", topic_name)
-        });
-        
-        Ok(response)
+        // Delete the topic with timeout and return actual result
+        let opts = AdminOptions::new().operation_timeout(Some(Duration::from_secs(30)));
+        let results = admin
+            .delete_topics(&[topic_name], &opts)
+            .await
+            .map_err(|e| AppError::ExternalService(format!("Failed to delete topic: {}", e)))?;
+
+        match results.first() {
+            Some(Ok(name)) => Ok(serde_json::json!({
+                "message": format!("Topic {} deleted successfully", name)
+            })),
+            Some(Err((name, code))) => Err(AppError::ExternalService(format!(
+                "Failed to delete topic '{}': {:?}", name, code
+            ))),
+            None => Err(AppError::ExternalService("Empty result from delete_topics".to_string())),
+        }
     }
 
     // Produce a message to a topic
@@ -1022,7 +1048,7 @@ impl KafkaService {
                     let headers = message.headers()
                         .map(|hdrs| {
                             (0..hdrs.count())
-                                .filter_map(|i| Some(hdrs.get(i)))
+                                .map(|i| hdrs.get(i))
                                 .map(|h| (h.key.to_string(), 
                                          h.value.map(|v| String::from_utf8_lossy(v).to_string()).unwrap_or_default()))
                                 .collect::<Vec<_>>()
@@ -1067,28 +1093,31 @@ impl KafkaService {
         config: &crate::config::Config
     ) -> Result<Vec<serde_json::Value>, AppError> {
         let cluster = self.get_cluster(cluster_id, config).await?;
-        let client_config = self.build_client_config(&cluster);
-        
-        // In a real implementation, use the admin client to list consumer groups
-        // This is a placeholder implementation
-        let consumer_groups = vec![
-            serde_json::json!({
-                "group_id": "example-consumer-group-1",
-                "is_simple": false,
-                "state": "Stable",
-                "members": 2,
-                "coordinator_id": 1
-            }),
-            serde_json::json!({
-                "group_id": "example-consumer-group-2",
-                "is_simple": false,
-                "state": "Stable",
-                "members": 1,
-                "coordinator_id": 2
-            }),
-        ];
-        
-        Ok(consumer_groups)
+        let mut client_config = self.build_client_config(&cluster);
+        client_config.set("client.id", "mayyam-group-list");
+
+        // Use a lightweight client (producer) to query group list
+        let producer: FutureProducer = client_config
+            .create()
+            .map_err(|e| AppError::ExternalService(format!("Failed to create Kafka client: {}", e)))?;
+
+        let timeout = Duration::from_secs(30);
+        let group_list = producer
+            .client()
+            .fetch_group_list(None, timeout)
+            .map_err(|e| AppError::ExternalService(format!("Failed to fetch consumer groups: {}", e)))?;
+
+    let groups = group_list
+            .groups()
+            .iter()
+            .map(|g| serde_json::json!({
+                "group_id": g.name(),
+                "state": format!("{:?}", g.state()),
+        "members": g.members().len()
+            }))
+            .collect::<Vec<_>>();
+
+        Ok(groups)
     }
 
     // Get consumer group details
@@ -1099,42 +1128,50 @@ impl KafkaService {
         config: &crate::config::Config
     ) -> Result<serde_json::Value, AppError> {
         let cluster = self.get_cluster(cluster_id, config).await?;
-        let client_config = self.build_client_config(&cluster);
-        
-        // In a real implementation, use the admin client to get consumer group details
-        // This is a placeholder implementation
-        let group_details = serde_json::json!({
+        let mut client_config = self.build_client_config(&cluster);
+        client_config.set("client.id", "mayyam-group-detail");
+
+        let producer: FutureProducer = client_config
+            .create()
+            .map_err(|e| AppError::ExternalService(format!("Failed to create Kafka client: {}", e)))?;
+
+        let timeout = Duration::from_secs(30);
+        let group_list = producer
+            .client()
+            .fetch_group_list(Some(group_id), timeout)
+            .map_err(|e| AppError::ExternalService(format!("Failed to fetch consumer group {}: {}", group_id, e)))?;
+
+        let group = group_list
+            .groups()
+            .iter()
+            .find(|g| g.name() == group_id)
+            .ok_or_else(|| AppError::NotFound(format!("Consumer group {} not found", group_id)))?;
+
+    // Build members (assignment details may not be available depending on rdkafka version)
+    let members = group
+            .members()
+            .iter()
+            .map(|m| {
+                serde_json::json!({
+                    "id": m.id().to_string(),
+                    "client_id": m.client_id().to_string(),
+                    "client_host": m.client_host().to_string(),
+            "assignments": []
+                })
+            })
+            .collect::<Vec<_>>();
+
+        // Offsets and lag for group's topics
+        // Derive topics from assignments
+    // Offsets: without assignment parsing, return empty list here
+    let offsets: Vec<serde_json::Value> = Vec::new();
+
+        Ok(serde_json::json!({
             "group_id": group_id,
-            "is_simple": false,
-            "state": "Stable",
-            "members": [
-                {
-                    "id": "consumer-1-uuid",
-                    "client_id": "consumer-1",
-                    "client_host": "consumer-host-1.example.com",
-                    "assignments": [
-                        {"topic": "example-topic-1", "partition": 0},
-                        {"topic": "example-topic-1", "partition": 1}
-                    ]
-                }
-            ],
-            "offsets": [
-                {
-                    "topic": "example-topic-1",
-                    "partition": 0,
-                    "offset": 1000,
-                    "lag": 0
-                },
-                {
-                    "topic": "example-topic-1",
-                    "partition": 1,
-                    "offset": 850,
-                    "lag": 0
-                }
-            ]
-        });
-        
-        Ok(group_details)
+            "state": format!("{:?}", group.state()),
+            "members": members,
+            "offsets": offsets,
+        }))
     }
 
     // Reset consumer group offsets
@@ -1146,15 +1183,82 @@ impl KafkaService {
         config: &crate::config::Config
     ) -> Result<serde_json::Value, AppError> {
         let cluster = self.get_cluster(cluster_id, config).await?;
-        let client_config = self.build_client_config(&cluster);
-        
-        // In a real implementation, use the admin client to reset consumer group offsets
-        // This is a placeholder implementation
-        let response = serde_json::json!({
-            "message": format!("Consumer group {} offsets reset successfully", group_id)
-        });
-        
-        Ok(response)
+        let mut client_config = self.build_client_config(&cluster);
+        client_config.set("group.id", group_id);
+        client_config.set("enable.auto.commit", "false");
+
+        let consumer: StreamConsumer = client_config
+            .create()
+            .map_err(|e| AppError::ExternalService(format!("Failed to create consumer for group '{}': {}", group_id, e)))?;
+
+    let timeout = Duration::from_secs(30);
+
+        // Build TopicPartitionList for all partitions of those topics
+        let md = consumer
+            .client()
+            .fetch_metadata(None, timeout)
+            .map_err(|e| AppError::ExternalService(format!("Failed to fetch metadata: {}", e)))?;
+
+        // Derive topics from cluster metadata (fallback when assignment parsing isn't available)
+        let topics: Vec<String> = md
+            .topics()
+            .iter()
+            .map(|t| t.name().to_string())
+            .collect();
+
+        if topics.is_empty() {
+            return Err(AppError::Validation(format!("No topics found in cluster to reset offsets for group '{}'", group_id)));
+        }
+
+        let mut tpl = TopicPartitionList::new();
+        for t in &topics {
+            if let Some(tmd) = md.topics().iter().find(|mt| mt.name() == t) {
+                for p in tmd.partitions() {
+                    tpl.add_partition(t, p.id());
+                }
+            }
+        }
+
+        // For each partition, decide new offset
+        let mut new_tpl = TopicPartitionList::new();
+    for elem in tpl.elements() {
+            let topic = elem.topic();
+            let partition = elem.partition();
+            let (low, high) = consumer
+                .client()
+                .fetch_watermarks(topic, partition, timeout)
+                .unwrap_or((0, 0));
+
+            // Partition-specific override if provided
+            let mut target_offset_opt: Option<i64> = None;
+            if let Some(po) = offset_req.partitions.iter().find(|po| po.partition == partition) {
+                if let Some(off) = po.offset { target_offset_opt = Some(off); }
+            }
+
+            let target = if let Some(off) = target_offset_opt {
+                off
+            } else if offset_req.to_earliest.unwrap_or(false) {
+                low
+            } else if offset_req.to_latest.unwrap_or(false) {
+                high
+            } else if let Some(off) = offset_req.to_offset {
+                off
+            } else {
+                high // default to latest
+            };
+
+            new_tpl.add_partition_offset(topic, partition, Offset::Offset(target)).ok();
+        }
+
+        // Commit the new offsets for the group
+        consumer
+            .commit(&new_tpl, CommitMode::Sync)
+            .map_err(|e| AppError::ExternalService(format!("Failed to commit offsets: {}", e)))?;
+
+        Ok(serde_json::json!({
+            "message": format!("Consumer group {} offsets reset successfully", group_id),
+            "partitions": new_tpl.count(),
+        }))
     }
 
     // Batch message production for better throughput
@@ -1613,7 +1717,7 @@ impl KafkaService {
                             msg.headers()
                                 .map(|hdrs| {
                                     (0..hdrs.count())
-                                        .filter_map(|i| Some(hdrs.get(i)))
+                                        .map(|i| hdrs.get(i))
                                         .map(|h| (h.key.to_string(),
                                                  h.value.map(|v| String::from_utf8_lossy(v).to_string()).unwrap_or_default()))
                                         .collect::<Vec<_>>()
@@ -1909,13 +2013,21 @@ impl KafkaService {
         let admin: AdminClient<_> = client_config.create()
             .map_err(|e| AppError::Kafka(format!("Failed to create admin client: {}", e)))?;
 
+        // Create a consumer bound to the target group to observe committed offsets
+        let mut consumer_cfg = self.build_client_config(&cluster_config);
+        consumer_cfg.set("group.id", &request.consumer_group);
+        consumer_cfg.set("enable.auto.commit", "false");
+        let consumer: StreamConsumer = consumer_cfg
+            .create()
+            .map_err(|e| AppError::Kafka(format!("Failed to create consumer for group '{}': {}", request.consumer_group, e)))?;
+
         let start_time = Instant::now();
         let timeout = Duration::from_secs(request.timeout_seconds.unwrap_or(300)); // 5 minutes default
         let check_interval = Duration::from_millis(request.check_interval_ms.unwrap_or(5000)); // 5 seconds default
         let max_lag_threshold = request.max_lag_threshold.unwrap_or(0);
 
-        // Get initial lag
-        let initial_offsets = self.get_consumer_group_offsets(&admin, &request.consumer_group, &request.topics).await?;
+    // Get initial lag
+    let initial_offsets = self.get_consumer_group_offsets(&consumer, &request.topics).await?;
         let mut total_initial_lag = 0i64;
         let mut partition_statuses = Vec::new();
 
@@ -1935,7 +2047,7 @@ impl KafkaService {
         while start_time.elapsed() < timeout {
             tokio::time::sleep(check_interval).await;
 
-            let current_offsets = self.get_consumer_group_offsets(&admin, &request.consumer_group, &request.topics).await?;
+            let current_offsets = self.get_consumer_group_offsets(&consumer, &request.topics).await?;
             let mut total_current_lag = 0i64;
             let mut all_drained = true;
 
@@ -1972,13 +2084,55 @@ impl KafkaService {
     // Helper method to get consumer group offsets
     async fn get_consumer_group_offsets(
         &self,
-        admin: &AdminClient<rdkafka::client::DefaultClientContext>,
-        group_id: &str,
+        consumer: &StreamConsumer,
         topics: &[String],
     ) -> Result<Vec<ConsumerGroupOffset>, AppError> {
-        // This would need to be implemented using Kafka admin API
-        // For now, return empty vec as placeholder
-        Ok(Vec::new())
+
+        let timeout = Duration::from_secs(30);
+
+        // Subscribe to the provided topics to allow fetching committed offsets
+        let topic_refs: Vec<&str> = topics.iter().map(|s| s.as_str()).collect();
+        if !topic_refs.is_empty() {
+            consumer
+                .subscribe(&topic_refs)
+                .map_err(|e| AppError::ExternalService(format!("Failed to subscribe for offsets query: {}", e)))?;
+        }
+
+        // Query committed offsets for current subscription/assignment
+        let committed = consumer
+            .committed(timeout)
+            .map_err(|e| AppError::ExternalService(format!("Failed to fetch committed offsets: {}", e)))?;
+
+        let mut results = Vec::new();
+        for elem in committed.elements() {
+            let topic = elem.topic().to_string();
+            let partition = elem.partition();
+            let committed_offset = match elem.offset() {
+                Offset::Invalid => -1,
+                Offset::Offset(v) => v,
+                Offset::Beginning => 0,
+                Offset::End => {
+            consumer.client().fetch_watermarks(&topic, partition, timeout).map(|(_, high)| high).unwrap_or(0)
+                }
+                _ => -1,
+            };
+
+        let (_low, high) = consumer
+                .client()
+                .fetch_watermarks(&topic, partition, timeout)
+                .unwrap_or((0, 0));
+
+            let lag = if committed_offset >= 0 { high.saturating_sub(committed_offset) } else { high };
+
+            results.push(ConsumerGroupOffset {
+                topic,
+                partition,
+                offset: committed_offset,
+                lag,
+            });
+        }
+
+        Ok(results)
     }
 }
 
