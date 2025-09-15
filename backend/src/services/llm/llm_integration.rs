@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use serde_json::{Value, json};
 use reqwest::Client;
+use std::time::Duration;
 use chrono::Utc;
 
 use crate::models::llm_provider::{LlmProviderModel};
@@ -41,7 +42,12 @@ impl LlmIntegrationService {
         Self {
             llm_provider_repo,
             prompt_template_repo,
-            http_client: Client::new(),
+            http_client: Client::builder()
+                .timeout(Duration::from_secs(30))
+                .pool_max_idle_per_host(8)
+                .tcp_nodelay(true)
+                .build()
+                .unwrap_or_else(|_| Client::new()),
         }
     }
 

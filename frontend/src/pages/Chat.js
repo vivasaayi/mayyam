@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
-import { CCard, CCardBody, CCardHeader, CButton, CForm, CFormInput, CFormLabel, CSpinner, CFormSelect } from "@coreui/react";
+import { CCard, CCardBody, CCardHeader, CButton, CForm, CFormInput, CFormLabel, CSpinner, CFormSelect, CAlert } from "@coreui/react";
 import { FormGroup } from "reactstrap";
-import api from "../services/api";
+import api, { fetchWithAuth } from "../services/api";
 
 const DEFAULT_MODEL = "gemma-3-27b-it";
 
@@ -15,7 +15,11 @@ const ChatPage = () => {
   const [temperature, setTemperature] = useState(1.0);
   const [availableModels, setAvailableModels] = useState([]);
   const [modelsLoading, setModelsLoading] = useState(true);
+  const [error, setError] = useState(null);
   const messagesEndRef = useRef(null);
+  const controllerRef = useRef(null);
+  const MAX_MESSAGE_LEN = 4000;
+  const [isStreaming, setIsStreaming] = useState(false);
 
   // Fetch available models on component mount
   useEffect(() => {
@@ -53,25 +57,109 @@ const ChatPage = () => {
 
   const handleSend = async (e) => {
     e.preventDefault();
+    setError(null);
     if (!input.trim()) return;
-    const newMessages = [...messages, { role: "user", content: input }];
-    setMessages(newMessages);
+    if (input.length > MAX_MESSAGE_LEN) {
+      setError(`Message too long (max ${MAX_MESSAGE_LEN} characters).`);
+      return;
+    }
+    // Prepare conversation with user message and an empty assistant placeholder for streaming
+    const baseMessages = [...messages, { role: "user", content: input }];
+    setMessages([...baseMessages, { role: "assistant", content: "" }]);
     setInput("");
     setLoading(true);
+    setIsStreaming(true);
+    const controller = new AbortController();
+    controllerRef.current = controller;
     try {
-      const res = await api.post("/api/ai/chat", {
-        messages: newMessages,
-        model,
-        temperature,
+      const response = await fetchWithAuth(`/api/ai/chat/stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: baseMessages, model, temperature }),
+        signal: controller.signal,
       });
-      const assistantMsg = res.data.choices?.[0]?.message || { role: "assistant", content: "[No response]" };
-      setMessages([...newMessages, assistantMsg]);
-      setTimeout(scrollToBottom, 100);
+
+      if (!response.ok || !response.body) {
+        // Fallback to non-streaming call
+        const res = await api.post("/api/ai/chat", {
+          messages: baseMessages,
+          model,
+          temperature,
+        });
+        const assistantMsg = res.data.choices?.[0]?.message || { role: "assistant", content: "[No response]" };
+        setMessages([...baseMessages, assistantMsg]);
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() || ""; // keep partial chunk
+        for (const part of parts) {
+          // Expect lines like: "data: <text>" or event blocks
+          const lines = part.split("\n");
+          const dataLine = lines.find((l) => l.startsWith("data: "));
+          if (!dataLine) continue;
+          const data = dataLine.slice(6);
+          if (!data) continue;
+          // Append streamed text to the last assistant message
+          setMessages((prev) => {
+            const updated = [...prev];
+            const lastIdx = updated.length - 1;
+            if (lastIdx >= 0 && updated[lastIdx].role === "assistant") {
+              updated[lastIdx] = {
+                ...updated[lastIdx],
+                content: (updated[lastIdx].content || "") + data,
+              };
+            }
+            return updated;
+          });
+        }
+        // Keep view scrolled near the bottom while streaming
+        scrollToBottom();
+      }
     } catch (err) {
-      setMessages([...newMessages, { role: "assistant", content: "[Error: Could not get response]" }]);
+      if (err?.name === "AbortError") {
+        // User cancelled streaming; keep partial content
+      } else {
+        console.error("Streaming error:", err);
+        setError(err?.message || "Streaming failed");
+      }
     } finally {
       setLoading(false);
+      setIsStreaming(false);
+      controllerRef.current = null;
+      setTimeout(scrollToBottom, 100);
     }
+  };
+
+  const handleStop = () => {
+    try {
+      controllerRef.current?.abort();
+    } catch (_) {
+      // ignore
+    }
+  };
+
+  const handleCopy = async () => {
+    try {
+      const text = messages.map(m => `${m.role}: ${m.content}`).join("\n\n");
+      await navigator.clipboard.writeText(text);
+      setError(null);
+    } catch (e) {
+      setError("Failed to copy conversation to clipboard.");
+    }
+  };
+
+  const handleClear = () => {
+    setMessages([{ role: "assistant", content: "Hello! How can I help you today?" }]);
+    setError(null);
   };
 
   return (
@@ -94,6 +182,13 @@ const ChatPage = () => {
           padding: "1rem 1.5rem"
         }}>
           <h4 className="mb-0">AI Chat</h4>
+          <div className="mt-2 d-flex gap-2">
+            <CButton color="secondary" size="sm" variant="outline" onClick={handleCopy} disabled={messages.length === 0}>Copy</CButton>
+            {isStreaming ? (
+              <CButton color="warning" size="sm" variant="outline" onClick={handleStop} disabled={!isStreaming}>Stop</CButton>
+            ) : null}
+            <CButton color="danger" size="sm" variant="outline" onClick={handleClear} disabled={loading || isStreaming}>Clear</CButton>
+          </div>
         </CCardHeader>
         <CCardBody style={{ 
           flex: 1, 
@@ -102,6 +197,11 @@ const ChatPage = () => {
           padding: "1.5rem",
           height: "calc(100% - 70px)" // Account for header
         }}>
+          {/* Error Banner */}
+          {error && (
+            <CAlert color="danger" className="mb-3">{error}</CAlert>
+          )}
+
           {/* Chat Messages Area */}
           <div style={{ 
             flex: 1, 

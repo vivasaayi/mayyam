@@ -1,3 +1,4 @@
+#![cfg(feature = "integration-tests")]
 use actix_web::{test, web, App};
 use uuid::Uuid;
 use std::sync::Arc;

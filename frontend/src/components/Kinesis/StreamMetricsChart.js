@@ -12,7 +12,7 @@ import {
   CBadge,
   CButtonGroup
 } from '@coreui/react';
-import { FaChartLine, FaRefresh, FaPlay, FaStop } from 'react-icons/fa';
+import { FaChartLine, FaSync, FaPlay, FaStop } from 'react-icons/fa';
 import Chart from 'chart.js/auto';
 import KinesisService from '../../services/kinesisService';
 
@@ -239,7 +239,7 @@ const StreamMetricsChart = ({ profile, region, streamName }) => {
               onClick={loadMetrics}
               disabled={loading}
             >
-              {loading ? <CSpinner size="sm" /> : <FaRefresh />}
+              {loading ? <CSpinner size="sm" /> : <FaSync />}
               {loading ? ' Loading...' : ' Refresh'}
             </CButton>
             <CButton

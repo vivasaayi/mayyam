@@ -33,7 +33,7 @@ import {
   FaStop,
   FaPlus,
   FaTrash,
-  FaRefresh,
+  FaSync,
   FaChartLine,
   FaCog,
   FaDatabase,
@@ -341,7 +341,7 @@ const KinesisDashboard = () => {
                   onClick={loadStreams}
                   disabled={loading}
                 >
-                  {loading ? <CSpinner size="sm" /> : <FaRefresh />}
+                  {loading ? <CSpinner size="sm" /> : <FaSync />}
                   {loading ? ' Loading...' : ' Refresh'}
                 </CButton>
               </div>
