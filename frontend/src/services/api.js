@@ -2,7 +2,7 @@ import axios from "axios";
 
 // Create axios instance with default config
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || "http://localhost:8080",
+  baseURL: process.env.REACT_APP_API_URL || "http://localhost:8010",
   headers: {
     "Content-Type": "application/json",
   },
@@ -40,7 +40,7 @@ api.interceptors.response.use(
 // Fetch with authentication included
 export const fetchWithAuth = async (url, options = {}) => {
   const token = localStorage.getItem("token");
-  const backendUrl = process.env.REACT_APP_API_URL || "http://localhost:8080";
+  const backendUrl = process.env.REACT_APP_API_URL || "http://localhost:8010";
   const fullUrl = url.startsWith('http') ? url : `${backendUrl}${url}`;
   
   const headers = {
