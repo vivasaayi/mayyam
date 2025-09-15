@@ -161,11 +161,8 @@ impl AwsControlPlane {
 
     // Sync all resources for an account and region
     pub async fn sync_resources(&self, request: &ResourceSyncRequest) -> Result<ResourceSyncResponse, AppError> {
-        let account_id = &request.account_id;
-        let profile = request.profile.as_deref();
         let region = &request.region;
-        let account_auth = AccountAuthInfo::from(request);
-
+        
         let aws_account_dto = &AwsAccountDto::new_with_profile(request.profile.as_deref().unwrap_or_default(), region);
 
         let resource_types = match &request.resource_types {

@@ -22,6 +22,7 @@ impl Ec2ControlPlane {
     }
 
     pub async fn sync_instances(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
+        println!("Syncing EC2 instances.");
         let client = self.aws_service.create_ec2_client(aws_account_dto).await?;
 
         // Get instances from AWS
