@@ -8,5 +8,8 @@ mod kinesis_api_tests;
 mod kinesis_unit_tests;
 
 #[cfg(test)]
+mod ai_chat_stream;
+
+#[cfg(test)]
 #[cfg(feature = "integration-tests")]
 mod integration;

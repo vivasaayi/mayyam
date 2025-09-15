@@ -1,3 +1,5 @@
+#![cfg(feature = "integration-tests")]
+
 // Integration test modules
 pub mod api_tests;
 pub mod helpers;
