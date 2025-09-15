@@ -8,6 +8,7 @@ pub mod aws_auth;
 pub mod aws_account;
 pub mod data_source;
 pub mod llm_provider;
+pub mod llm_model;
 pub mod prompt_template;
 pub mod query_template;
 pub mod analytics;

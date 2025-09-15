@@ -1,5 +1,5 @@
 use once_cell::sync::OnceCell;
-use std::net::{TcpListener};
+use std::net::TcpListener;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -58,6 +58,36 @@ pub async fn ensure_server() -> String {
         return url.clone();
     }
 
+    // 1) If TEST_API_BASE_URL is set and healthy, use it.
+    if let Ok(url) = std::env::var("TEST_API_BASE_URL") {
+        if wait_for_health(&url, Duration::from_secs(2)).await {
+            BASE_URL.set(url.clone()).ok();
+            return url;
+        }
+    }
+
+    // 2) If BACKEND_PORT is set, prefer using the already running backend for speed.
+    if let Ok(port_str) = std::env::var("BACKEND_PORT") {
+        if let Ok(port) = port_str.parse::<u16>() {
+            let base_url = format!("http://127.0.0.1:{}", port);
+            if wait_for_health(&base_url, Duration::from_secs(2)).await {
+                BASE_URL.set(base_url.clone()).ok();
+                std::env::set_var("TEST_API_BASE_URL", base_url.clone());
+                return base_url;
+            }
+        }
+    }
+
+    // 3) Try the conventional default port 8010 if a backend is already running.
+    let default_port = 8010u16;
+    let default_url = format!("http://127.0.0.1:{}", default_port);
+    if wait_for_health(&default_url, Duration::from_secs(2)).await {
+        BASE_URL.set(default_url.clone()).ok();
+        std::env::set_var("TEST_API_BASE_URL", default_url.clone());
+        return default_url;
+    }
+
+    // 4) Fallback: spawn a fresh ephemeral server instance.
     let port = find_free_port();
     let (child, base_url) = start_server_on_port(port);
 

@@ -67,6 +67,7 @@ impl LlmIntegrationService {
             "anthropic" => self.call_anthropic(&provider, request).await,
             "local" => self.call_local(&provider, request).await,
             "gemini" => self.call_gemini(&provider, request).await,
+            "deepseek" => self.call_deepseek(&provider, request).await,
             "custom" => self.call_custom(&provider, request).await,
             _ => Err(AppError::BadRequest(format!("Unsupported provider type: {}", provider.provider_type))),
         }
@@ -138,8 +139,13 @@ impl LlmIntegrationService {
             .ok_or_else(|| AppError::BadRequest("OpenAI API key not configured".to_string()))?;
 
         let default_endpoint = "https://api.openai.com/v1/chat/completions".to_string();
-        let endpoint = provider.base_url.as_ref()
-            .unwrap_or(&default_endpoint);
+        let endpoint = match &provider.base_url {
+            Some(url) if url.starts_with("http") => url.clone(),
+            Some(url) if !url.is_empty() => format!("https://api.openai.com{}", if url.starts_with('/') { url.clone() } else { format!("/{}", url) }),
+            _ => default_endpoint,
+        };
+
+        tracing::info!("OpenAI API call to endpoint: {}", endpoint);
 
         let mut messages = Vec::new();
         
@@ -211,8 +217,11 @@ impl LlmIntegrationService {
 
     async fn call_ollama(&self, provider: &LlmProviderModel, request: LlmRequest) -> Result<LlmResponse, AppError> {
         let default_endpoint = "http://localhost:11434/api/generate".to_string();
-        let endpoint = provider.base_url.as_ref()
-            .unwrap_or(&default_endpoint);
+        let endpoint = match &provider.base_url {
+            Some(url) if url.starts_with("http") => url.clone(),
+            Some(url) if !url.is_empty() => format!("http://localhost:11434{}", if url.starts_with('/') { url.clone() } else { format!("/{}", url) }),
+            _ => default_endpoint,
+        };
 
         let mut prompt = request.prompt;
         if let Some(system_prompt) = request.system_prompt {
@@ -275,8 +284,11 @@ impl LlmIntegrationService {
             .ok_or_else(|| AppError::BadRequest("Anthropic API key not configured".to_string()))?;
 
         let default_endpoint = "https://api.anthropic.com/v1/messages".to_string();
-        let endpoint = provider.base_url.as_ref()
-            .unwrap_or(&default_endpoint);
+        let endpoint = match &provider.base_url {
+            Some(url) if url.starts_with("http") => url.clone(),
+            Some(url) if !url.is_empty() => format!("https://api.anthropic.com{}", if url.starts_with('/') { url.clone() } else { format!("/{}", url) }),
+            _ => default_endpoint,
+        };
 
         let mut messages = Vec::new();
         messages.push(json!({
@@ -406,8 +418,11 @@ impl LlmIntegrationService {
             .ok_or_else(|| AppError::BadRequest("Gemini API key not configured".to_string()))?;
 
         let default_endpoint = format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent", provider.model_name);
-        let endpoint = provider.base_url.as_ref()
-            .unwrap_or(&default_endpoint);
+        let endpoint = match &provider.base_url {
+            Some(url) if url.starts_with("http") => url.clone(),
+            Some(url) if !url.is_empty() => format!("https://generativelanguage.googleapis.com{}", if url.starts_with('/') { url.clone() } else { format!("/{}", url) }),
+            _ => default_endpoint,
+        };
 
         let mut body = json!({
             "contents": [{
@@ -449,9 +464,96 @@ impl LlmIntegrationService {
         })
     }
 
+    async fn call_deepseek(&self, provider: &LlmProviderModel, request: LlmRequest) -> Result<LlmResponse, AppError> {
+        let api_key = self.llm_provider_repo.get_decrypted_api_key(provider).await?
+            .ok_or_else(|| AppError::BadRequest("DeepSeek API key not configured".to_string()))?;
+
+        let default_endpoint = "https://api.deepseek.com/v1/chat/completions".to_string();
+        let endpoint = match &provider.base_url {
+            Some(url) if url.starts_with("http") => url.clone(),
+            Some(url) if !url.is_empty() => format!("https://api.deepseek.com{}", if url.starts_with('/') { url.clone() } else { format!("/{}", url) }),
+            _ => default_endpoint,
+        };
+
+        tracing::info!("DeepSeek API call to endpoint: {}", endpoint);
+
+        let mut messages = Vec::new();
+
+        if let Some(system_prompt) = request.system_prompt {
+            messages.push(json!({
+                "role": "system",
+                "content": system_prompt
+            }));
+        }
+
+        messages.push(json!({
+            "role": "user",
+            "content": request.prompt
+        }));
+
+        let mut body = json!({
+            "model": provider.model_name,
+            "messages": messages
+        });
+
+        if let Some(temp) = request.temperature {
+            body["temperature"] = json!(temp);
+        }
+        if let Some(max_tokens) = request.max_tokens {
+            body["max_tokens"] = json!(max_tokens);
+        }
+
+        // Merge provider model config
+        if let Value::Object(config_obj) = &provider.model_config {
+            if let Value::Object(body_obj) = &mut body {
+                for (key, value) in config_obj {
+                    body_obj.insert(key.clone(), value.clone());
+                }
+            }
+        }
+
+        let response = self.http_client
+            .post(endpoint)
+            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AppError::ExternalServiceError(format!("DeepSeek API error: {}", e)))?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(AppError::ExternalServiceError(format!("DeepSeek API error: {}", error_text)));
+        }
+
+        let response_data: Value = response.json().await
+            .map_err(|e| AppError::ExternalServiceError(format!("Failed to parse DeepSeek response: {}", e)))?;
+
+        let content = response_data["choices"][0]["message"]["content"]
+            .as_str()
+            .ok_or_else(|| AppError::ExternalServiceError("Invalid DeepSeek response format".to_string()))?
+            .to_string();
+
+        let tokens_used = response_data["usage"]["total_tokens"].as_u64().map(|t| t as u32);
+
+        Ok(LlmResponse {
+            content,
+            tokens_used,
+            model: provider.model_name.clone(),
+            provider: "DeepSeek".to_string(),
+            timestamp: Utc::now(),
+        })
+    }
+
     async fn call_custom(&self, provider: &LlmProviderModel, request: LlmRequest) -> Result<LlmResponse, AppError> {
-        let endpoint = provider.base_url.as_ref()
+        let base_url = provider.base_url.as_ref()
             .ok_or_else(|| AppError::BadRequest("Custom provider endpoint not configured".to_string()))?;
+        
+        let endpoint = if base_url.starts_with("http") {
+            base_url.clone()
+        } else {
+            return Err(AppError::BadRequest("Custom provider endpoint must be a valid HTTP URL".to_string()));
+        };
 
         // For custom providers, we'll use the provider's format specification
         let body = match provider.prompt_format.as_str() {

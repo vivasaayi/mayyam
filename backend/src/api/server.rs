@@ -35,6 +35,7 @@ use crate::controllers::{
     kubernetes_cluster_management::KubernetesClusterManagementController,
     data_source::DataSourceController,
     llm_provider::LlmProviderController,
+    llm_model::LlmModelController,
     prompt_template::PromptTemplateController,
     llm_analytics::LlmAnalyticsController,
 };
@@ -94,6 +95,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     let data_source_repo = Arc::new(DataSourceRepository::new(db_connection.clone()));
     let llm_provider_repo = Arc::new(LlmProviderRepository::new(db_connection.clone(), config.clone()));
     let prompt_template_repo = Arc::new(PromptTemplateRepository::new((*db_connection).clone()));
+    let llm_provider_model_repo = Arc::new(crate::repositories::llm_model::LlmProviderModelRepository::new(db_connection.clone()));
     let cost_analytics_repo = Arc::new(CostAnalyticsRepository::new(db_connection.clone()));
     
     // Initialize services
@@ -298,6 +300,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
 	    .app_data(web::Data::new(kubernetes_cluster_management_controller.clone()))
             .app_data(web::Data::new(data_source_controller.clone()))
             .app_data(web::Data::new(llm_provider_controller.clone()))
+            .app_data(web::Data::new(Arc::new(LlmModelController::new(llm_provider_model_repo.clone()))))
             .app_data(web::Data::new(prompt_template_controller.clone()))
             .app_data(web::Data::new(llm_analytics_controller.clone()))
             .app_data(web::Data::new(unified_llm_controller.clone()))
@@ -317,12 +320,15 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
                 info!("Registering AWS analytics routes with highest priority");
                 routes::aws_analytics::configure(cfg_param, aws_analytics_controller.clone());
 
+                info!("Registering AI routes");
+                routes::ai::configure(cfg_param);
+
                 info!("Registering Kubernetes cluster management routes");
                 routes::kubernetes_cluster_management::configure(cfg_param, kubernetes_cluster_management_controller.clone());
                 
                 info!("Registering LLM Analytics Platform routes");
                 routes::data_source::configure(cfg_param, data_source_controller.clone());
-                routes::llm_provider::configure(cfg_param, llm_provider_controller.clone());
+                routes::llm_provider::configure(cfg_param, llm_provider_controller.clone(), Arc::new(LlmModelController::new(llm_provider_model_repo.clone())));
                 routes::prompt_template::configure(cfg_param, prompt_template_controller.clone());
                 routes::query_template::configure(cfg_param);
                 routes::llm_analytics::configure(cfg_param, llm_analytics_controller.clone());
