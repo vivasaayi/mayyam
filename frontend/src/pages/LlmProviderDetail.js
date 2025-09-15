@@ -3,17 +3,18 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { CAlert, CBadge, CButton, CCard, CCardBody, CCardHeader, CCol, CForm, CFormInput, CFormLabel, CFormSelect, CModal, CModalBody, CModalFooter, CModalHeader, CRow, CSpinner } from '@coreui/react';
 import { AgGridReact } from 'ag-grid-react';
 import 'ag-grid-community/styles/ag-grid.css';
-import 'ag-grid-community/styles/ag-theme-quartz.css';
+import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { fetchWithAuth } from '../services/api';
 
 export default function LlmProviderDetail() {
   const { providerId } = useParams();
   const navigate = useNavigate();
+  const isCreate = !providerId || providerId === 'new';
   const [provider, setProvider] = useState(null);
   const [form, setForm] = useState({ name: '', provider_type: 'OpenAI', model_name: '', api_endpoint: '', prompt_format: 'OpenAI', enabled: true, is_default: false });
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!isCreate);
   const [models, setModels] = useState([]);
   const [showModelModal, setShowModelModal] = useState(false);
   const [modelForm, setModelForm] = useState({ id: null, model_name: '', enabled: true, model_config: {} });
@@ -44,13 +45,22 @@ export default function LlmProviderDetail() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [providerId]);
+  useEffect(() => { if (!isCreate) { load(); } }, [providerId]);
 
   const save = async (e) => {
     e.preventDefault(); setSaving(true); setError(null); setSuccess(null);
-    const payload = { name: form.name, model_name: form.model_name, api_endpoint: form.api_endpoint || null, prompt_format: form.prompt_format, enabled: form.enabled, is_default: form.is_default };
-    const res = await fetchWithAuth(`/api/v1/llm-providers/${providerId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    if (!res.ok) setError('Failed to save'); else { setSuccess('Saved'); load(); }
+    const payload = { name: form.name, provider_type: form.provider_type, model_name: form.model_name, api_endpoint: form.api_endpoint || null, prompt_format: form.prompt_format, enabled: form.enabled, is_default: form.is_default };
+    const url = isCreate ? '/api/v1/llm-providers' : `/api/v1/llm-providers/${providerId}`;
+    const method = isCreate ? 'POST' : 'PUT';
+    const res = await fetchWithAuth(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!res.ok) setError('Failed to save'); else {
+      if (isCreate) {
+        const created = await res.json().catch(() => null);
+        const id = created?.id || created?.provider?.id;
+        if (id) navigate(`/llm-providers/${id}`);
+        else setSuccess('Saved');
+      } else { setSuccess('Saved'); load(); }
+    }
     setSaving(false);
   };
 
@@ -97,7 +107,7 @@ export default function LlmProviderDetail() {
 
   if (loading) return <CSpinner />;
   if (error) return <CAlert color="danger">{error}</CAlert>;
-  if (!provider) return null;
+  if (!provider && !isCreate) return null;
 
   return (
     <>
@@ -106,37 +116,56 @@ export default function LlmProviderDetail() {
       <CCard className="mt-3">
         <CCardHeader className="d-flex align-items-center justify-content-between">
           <div>
-            <strong>{provider.name}</strong> <CBadge color={form.enabled ? 'success' : 'secondary'}>{form.enabled ? 'Enabled' : 'Disabled'}</CBadge>
+            <strong>{isCreate ? 'New Provider' : provider.name}</strong> <CBadge color={form.enabled ? 'success' : 'secondary'}>{form.enabled ? 'Enabled' : 'Disabled'}</CBadge>
           </div>
-          <CButton size="sm" color="info" disabled={testing} onClick={testProvider}>{testing ? 'Testing…' : 'Test'}</CButton>
+          {!isCreate && (
+            <CButton size="sm" color="info" disabled={testing} onClick={testProvider}>{testing ? 'Testing…' : 'Test'}</CButton>
+          )}
         </CCardHeader>
         <CCardBody>
           <CForm onSubmit={save}>
             <CRow className="g-3">
               <CCol md={4}><CFormLabel>Name</CFormLabel><CFormInput value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value}))} required /></CCol>
-              <CCol md={3}><CFormLabel>Type</CFormLabel><CFormInput value={form.provider_type} disabled /></CCol>
+              <CCol md={3}>
+                <CFormLabel>Type</CFormLabel>
+                {isCreate ? (
+                  <CFormSelect value={form.provider_type} onChange={e => setForm(f => ({...f, provider_type: e.target.value}))}>
+                    <option>OpenAI</option>
+                    <option>Anthropic</option>
+                    <option>Ollama</option>
+                    <option>Gemini</option>
+                    <option>DeepSeek</option>
+                    <option>Local</option>
+                    <option>Custom</option>
+                  </CFormSelect>
+                ) : (
+                  <CFormInput value={form.provider_type} disabled />
+                )}
+              </CCol>
               <CCol md={3}><CFormLabel>Default Model</CFormLabel><CFormInput value={form.model_name} onChange={e => setForm(f => ({...f, model_name: e.target.value}))} required /></CCol>
               <CCol md={6}><CFormLabel>API Endpoint</CFormLabel><CFormInput value={form.api_endpoint} onChange={e => setForm(f => ({...f, api_endpoint: e.target.value}))} /></CCol>
               <CCol md={3}><CFormLabel>Prompt Format</CFormLabel><CFormSelect value={form.prompt_format} onChange={e => setForm(f => ({...f, prompt_format: e.target.value}))}><option>OpenAI</option><option>Anthropic</option><option>Custom</option></CFormSelect></CCol>
               <CCol md={2}><CFormLabel>Enabled</CFormLabel><CFormSelect value={form.enabled ? 'true' : 'false'} onChange={e => setForm(f => ({...f, enabled: e.target.value === 'true'}))}><option value="true">Yes</option><option value="false">No</option></CFormSelect></CCol>
               <CCol md={2}><CFormLabel>Default</CFormLabel><CFormSelect value={form.is_default ? 'true' : 'false'} onChange={e => setForm(f => ({...f, is_default: e.target.value === 'true'}))}><option value="false">No</option><option value="true">Yes</option></CFormSelect></CCol>
             </CRow>
-            <CButton className="mt-3" disabled={saving} type="submit">{saving ? 'Saving…' : 'Save'}</CButton>
+            <CButton className="mt-3" disabled={saving} type="submit">{saving ? 'Saving…' : (isCreate ? 'Create' : 'Save')}</CButton>
           </CForm>
         </CCardBody>
       </CCard>
 
+      {!isCreate && (
       <CCard className="mt-3">
         <CCardHeader className="d-flex justify-content-between align-items-center">
           <div>Models</div>
           <CButton size="sm" onClick={() => { setModelForm({ id: null, model_name: '', enabled: true, model_config: {} }); setShowModelModal(true); }}>Add Model</CButton>
         </CCardHeader>
         <CCardBody>
-          <div className="ag-theme-quartz" style={{ height: 420, width: '100%' }}>
+          <div className="ag-theme-alpine" style={{ height: 420, width: '100%' }}>
             <AgGridReact rowData={models} columnDefs={cols} animateRows pagination />
           </div>
         </CCardBody>
       </CCard>
+      )}
 
       <CModal visible={showModelModal} onClose={() => setShowModelModal(false)}>
         <CModalHeader>{modelForm.id ? 'Edit Model' : 'Add Model'}</CModalHeader>

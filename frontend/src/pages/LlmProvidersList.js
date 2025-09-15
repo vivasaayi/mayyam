@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AgGridReact } from 'ag-grid-react';
 import 'ag-grid-community/styles/ag-grid.css';
-import 'ag-grid-community/styles/ag-theme-quartz.css';
+import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { CButton, CCard, CCardBody, CCardHeader } from '@coreui/react';
 import { useNavigate } from 'react-router-dom';
 import { fetchWithAuth } from '../services/api';
@@ -50,7 +50,7 @@ export default function LlmProvidersList() {
         <CButton size="sm" onClick={() => navigate('/llm-providers/new')}>Add Provider</CButton>
       </CCardHeader>
       <CCardBody>
-        <div className="ag-theme-quartz" style={{ height: 480, width: '100%' }}>
+        <div className="ag-theme-alpine" style={{ height: 480, width: '100%' }}>
           <AgGridReact rowData={rowData} columnDefs={columnDefs} animateRows pagination />
         </div>
       </CCardBody>

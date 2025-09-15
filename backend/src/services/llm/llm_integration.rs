@@ -43,7 +43,7 @@ impl LlmIntegrationService {
             llm_provider_repo,
             prompt_template_repo,
             http_client: Client::builder()
-                .timeout(Duration::from_secs(30))
+                .timeout(Duration::from_secs(60))  // Increased timeout for LLM API calls
                 .pool_max_idle_per_host(8)
                 .tcp_nodelay(true)
                 .build()
@@ -465,8 +465,15 @@ impl LlmIntegrationService {
     }
 
     async fn call_deepseek(&self, provider: &LlmProviderModel, request: LlmRequest) -> Result<LlmResponse, AppError> {
-        let api_key = self.llm_provider_repo.get_decrypted_api_key(provider).await?
-            .ok_or_else(|| AppError::BadRequest("DeepSeek API key not configured".to_string()))?;
+        // Try to get API key from database first
+        let api_key = match self.llm_provider_repo.get_decrypted_api_key(provider).await? {
+            Some(key) => key,
+            None => {
+                // Fallback to environment variable
+                std::env::var("DEEPSEEK_API_KEY")
+                    .map_err(|_| AppError::BadRequest("DeepSeek API key not configured in database or DEEPSEEK_API_KEY environment variable".to_string()))?
+            }
+        };
 
         let default_endpoint = "https://api.deepseek.com/v1/chat/completions".to_string();
         let endpoint = match &provider.base_url {
@@ -475,7 +482,7 @@ impl LlmIntegrationService {
             _ => default_endpoint,
         };
 
-        tracing::info!("DeepSeek API call to endpoint: {}", endpoint);
+        println!("DeepSeek API call to endpoint: {}", endpoint);
 
         let mut messages = Vec::new();
 
@@ -495,6 +502,8 @@ impl LlmIntegrationService {
             "model": provider.model_name,
             "messages": messages
         });
+
+        println!("Request body: {}", serde_json::to_string_pretty(&body).unwrap_or_default());
 
         if let Some(temp) = request.temperature {
             body["temperature"] = json!(temp);
@@ -519,15 +528,33 @@ impl LlmIntegrationService {
             .json(&body)
             .send()
             .await
-            .map_err(|e| AppError::ExternalServiceError(format!("DeepSeek API error: {}", e)))?;
+            .map_err(|e| {
+                if e.is_timeout() {
+                    AppError::ExternalServiceError("DeepSeek API request timed out. The service may be experiencing high load. Please try again.".to_string())
+                } else if e.is_connect() {
+                    AppError::ExternalServiceError("Failed to connect to DeepSeek API. Please check your internet connection.".to_string())
+                } else {
+                    AppError::ExternalServiceError(format!("DeepSeek API request failed: {}", e))
+                }
+            })?;
 
         if !response.status().is_success() {
+            let status_code = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            return Err(AppError::ExternalServiceError(format!("DeepSeek API error: {}", error_text)));
+            tracing::error!("DeepSeek API error - Status: {}, Body: {}", status_code, error_text);
+
+            return Err(AppError::ExternalServiceError(format!(
+                "DeepSeek API returned error {}: {}",
+                status_code,
+                if error_text.is_empty() { "No error details provided" } else { &error_text }
+            )));
         }
 
         let response_data: Value = response.json().await
-            .map_err(|e| AppError::ExternalServiceError(format!("Failed to parse DeepSeek response: {}", e)))?;
+            .map_err(|e| {
+                tracing::error!("Failed to parse DeepSeek response JSON: {}", e);
+                AppError::ExternalServiceError(format!("Failed to parse DeepSeek response: {}", e))
+            })?;
 
         let content = response_data["choices"][0]["message"]["content"]
             .as_str()
@@ -535,6 +562,8 @@ impl LlmIntegrationService {
             .to_string();
 
         let tokens_used = response_data["usage"]["total_tokens"].as_u64().map(|t| t as u32);
+
+        tracing::info!("DeepSeek API call successful - Model: {}, Tokens used: {:?}", provider.model_name, tokens_used);
 
         Ok(LlmResponse {
             content,

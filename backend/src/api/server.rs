@@ -84,6 +84,10 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     
     // Connect to the database
     let db_connection_val = database::connect(&config).await?;
+    // Ensure critical tables exist in case migrations weren't applied
+    if let Err(e) = database::ensure_llm_provider_models_table(&db_connection_val).await {
+        tracing::warn!("Failed to ensure llm_provider_models table exists: {}", e);
+    }
     let db_connection = Arc::new(db_connection_val);
     
     // Initialize repositories

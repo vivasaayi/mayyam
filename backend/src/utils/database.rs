@@ -1,4 +1,5 @@
 use sea_orm::{Database, DatabaseConnection, DbErr};
+use sea_orm::{ConnectionTrait, Statement, DbBackend};
 use tracing::{info, error};
 use crate::config::Config;
 use crate::errors::AppError;
@@ -178,5 +179,34 @@ pub async fn test_database_connection(
         }
     }
     
+    Ok(())
+}
+
+/// Ensure the llm_provider_models table exists to support multiple models per provider.
+/// This is a targeted, idempotent setup used at startup to avoid 500s when saving models
+/// in environments where migrations haven't been applied.
+pub async fn ensure_llm_provider_models_table(db: &DatabaseConnection) -> Result<(), DbErr> {
+    // Create table if it doesn't exist
+    let create_table_sql = r#"
+        CREATE TABLE IF NOT EXISTS llm_provider_models (
+            id UUID PRIMARY KEY,
+            provider_id UUID NOT NULL REFERENCES llm_providers(id) ON DELETE CASCADE,
+            model_name VARCHAR(255) NOT NULL,
+            model_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+            enabled BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    "#;
+
+    db.execute(Statement::from_string(DbBackend::Postgres, create_table_sql.to_string())).await?;
+
+    // Create indexes if they don't exist
+    let create_idx_provider = r#"CREATE INDEX IF NOT EXISTS idx_llm_provider_models_provider ON llm_provider_models(provider_id)"#;
+    let create_idx_enabled = r#"CREATE INDEX IF NOT EXISTS idx_llm_provider_models_enabled ON llm_provider_models(enabled)"#;
+
+    db.execute(Statement::from_string(DbBackend::Postgres, create_idx_provider.to_string())).await?;
+    db.execute(Statement::from_string(DbBackend::Postgres, create_idx_enabled.to_string())).await?;
+
     Ok(())
 }
