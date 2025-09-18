@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use aws_sdk_s3::Client as S3Client;
+use uuid::Uuid;
 
 use serde_json::json;
 use crate::errors::AppError;
@@ -20,8 +21,8 @@ impl S3ControlPlane {
         Self { aws_service }
     }
 
-    pub async fn sync_buckets(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
-        debug!("Syncing S3 buckets for account: {}", &aws_account_dto.account_id);
+    pub async fn sync_buckets(&self, aws_account_dto: &AwsAccountDto, sync_id: Uuid) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!("Syncing S3 buckets for account: {} with sync_id: {}", &aws_account_dto.account_id, sync_id);
 
         let client = self.aws_service.create_s3_client(aws_account_dto).await?;
 
@@ -156,6 +157,7 @@ impl S3ControlPlane {
                 name: Some(bucket_name.to_string()),
                 tags: serde_json::Value::Object(tags_map),
                 resource_data: serde_json::Value::Object(resource_data),
+                sync_id: Some(sync_id),
             };
             
             buckets.push(bucket);

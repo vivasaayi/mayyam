@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use aws_sdk_kinesis::types::StreamDescription;
 use aws_sdk_kinesis::Client as KinesisClient;
+use uuid::Uuid;
 use tracing::{trace, debug, info, warn, error};
 
 use serde_json::json;
@@ -38,8 +39,8 @@ impl KinesisControlPlane {
         Self { aws_service }
     }
 
-    pub async fn sync_streams(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
-        debug!("Syncing Kinesis streams for account: {}", &aws_account_dto.account_id);
+    pub async fn sync_streams(&self, aws_account_dto: &AwsAccountDto, sync_id: Uuid) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!("Syncing Kinesis streams for account: {} with sync_id: {}", &aws_account_dto.account_id, sync_id);
         let client: KinesisClient = self.aws_service.create_kinesis_client(aws_account_dto).await?;
         // List streams from AWS
         let response = client.list_streams()
@@ -156,6 +157,7 @@ impl KinesisControlPlane {
                 name: Some("".to_string()),
                 tags: serde_json::Value::Null,
                 resource_data: serde_json::Value::Object(resource_data),
+                sync_id: Some(sync_id),
             };
             
             streams.push(stream);

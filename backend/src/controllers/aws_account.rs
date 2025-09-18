@@ -2,11 +2,17 @@ use std::sync::Arc;
 use actix_web::{web, HttpResponse, Responder};
 use tracing::{debug, info};
 use uuid::Uuid;
+use serde::Deserialize;
 
 use crate::errors::AppError;
 use crate::middleware::auth::Claims;
 use crate::models::aws_account::{AwsAccountCreateDto, AwsAccountUpdateDto};
 use crate::services::aws_account::AwsAccountService;
+
+#[derive(Deserialize)]
+pub struct SyncResourcesQuery {
+    pub sync_id: Option<Uuid>,
+}
 
 /// List all AWS accounts
 pub async fn list_accounts(
@@ -61,11 +67,13 @@ pub async fn delete_account(
 /// Sync resources for an AWS account
 pub async fn sync_account_resources(
     id: web::Path<Uuid>,
+    query: web::Query<SyncResourcesQuery>,
     service: web::Data<Arc<AwsAccountService>>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    debug!("Syncing resources for AWS account: {}", id);
-    let response = service.sync_account_resources(id.into_inner()).await?;
+    let sync_id = query.sync_id.unwrap_or_else(Uuid::new_v4);
+    debug!("Syncing resources for AWS account: {} with sync_id: {}", id, sync_id);
+    let response = service.sync_account_resources(id.into_inner(), sync_id).await?;
     Ok(HttpResponse::Ok().json(response))
 }
 

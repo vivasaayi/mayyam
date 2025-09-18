@@ -104,15 +104,16 @@ impl AwsAccountService {
     }
 
     /// Sync resources for an AWS account
-    pub async fn sync_account_resources(&self, id: Uuid) -> Result<SyncResponse, AppError> {
+    pub async fn sync_account_resources(&self, id: Uuid, sync_id: Uuid) -> Result<SyncResponse, AppError> {
         // Get the account
         let account = self.repo.get_by_id(id).await?
             .ok_or_else(|| AppError::NotFound(format!("AWS account with ID {} not found", id)))?;
 
-        debug!("Syncing resources for AWS account: {:?}", &account);
+        debug!("Syncing resources for AWS account: {:?} with sync_id: {}", &account, sync_id);
 
         // Create a sync request with all available authentication information
         let sync_request = ResourceSyncRequest {
+            sync_id,
             account_id: account.account_id.clone(),
             profile: account.profile.clone(),
             region: account.default_region.clone(),
@@ -127,8 +128,8 @@ impl AwsAccountService {
         };
 
         // Log the sync attempt with account details for better debugging
-        info!("Attempting to sync resources for AWS account {} (id: {}) with profile: {:?}, region: {}, auth_method: {}", 
-               account.account_id, id, account.profile, account.default_region, 
+        info!("Attempting to sync resources for AWS account {} (id: {}) with sync_id: {} profile: {:?}, region: {}, auth_method: {}", 
+               account.account_id, id, sync_id, account.profile, account.default_region, 
                if account.use_role { "IAM Role" } else { "Access Key" });
 
         // Call the AWS control plane to sync resources
@@ -137,18 +138,18 @@ impl AwsAccountService {
                 // Update the last synced timestamp
                 self.repo.update_last_synced(id).await?;
                 
-                info!("Successfully synced resources for AWS account {}: {} resources", 
-                       account.account_id, response.total_resources);
+                info!("Successfully synced resources for AWS account {} (sync_id: {}): {} resources", 
+                       account.account_id, sync_id, response.total_resources);
                 
                 Ok(SyncResponse {
                     success: true,
                     count: response.total_resources,
-                    message: format!("Successfully synced {} resources", response.total_resources),
+                    message: format!("Successfully synced {} resources (sync_id: {})", response.total_resources, sync_id),
                 })
             },
             Err(err) => {
-                error!("Failed to sync resources for AWS account {} (id: {}): {:?}", 
-                       account.account_id, id, err);
+                error!("Failed to sync resources for AWS account {} (id: {}, sync_id: {}): {:?}", 
+                       account.account_id, id, sync_id, err);
                 Err(err)
             }
         }
@@ -174,13 +175,15 @@ impl AwsAccountService {
         
         // Sync each account sequentially
         for account in accounts {
-            match self.sync_account_resources(account.id).await {
+            let sync_id = Uuid::new_v4(); // Generate a unique sync_id for each account
+            info!("Starting sync for AWS account {} with sync_id: {}", account.account_id, sync_id);
+            match self.sync_account_resources(account.id, sync_id).await {
                 Ok(response) => {
                     total_resources += response.count;
                 },
                 Err(err) => {
                     // Log error but continue with next account
-                    error!("Failed to sync AWS account {}: {:?}", account.account_id, err);
+                    error!("Failed to sync AWS account {} (sync_id: {}): {:?}", account.account_id, sync_id, err);
                     failed_accounts.push(account.account_id.clone());
                 }
             }

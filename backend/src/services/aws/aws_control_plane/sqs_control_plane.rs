@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use aws_sdk_sqs::Client as SqsClient;
+use uuid::Uuid;
 use serde_json::json;
 use crate::errors::AppError;
 use crate::models::aws_account::AwsAccountDto;
@@ -18,8 +19,8 @@ impl SqsControlPlane {
         Self { aws_service }
     }
 
-    pub async fn sync_queues(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
-        debug!("Syncing SQS queues for account: {}", &aws_account_dto.account_id);
+    pub async fn sync_queues(&self, aws_account_dto: &AwsAccountDto, sync_id: Uuid) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!("Syncing SQS queues for account: {} with sync_id: {}", &aws_account_dto.account_id, sync_id);
         let client = self.aws_service.create_sqs_client(aws_account_dto).await?;
 
         // List all queues from AWS
@@ -148,6 +149,7 @@ impl SqsControlPlane {
                 name,
                 tags: serde_json::Value::Object(tags_map),
                 resource_data: serde_json::Value::Object(resource_data),
+                sync_id: Some(sync_id),
             };
             
             queues.push(queue);

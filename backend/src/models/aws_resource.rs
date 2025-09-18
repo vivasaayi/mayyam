@@ -8,6 +8,7 @@ use uuid::Uuid;
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: Uuid,
+    pub sync_id: Option<Uuid>,
     pub account_id: String,
     pub profile: Option<String>,
     pub region: String,
@@ -86,6 +87,7 @@ impl From<&str> for AwsResourceType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AwsResourceDto {
     pub id: Option<Uuid>,
+    pub sync_id: Option<Uuid>,
     pub account_id: String,
     pub profile: Option<String>,
     pub region: String,
@@ -125,6 +127,7 @@ impl From<AwsResourceDto> for Model {
         let now = Utc::now();
         Self {
             id: dto.id.unwrap_or_else(Uuid::new_v4),
+            sync_id: dto.sync_id,
             account_id: dto.account_id,
             profile: dto.profile,
             region: dto.region,
@@ -145,6 +148,7 @@ impl From<Model> for AwsResourceDto {
     fn from(model: Model) -> Self {
         Self {
             id: Some(model.id),
+            sync_id: model.sync_id,
             account_id: model.account_id,
             profile: model.profile,
             region: model.region,

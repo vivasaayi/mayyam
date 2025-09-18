@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use serde_json::json;
+use uuid::Uuid;
 use tracing::{debug, info, error};
 use crate::errors::AppError;
 use crate::models::aws_account::AwsAccountDto;
@@ -18,8 +19,8 @@ impl DynamoDbControlPlane {
         Self { aws_service }
     }
 
-    pub async fn sync_tables(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
-        debug!("Syncing DynamoDB tables for account: {}", &aws_account_dto.account_id);
+    pub async fn sync_tables(&self, aws_account_dto: &AwsAccountDto, sync_id: Uuid) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!("Syncing DynamoDB tables for account: {} with sync_id: {}", &aws_account_dto.account_id, sync_id);
         let client = self.aws_service.create_dynamodb_client(aws_account_dto).await?;
 
         // Get the list of tables from AWS
@@ -167,6 +168,7 @@ impl DynamoDbControlPlane {
                     name,
                     tags: serde_json::Value::Object(tags_map),
                     resource_data: serde_json::Value::Object(resource_data),
+                    sync_id: Some(sync_id),
                 };
                 
                 tables.push(table);

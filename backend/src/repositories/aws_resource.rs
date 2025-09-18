@@ -29,6 +29,7 @@ impl AwsResourceRepository {
         
         let active_model = ActiveModel {
             id: Set(Uuid::new_v4()),
+            sync_id: Set(resource.sync_id),
             account_id: Set(resource.account_id.clone()),
             profile: Set(resource.profile.clone()),
             region: Set(resource.region.clone()),

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use tracing::{trace, debug, info, error};
 use aws_sdk_rds::Client as RdsClient;
+use uuid::Uuid;
 use serde_json::json;
 use crate::errors::AppError;
 use crate::models::aws_account::AwsAccountDto;
@@ -19,8 +20,8 @@ impl RdsControlPlane {
         Self { aws_service }
     }
 
-    pub async fn sync_instances(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
-        debug!("Syncing RDS instances for account: {}", &aws_account_dto.account_id);
+    pub async fn sync_instances(&self, aws_account_dto: &AwsAccountDto, sync_id: Uuid) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!("Syncing RDS instances for account: {} with sync_id: {}", &aws_account_dto.account_id, sync_id);
         let client = self.aws_service.create_rds_client(aws_account_dto).await?;
 
         // Get DB instances from AWS
@@ -138,6 +139,7 @@ impl RdsControlPlane {
                 name,
                 tags: serde_json::Value::Object(tags_map),
                 resource_data: serde_json::Value::Object(resource_data),
+                sync_id: Some(sync_id),
             };
             
             instances.push(instance);

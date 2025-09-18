@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use aws_sdk_ec2::Client as Ec2Client;
 use tracing::{debug, info, error};
+use uuid::Uuid;
 
 use serde_json::json;
 use base64;
@@ -22,8 +23,8 @@ impl Ec2ControlPlane {
         Self { aws_service }
     }
 
-    pub async fn sync_instances(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
-        debug!("Syncing EC2 instances.");
+    pub async fn sync_instances(&self, aws_account_dto: &AwsAccountDto, sync_id: Uuid) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!("Syncing EC2 instances with sync_id: {}.", sync_id);
         let client = self.aws_service.create_ec2_client(aws_account_dto).await?;
 
         // Get instances from AWS
@@ -113,6 +114,7 @@ impl Ec2ControlPlane {
                 // Create resource DTO
                 let instance = AwsResourceDto {
                     id: None,
+                    sync_id: Some(sync_id),
                     account_id: aws_account_dto.account_id.clone(),
                     profile: aws_account_dto.profile.clone(),
                     region: aws_account_dto.default_region.clone().to_string(),
