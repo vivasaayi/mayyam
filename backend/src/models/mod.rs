@@ -12,6 +12,7 @@ pub mod llm_model;
 pub mod prompt_template;
 pub mod query_template;
 pub mod analytics;
+pub mod sync_run;
 
 // AWS Cost Analytics models
 pub mod aws_cost_data;

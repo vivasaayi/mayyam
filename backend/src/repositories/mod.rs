@@ -9,3 +9,4 @@ pub mod llm_model;
 pub mod prompt_template;
 pub mod query_template;
 pub mod cost_analytics;
+pub mod sync_run;

@@ -4,6 +4,7 @@ use tracing::{debug, error, info};
 
 use crate::models::aws_account::{AwsAccountCreateDto, AwsAccountDto, AwsAccountUpdateDto, DomainModel, SyncResponse};
 use crate::repositories::aws_account::AwsAccountRepository;
+use crate::repositories::sync_run::SyncRunRepository;
 use crate::services::aws::AwsControlPlane;
 use crate::errors::AppError;
 use crate::services::aws::aws_types::resource_sync::ResourceSyncRequest;
@@ -15,11 +16,12 @@ use crate::services::aws::aws_types::resource_sync::ResourceSyncRequest;
 pub struct AwsAccountService {
     repo: Arc<AwsAccountRepository>,
     aws_control_plane: Arc<AwsControlPlane>,
+    sync_run_repo: Arc<SyncRunRepository>,
 }
 
 impl AwsAccountService {
-    pub fn new(repo: Arc<AwsAccountRepository>, aws_control_plane: Arc<AwsControlPlane>) -> Self {
-        Self { repo, aws_control_plane }
+    pub fn new(repo: Arc<AwsAccountRepository>, aws_control_plane: Arc<AwsControlPlane>, sync_run_repo: Arc<SyncRunRepository>) -> Self {
+        Self { repo, aws_control_plane, sync_run_repo }
     }
 
     /// List all AWS accounts
@@ -132,11 +134,17 @@ impl AwsAccountService {
                account.account_id, id, sync_id, account.profile, account.default_region, 
                if account.use_role { "IAM Role" } else { "Access Key" });
 
-        // Call the AWS control plane to sync resources
+    // Mark the sync run as running if it exists (best-effort)
+    let _ = self.sync_run_repo.mark_running(sync_id).await;
+
+    // Call the AWS control plane to sync resources
         match self.aws_control_plane.sync_resources(&sync_request).await {
             Ok(response) => {
                 // Update the last synced timestamp
                 self.repo.update_last_synced(id).await?;
+                // Mark completed with counts
+                let total = response.total_resources as i32;
+                let _ = self.sync_run_repo.complete(sync_id, total, total, 0).await;
                 
                 info!("Successfully synced resources for AWS account {} (sync_id: {}): {} resources", 
                        account.account_id, sync_id, response.total_resources);
@@ -150,6 +158,8 @@ impl AwsAccountService {
             Err(err) => {
                 error!("Failed to sync resources for AWS account {} (id: {}, sync_id: {}): {:?}", 
                        account.account_id, id, sync_id, err);
+                // Mark failed with summary if possible
+                let _ = self.sync_run_repo.fail(sync_id, format!("{:?}", err)).await;
                 Err(err)
             }
         }

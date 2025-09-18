@@ -210,3 +210,59 @@ pub async fn ensure_llm_provider_models_table(db: &DatabaseConnection) -> Result
 
     Ok(())
 }
+
+/// Ensure the sync_runs table exists to support tracking sync sessions.
+/// Idempotent creation to avoid runtime failures when migrations haven't been applied.
+pub async fn ensure_sync_runs_table(db: &DatabaseConnection) -> Result<(), DbErr> {
+    let create_table_sql = r#"
+        CREATE TABLE IF NOT EXISTS sync_runs (
+            id UUID PRIMARY KEY,
+            name TEXT NOT NULL,
+            aws_account_id UUID NULL,
+            account_id TEXT NULL,
+            profile TEXT NULL,
+            region TEXT NULL,
+            status TEXT NOT NULL DEFAULT 'created',
+            total_resources INTEGER NOT NULL DEFAULT 0,
+            success_count INTEGER NOT NULL DEFAULT 0,
+            failure_count INTEGER NOT NULL DEFAULT 0,
+            error_summary TEXT NULL,
+            metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+            started_at TIMESTAMPTZ NULL,
+            completed_at TIMESTAMPTZ NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    "#;
+
+    db.execute(Statement::from_string(DbBackend::Postgres, create_table_sql.to_string())).await?;
+
+    let create_idx_created = r#"CREATE INDEX IF NOT EXISTS idx_sync_runs_created_at ON sync_runs (created_at DESC)"#;
+    let create_idx_status = r#"CREATE INDEX IF NOT EXISTS idx_sync_runs_status ON sync_runs (status)"#;
+    db.execute(Statement::from_string(DbBackend::Postgres, create_idx_created.to_string())).await?;
+    db.execute(Statement::from_string(DbBackend::Postgres, create_idx_status.to_string())).await?;
+
+    // Trigger to auto-update updated_at
+    let create_fn = r#"
+        CREATE OR REPLACE FUNCTION set_updated_at()
+        RETURNS TRIGGER AS $$
+        BEGIN
+          NEW.updated_at = NOW();
+          RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+    "#;
+    db.execute(Statement::from_string(DbBackend::Postgres, create_fn.to_string())).await?;
+
+    let drop_trigger = r#"DROP TRIGGER IF EXISTS trg_sync_runs_updated_at ON sync_runs"#;
+    let create_trigger = r#"
+        CREATE TRIGGER trg_sync_runs_updated_at
+        BEFORE UPDATE ON sync_runs
+        FOR EACH ROW
+        EXECUTE PROCEDURE set_updated_at();
+    "#;
+    db.execute(Statement::from_string(DbBackend::Postgres, drop_trigger.to_string())).await?;
+    db.execute(Statement::from_string(DbBackend::Postgres, create_trigger.to_string())).await?;
+
+    Ok(())
+}
