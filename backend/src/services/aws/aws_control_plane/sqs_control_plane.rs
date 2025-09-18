@@ -7,6 +7,7 @@ use crate::models::aws_auth::AccountAuthInfo;
 use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel};
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::AwsService;
+use tracing::{debug, error};
 
 pub struct SqsControlPlane {
     aws_service: Arc<AwsService>,
@@ -18,23 +19,32 @@ impl SqsControlPlane {
     }
 
     pub async fn sync_queues(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!("Syncing SQS queues for account: {}", &aws_account_dto.account_id);
         let client = self.aws_service.create_sqs_client(aws_account_dto).await?;
 
         // List all queues from AWS
         let response = client.list_queues()
             .send()
             .await
-            .map_err(|e| AppError::ExternalService(format!("Failed to list SQS queues: {}", e)))?;
-            
+            .map_err(|e| {
+                error!("Failed to list SQS queues: {}", e);
+                let inner_aws_error = e.into_service_error();
+                error!("Error raw response: {:?}", inner_aws_error);
+                AppError::ExternalService(format!("Failed to list SQS queues: {}", inner_aws_error))
+            })?;
+
         let mut queues = Vec::new();
-        
-    
+
+        debug!("Fetched {} SQS queues", response.queue_urls().len());
+
         for queue_url in response.queue_urls() {
             // Extract queue name from URL
             let queue_name = queue_url
                 .split('/')
                 .last()
                 .unwrap_or_default();
+
+            debug!("Found SQS queue: {}", &queue_name);
                 
             // Get queue attributes
             let attributes_response = client.get_queue_attributes()

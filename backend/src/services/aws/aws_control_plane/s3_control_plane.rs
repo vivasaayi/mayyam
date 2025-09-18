@@ -8,6 +8,7 @@ use crate::models::aws_auth::AccountAuthInfo;
 use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel};
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::AwsService;
+use tracing::{trace, debug, info, error};
 
 // Control plane implementation for S3
 pub struct S3ControlPlane {
@@ -20,19 +21,28 @@ impl S3ControlPlane {
     }
 
     pub async fn sync_buckets(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!("Syncing S3 buckets for account: {}", &aws_account_dto.account_id);
+
         let client = self.aws_service.create_s3_client(aws_account_dto).await?;
 
         // Get buckets from AWS
         let response = client.list_buckets()
             .send()
             .await
-            .map_err(|e| AppError::ExternalService(format!("Failed to list S3 buckets: {}", e)))?;
+            .map_err(|e| {
+                error!("Failed to describe S3 buckets: {}", &e);
+                let inner_aws_error = e.into_service_error();
+                error!("Error raw response: {:?}", &inner_aws_error);
+                AppError::ExternalService(format!("Failed to list S3 buckets: {}", inner_aws_error))
+            })?;
             
         let mut buckets = Vec::new();
-        
-    
+
+
+        debug!("Fetched {} buckets from S3", response.buckets().len());
         for aws_bucket in response.buckets() {
             let bucket_name = aws_bucket.name().unwrap_or_default();
+            debug!("Found S3 bucket: {}", &bucket_name);
             
             // Get bucket location/region
             let location_resp = client.get_bucket_location()

@@ -21,9 +21,9 @@ use crate::errors::AppError;
 use crate::models::aws_auth::AccountAuthInfo;
 use super::client_factory::AwsClientFactory;
 use async_trait::async_trait;
-use tracing::debug;
 use std::fs;
 use crate::models::aws_account::AwsAccountDto;
+use tracing::{trace, debug, error};
 
 // Base AWS service
 #[derive(Debug)]
@@ -170,7 +170,7 @@ impl AwsClientFactory for AwsService {
 
     async fn create_ec2_client(&self, aws_account_dto: &AwsAccountDto) -> Result<Ec2Client, AppError> {
         let config = self.get_aws_sdk_config(aws_account_dto).await?;
-        println!("{:?}", config);
+        trace!("EC2 Client Config: {:?}", config);
         Ok(Ec2Client::new(&config))
     }
 

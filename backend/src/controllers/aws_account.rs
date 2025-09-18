@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use actix_web::{web, HttpResponse, Responder};
+use tracing::{debug, info};
 use uuid::Uuid;
 
 use crate::errors::AppError;
@@ -63,6 +64,7 @@ pub async fn sync_account_resources(
     service: web::Data<Arc<AwsAccountService>>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
+    debug!("Syncing resources for AWS account: {}", id);
     let response = service.sync_account_resources(id.into_inner()).await?;
     Ok(HttpResponse::Ok().json(response))
 }

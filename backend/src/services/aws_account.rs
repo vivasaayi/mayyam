@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use uuid::Uuid;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 use crate::models::aws_account::{AwsAccountCreateDto, AwsAccountDto, AwsAccountUpdateDto, DomainModel, SyncResponse};
 use crate::repositories::aws_account::AwsAccountRepository;
@@ -108,7 +108,9 @@ impl AwsAccountService {
         // Get the account
         let account = self.repo.get_by_id(id).await?
             .ok_or_else(|| AppError::NotFound(format!("AWS account with ID {} not found", id)))?;
-        
+
+        debug!("Syncing resources for AWS account: {:?}", &account);
+
         // Create a sync request with all available authentication information
         let sync_request = ResourceSyncRequest {
             account_id: account.account_id.clone(),

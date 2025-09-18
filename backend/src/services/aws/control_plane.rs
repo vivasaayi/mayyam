@@ -8,6 +8,7 @@ use crate::models::aws_account::AwsAccountDto;
 use crate::models::aws_auth::AccountAuthInfo;
 use crate::models::aws_resource::{AwsResourceDto, AwsResourceType, Model as AwsResourceModel};
 use crate::services::aws::{self, AwsService};
+use tracing::{debug, info};
 
 // Import control planes from their respective modules
 use crate::services::aws::aws_control_plane::ec2_control_plane::Ec2ControlPlane;
@@ -49,36 +50,43 @@ impl AwsControlPlane {
     }
 
     async fn sync_ec2_resources(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!("Syncing EC2 instances for account: {}", &aws_account_dto.account_id);
         let ec2 = Ec2ControlPlane::new(self.aws_service.clone());
         ec2.sync_instances(&aws_account_dto).await
     }
 
     async fn sync_s3_buckets(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!("Syncing S3 buckets for account: {}", &aws_account_dto.account_id);
         let s3 = S3ControlPlane::new(self.aws_service.clone());
         s3.sync_buckets(aws_account_dto).await
     }
 
     async fn sync_rds_resources(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!("Syncing RDS instances for account: {}", &aws_account_dto.account_id);
         let rds = RdsControlPlane::new(self.aws_service.clone());
         rds.sync_instances(&aws_account_dto).await
     }
 
     async fn sync_dynamodb_resources(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!("Syncing DynamoDB tables for account: {}", &aws_account_dto.account_id);
         let dynamodb = DynamoDbControlPlane::new(self.aws_service.clone());
         dynamodb.sync_tables(&aws_account_dto).await
     }
 
     async fn sync_kinesis_resources(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!("Syncing Kinesis streams for account: {}", &aws_account_dto.account_id);
         let kinesis = KinesisControlPlane::new(self.aws_service.clone());
         kinesis.sync_streams(&aws_account_dto).await
     }
 
     async fn sync_sqs_resources(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!("Syncing SQS queues for account: {}", &aws_account_dto.account_id);
         let sqs = SqsControlPlane::new(self.aws_service.clone());
         sqs.sync_queues(&aws_account_dto).await
     }
 
     async fn sync_elasticache_resources(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!("Syncing ElastiCache clusters for account: {}", &aws_account_dto.account_id);
         let elasticache = ElasticacheControlPlane::new(self.aws_service.clone());
         elasticache.sync_clusters(&aws_account_dto).await
     }
@@ -164,6 +172,9 @@ impl AwsControlPlane {
         let region = &request.region;
         
         let aws_account_dto = &AwsAccountDto::new_with_profile(request.profile.as_deref().unwrap_or_default(), region);
+
+        debug!("Sync Request: {:?}", request);
+        debug!("Syncing resources for AWS account: {:?}", aws_account_dto);
 
         let resource_types = match &request.resource_types {
             Some(types) => types.clone(),

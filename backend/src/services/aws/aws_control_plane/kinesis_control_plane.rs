@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use aws_sdk_kinesis::types::StreamDescription;
 use aws_sdk_kinesis::Client as KinesisClient;
+use tracing::{trace, debug, info, warn, error};
 
 use serde_json::json;
 use crate::errors::AppError;
@@ -38,24 +39,39 @@ impl KinesisControlPlane {
     }
 
     pub async fn sync_streams(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!("Syncing Kinesis streams for account: {}", &aws_account_dto.account_id);
         let client: KinesisClient = self.aws_service.create_kinesis_client(aws_account_dto).await?;
         // List streams from AWS
         let response = client.list_streams()
             .send()
             .await
-            .map_err(|e| AppError::ExternalService(format!("Failed to list Kinesis streams: {}", e)))?;
-            
+            .map_err(|e| {
+                error!("Failed to list Kinesis streams: {}", &e);
+                let inner_aws_error = e.into_service_error();
+                error!("Error raw response: {:?}", &inner_aws_error);
+                AppError::ExternalService(format!("Failed to list Kinesis streams: {}", inner_aws_error))
+            })?;
+
         let stream_names = response.stream_names();
         
         let mut streams = Vec::new();
-        
+
+        debug!("Fetched {} Kinesis streams", streams.len());
+
         for stream_name in stream_names {
+            debug!("Found Kinesis stream: {}", &stream_name);
             // Get detailed information for each stream
             let describe_resp = client.describe_stream_summary()
                 .stream_name(stream_name)
                 .send()
                 .await
-                .map_err(|e| AppError::ExternalService(format!("Failed to describe Kinesis stream {}: {}", stream_name, e)))?;
+                .map_err(|e| {
+                    error!("Failed to describe Kinesis stream {}: {}", stream_name, &e);
+                    let inner_aws_error = e.into_service_error();
+                    error!("Error raw response: {:?}", &inner_aws_error);
+
+                    AppError::ExternalService(format!("Failed to describe Kinesis stream {}: {}", stream_name, inner_aws_error))
+                })?;
                 
             let stream_desc = describe_resp.stream_description_summary()
                 .ok_or_else(|| AppError::ExternalService(format!("No description found for stream {}", stream_name)))?;

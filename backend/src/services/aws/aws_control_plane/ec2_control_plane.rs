@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use aws_sdk_ec2::Client as Ec2Client;
+use tracing::{debug, info, error};
 
 use serde_json::json;
 use base64;
@@ -22,22 +23,31 @@ impl Ec2ControlPlane {
     }
 
     pub async fn sync_instances(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
-        println!("Syncing EC2 instances.");
+        debug!("Syncing EC2 instances.");
         let client = self.aws_service.create_ec2_client(aws_account_dto).await?;
 
         // Get instances from AWS
         let response = client.describe_instances()
             .send()
             .await
-            .map_err(|e| AppError::ExternalService(format!("Failed to describe EC2 instances: {}", e)))?;
+            .map_err(|e| {
+                error!("Failed to describe EC2 instances: {}", &e);
+                error!("Error raw response: {:?}", &e.raw_response());
+                error!("Error raw response: {:?}", &e.into_service_error());
+                AppError::ExternalService(format!("Failed to describe EC2 instances: {}", 11))
+            })?;
 
         let mut instances = Vec::new();
         
         // Process each reservation and its instances
-        
+
+        debug!("Described instances successfully");
         for reservation in response.reservations() {
-        
+            debug!("Processing reservation: {:?}", &reservation.reservation_id());
+
             for ec2_instance in reservation.instances() {
+                debug!("Processing EC2 instance: {:?}", &ec2_instance.instance_id());
+                
                 let instance_id = ec2_instance.instance_id().unwrap_or_default().to_string();
 
                 let arn = format!("arn:aws:ec2:{}:{}:instance/{}", aws_account_dto.default_region, aws_account_dto.account_id, instance_id);

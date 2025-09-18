@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use tracing::{trace, debug, info, error};
 use aws_sdk_rds::Client as RdsClient;
 use serde_json::json;
 use crate::errors::AppError;
@@ -19,6 +20,7 @@ impl RdsControlPlane {
     }
 
     pub async fn sync_instances(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!("Syncing RDS instances for account: {}", &aws_account_dto.account_id);
         let client = self.aws_service.create_rds_client(aws_account_dto).await?;
 
         // Get DB instances from AWS
@@ -29,8 +31,11 @@ impl RdsControlPlane {
             
         let mut instances = Vec::new();
 
+        debug!("Fetched {} RDS instances", response.db_instances().len());
+
         for db_instance in response.db_instances() {
             let db_identifier = db_instance.db_instance_identifier().unwrap_or_default();
+            debug!("Found RDS instance: {}", &db_identifier);
 
             let arn = db_instance.db_instance_arn().unwrap_or_default();
 
@@ -39,8 +44,14 @@ impl RdsControlPlane {
                 .resource_name(arn)
                 .send()
                 .await
-                .map_err(|e| AppError::ExternalService(format!("Failed to get tags for RDS instance {}: {}", db_identifier, e)))?;
-            
+                .map_err(|e| {
+                    error!("Failed to describe RDS instances: {}", &e);
+                    let inner_aws_error = e.into_service_error();
+                    error!("Error raw response: {:?}", &inner_aws_error);
+
+                    AppError::ExternalService(format!("Failed to get tags for RDS instance {}: {}", db_identifier, inner_aws_error))
+                })?;
+
             let mut tags_map = serde_json::Map::new();
             let mut name = None;
             
