@@ -35,6 +35,7 @@ const PromptTemplates = lazy(() => import("./pages/PromptTemplates")); // Import
 const Configurations = lazy(() => import("./pages/Configurations")); // Import for Configurations management page
 const KinesisDashboard = lazy(() => import("./components/Kinesis/KinesisDashboard")); // Import for Kinesis Dashboard
 const SyncRunsDashboard = lazy(() => import("./pages/SyncRunsDashboard"));
+const CloudResources = lazy(() => import("./pages/CloudResources")); // New import for Cloud Resources
 
 const App = () => {
   const { isAuthenticated, isLoading } = useAuth();
@@ -78,6 +79,7 @@ const App = () => {
             <Route path="configurations" element={<Configurations />} /> {/* Route for Configurations management page */}
             <Route path="kinesis" element={<KinesisDashboard />} /> {/* Route for Kinesis Dashboard */}
             <Route path="sync-runs" element={<SyncRunsDashboard />} />
+            <Route path="cloud-resources" element={<CloudResources />} /> {/* New route for Cloud Resources */}
             <Route path="*" element={<NotFound />} />
           </Route>
         </Route>

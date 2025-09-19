@@ -20,6 +20,7 @@ use crate::services::aws::aws_control_plane::kinesis_control_plane::KinesisContr
 use crate::services::aws::aws_control_plane::sqs_control_plane::SqsControlPlane;
 use crate::services::aws::aws_types::resource_sync::{ResourceSyncRequest, ResourceSyncResponse, ResourceTypeSyncSummary};
 use crate::services::aws::aws_control_plane::elasticache_control_plane::ElasticacheControlPlane;
+use crate::services::aws::aws_control_plane::lambda_control_plane::LambdaControlPlane;
 
 // Helper function to convert StreamDescription to JSON
 fn stream_description_to_json(stream_desc: &StreamDescription) -> Value {
@@ -205,6 +206,10 @@ impl AwsControlPlane {
                 "KinesisStream" => self.sync_kinesis_resources(aws_account_dto, request.sync_id).await,
                 "SqsQueue" => self.sync_sqs_resources(aws_account_dto, request.sync_id).await,
                 "ElasticacheCluster" => self.sync_elasticache_resources(aws_account_dto, request.sync_id).await,
+                "LambdaFunction" => {
+                    let lambda = LambdaControlPlane::new(self.aws_service.clone());
+                    lambda.sync_functions(aws_account_dto, request.sync_id).await
+                }
                 _ => Ok(vec![]),
             };
 
@@ -227,16 +232,8 @@ impl AwsControlPlane {
                             resource_data: resource.resource_data.clone(),
                         };
                         
-                        // Try to find an existing resource with this ARN
-                        match self.aws_service.aws_resource_repo.find_by_arn(&resource.arn).await {
-                            Ok(Some(existing)) => {
-                                // Update existing resource
-                                let _ = self.aws_service.aws_resource_repo.update(existing.id, &resource_dto).await;
-                            },
-                            _ => {
-                                let _ = self.aws_service.aws_resource_repo.create(&resource_dto).await;
-                            }
-                        }
+                        // Always insert a new row per sync; schema prevents dupes per (sync_id, arn)
+                        let _ = self.aws_service.aws_resource_repo.create(&resource_dto).await;
                     }
                     
                     summary.push(ResourceTypeSyncSummary {

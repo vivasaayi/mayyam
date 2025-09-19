@@ -33,6 +33,7 @@ const AwsResourceBrowser = () => {
     profile: "",
     region: "",
     resource_type: "",
+    sync_id: "",
     tag_key: "",
     tag_value: "",
   });
@@ -262,6 +263,15 @@ const AwsResourceBrowser = () => {
     fetchResources();
   }, [page, pageSize]);
 
+  // Initialize sync_id from URL if present
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const s = params.get('sync_id');
+    if (s) {
+      setFilter((prev) => ({ ...prev, sync_id: s }));
+    }
+  }, []);
+
   const fetchResources = async () => {
     setLoading(true);
     setError(null);
@@ -275,7 +285,7 @@ const AwsResourceBrowser = () => {
         }
       });
 
-      // Add pagination parameters
+  // Add pagination parameters
       queryParams.append('page', page);
       queryParams.append('page_size', pageSize);
 
@@ -392,6 +402,19 @@ const AwsResourceBrowser = () => {
                       </option>
                     ))}
                   </Input>
+                </FormGroup>
+              </Col>
+              <Col lg={2} md={4} sm={6}>
+                <FormGroup>
+                  <Label for="sync_id">Sync ID</Label>
+                  <Input
+                    type="text"
+                    name="sync_id"
+                    id="sync_id"
+                    value={filter.sync_id}
+                    onChange={(e) => handleFilterChange(e.target.name, e.target.value)}
+                    placeholder="Filter by sync run"
+                  />
                 </FormGroup>
               </Col>
               <Col lg={2} md={4} sm={6}>

@@ -158,6 +158,10 @@ impl AwsResourceRepository {
             condition = condition.add(aws_resource::Column::ResourceId.eq(resource_id.clone()));
         }
         
+        if let Some(sync_id) = &query.sync_id {
+            condition = condition.add(aws_resource::Column::SyncId.eq(*sync_id));
+        }
+        
         if let Some(name) = &query.name {
             condition = condition.add(aws_resource::Column::Name.like(format!("%{}%", name)));
         }

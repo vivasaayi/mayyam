@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { Card, CardHeader, CardBody, Table, Badge, Spinner, Alert } from "reactstrap";
+import { Card, CardHeader, CardBody, Table, Badge, Spinner, Alert, Button } from "reactstrap";
+import { useNavigate } from "react-router-dom";
 import { getSyncRuns } from "../services/api";
 
 const SyncRunsDashboard = () => {
   const [runs, setRuns] = useState([]);
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -47,6 +49,7 @@ const SyncRunsDashboard = () => {
                   <th>Failure</th>
                   <th>Started</th>
                   <th>Completed</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -64,6 +67,11 @@ const SyncRunsDashboard = () => {
                     <td>{run.failure_count}</td>
                     <td>{run.started_at ? new Date(run.started_at).toLocaleString() : '-'}</td>
                     <td>{run.completed_at ? new Date(run.completed_at).toLocaleString() : '-'}</td>
+                    <td>
+                      <Button size="sm" color="link" onClick={() => navigate(`/cloud-resources?sync_id=${run.id}`)}>
+                        View Resources
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -106,6 +106,7 @@ pub struct AwsResourceQuery {
     pub region: Option<String>,
     pub resource_type: Option<String>,
     pub resource_id: Option<String>,
+    pub sync_id: Option<Uuid>,
     pub name: Option<String>,
     pub tag_key: Option<String>,
     pub tag_value: Option<String>,

@@ -1,10 +1,11 @@
 use std::sync::Arc;
 use serde_json::json;
+use uuid::Uuid;
 use crate::errors::AppError;
 use crate::models::aws_account::AwsAccountDto;
 use crate::models::aws_auth::AccountAuthInfo;
 use crate::models::aws_resource;
-use crate::models::aws_resource::{AwsResourceDto, AwsResourceType};
+use crate::models::aws_resource::{AwsResourceDto, AwsResourceType, Model as AwsResourceModel};
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::AwsService;
 
@@ -17,12 +18,12 @@ impl LambdaControlPlane {
         Self { aws_service }
     }
 
-    pub async fn sync_functions(&self, account_id: &str, aws_account_dto: &AwsAccountDto) -> Result<Vec<aws_resource::Model>, AppError> {
+    // NOTE: Align with other control planes: do not persist here.
+    // Return resource models and let the orchestrator persist a new row per sync.
+    pub async fn sync_functions(&self, aws_account_dto: &AwsAccountDto, sync_id: Uuid) -> Result<Vec<AwsResourceModel>, AppError> {
         let client = self.aws_service.create_lambda_client(aws_account_dto).await?;
 
-        let repo = &self.aws_service.aws_resource_repo;
-        
-        let mut functions = Vec::new();
+        let mut functions: Vec<AwsResourceDto> = Vec::new();
         let mut marker = None;
         
         // Paginate through all Lambda functions
@@ -138,6 +139,7 @@ impl LambdaControlPlane {
                     // Create resource DTO
                     let function = AwsResourceDto {
                         id: None,
+                        sync_id: Some(sync_id),
                         account_id: aws_account_dto.account_id.clone(),
                         profile: aws_account_dto.profile.clone(),
                         region: aws_account_dto.default_region.clone(),
@@ -147,16 +149,9 @@ impl LambdaControlPlane {
                         name,
                         tags: serde_json::Value::Object(tags_map),
                         resource_data: serde_json::Value::Object(function_data),
-                        sync_id: None,
                     };
                     
-                    // Save to database
-                    let saved_function = match repo.find_by_arn(&function_arn).await? {
-                        Some(existing) => repo.update(existing.id, &function).await?,
-                        None => repo.create(&function).await?,
-                    };
-                    
-                    functions.push(saved_function);
+                    functions.push(function);
                 }
             }
             
@@ -166,7 +161,7 @@ impl LambdaControlPlane {
                 break;
             }
         }
-        
-        Ok(functions)
+        // Convert DTOs into Models for uniform handling by orchestrator
+        Ok(functions.into_iter().map(|f| f.into()).collect())
     }
 }

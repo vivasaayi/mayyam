@@ -266,3 +266,76 @@ pub async fn ensure_sync_runs_table(db: &DatabaseConnection) -> Result<(), DbErr
 
     Ok(())
 }
+
+/// Ensure aws_resources table has sync_id and correct indexes to allow multi-scan history
+pub async fn ensure_aws_resources_table(db: &DatabaseConnection) -> Result<(), DbErr> {
+    // Add sync_id column if missing
+    let add_sync_id = r#"
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'aws_resources' AND column_name = 'sync_id'
+            ) THEN
+                ALTER TABLE aws_resources ADD COLUMN sync_id UUID NULL;
+            END IF;
+        END $$;
+    "#;
+    db.execute(Statement::from_string(DbBackend::Postgres, add_sync_id.to_string())).await?;
+
+    // Drop unique constraint on arn if exists to permit multiple versions across syncs
+    let drop_unique_arn = r#"
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM pg_indexes 
+                WHERE tablename = 'aws_resources' AND indexname = 'aws_resources_arn_key'
+            ) THEN
+                ALTER TABLE aws_resources DROP CONSTRAINT IF EXISTS aws_resources_arn_key;
+            END IF;
+        END $$;
+    "#;
+    db.execute(Statement::from_string(DbBackend::Postgres, drop_unique_arn.to_string())).await?;
+
+    // Create index on sync_id
+    let idx_sync = r#"CREATE INDEX IF NOT EXISTS idx_aws_resources_sync_id ON aws_resources(sync_id)"#;
+    db.execute(Statement::from_string(DbBackend::Postgres, idx_sync.to_string())).await?;
+
+    // Add composite unique to avoid duplicate rows for same resource within the same sync
+    let add_unique = r#"
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint c
+                JOIN pg_class t ON c.conrelid = t.oid
+                WHERE t.relname = 'aws_resources' AND c.conname = 'uniq_sync_arn'
+            ) THEN
+                ALTER TABLE aws_resources
+                ADD CONSTRAINT uniq_sync_arn UNIQUE (sync_id, arn);
+            END IF;
+        END $$;
+    "#;
+    db.execute(Statement::from_string(DbBackend::Postgres, add_unique.to_string())).await?;
+
+    // Add a more provider-agnostic uniqueness on natural key as well
+    let add_unique2 = r#"
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint c
+                JOIN pg_class t ON c.conrelid = t.oid
+                WHERE t.relname = 'aws_resources' AND c.conname = 'uniq_sync_resourcekey'
+            ) THEN
+                ALTER TABLE aws_resources
+                ADD CONSTRAINT uniq_sync_resourcekey UNIQUE (sync_id, account_id, region, resource_type, resource_id);
+            END IF;
+        END $$;
+    "#;
+    db.execute(Statement::from_string(DbBackend::Postgres, add_unique2.to_string())).await?;
+
+    // Helpful composite index for queries by type and sync
+    let add_idx = r#"CREATE INDEX IF NOT EXISTS idx_aws_resources_type_sync ON aws_resources(resource_type, sync_id)"#;
+    db.execute(Statement::from_string(DbBackend::Postgres, add_idx.to_string())).await?;
+
+    Ok(())
+}

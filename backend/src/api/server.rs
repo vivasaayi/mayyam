@@ -92,6 +92,9 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     if let Err(e) = database::ensure_sync_runs_table(&db_connection_val).await {
         tracing::warn!("Failed to ensure sync_runs table exists: {}", e);
     }
+    if let Err(e) = database::ensure_aws_resources_table(&db_connection_val).await {
+        tracing::warn!("Failed to ensure aws_resources table exists: {}", e);
+    }
     let db_connection = Arc::new(db_connection_val);
     
     // Initialize repositories
