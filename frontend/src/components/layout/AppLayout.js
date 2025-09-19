@@ -59,6 +59,9 @@ const AppLayout = () => {
             <CNavLink as={Link} to="/kinesis-analysis">Kinesis Analysis</CNavLink>
           </CNavItem>
           <CNavItem>
+            <CNavLink as={Link} to="/sync-runs">Sync Runs</CNavLink>
+          </CNavItem>
+          <CNavItem>
             <CNavLink as={Link} to="/kubernetes">Kubernetes</CNavLink>
           </CNavItem>
           <CNavItem>

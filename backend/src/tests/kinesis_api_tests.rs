@@ -10,7 +10,11 @@ mod kinesis_api_tests {
         KinesisDeleteStreamRequest, KinesisDescribeStreamRequest
     };
 
-    const BASE_URL: &str = "http://localhost:8080";
+    fn base_url() -> String {
+        if let Ok(url) = std::env::var("TEST_API_BASE_URL") { return url; }
+        let port = std::env::var("BACKEND_PORT").unwrap_or_else(|_| "8010".to_string());
+        format!("http://127.0.0.1:{}", port)
+    }
     const DEFAULT_PROFILE: &str = "default";
     const DEFAULT_REGION: &str = "us-east-1";
     const ADMIN_USERNAME: &str = "admin";
@@ -19,7 +23,7 @@ mod kinesis_api_tests {
     /// Helper function to get authentication token
     async fn get_auth_token() -> Result<String, Box<dyn std::error::Error>> {
         let client = Client::new();
-        let login_url = format!("{}/api/auth/login", BASE_URL);
+    let login_url = format!("{}/api/auth/login", base_url());
         
         let login_request = json!({
             "username": ADMIN_USERNAME,
@@ -49,7 +53,7 @@ mod kinesis_api_tests {
     /// Helper function to wait for the backend server to be ready
     async fn wait_for_server() -> Result<(), Box<dyn std::error::Error>> {
         let client = Client::new();
-        let health_url = format!("{}/health", BASE_URL);
+    let health_url = format!("{}/health", base_url());
         
         for attempt in 1..=30 {
             match client.get(&health_url).send().await {
@@ -70,9 +74,17 @@ mod kinesis_api_tests {
         Err("Backend server is not responding after 30 attempts".into())
     }
 
+    fn enabled() -> bool {
+        std::env::var("RUN_KINESIS_TESTS").map(|v| v == "1" || v.to_lowercase() == "true").unwrap_or(false)
+    }
+
     /// Test the Kinesis data plane put_record endpoint via HTTP
     #[tokio::test]
     async fn test_kinesis_put_record_api() {
+        if !enabled() {
+            println!("Skipping Kinesis tests (set RUN_KINESIS_TESTS=1 to enable)");
+            return;
+        }
         println!("🧪 Testing Kinesis put_record API endpoint...");
 
         // Wait for server to be ready
@@ -82,8 +94,8 @@ mod kinesis_api_tests {
         let token = get_auth_token().await.expect("Must be able to authenticate");
 
         let client = Client::new();
-        let url = format!("{}/api/aws-data/profiles/{}/regions/{}/kinesis", 
-                         BASE_URL, DEFAULT_PROFILE, DEFAULT_REGION);
+    let url = format!("{}/api/aws-data/profiles/{}/regions/{}/kinesis", 
+             base_url(), DEFAULT_PROFILE, DEFAULT_REGION);
 
         // Test data
         let test_request = KinesisPutRecordRequest {
@@ -118,6 +130,10 @@ mod kinesis_api_tests {
     /// Test the Kinesis control plane create_stream endpoint via HTTP
     #[tokio::test]
     async fn test_kinesis_create_stream_api() {
+        if !enabled() {
+            println!("Skipping Kinesis tests (set RUN_KINESIS_TESTS=1 to enable)");
+            return;
+        }
         println!("🧪 Testing Kinesis create_stream API endpoint...");
 
         // Wait for server to be ready
@@ -127,8 +143,8 @@ mod kinesis_api_tests {
         let token = get_auth_token().await.expect("Must be able to authenticate");
 
         let client = Client::new();
-        let url = format!("{}/api/aws-data/profiles/{}/regions/{}/kinesis/streams", 
-                         BASE_URL, DEFAULT_PROFILE, DEFAULT_REGION);
+    let url = format!("{}/api/aws-data/profiles/{}/regions/{}/kinesis/streams", 
+             base_url(), DEFAULT_PROFILE, DEFAULT_REGION);
 
         // Test data
         let test_request = KinesisCreateStreamRequest {
@@ -161,6 +177,10 @@ mod kinesis_api_tests {
     /// Test the Kinesis control plane describe_stream endpoint via HTTP
     #[tokio::test]
     async fn test_kinesis_describe_stream_api() {
+        if !enabled() {
+            println!("Skipping Kinesis tests (set RUN_KINESIS_TESTS=1 to enable)");
+            return;
+        }
         println!("🧪 Testing Kinesis describe_stream API endpoint...");
 
         // Wait for server to be ready
@@ -170,8 +190,8 @@ mod kinesis_api_tests {
         let token = get_auth_token().await.expect("Must be able to authenticate");
 
         let client = Client::new();
-        let url = format!("{}/api/aws-data/profiles/{}/regions/{}/kinesis/streams", 
-                         BASE_URL, DEFAULT_PROFILE, DEFAULT_REGION);
+    let url = format!("{}/api/aws-data/profiles/{}/regions/{}/kinesis/streams", 
+             base_url(), DEFAULT_PROFILE, DEFAULT_REGION);
 
         // Test data
         let test_request = KinesisDescribeStreamRequest {
@@ -203,6 +223,10 @@ mod kinesis_api_tests {
     /// Test the Kinesis control plane delete_stream endpoint via HTTP
     #[tokio::test]
     async fn test_kinesis_delete_stream_api() {
+        if !enabled() {
+            println!("Skipping Kinesis tests (set RUN_KINESIS_TESTS=1 to enable)");
+            return;
+        }
         println!("🧪 Testing Kinesis delete_stream API endpoint...");
 
         // Wait for server to be ready
@@ -216,8 +240,8 @@ mod kinesis_api_tests {
         sleep(Duration::from_secs(120)).await;
 
         let client = Client::new();
-        let url = format!("{}/api/aws-data/profiles/{}/regions/{}/kinesis/streams", 
-                         BASE_URL, DEFAULT_PROFILE, DEFAULT_REGION);
+    let url = format!("{}/api/aws-data/profiles/{}/regions/{}/kinesis/streams", 
+             base_url(), DEFAULT_PROFILE, DEFAULT_REGION);
 
         // Test data
         let test_request = KinesisDeleteStreamRequest {

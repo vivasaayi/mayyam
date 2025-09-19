@@ -52,6 +52,7 @@ pub enum LlmProviderType {
     Anthropic,
     Local,
     Gemini,
+    DeepSeek,
     Custom,
 }
 
@@ -63,6 +64,7 @@ impl From<String> for LlmProviderType {
             "anthropic" => Self::Anthropic,
             "local" => Self::Local,
             "gemini" => Self::Gemini,
+            "deepseek" => Self::DeepSeek,
             _ => Self::Custom,
         }
     }
@@ -76,6 +78,7 @@ impl From<LlmProviderType> for String {
             LlmProviderType::Anthropic => "anthropic".to_string(),
             LlmProviderType::Local => "local".to_string(),
             LlmProviderType::Gemini => "gemini".to_string(),
+            LlmProviderType::DeepSeek => "deepseek".to_string(),
             LlmProviderType::Custom => "custom".to_string(),
         }
     }
@@ -369,7 +372,15 @@ pub type LlmProviderModel = Model;
 // Implement From<Model> for LlmProviderResponseDto
 impl From<Model> for LlmProviderResponseDto {
     fn from(entity: Model) -> Self {
-        let provider_type_str = entity.provider_type.clone();
+        let provider_type_str = match entity.provider_type.to_lowercase().as_str() {
+            "openai" => "OpenAI".to_string(),
+            "ollama" => "Ollama".to_string(),
+            "anthropic" => "Anthropic".to_string(),
+            "local" => "Local".to_string(),
+            "gemini" => "Gemini".to_string(),
+            "deepseek" => "DeepSeek".to_string(),
+            other => other.to_string(),
+        };
         
         // Parse enums from strings, with fallbacks
         let status = LlmProviderStatus::Active; // Default status since it's not in the base model
@@ -377,18 +388,21 @@ impl From<Model> for LlmProviderResponseDto {
         let prompt_format = serde_json::from_str::<LlmPromptFormat>(&entity.prompt_format)
             .unwrap_or(LlmPromptFormat::OpenAI);
 
+        // Clone base_url once for use in multiple fields to avoid move issues
+        let base_url_cloned = entity.base_url.clone();
+
         Self {
             id: entity.id,
             name: entity.name,
             provider_type: provider_type_str,
-            base_url: entity.base_url,
+            base_url: base_url_cloned.clone(),
             has_api_key: entity.api_key.is_some(),
             model_name: entity.model_name,
             model_config: entity.model_config,
             prompt_format,
             enabled: entity.enabled,
             is_default: entity.is_default,
-            api_endpoint: None, // Not in base model
+            api_endpoint: base_url_cloned,
             description: None,  // Not in base model
             status,
             created_at: entity.created_at,

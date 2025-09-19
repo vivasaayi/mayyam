@@ -218,21 +218,22 @@ impl From<(AwsAccountUpdateDto, Option<String>, Uuid)> for ActiveModel {
 
 impl AwsAccountDto {
     pub fn new_with_profile(profile: &str, region: &str) -> Self {
+        let now = Utc::now();
         AwsAccountDto {
-            id: todo!(),
-            account_id: todo!(),
-            account_name: todo!(),
+            id: Uuid::new_v4(),
+            account_id: "".to_string(), // Will be filled later
+            account_name: profile.to_string(),
             profile: Some(profile.to_string()),
             default_region: region.to_string(),
-            use_role: todo!(),
-            role_arn: todo!(),
-            external_id: todo!(),
-            has_access_key: todo!(),
-            access_key_id: todo!(),
-            secret_access_key: todo!(),
-            last_synced_at: todo!(),
-            created_at: todo!(),
-            updated_at: todo!(),
+            use_role: false,
+            role_arn: None,
+            external_id: None,
+            has_access_key: false,
+            access_key_id: None,
+            secret_access_key: None,
+            last_synced_at: None,
+            created_at: now,
+            updated_at: now,
         }
     }
 }

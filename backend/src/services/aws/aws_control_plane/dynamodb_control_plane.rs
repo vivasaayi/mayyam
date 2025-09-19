@@ -1,5 +1,7 @@
 use std::sync::Arc;
 use serde_json::json;
+use uuid::Uuid;
+use tracing::{debug, info, error};
 use crate::errors::AppError;
 use crate::models::aws_account::AwsAccountDto;
 use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel};
@@ -17,18 +19,27 @@ impl DynamoDbControlPlane {
         Self { aws_service }
     }
 
-    pub async fn sync_tables(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
+    pub async fn sync_tables(&self, aws_account_dto: &AwsAccountDto, sync_id: Uuid) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!("Syncing DynamoDB tables for account: {} with sync_id: {}", &aws_account_dto.account_id, sync_id);
         let client = self.aws_service.create_dynamodb_client(aws_account_dto).await?;
 
         // Get the list of tables from AWS
         let list_response = client.list_tables()
             .send()
             .await
-            .map_err(|e| AppError::ExternalService(format!("Failed to list DynamoDB tables: {}", e)))?;
+            .map_err(|e| {
+                error!("Failed to describe DynamoDB tables: {}", &e);
+                let inner_aws_error = e.into_service_error();
+                error!("Error raw response: {:?}", &inner_aws_error);
+                AppError::ExternalService(format!("Failed to list DynamoDB tables: {}", inner_aws_error))
+            })?;
             
         let mut tables = Vec::new();
-        
+
+        debug!("Fetched {} DynamoDB tables", list_response.table_names().len());
+
         for table_name in list_response.table_names() {
+            debug!("Found DynamoDB table: {}", table_name);
             // Get detailed info for each table
             let describe_resp = client.describe_table()
                 .table_name(table_name)
@@ -157,6 +168,7 @@ impl DynamoDbControlPlane {
                     name,
                     tags: serde_json::Value::Object(tags_map),
                     resource_data: serde_json::Value::Object(resource_data),
+                    sync_id: Some(sync_id),
                 };
                 
                 tables.push(table);

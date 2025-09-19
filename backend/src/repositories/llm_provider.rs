@@ -206,6 +206,10 @@ impl LlmProviderRepository {
                 // Test Gemini API connection
                 Ok(true)
             },
+            LlmProviderType::DeepSeek => {
+                // Test DeepSeek API connection
+                Ok(true)
+            },
             LlmProviderType::Custom => {
                 // Test custom provider connection
                 Ok(true)

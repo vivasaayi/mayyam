@@ -5,6 +5,7 @@ use serial_test::serial;
 
 use crate::services::aws_account::AwsAccountService;
 use crate::repositories::aws_account::AwsAccountRepository;
+use crate::repositories::sync_run::SyncRunRepository;
 use crate::models::aws_account::{AwsAccountCreateDto, AwsAccountDto};
 use crate::services::aws::AwsControlPlane;
 use crate::errors::AppError;
@@ -40,7 +41,8 @@ mod aws_account_service_tests {
         let mut mock_control_plane = MockAwsControlPlaneImpl::new();
         mock_control_plane.expect_clone().returning(|| MockAwsControlPlaneImpl::new());
 
-        let service = AwsAccountService::new(repo, Arc::new(mock_control_plane));
+    let sync_repo = Arc::new(SyncRunRepository::new(Arc::new(test_db.conn().clone())));
+    let service = AwsAccountService::new(repo, Arc::new(mock_control_plane), sync_repo);
 
         let create_dto = factories::fake_aws_account();
 
@@ -61,7 +63,8 @@ mod aws_account_service_tests {
         let mut mock_control_plane = MockAwsControlPlaneImpl::new();
         mock_control_plane.expect_clone().returning(|| MockAwsControlPlaneImpl::new());
 
-        let service = AwsAccountService::new(repo, Arc::new(mock_control_plane));
+    let sync_repo = Arc::new(SyncRunRepository::new(Arc::new(test_db.conn().clone())));
+    let service = AwsAccountService::new(repo, Arc::new(mock_control_plane), sync_repo);
 
         let create_dto = AwsAccountCreateDto {
             account_id: "123456789012".to_string(),
@@ -94,7 +97,8 @@ mod aws_account_service_tests {
         let mut mock_control_plane = MockAwsControlPlaneImpl::new();
         mock_control_plane.expect_clone().returning(|| MockAwsControlPlaneImpl::new());
 
-        let service = AwsAccountService::new(repo.clone(), Arc::new(mock_control_plane));
+    let sync_repo = Arc::new(SyncRunRepository::new(Arc::new(test_db.conn().clone())));
+    let service = AwsAccountService::new(repo.clone(), Arc::new(mock_control_plane), sync_repo);
 
         // Create an account first
         let create_dto = factories::fake_aws_account();
@@ -118,7 +122,8 @@ mod aws_account_service_tests {
         let mut mock_control_plane = MockAwsControlPlaneImpl::new();
         mock_control_plane.expect_clone().returning(|| MockAwsControlPlaneImpl::new());
 
-        let service = AwsAccountService::new(repo, Arc::new(mock_control_plane));
+    let sync_repo = Arc::new(SyncRunRepository::new(Arc::new(test_db.conn().clone())));
+    let service = AwsAccountService::new(repo, Arc::new(mock_control_plane), sync_repo);
 
         let non_existent_id = uuid::Uuid::new_v4();
         let result = service.get_account(non_existent_id).await;
@@ -140,7 +145,8 @@ mod aws_account_service_tests {
         let mut mock_control_plane = MockAwsControlPlaneImpl::new();
         mock_control_plane.expect_clone().returning(|| MockAwsControlPlaneImpl::new());
 
-        let service = AwsAccountService::new(repo.clone(), Arc::new(mock_control_plane));
+    let sync_repo = Arc::new(SyncRunRepository::new(Arc::new(test_db.conn().clone())));
+    let service = AwsAccountService::new(repo.clone(), Arc::new(mock_control_plane), sync_repo);
 
         // Create multiple accounts
         let account1 = service.create_account(factories::fake_aws_account()).await.unwrap();
@@ -165,7 +171,8 @@ mod aws_account_service_tests {
         let mut mock_control_plane = MockAwsControlPlaneImpl::new();
         mock_control_plane.expect_clone().returning(|| MockAwsControlPlaneImpl::new());
 
-        let service = AwsAccountService::new(repo.clone(), Arc::new(mock_control_plane));
+    let sync_repo = Arc::new(SyncRunRepository::new(Arc::new(test_db.conn().clone())));
+    let service = AwsAccountService::new(repo.clone(), Arc::new(mock_control_plane), sync_repo);
 
         // Create account
         let create_dto = factories::fake_aws_account();
@@ -201,7 +208,8 @@ mod aws_account_service_tests {
         let mut mock_control_plane = MockAwsControlPlaneImpl::new();
         mock_control_plane.expect_clone().returning(|| MockAwsControlPlaneImpl::new());
 
-        let service = AwsAccountService::new(repo.clone(), Arc::new(mock_control_plane));
+    let sync_repo = Arc::new(SyncRunRepository::new(Arc::new(test_db.conn().clone())));
+    let service = AwsAccountService::new(repo.clone(), Arc::new(mock_control_plane), sync_repo);
 
         // Create account
         let create_dto = factories::fake_aws_account();

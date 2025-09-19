@@ -16,6 +16,7 @@ pub mod query_template;
 pub mod llm_analytics;
 pub mod cost_analytics;
 pub mod unified_llm;
+pub mod sync_run;
 
 use actix_web::web;
 use sea_orm::DatabaseConnection; // Ensure this is imported
@@ -31,6 +32,7 @@ pub fn configure(cfg: &mut web::ServiceConfig, db: Arc<DatabaseConnection>) {
     chaos::configure(cfg);
     ai::configure(cfg);
     graphql::configure(cfg);
+        // Note: sync_run routes are registered in server.rs where controller is available
     // Note: aws_account and aws_analytics are configured separately
     // with dependency injection in server.rs to avoid route conflicts
     // DO NOT configure aws_analytics here

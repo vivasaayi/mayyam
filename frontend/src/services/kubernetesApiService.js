@@ -2,8 +2,7 @@
 import { fetchWithAuth } from './api'; // Import fetchWithAuth
 
 // Base URL for the backend API
-// Assuming the backend is running on port 8080 locally
-const API_BASE_URL = 'http://localhost:8080/api/kubernetes';
+const API_BASE_URL = `${process.env.REACT_APP_API_URL || "http://localhost:8010"}/api/kubernetes`;
 
 // Helper function to handle fetch responses
 const handleResponse = async (response) => {

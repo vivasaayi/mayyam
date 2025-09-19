@@ -134,6 +134,7 @@ impl SnsControlPlane {
                         name,
                         tags: serde_json::Value::Object(tags_map),
                         resource_data: serde_json::Value::Object(topic_data),
+                        sync_id: None,
                     };
                     
                     // Save to database

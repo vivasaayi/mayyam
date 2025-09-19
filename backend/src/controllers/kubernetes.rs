@@ -489,6 +489,7 @@ pub async fn list_all_deployments_controller(
     deployments_service: web::Data<Arc<DeploymentsService>>,
 ) -> Result<impl Responder, AppError> {
     let cluster_id = path.into_inner();
+    println!("Listing all deployments for cluster: {}", cluster_id.clone());
     debug!(target: "mayyam::controllers::kubernetes", user_id = %claims.username, %cluster_id, "Attempting to list all deployments");
     let cluster_config = get_cluster_config_by_id(db.get_ref().as_ref(), &cluster_id).await?;
     debug!(target: "mayyam::controllers::kubernetes", %cluster_id, "Successfully retrieved cluster config for listing all deployments");

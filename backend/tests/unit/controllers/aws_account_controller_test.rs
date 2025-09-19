@@ -6,6 +6,7 @@ use serial_test::serial;
 use crate::controllers::aws_account;
 use crate::services::aws_account::AwsAccountService;
 use crate::repositories::aws_account::AwsAccountRepository;
+use crate::repositories::sync_run::SyncRunRepository;
 use crate::models::aws_account::{AwsAccountCreateDto, AwsAccountDto};
 use crate::services::aws::AwsControlPlane;
 
@@ -36,7 +37,8 @@ mod aws_account_controller_tests {
             ))
         ));
 
-        let service = Arc::new(AwsAccountService::new(repo, aws_control_plane));
+    let sync_run_repo = Arc::new(SyncRunRepository::new(Arc::new(test_db.conn().clone())));
+    let service = Arc::new(AwsAccountService::new(repo, aws_control_plane, sync_run_repo));
 
         test::init_service(
             App::new()

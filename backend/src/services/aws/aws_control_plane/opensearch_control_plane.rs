@@ -193,6 +193,7 @@ impl OpenSearchControlPlane {
                         name,
                         tags: serde_json::Value::Object(tags_map),
                         resource_data: serde_json::Value::Object(domain_data),
+                        sync_id: None,
                     };
                     
                     // Save to database

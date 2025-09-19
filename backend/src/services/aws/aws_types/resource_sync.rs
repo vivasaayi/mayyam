@@ -1,8 +1,10 @@
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 // Common Request/Response types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceSyncRequest {
+    pub sync_id: Uuid,
     pub account_id: String,
     pub profile: Option<String>,
     pub region: String,
