@@ -1,7 +1,7 @@
 #[cfg(feature = "integration-tests")]
 mod tests {
     use std::time::Duration;
-    use crate::tests::integration::helpers::kafka_test_helper::KafkaTestHelper;
+    use crate::integration::helpers::kafka_test_helper::KafkaTestHelper;
     
     fn kafka_tests_enabled() -> bool {
         std::env::var("ENABLE_KAFKA_TESTS").ok().as_deref() == Some("1")
