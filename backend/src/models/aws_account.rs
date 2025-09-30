@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use sea_orm::entity::prelude::*;
 use sea_orm::ActiveValue::Set;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 /// SeaORM entity definition for the AWS accounts table
 /// This maps directly to the database schema

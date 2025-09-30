@@ -1,23 +1,25 @@
-use std::sync::Arc;
-use std::collections::HashMap;
-use chrono::{NaiveDate, Utc, Duration, Datelike};
-use aws_sdk_costexplorer::{Client as CostExplorerClient, types::*, operation::get_cost_and_usage::GetCostAndUsageInput};
 use aws_config::SdkConfig;
-use serde_json::Value as JsonValue;
-use serde::Serialize;
-use uuid::Uuid;
+use aws_sdk_costexplorer::{
+    operation::get_cost_and_usage::GetCostAndUsageInput, types::*, Client as CostExplorerClient,
+};
+use chrono::{Datelike, Duration, NaiveDate, Utc};
 use sea_orm::prelude::Decimal;
 use sea_orm::ActiveValue;
+use serde::Serialize;
+use serde_json::Value as JsonValue;
+use std::collections::HashMap;
+use std::sync::Arc;
+use uuid::Uuid;
 
+use crate::errors::AppError;
+use crate::models::{
+    aws_cost_anomalies::ActiveModel as CostAnomalyActiveModel,
+    aws_cost_data::ActiveModel as CostDataActiveModel,
+    aws_cost_insights::ActiveModel as CostInsightActiveModel,
+    aws_monthly_cost_aggregates::ActiveModel as MonthlyCostAggregateActiveModel,
+};
 use crate::repositories::cost_analytics::CostAnalyticsRepository;
 use crate::services::llm::LlmIntegrationService;
-use crate::models::{
-    aws_cost_data::ActiveModel as CostDataActiveModel,
-    aws_monthly_cost_aggregates::ActiveModel as MonthlyCostAggregateActiveModel,
-    aws_cost_anomalies::ActiveModel as CostAnomalyActiveModel,
-    aws_cost_insights::ActiveModel as CostInsightActiveModel,
-};
-use crate::errors::AppError;
 
 #[derive(Debug, Clone)]
 pub struct CostMetrics {
@@ -61,7 +63,7 @@ impl AwsCostAnalyticsService {
         llm_service: Arc<LlmIntegrationService>,
     ) -> Self {
         let cost_explorer_client = CostExplorerClient::new(aws_config);
-        
+
         Self {
             cost_explorer_client,
             repository,
@@ -70,9 +72,16 @@ impl AwsCostAnalyticsService {
     }
 
     /// Fetch real-time cost data from AWS Cost Explorer API
-    pub async fn fetch_cost_data(&self, request: &CostAnalysisRequest) -> Result<CostMetrics, AppError> {
-        tracing::info!("Fetching cost data for account {} from {} to {}", 
-            request.account_id, request.start_date, request.end_date);
+    pub async fn fetch_cost_data(
+        &self,
+        request: &CostAnalysisRequest,
+    ) -> Result<CostMetrics, AppError> {
+        tracing::info!(
+            "Fetching cost data for account {} from {} to {}",
+            request.account_id,
+            request.start_date,
+            request.end_date
+        );
 
         // Create time period
         let time_period = DateInterval::builder()
@@ -81,7 +90,7 @@ impl AwsCostAnalyticsService {
             .build()
             .map_err(|e| AppError::CloudProvider(format!("Failed to build time period: {}", e)))?;
 
-        // Create granularity 
+        // Create granularity
         let granularity = Granularity::from(request.granularity.as_str());
 
         // Add service filter if provided - TODO: Fix when AWS SDK types are available
@@ -91,21 +100,25 @@ impl AwsCostAnalyticsService {
         //         .set_values(Some(services.clone()))
         //         .build()
         //         .map_err(|e| AppError::CloudProvider(format!("Failed to build dimension key: {}", e)))?;
-        //     
+        //
         //     let filter = Expression::builder()
         //         .dimensions(dimension_key)
         //         .build()
         //         .map_err(|e| AppError::CloudProvider(format!("Failed to build filter expression: {}", e)))?;
-        //         
+        //
         //     cost_request = cost_request.filter(filter);
         // }
 
         // Execute the API call
-        let response = self.cost_explorer_client
+        let response = self
+            .cost_explorer_client
             .get_cost_and_usage()
             .time_period(time_period)
             .granularity(granularity)
-            .set_metrics(Some(vec!["UnblendedCost".to_string(), "BlendedCost".to_string()]))
+            .set_metrics(Some(vec![
+                "UnblendedCost".to_string(),
+                "BlendedCost".to_string(),
+            ]))
             .set_group_by(Some(vec![
                 GroupDefinition::builder()
                     .r#type(GroupDefinitionType::Dimension)
@@ -114,7 +127,7 @@ impl AwsCostAnalyticsService {
                 GroupDefinition::builder()
                     .r#type(GroupDefinitionType::Dimension)
                     .key("USAGE_TYPE")
-                    .build()
+                    .build(),
             ]))
             .send()
             .await
@@ -127,17 +140,13 @@ impl AwsCostAnalyticsService {
 
         if let Some(results_by_time) = response.results_by_time {
             for time_result in results_by_time {
-                let time_period = time_result.time_period.ok_or_else(|| 
+                let time_period = time_result.time_period.ok_or_else(|| {
                     AppError::Validation("Missing time period in response".to_string())
-                )?;
-                let start_date = NaiveDate::parse_from_str(
-                    &time_period.start, 
-                    "%Y-%m-%d"
-                ).map_err(|e| AppError::Validation(format!("Invalid date format: {}", e)))?;
-                let end_date = NaiveDate::parse_from_str(
-                    &time_period.end, 
-                    "%Y-%m-%d"
-                ).map_err(|e| AppError::Validation(format!("Invalid date format: {}", e)))?;
+                })?;
+                let start_date = NaiveDate::parse_from_str(&time_period.start, "%Y-%m-%d")
+                    .map_err(|e| AppError::Validation(format!("Invalid date format: {}", e)))?;
+                let end_date = NaiveDate::parse_from_str(&time_period.end, "%Y-%m-%d")
+                    .map_err(|e| AppError::Validation(format!("Invalid date format: {}", e)))?;
 
                 if let Some(groups) = time_result.groups {
                     for group in groups {
@@ -146,25 +155,29 @@ impl AwsCostAnalyticsService {
                         let usage_type = keys.get(1).cloned();
 
                         if let Some(metrics) = group.metrics {
-                            let unblended_cost = metrics.get("UnblendedCost")
+                            let unblended_cost = metrics
+                                .get("UnblendedCost")
                                 .and_then(|m| m.amount.as_ref())
                                 .and_then(|a| a.parse::<f64>().ok())
                                 .unwrap_or(0.0);
 
-                            let blended_cost = metrics.get("BlendedCost")
+                            let blended_cost = metrics
+                                .get("BlendedCost")
                                 .and_then(|m| m.amount.as_ref())
                                 .and_then(|a| a.parse::<f64>().ok())
                                 .unwrap_or(0.0);
 
-                            let usage_amount = metrics.get("UsageQuantity")
+                            let usage_amount = metrics
+                                .get("UsageQuantity")
                                 .and_then(|m| m.amount.as_ref())
                                 .and_then(|a| a.parse::<f64>().ok());
 
-                            let usage_unit = metrics.get("UsageQuantity")
-                                .and_then(|m| m.unit.clone());
+                            let usage_unit =
+                                metrics.get("UsageQuantity").and_then(|m| m.unit.clone());
 
                             // Update service breakdown
-                            *service_breakdown.entry(service_name.clone()).or_insert(0.0) += unblended_cost;
+                            *service_breakdown.entry(service_name.clone()).or_insert(0.0) +=
+                                unblended_cost;
                             total_cost += unblended_cost;
 
                             // Create cost data model for database storage
@@ -177,9 +190,16 @@ impl AwsCostAnalyticsService {
                                 region: ActiveValue::NotSet,
                                 usage_start: ActiveValue::Set(start_date),
                                 usage_end: ActiveValue::Set(end_date),
-                                unblended_cost: ActiveValue::Set(Decimal::from_f64_retain(unblended_cost).unwrap_or_default()),
-                                blended_cost: ActiveValue::Set(Decimal::from_f64_retain(blended_cost).unwrap_or_default()),
-                                usage_amount: ActiveValue::Set(usage_amount.map(|u| Decimal::from_f64_retain(u).unwrap_or_default())),
+                                unblended_cost: ActiveValue::Set(
+                                    Decimal::from_f64_retain(unblended_cost).unwrap_or_default(),
+                                ),
+                                blended_cost: ActiveValue::Set(
+                                    Decimal::from_f64_retain(blended_cost).unwrap_or_default(),
+                                ),
+                                usage_amount: ActiveValue::Set(
+                                    usage_amount
+                                        .map(|u| Decimal::from_f64_retain(u).unwrap_or_default()),
+                                ),
                                 usage_unit: ActiveValue::Set(usage_unit),
                                 currency: ActiveValue::Set("USD".to_string()),
                                 tags: ActiveValue::NotSet,
@@ -200,10 +220,15 @@ impl AwsCostAnalyticsService {
         }
 
         // Detect anomalies
-        let anomalies = self.detect_cost_anomalies(&request.account_id, &service_breakdown).await?;
+        let anomalies = self
+            .detect_cost_anomalies(&request.account_id, &service_breakdown)
+            .await?;
 
         // Generate monthly trend
-        let monthly_trend = self.repository.calculate_monthly_totals(&request.account_id).await?;
+        let monthly_trend = self
+            .repository
+            .calculate_monthly_totals(&request.account_id)
+            .await?;
 
         Ok(CostMetrics {
             total_cost,
@@ -221,13 +246,14 @@ impl AwsCostAnalyticsService {
         let now = Utc::now().naive_utc().date();
         let current_month = NaiveDate::from_ymd_opt(now.year(), now.month(), 1)
             .ok_or_else(|| AppError::Validation("Invalid date".to_string()))?;
-        
+
         // Get the previous month for comparison
         let previous_month = if current_month.month() == 1 {
             NaiveDate::from_ymd_opt(current_month.year() - 1, 12, 1)
         } else {
             NaiveDate::from_ymd_opt(current_month.year(), current_month.month() - 1, 1)
-        }.ok_or_else(|| AppError::Validation("Invalid previous month date".to_string()))?;
+        }
+        .ok_or_else(|| AppError::Validation("Invalid previous month date".to_string()))?;
 
         // Get cost data for the current month
         let month_start = current_month;
@@ -235,9 +261,11 @@ impl AwsCostAnalyticsService {
             NaiveDate::from_ymd_opt(current_month.year() + 1, 1, 1)
         } else {
             NaiveDate::from_ymd_opt(current_month.year(), current_month.month() + 1, 1)
-        }.ok_or_else(|| AppError::Validation("Invalid month end date".to_string()))?;
+        }
+        .ok_or_else(|| AppError::Validation("Invalid month end date".to_string()))?;
 
-        let current_month_data = self.repository
+        let current_month_data = self
+            .repository
             .get_cost_data_by_date_range(account_id, month_start, month_end, None)
             .await?;
 
@@ -246,8 +274,15 @@ impl AwsCostAnalyticsService {
 
         for cost_data in current_month_data {
             let service = cost_data.service_name.clone();
-            let cost = cost_data.unblended_cost.to_string().parse::<f64>().unwrap_or(0.0);
-            let usage = cost_data.usage_amount.map(|u| u.to_string().parse::<f64>().unwrap_or(0.0)).unwrap_or(0.0);
+            let cost = cost_data
+                .unblended_cost
+                .to_string()
+                .parse::<f64>()
+                .unwrap_or(0.0);
+            let usage = cost_data
+                .usage_amount
+                .map(|u| u.to_string().parse::<f64>().unwrap_or(0.0))
+                .unwrap_or(0.0);
             let unit = cost_data.usage_unit.unwrap_or_default();
 
             let entry = service_totals.entry(service).or_insert((0.0, 0.0, unit));
@@ -256,7 +291,8 @@ impl AwsCostAnalyticsService {
         }
 
         // Get previous month's aggregates for comparison
-        let previous_aggregates = self.repository
+        let previous_aggregates = self
+            .repository
             .get_monthly_aggregates_by_account(account_id, Some(1))
             .await?;
 
@@ -271,7 +307,10 @@ impl AwsCostAnalyticsService {
 
         // Create monthly aggregates
         for (service_name, (total_cost, usage_amount, usage_unit)) in service_totals {
-            let previous_cost = previous_service_costs.get(&service_name).copied().unwrap_or(0.0);
+            let previous_cost = previous_service_costs
+                .get(&service_name)
+                .copied()
+                .unwrap_or(0.0);
             let cost_change_amount = total_cost - previous_cost;
             let cost_change_pct = if previous_cost > 0.0 {
                 (cost_change_amount / previous_cost) * 100.0
@@ -288,12 +327,22 @@ impl AwsCostAnalyticsService {
                 account_id: ActiveValue::Set(account_id.to_string()),
                 service_name: ActiveValue::Set(service_name.clone()),
                 month_year: ActiveValue::Set(current_month),
-                total_cost: ActiveValue::Set(Decimal::from_f64_retain(total_cost).unwrap_or_default()),
-                usage_amount: ActiveValue::Set(Some(Decimal::from_f64_retain(usage_amount).unwrap_or_default())),
+                total_cost: ActiveValue::Set(
+                    Decimal::from_f64_retain(total_cost).unwrap_or_default(),
+                ),
+                usage_amount: ActiveValue::Set(Some(
+                    Decimal::from_f64_retain(usage_amount).unwrap_or_default(),
+                )),
                 usage_unit: ActiveValue::Set(Some(usage_unit)),
-                cost_change_pct: ActiveValue::Set(Some(Decimal::from_f64_retain(cost_change_pct).unwrap_or_default())),
-                cost_change_amount: ActiveValue::Set(Some(Decimal::from_f64_retain(cost_change_amount).unwrap_or_default())),
-                anomaly_score: ActiveValue::Set(Some(Decimal::from_f64_retain(anomaly_score).unwrap_or_default())),
+                cost_change_pct: ActiveValue::Set(Some(
+                    Decimal::from_f64_retain(cost_change_pct).unwrap_or_default(),
+                )),
+                cost_change_amount: ActiveValue::Set(Some(
+                    Decimal::from_f64_retain(cost_change_amount).unwrap_or_default(),
+                )),
+                anomaly_score: ActiveValue::Set(Some(
+                    Decimal::from_f64_retain(anomaly_score).unwrap_or_default(),
+                )),
                 is_anomaly: ActiveValue::Set(is_anomaly),
                 tags_summary: ActiveValue::NotSet,
                 created_at: ActiveValue::Set(Utc::now().into()),
@@ -304,8 +353,16 @@ impl AwsCostAnalyticsService {
 
             // If anomaly detected, create anomaly record and generate LLM insight
             if is_anomaly {
-                let anomaly_type = if cost_change_pct > 0.0 { "spike" } else { "drop" };
-                let severity = if cost_change_pct.abs() > 100.0 { "high" } else { "medium" };
+                let anomaly_type = if cost_change_pct > 0.0 {
+                    "spike"
+                } else {
+                    "drop"
+                };
+                let severity = if cost_change_pct.abs() > 100.0 {
+                    "high"
+                } else {
+                    "medium"
+                };
 
                 let anomaly = CostAnomalyActiveModel {
                     id: ActiveValue::Set(Uuid::new_v4()),
@@ -314,14 +371,28 @@ impl AwsCostAnalyticsService {
                     anomaly_type: ActiveValue::Set(anomaly_type.to_string()),
                     severity: ActiveValue::Set(severity.to_string()),
                     detected_date: ActiveValue::Set(current_month),
-                    anomaly_score: ActiveValue::Set(Decimal::from_f64_retain(anomaly_score).unwrap_or_default()),
-                    baseline_cost: ActiveValue::Set(Some(Decimal::from_f64_retain(previous_cost).unwrap_or_default())),
-                    actual_cost: ActiveValue::Set(Decimal::from_f64_retain(total_cost).unwrap_or_default()),
-                    cost_difference: ActiveValue::Set(Some(Decimal::from_f64_retain(cost_change_amount).unwrap_or_default())),
-                    percentage_change: ActiveValue::Set(Some(Decimal::from_f64_retain(cost_change_pct).unwrap_or_default())),
+                    anomaly_score: ActiveValue::Set(
+                        Decimal::from_f64_retain(anomaly_score).unwrap_or_default(),
+                    ),
+                    baseline_cost: ActiveValue::Set(Some(
+                        Decimal::from_f64_retain(previous_cost).unwrap_or_default(),
+                    )),
+                    actual_cost: ActiveValue::Set(
+                        Decimal::from_f64_retain(total_cost).unwrap_or_default(),
+                    ),
+                    cost_difference: ActiveValue::Set(Some(
+                        Decimal::from_f64_retain(cost_change_amount).unwrap_or_default(),
+                    )),
+                    percentage_change: ActiveValue::Set(Some(
+                        Decimal::from_f64_retain(cost_change_pct).unwrap_or_default(),
+                    )),
                     description: ActiveValue::Set(Some(format!(
                         "{} cost {} by {:.1}% ({:.2} -> {:.2})",
-                        service_name, anomaly_type, cost_change_pct.abs(), previous_cost, total_cost
+                        service_name,
+                        anomaly_type,
+                        cost_change_pct.abs(),
+                        previous_cost,
+                        total_cost
                     ))),
                     status: ActiveValue::Set("open".to_string()),
                     created_at: ActiveValue::Set(Utc::now().into()),
@@ -331,7 +402,8 @@ impl AwsCostAnalyticsService {
                 let saved_anomaly = self.repository.insert_cost_anomaly(anomaly).await?;
 
                 // Generate LLM insight for the anomaly
-                self.generate_anomaly_insight(&saved_anomaly, &saved_aggregate).await?;
+                self.generate_anomaly_insight(&saved_anomaly, &saved_aggregate)
+                    .await?;
             }
         }
 
@@ -339,34 +411,53 @@ impl AwsCostAnalyticsService {
     }
 
     /// Detect cost anomalies using statistical methods
-    async fn detect_cost_anomalies(&self, account_id: &str, service_costs: &HashMap<String, f64>) -> Result<Vec<CostAnomaly>, AppError> {
+    async fn detect_cost_anomalies(
+        &self,
+        account_id: &str,
+        service_costs: &HashMap<String, f64>,
+    ) -> Result<Vec<CostAnomaly>, AppError> {
         let mut anomalies = Vec::new();
 
         // Get historical data for comparison
-        let historical_aggregates = self.repository
+        let historical_aggregates = self
+            .repository
             .get_monthly_aggregates_by_account(account_id, Some(6))
             .await?;
 
         let mut service_history: HashMap<String, Vec<f64>> = HashMap::new();
         for agg in historical_aggregates {
             let cost_value = agg.total_cost.to_string().parse::<f64>().unwrap_or(0.0);
-            service_history.entry(agg.service_name).or_insert_with(Vec::new).push(cost_value);
+            service_history
+                .entry(agg.service_name)
+                .or_insert_with(Vec::new)
+                .push(cost_value);
         }
 
         // Analyze each service for anomalies
         for (service_name, &current_cost) in service_costs {
             if let Some(history) = service_history.get(service_name) {
-                if history.len() >= 3 { // Need at least 3 data points
+                if history.len() >= 3 {
+                    // Need at least 3 data points
                     let mean: f64 = history.iter().sum::<f64>() / history.len() as f64;
-                    let variance: f64 = history.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / history.len() as f64;
+                    let variance: f64 = history.iter().map(|x| (x - mean).powi(2)).sum::<f64>()
+                        / history.len() as f64;
                     let std_dev = variance.sqrt();
 
                     // Z-score calculation
-                    let z_score = if std_dev > 0.0 { (current_cost - mean).abs() / std_dev } else { 0.0 };
+                    let z_score = if std_dev > 0.0 {
+                        (current_cost - mean).abs() / std_dev
+                    } else {
+                        0.0
+                    };
 
                     // Consider it an anomaly if z-score > 2 (roughly 95% confidence)
-                    if z_score > 2.0 && current_cost > 5.0 { // Significant cost threshold
-                        let percentage_change = if mean > 0.0 { ((current_cost - mean) / mean) * 100.0 } else { 0.0 };
+                    if z_score > 2.0 && current_cost > 5.0 {
+                        // Significant cost threshold
+                        let percentage_change = if mean > 0.0 {
+                            ((current_cost - mean) / mean) * 100.0
+                        } else {
+                            0.0
+                        };
                         let severity = if z_score > 3.0 { "high" } else { "medium" };
                         let anomaly_type = if current_cost > mean { "spike" } else { "drop" };
 
@@ -426,39 +517,61 @@ Respond in JSON format with the following structure:
             anomaly.service_name,
             anomaly.anomaly_type,
             anomaly.severity,
-            anomaly.baseline_cost.map(|d| d.to_string().parse::<f64>().unwrap_or(0.0)).unwrap_or(0.0),
-            anomaly.actual_cost.to_string().parse::<f64>().unwrap_or(0.0),
-            anomaly.percentage_change.map(|d| d.to_string().parse::<f64>().unwrap_or(0.0)).unwrap_or(0.0),
+            anomaly
+                .baseline_cost
+                .map(|d| d.to_string().parse::<f64>().unwrap_or(0.0))
+                .unwrap_or(0.0),
+            anomaly
+                .actual_cost
+                .to_string()
+                .parse::<f64>()
+                .unwrap_or(0.0),
+            anomaly
+                .percentage_change
+                .map(|d| d.to_string().parse::<f64>().unwrap_or(0.0))
+                .unwrap_or(0.0),
             anomaly.detected_date
         );
 
         // Find the first available LLM provider
         // Note: We'll temporarily skip LLM insights and add a TODO
-        tracing::warn!("LLM insight generation not yet implemented - would analyze anomaly {} in service {}", 
-            anomaly.id, anomaly.service_name);
-        
+        tracing::warn!(
+            "LLM insight generation not yet implemented - would analyze anomaly {} in service {}",
+            anomaly.id,
+            anomaly.service_name
+        );
+
         // TODO: Implement LLM insight generation once LlmIntegrationService exposes a method to get providers
         // For now, we'll just log the anomaly and continue
-        
+
         Ok(())
     }
 
     /// Get cost summary for dashboard
     pub async fn get_cost_summary(&self, account_id: &str) -> Result<serde_json::Value, AppError> {
         // Get recent aggregates
-        let aggregates = self.repository.get_monthly_aggregates_by_account(account_id, Some(6)).await?;
-        
+        let aggregates = self
+            .repository
+            .get_monthly_aggregates_by_account(account_id, Some(6))
+            .await?;
+
         // Get current month totals
         let monthly_totals = self.repository.calculate_monthly_totals(account_id).await?;
-        
+
         // Get recent anomalies
-        let anomalies = self.repository.get_cost_anomalies_by_account(account_id, None, Some("open".to_string())).await?;
-        
+        let anomalies = self
+            .repository
+            .get_cost_anomalies_by_account(account_id, None, Some("open".to_string()))
+            .await?;
+
         // Get top services for current month
         let now = Utc::now().naive_utc().date();
         let current_month = NaiveDate::from_ymd_opt(now.year(), now.month(), 1)
             .ok_or_else(|| AppError::Validation("Invalid date".to_string()))?;
-        let top_services = self.repository.get_top_services_by_cost(account_id, current_month, Some(10)).await?;
+        let top_services = self
+            .repository
+            .get_top_services_by_cost(account_id, current_month, Some(10))
+            .await?;
 
         Ok(serde_json::json!({
             "account_id": account_id,

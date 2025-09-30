@@ -1,9 +1,9 @@
-use sea_orm::*;
-use uuid::Uuid;
-use crate::models::prompt_template::{Entity, Model, ActiveModel, Column};
-use crate::models::prompt_template::{CreatePromptTemplateDto, UpdatePromptTemplateDto};
 use crate::errors::AppError;
-use tracing::{info, error};
+use crate::models::prompt_template::{ActiveModel, Column, Entity, Model};
+use crate::models::prompt_template::{CreatePromptTemplateDto, UpdatePromptTemplateDto};
+use sea_orm::*;
+use tracing::{error, info};
+use uuid::Uuid;
 
 #[derive(Debug)]
 pub struct PromptTemplateRepository {
@@ -23,7 +23,9 @@ impl PromptTemplateRepository {
             resource_type: Set(dto.resource_type),
             workflow_type: Set(dto.workflow_type),
             prompt_template: Set(dto.prompt_template),
-            variables: Set(serde_json::to_value(dto.variables).unwrap_or(serde_json::Value::Array(vec![]))),
+            variables: Set(
+                serde_json::to_value(dto.variables).unwrap_or(serde_json::Value::Array(vec![]))
+            ),
             version: Set(dto.version.unwrap_or("1.0".to_string())),
             is_active: Set(dto.is_active.unwrap_or(true)),
             is_system: Set(dto.is_system.unwrap_or(false)),
@@ -57,13 +59,10 @@ impl PromptTemplateRepository {
     }
 
     pub async fn find_all(&self) -> Result<Vec<Model>, AppError> {
-        Entity::find()
-            .all(&self.db)
-            .await
-            .map_err(|e| {
-                error!("Failed to find all prompt templates: {}", e);
-                AppError::Database(e)
-            })
+        Entity::find().all(&self.db).await.map_err(|e| {
+            error!("Failed to find all prompt templates: {}", e);
+            AppError::Database(e)
+        })
     }
 
     pub async fn find_by_category(&self, category: &str) -> Result<Vec<Model>, AppError> {
@@ -122,7 +121,8 @@ impl PromptTemplateRepository {
             active_model.prompt_template = Set(prompt_template);
         }
         if let Some(variables) = dto.variables {
-            active_model.variables = Set(serde_json::to_value(variables).unwrap_or(serde_json::Value::Array(vec![])));
+            active_model.variables =
+                Set(serde_json::to_value(variables).unwrap_or(serde_json::Value::Array(vec![])));
         }
         if let Some(version) = dto.version {
             active_model.version = Set(version);
@@ -134,7 +134,8 @@ impl PromptTemplateRepository {
             active_model.is_system = Set(is_system);
         }
         if let Some(tags) = dto.tags {
-            active_model.tags = Set(serde_json::to_value(tags).unwrap_or(serde_json::Value::Array(vec![])));
+            active_model.tags =
+                Set(serde_json::to_value(tags).unwrap_or(serde_json::Value::Array(vec![])));
         }
 
         active_model.updated_at = Set(chrono::Utc::now());
@@ -148,13 +149,19 @@ impl PromptTemplateRepository {
     }
 
     pub async fn delete(&self, id: &Uuid) -> Result<(), AppError> {
-        let result = Entity::delete_by_id(*id).exec(&self.db).await.map_err(|e| {
-            error!("Failed to delete prompt template: {}", e);
-            AppError::Database(e)
-        })?;
+        let result = Entity::delete_by_id(*id)
+            .exec(&self.db)
+            .await
+            .map_err(|e| {
+                error!("Failed to delete prompt template: {}", e);
+                AppError::Database(e)
+            })?;
 
         if result.rows_affected == 0 {
-            return Err(AppError::NotFound(format!("Prompt template with id {} not found", id)));
+            return Err(AppError::NotFound(format!(
+                "Prompt template with id {} not found",
+                id
+            )));
         }
 
         info!("Deleted prompt template with id: {}", id);
@@ -167,7 +174,7 @@ impl PromptTemplateRepository {
                 Condition::any()
                     .add(Column::Name.contains(query))
                     .add(Column::Description.contains(query))
-                    .add(Column::PromptTemplate.contains(query)) // Use correct field name
+                    .add(Column::PromptTemplate.contains(query)), // Use correct field name
             )
             .all(&self.db)
             .await

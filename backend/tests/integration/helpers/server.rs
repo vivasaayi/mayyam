@@ -125,7 +125,10 @@ pub async fn try_ensure_server() -> Option<String> {
     if !ok {
         // Ensure we don't leak a child process if health never became ready
         let _ = child.kill();
-        eprintln!("[integration] Skipping: backend server not healthy at {} (likely DB not available)", base_url);
+        eprintln!(
+            "[integration] Skipping: backend server not healthy at {} (likely DB not available)",
+            base_url
+        );
         return None;
     }
 

@@ -1,5 +1,5 @@
+use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use std::sync::Arc;
-use sea_orm::{Database, DatabaseConnection, ConnectOptions};
 use tempfile::TempDir;
 use tokio::sync::OnceCell;
 
@@ -12,7 +12,8 @@ pub struct TestDb {
 impl TestDb {
     /// Create a new in-memory SQLite database for testing
     pub async fn new() -> Result<Self, sea_orm::DbErr> {
-        let temp_dir = TempDir::new().map_err(|e| sea_orm::DbErr::Custom(format!("Temp dir error: {}", e)))?;
+        let temp_dir =
+            TempDir::new().map_err(|e| sea_orm::DbErr::Custom(format!("Temp dir error: {}", e)))?;
         let db_path = temp_dir.path().join("test.db");
 
         let mut opt = ConnectOptions::new(format!("sqlite://{}?mode=rwc", db_path.display()));
@@ -39,9 +40,9 @@ static TEST_DB: OnceCell<TestDb> = OnceCell::const_new();
 
 /// Get or create the global test database instance
 async fn get_test_db() -> &'static TestDb {
-    TEST_DB.get_or_init(|| async {
-        TestDb::new().await.expect("Failed to create test database")
-    }).await
+    TEST_DB
+        .get_or_init(|| async { TestDb::new().await.expect("Failed to create test database") })
+        .await
 }
 
 /// Setup test database for integration tests
@@ -114,6 +115,9 @@ pub mod assertions {
     where
         F: Fn(&T) -> bool,
     {
-        assert!(items.iter().any(predicate), "Expected item not found in collection");
+        assert!(
+            items.iter().any(predicate),
+            "Expected item not found in collection"
+        );
     }
 }

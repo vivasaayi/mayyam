@@ -30,15 +30,25 @@ pub struct LlmModelController {
 }
 
 impl LlmModelController {
-    pub fn new(repo: Arc<LlmProviderModelRepository>) -> Self { Self { repo } }
+    pub fn new(repo: Arc<LlmProviderModelRepository>) -> Self {
+        Self { repo }
+    }
 
     pub async fn list(
         controller: web::Data<LlmModelController>,
         path: web::Path<Uuid>,
     ) -> ActixResult<HttpResponse> {
-        let models = controller.repo.list_by_provider(*path).await.map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
-        let dtos: Vec<crate::models::llm_model::LlmProviderModelDto> = models.into_iter().map(Into::into).collect();
-        Ok(HttpResponse::Ok().json(ModelListResponse { total: dtos.len(), models: dtos }))
+        let models = controller
+            .repo
+            .list_by_provider(*path)
+            .await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+        let dtos: Vec<crate::models::llm_model::LlmProviderModelDto> =
+            models.into_iter().map(Into::into).collect();
+        Ok(HttpResponse::Ok().json(ModelListResponse {
+            total: dtos.len(),
+            models: dtos,
+        }))
     }
 
     pub async fn create(
@@ -46,7 +56,15 @@ impl LlmModelController {
         path: web::Path<Uuid>,
         req: web::Json<CreateModelRequest>,
     ) -> ActixResult<HttpResponse> {
-        let model = controller.repo.create(*path, req.model_name.clone(), req.model_config.clone(), req.enabled.unwrap_or(true)).await
+        let model = controller
+            .repo
+            .create(
+                *path,
+                req.model_name.clone(),
+                req.model_config.clone(),
+                req.enabled.unwrap_or(true),
+            )
+            .await
             .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
         Ok(HttpResponse::Ok().json(crate::models::llm_model::LlmProviderModelDto::from(model)))
     }
@@ -57,7 +75,15 @@ impl LlmModelController {
         req: web::Json<UpdateModelRequest>,
     ) -> ActixResult<HttpResponse> {
         let (_provider_id, model_id) = path.into_inner();
-        let model = controller.repo.update(model_id, req.model_name.clone(), req.model_config.clone(), req.enabled).await
+        let model = controller
+            .repo
+            .update(
+                model_id,
+                req.model_name.clone(),
+                req.model_config.clone(),
+                req.enabled,
+            )
+            .await
             .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
         Ok(HttpResponse::Ok().json(crate::models::llm_model::LlmProviderModelDto::from(model)))
     }
@@ -67,7 +93,11 @@ impl LlmModelController {
         path: web::Path<(Uuid, Uuid)>,
     ) -> ActixResult<HttpResponse> {
         let (_provider_id, model_id) = path.into_inner();
-        controller.repo.delete(model_id).await.map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+        controller
+            .repo
+            .delete(model_id)
+            .await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
         Ok(HttpResponse::NoContent().finish())
     }
 
@@ -78,7 +108,11 @@ impl LlmModelController {
     ) -> ActixResult<HttpResponse> {
         let (_provider_id, model_id) = path.into_inner();
         let en = enabled.get("enabled").map(|v| v == "true").unwrap_or(true);
-        let model = controller.repo.set_enabled(model_id, en).await.map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+        let model = controller
+            .repo
+            .set_enabled(model_id, en)
+            .await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
         Ok(HttpResponse::Ok().json(crate::models::llm_model::LlmProviderModelDto::from(model)))
     }
 }

@@ -6,12 +6,12 @@ pub mod kafka;
 pub mod user;
 
 pub mod analytics;
-pub mod llm;
-pub mod data_collection;
 pub mod aws_cost_analytics;
+pub mod data_collection;
+pub mod llm;
+pub mod llm_provider;
 
 // Re-export commonly used services for backward compatibility
 pub use aws::AwsService;
 
 pub mod kubernetes;
-

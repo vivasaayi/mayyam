@@ -18,7 +18,7 @@ pub struct Model {
     pub success_count: i32,
     pub failure_count: i32,
     pub error_summary: Option<String>,
-    #[sea_orm(column_type = "JsonBinary")] 
+    #[sea_orm(column_type = "JsonBinary")]
     pub metadata: serde_json::Value,
     pub started_at: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,

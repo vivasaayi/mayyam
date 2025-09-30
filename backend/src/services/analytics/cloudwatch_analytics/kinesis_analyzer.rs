@@ -1,9 +1,9 @@
-use std::sync::Arc;
-use chrono::{DateTime, Utc};
-use serde_json::json;
+use super::cloudwatch_analyzer::CloudWatchAnalyzer;
 use crate::errors::AppError;
 use crate::models::aws_resource::Model as AwsResource;
-use super::cloudwatch_analyzer::CloudWatchAnalyzer;
+use chrono::{DateTime, Utc};
+use serde_json::json;
+use std::sync::Arc;
 
 pub struct KinesisAnalyzer;
 
@@ -13,7 +13,9 @@ impl KinesisAnalyzer {
         resource: &AwsResource,
         workflow: &str,
     ) -> Result<String, AppError> {
-        let time_periods = vec!["6 hours", "1 day", "3 days", "7 days", "2 weeks", "1 month", "2 months"];
+        let time_periods = vec![
+            "6 hours", "1 day", "3 days", "7 days", "2 weeks", "1 month", "2 months",
+        ];
 
         match workflow {
             "unused" => {

@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
+use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use sea_orm::entity::prelude::*;
 // no ActiveModel construction here
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]

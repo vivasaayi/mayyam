@@ -1,6 +1,6 @@
-use actix_web::{web, HttpResponse, Responder};
 use crate::errors::AppError;
 use crate::middleware::auth::Claims;
+use actix_web::{web, HttpResponse, Responder};
 
 // Placeholder for chaos controller functionality
 pub async fn list_experiments(_claims: web::ReqData<Claims>) -> Result<impl Responder, AppError> {

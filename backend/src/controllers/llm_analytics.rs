@@ -1,13 +1,13 @@
-use std::sync::Arc;
-use actix_web::{web, HttpResponse, Result};
-use uuid::Uuid;
-use serde::{Deserialize, Serialize};
-use tracing::{info, error};
 use crate::services::llm::{AnalysisType, TimeRange};
+use actix_web::{web, HttpResponse, Result};
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use tracing::{error, info};
+use uuid::Uuid;
 
-use crate::services::llm::{LlmAnalyticsService, ServiceAnalyticsRequest};
 use crate::models::data_source::{ResourceType, SourceType};
+use crate::services::llm::{LlmAnalyticsService, ServiceAnalyticsRequest};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AnalyticsRequest {
@@ -23,12 +23,13 @@ pub struct AnalyticsRequest {
 impl From<AnalyticsRequest> for ServiceAnalyticsRequest {
     fn from(req: AnalyticsRequest) -> Self {
         ServiceAnalyticsRequest {
-            resource_id: String::new(), // Not present in controller DTO
+            resource_id: String::new(),       // Not present in controller DTO
             resource_type: ResourceType::RDS, // Placeholder, should be mapped properly
             data_source_ids: vec![req.data_source_id],
             analysis_type: AnalysisType::Custom(req.analysis_type),
             time_range: TimeRange {
-                start_time: Utc::now() - chrono::Duration::hours(req.time_range_hours.unwrap_or(24) as i64),
+                start_time: Utc::now()
+                    - chrono::Duration::hours(req.time_range_hours.unwrap_or(24) as i64),
                 end_time: Utc::now(),
             },
             custom_prompts: req.custom_prompt.map(|c| vec![c]),
@@ -55,7 +56,8 @@ impl From<ResourceAnalyticsRequest> for ServiceAnalyticsRequest {
             data_source_ids: vec![], // Not present in controller DTO
             analysis_type: AnalysisType::Custom(req.analysis_type),
             time_range: TimeRange {
-                start_time: Utc::now() - chrono::Duration::hours(req.time_range_hours.unwrap_or(24) as i64),
+                start_time: Utc::now()
+                    - chrono::Duration::hours(req.time_range_hours.unwrap_or(24) as i64),
                 end_time: Utc::now(),
             },
             custom_prompts: None,
@@ -74,18 +76,21 @@ pub struct BatchAnalyticsRequest {
 
 impl BatchAnalyticsRequest {
     pub fn to_service_requests(&self) -> Vec<ServiceAnalyticsRequest> {
-        self.data_source_ids.iter().map(|ds_id| ServiceAnalyticsRequest {
-            resource_id: String::new(),
-            resource_type: ResourceType::RDS, // Placeholder
-            data_source_ids: vec![*ds_id],
-            analysis_type: AnalysisType::Custom(self.analysis_type.clone()),
-            time_range: TimeRange {
-                start_time: Utc::now() - chrono::Duration::hours(24),
-                end_time: Utc::now(),
-            },
-            custom_prompts: None,
-            llm_provider_id: self.llm_provider_id,
-        }).collect()
+        self.data_source_ids
+            .iter()
+            .map(|ds_id| ServiceAnalyticsRequest {
+                resource_id: String::new(),
+                resource_type: ResourceType::RDS, // Placeholder
+                data_source_ids: vec![*ds_id],
+                analysis_type: AnalysisType::Custom(self.analysis_type.clone()),
+                time_range: TimeRange {
+                    start_time: Utc::now() - chrono::Duration::hours(24),
+                    end_time: Utc::now(),
+                },
+                custom_prompts: None,
+                llm_provider_id: self.llm_provider_id,
+            })
+            .collect()
     }
 }
 
@@ -181,10 +186,7 @@ impl LlmAnalyticsController {
     }
 
     /// Get available analysis types for a resource type (stub)
-    pub async fn get_analysis_types(
-        &self,
-        _path: web::Path<String>,
-    ) -> Result<HttpResponse> {
+    pub async fn get_analysis_types(&self, _path: web::Path<String>) -> Result<HttpResponse> {
         Ok(HttpResponse::Ok().json(serde_json::json!({
             "types": []
         })))
@@ -198,10 +200,7 @@ impl LlmAnalyticsController {
     }
 
     /// Cancel a running analytics job (stub)
-    pub async fn cancel_analytics(
-        &self,
-        _path: web::Path<Uuid>,
-    ) -> Result<HttpResponse> {
+    pub async fn cancel_analytics(&self, _path: web::Path<Uuid>) -> Result<HttpResponse> {
         Ok(HttpResponse::Ok().json(serde_json::json!({
             "message": "Analytics job cancelled successfully"
         })))

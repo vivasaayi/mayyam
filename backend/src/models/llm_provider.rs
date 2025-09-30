@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use sea_orm::entity::prelude::*;
 use sea_orm::ActiveValue::Set;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 /// LLM provider configuration entity
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
@@ -15,7 +15,7 @@ pub struct Model {
     pub base_url: Option<String>, // For local LLMs or custom endpoints
     pub api_key: Option<String>, // For external providers
     pub model_name: String,
-    pub model_config: Json, // Model-specific configuration
+    pub model_config: Json,    // Model-specific configuration
     pub prompt_format: String, // How to format prompts for this LLM
     pub enabled: bool,
     pub is_default: bool,
@@ -128,10 +128,10 @@ pub struct LlmModelConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LlmPromptFormat {
-    OpenAI,          // {"role": "user", "content": "..."}
-    Ollama,          // Simple string format
-    Anthropic,       // Human/Assistant format
-    Custom,          // Add missing Custom variant
+    OpenAI,                              // {"role": "user", "content": "..."}
+    Ollama,                              // Simple string format
+    Anthropic,                           // Human/Assistant format
+    Custom,                              // Add missing Custom variant
     CustomTemplate { template: String }, // Custom template with placeholders
 }
 
@@ -184,12 +184,12 @@ pub struct LlmProviderDto {
 impl From<Model> for LlmProviderDomain {
     fn from(entity: Model) -> Self {
         let provider_type = LlmProviderType::from(entity.provider_type);
-        
-        let model_config: LlmModelConfig = serde_json::from_value(entity.model_config)
-            .unwrap_or_default();
-            
-        let prompt_format: LlmPromptFormat = serde_json::from_str(&entity.prompt_format)
-            .unwrap_or(LlmPromptFormat::OpenAI);
+
+        let model_config: LlmModelConfig =
+            serde_json::from_value(entity.model_config).unwrap_or_default();
+
+        let prompt_format: LlmPromptFormat =
+            serde_json::from_str(&entity.prompt_format).unwrap_or(LlmPromptFormat::OpenAI);
 
         Self {
             id: entity.id,
@@ -247,8 +247,8 @@ impl From<LlmProviderCreateDto> for ActiveModel {
         let provider_type_str = String::from(dto.provider_type);
         let model_config_json = serde_json::to_value(dto.model_config)
             .unwrap_or(serde_json::to_value(LlmModelConfig::default()).unwrap());
-        let prompt_format_str = serde_json::to_string(&dto.prompt_format)
-            .unwrap_or("\"OpenAI\"".to_string());
+        let prompt_format_str =
+            serde_json::to_string(&dto.prompt_format).unwrap_or("\"OpenAI\"".to_string());
 
         Self {
             id: Set(Uuid::new_v4()),
@@ -381,7 +381,7 @@ impl From<Model> for LlmProviderResponseDto {
             "deepseek" => "DeepSeek".to_string(),
             other => other.to_string(),
         };
-        
+
         // Parse enums from strings, with fallbacks
         let status = LlmProviderStatus::Active; // Default status since it's not in the base model
 
@@ -403,7 +403,7 @@ impl From<Model> for LlmProviderResponseDto {
             enabled: entity.enabled,
             is_default: entity.is_default,
             api_endpoint: base_url_cloned,
-            description: None,  // Not in base model
+            description: None, // Not in base model
             status,
             created_at: entity.created_at,
             updated_at: entity.updated_at,

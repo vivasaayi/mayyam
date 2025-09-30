@@ -1,7 +1,7 @@
+use crate::integration::helpers::auth::get_auth_token;
+use crate::integration::helpers::server::ensure_server;
 use reqwest::Client;
 use std::sync::OnceLock;
-use crate::integration::helpers::server::ensure_server;
-use crate::integration::helpers::auth::get_auth_token;
 
 /// Global HTTP client shared across all integration tests
 static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
@@ -120,8 +120,7 @@ pub fn get_aws_credentials() -> (String, String, String, String) {
         .expect("AWS_ACCESS_KEY_ID environment variable must be set for integration tests. Set it to run tests against real AWS.");
     let secret_key = std::env::var("AWS_SECRET_ACCESS_KEY")
         .expect("AWS_SECRET_ACCESS_KEY environment variable must be set for integration tests. Set it to run tests against real AWS.");
-    let region = std::env::var("AWS_DEFAULT_REGION")
-        .unwrap_or_else(|_| "us-east-1".to_string());
+    let region = std::env::var("AWS_DEFAULT_REGION").unwrap_or_else(|_| "us-east-1".to_string());
     let account_id = std::env::var("AWS_ACCOUNT_ID")
         .expect("AWS_ACCOUNT_ID environment variable must be set for integration tests. Set it to run tests against real AWS.");
 
@@ -130,6 +129,5 @@ pub fn get_aws_credentials() -> (String, String, String, String) {
 
 /// Get test account ID (different from real account to avoid conflicts)
 pub fn get_test_account_id() -> String {
-    std::env::var("TEST_AWS_ACCOUNT_ID")
-        .unwrap_or_else(|_| "123456789012".to_string())
+    std::env::var("TEST_AWS_ACCOUNT_ID").unwrap_or_else(|_| "123456789012".to_string())
 }

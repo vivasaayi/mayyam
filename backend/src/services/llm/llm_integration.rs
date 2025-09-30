@@ -1,13 +1,13 @@
-use std::sync::Arc;
-use serde_json::{Value, json};
-use reqwest::Client;
-use std::time::Duration;
 use chrono::Utc;
+use reqwest::Client;
+use serde_json::{json, Value};
+use std::sync::Arc;
+use std::time::Duration;
 
-use crate::models::llm_provider::{LlmProviderModel};
+use crate::errors::AppError;
+use crate::models::llm_provider::LlmProviderModel;
 use crate::repositories::llm_provider::LlmProviderRepository;
 use crate::repositories::prompt_template::PromptTemplateRepository;
-use crate::errors::AppError;
 
 #[derive(Debug, Clone)]
 pub struct LlmRequest {
@@ -43,7 +43,7 @@ impl LlmIntegrationService {
             llm_provider_repo,
             prompt_template_repo,
             http_client: Client::builder()
-                .timeout(Duration::from_secs(60))  // Increased timeout for LLM API calls
+                .timeout(Duration::from_secs(60)) // Increased timeout for LLM API calls
                 .pool_max_idle_per_host(8)
                 .tcp_nodelay(true)
                 .build()
@@ -56,7 +56,8 @@ impl LlmIntegrationService {
         provider_id: uuid::Uuid,
         request: LlmRequest,
     ) -> Result<LlmResponse, AppError> {
-        let provider = self.llm_provider_repo
+        let provider = self
+            .llm_provider_repo
             .find_by_id(provider_id)
             .await?
             .ok_or_else(|| AppError::NotFound("LLM provider not found".to_string()))?;
@@ -69,7 +70,10 @@ impl LlmIntegrationService {
             "gemini" => self.call_gemini(&provider, request).await,
             "deepseek" => self.call_deepseek(&provider, request).await,
             "custom" => self.call_custom(&provider, request).await,
-            _ => Err(AppError::BadRequest(format!("Unsupported provider type: {}", provider.provider_type))),
+            _ => Err(AppError::BadRequest(format!(
+                "Unsupported provider type: {}",
+                provider.provider_type
+            ))),
         }
     }
 
@@ -78,9 +82,7 @@ impl LlmIntegrationService {
         template_id: uuid::Uuid,
         variables: Option<Value>,
     ) -> Result<String, AppError> {
-        let template = self.prompt_template_repo
-            .find_by_id(&template_id)
-            .await?;
+        let template = self.prompt_template_repo.find_by_id(&template_id).await?;
 
         self.render_template(&template.prompt_template, variables)
     }
@@ -93,8 +95,10 @@ impl LlmIntegrationService {
         temperature: Option<f32>,
         max_tokens: Option<u32>,
     ) -> Result<LlmResponse, AppError> {
-        let rendered_prompt = self.render_prompt_template(template_id, variables.clone()).await?;
-        
+        let rendered_prompt = self
+            .render_prompt_template(template_id, variables.clone())
+            .await?;
+
         // TODO: Increment usage count
         // self.prompt_template_repo.increment_usage(template_id).await?;
 
@@ -109,9 +113,13 @@ impl LlmIntegrationService {
         self.generate_response(provider_id, request).await
     }
 
-    fn render_template(&self, template: &str, variables: Option<Value>) -> Result<String, AppError> {
+    fn render_template(
+        &self,
+        template: &str,
+        variables: Option<Value>,
+    ) -> Result<String, AppError> {
         let mut rendered = template.to_string();
-        
+
         if let Some(vars) = variables {
             if let Value::Object(map) = vars {
                 for (key, value) in map {
@@ -120,42 +128,58 @@ impl LlmIntegrationService {
                         Value::String(s) => s,
                         Value::Number(n) => n.to_string(),
                         Value::Bool(b) => b.to_string(),
-                        Value::Array(arr) => serde_json::to_string(&arr)
-                            .map_err(|e| AppError::BadRequest(format!("Invalid array variable: {}", e)))?,
-                        Value::Object(obj) => serde_json::to_string(&obj)
-                            .map_err(|e| AppError::BadRequest(format!("Invalid object variable: {}", e)))?,
+                        Value::Array(arr) => serde_json::to_string(&arr).map_err(|e| {
+                            AppError::BadRequest(format!("Invalid array variable: {}", e))
+                        })?,
+                        Value::Object(obj) => serde_json::to_string(&obj).map_err(|e| {
+                            AppError::BadRequest(format!("Invalid object variable: {}", e))
+                        })?,
                         Value::Null => "null".to_string(),
                     };
                     rendered = rendered.replace(&placeholder, &replacement);
                 }
             }
         }
-        
+
         Ok(rendered)
     }
 
-    async fn call_openai(&self, provider: &LlmProviderModel, request: LlmRequest) -> Result<LlmResponse, AppError> {
-        let api_key = self.llm_provider_repo.get_decrypted_api_key(provider).await?
+    async fn call_openai(
+        &self,
+        provider: &LlmProviderModel,
+        request: LlmRequest,
+    ) -> Result<LlmResponse, AppError> {
+        let api_key = self
+            .llm_provider_repo
+            .get_decrypted_api_key(provider)
+            .await?
             .ok_or_else(|| AppError::BadRequest("OpenAI API key not configured".to_string()))?;
 
         let default_endpoint = "https://api.openai.com/v1/chat/completions".to_string();
         let endpoint = match &provider.base_url {
             Some(url) if url.starts_with("http") => url.clone(),
-            Some(url) if !url.is_empty() => format!("https://api.openai.com{}", if url.starts_with('/') { url.clone() } else { format!("/{}", url) }),
+            Some(url) if !url.is_empty() => format!(
+                "https://api.openai.com{}",
+                if url.starts_with('/') {
+                    url.clone()
+                } else {
+                    format!("/{}", url)
+                }
+            ),
             _ => default_endpoint,
         };
 
         tracing::info!("OpenAI API call to endpoint: {}", endpoint);
 
         let mut messages = Vec::new();
-        
+
         if let Some(system_prompt) = request.system_prompt {
             messages.push(json!({
                 "role": "system",
                 "content": system_prompt
             }));
         }
-        
+
         messages.push(json!({
             "role": "user",
             "content": request.prompt
@@ -182,7 +206,8 @@ impl LlmIntegrationService {
             }
         }
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .post(endpoint)
             .header("Authorization", format!("Bearer {}", api_key))
             .header("Content-Type", "application/json")
@@ -193,18 +218,26 @@ impl LlmIntegrationService {
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            return Err(AppError::ExternalServiceError(format!("OpenAI API error: {}", error_text)));
+            return Err(AppError::ExternalServiceError(format!(
+                "OpenAI API error: {}",
+                error_text
+            )));
         }
 
-        let response_data: Value = response.json().await
-            .map_err(|e| AppError::ExternalServiceError(format!("Failed to parse OpenAI response: {}", e)))?;
+        let response_data: Value = response.json().await.map_err(|e| {
+            AppError::ExternalServiceError(format!("Failed to parse OpenAI response: {}", e))
+        })?;
 
         let content = response_data["choices"][0]["message"]["content"]
             .as_str()
-            .ok_or_else(|| AppError::ExternalServiceError("Invalid OpenAI response format".to_string()))?
+            .ok_or_else(|| {
+                AppError::ExternalServiceError("Invalid OpenAI response format".to_string())
+            })?
             .to_string();
 
-        let tokens_used = response_data["usage"]["total_tokens"].as_u64().map(|t| t as u32);
+        let tokens_used = response_data["usage"]["total_tokens"]
+            .as_u64()
+            .map(|t| t as u32);
 
         Ok(LlmResponse {
             content,
@@ -215,11 +248,22 @@ impl LlmIntegrationService {
         })
     }
 
-    async fn call_ollama(&self, provider: &LlmProviderModel, request: LlmRequest) -> Result<LlmResponse, AppError> {
+    async fn call_ollama(
+        &self,
+        provider: &LlmProviderModel,
+        request: LlmRequest,
+    ) -> Result<LlmResponse, AppError> {
         let default_endpoint = "http://localhost:11434/api/generate".to_string();
         let endpoint = match &provider.base_url {
             Some(url) if url.starts_with("http") => url.clone(),
-            Some(url) if !url.is_empty() => format!("http://localhost:11434{}", if url.starts_with('/') { url.clone() } else { format!("/{}", url) }),
+            Some(url) if !url.is_empty() => format!(
+                "http://localhost:11434{}",
+                if url.starts_with('/') {
+                    url.clone()
+                } else {
+                    format!("/{}", url)
+                }
+            ),
             _ => default_endpoint,
         };
 
@@ -249,7 +293,8 @@ impl LlmIntegrationService {
             }
         }
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .post(endpoint)
             .header("Content-Type", "application/json")
             .json(&body)
@@ -259,15 +304,21 @@ impl LlmIntegrationService {
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            return Err(AppError::ExternalServiceError(format!("Ollama API error: {}", error_text)));
+            return Err(AppError::ExternalServiceError(format!(
+                "Ollama API error: {}",
+                error_text
+            )));
         }
 
-        let response_data: Value = response.json().await
-            .map_err(|e| AppError::ExternalServiceError(format!("Failed to parse Ollama response: {}", e)))?;
+        let response_data: Value = response.json().await.map_err(|e| {
+            AppError::ExternalServiceError(format!("Failed to parse Ollama response: {}", e))
+        })?;
 
         let content = response_data["response"]
             .as_str()
-            .ok_or_else(|| AppError::ExternalServiceError("Invalid Ollama response format".to_string()))?
+            .ok_or_else(|| {
+                AppError::ExternalServiceError("Invalid Ollama response format".to_string())
+            })?
             .to_string();
 
         Ok(LlmResponse {
@@ -279,14 +330,28 @@ impl LlmIntegrationService {
         })
     }
 
-    async fn call_anthropic(&self, provider: &LlmProviderModel, request: LlmRequest) -> Result<LlmResponse, AppError> {
-        let api_key = self.llm_provider_repo.get_decrypted_api_key(provider).await?
+    async fn call_anthropic(
+        &self,
+        provider: &LlmProviderModel,
+        request: LlmRequest,
+    ) -> Result<LlmResponse, AppError> {
+        let api_key = self
+            .llm_provider_repo
+            .get_decrypted_api_key(provider)
+            .await?
             .ok_or_else(|| AppError::BadRequest("Anthropic API key not configured".to_string()))?;
 
         let default_endpoint = "https://api.anthropic.com/v1/messages".to_string();
         let endpoint = match &provider.base_url {
             Some(url) if url.starts_with("http") => url.clone(),
-            Some(url) if !url.is_empty() => format!("https://api.anthropic.com{}", if url.starts_with('/') { url.clone() } else { format!("/{}", url) }),
+            Some(url) if !url.is_empty() => format!(
+                "https://api.anthropic.com{}",
+                if url.starts_with('/') {
+                    url.clone()
+                } else {
+                    format!("/{}", url)
+                }
+            ),
             _ => default_endpoint,
         };
 
@@ -315,7 +380,8 @@ impl LlmIntegrationService {
             }
         }
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .post(endpoint)
             .header("x-api-key", api_key)
             .header("anthropic-version", "2023-06-01")
@@ -327,18 +393,26 @@ impl LlmIntegrationService {
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            return Err(AppError::ExternalServiceError(format!("Anthropic API error: {}", error_text)));
+            return Err(AppError::ExternalServiceError(format!(
+                "Anthropic API error: {}",
+                error_text
+            )));
         }
 
-        let response_data: Value = response.json().await
-            .map_err(|e| AppError::ExternalServiceError(format!("Failed to parse Anthropic response: {}", e)))?;
+        let response_data: Value = response.json().await.map_err(|e| {
+            AppError::ExternalServiceError(format!("Failed to parse Anthropic response: {}", e))
+        })?;
 
         let content = response_data["content"][0]["text"]
             .as_str()
-            .ok_or_else(|| AppError::ExternalServiceError("Invalid Anthropic response format".to_string()))?
+            .ok_or_else(|| {
+                AppError::ExternalServiceError("Invalid Anthropic response format".to_string())
+            })?
             .to_string();
 
-        let tokens_used = response_data["usage"]["output_tokens"].as_u64().map(|t| t as u32);
+        let tokens_used = response_data["usage"]["output_tokens"]
+            .as_u64()
+            .map(|t| t as u32);
 
         Ok(LlmResponse {
             content,
@@ -349,21 +423,26 @@ impl LlmIntegrationService {
         })
     }
 
-    async fn call_local(&self, provider: &LlmProviderModel, request: LlmRequest) -> Result<LlmResponse, AppError> {
+    async fn call_local(
+        &self,
+        provider: &LlmProviderModel,
+        request: LlmRequest,
+    ) -> Result<LlmResponse, AppError> {
         // For local models, we'll assume they use an OpenAI-compatible API
-        let base_url = provider.base_url.as_ref()
-            .ok_or_else(|| AppError::BadRequest("Local model endpoint not configured".to_string()))?;
+        let base_url = provider.base_url.as_ref().ok_or_else(|| {
+            AppError::BadRequest("Local model endpoint not configured".to_string())
+        })?;
         let endpoint = format!("{}/chat/completions", base_url.trim_end_matches('/'));
 
         let mut messages = Vec::new();
-        
+
         if let Some(system_prompt) = request.system_prompt {
             messages.push(json!({
                 "role": "system",
                 "content": system_prompt
             }));
         }
-        
+
         messages.push(json!({
             "role": "user",
             "content": request.prompt
@@ -381,28 +460,42 @@ impl LlmIntegrationService {
             body["max_tokens"] = json!(max_tokens);
         }
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .post(&endpoint)
             .header("Content-Type", "application/json")
             .json(&body)
             .send()
             .await
-            .map_err(|e| AppError::ExternalServiceError(format!("Local model API error calling {}: {}", endpoint, e)))?;
+            .map_err(|e| {
+                AppError::ExternalServiceError(format!(
+                    "Local model API error calling {}: {}",
+                    endpoint, e
+                ))
+            })?;
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            return Err(AppError::ExternalServiceError(format!("Local model API error: {}", error_text)));
+            return Err(AppError::ExternalServiceError(format!(
+                "Local model API error: {}",
+                error_text
+            )));
         }
 
-        let response_data: Value = response.json().await
-            .map_err(|e| AppError::ExternalServiceError(format!("Failed to parse local model response: {}", e)))?;
+        let response_data: Value = response.json().await.map_err(|e| {
+            AppError::ExternalServiceError(format!("Failed to parse local model response: {}", e))
+        })?;
 
         let content = response_data["choices"][0]["message"]["content"]
             .as_str()
-            .ok_or_else(|| AppError::ExternalServiceError("Invalid local model response format".to_string()))?
+            .ok_or_else(|| {
+                AppError::ExternalServiceError("Invalid local model response format".to_string())
+            })?
             .to_string();
 
-        let tokens_used = response_data["usage"]["total_tokens"].as_u64().map(|t| t as u32);
+        let tokens_used = response_data["usage"]["total_tokens"]
+            .as_u64()
+            .map(|t| t as u32);
 
         Ok(LlmResponse {
             content,
@@ -413,14 +506,31 @@ impl LlmIntegrationService {
         })
     }
 
-    async fn call_gemini(&self, provider: &LlmProviderModel, request: LlmRequest) -> Result<LlmResponse, AppError> {
-        let api_key = self.llm_provider_repo.get_decrypted_api_key(provider).await?
+    async fn call_gemini(
+        &self,
+        provider: &LlmProviderModel,
+        request: LlmRequest,
+    ) -> Result<LlmResponse, AppError> {
+        let api_key = self
+            .llm_provider_repo
+            .get_decrypted_api_key(provider)
+            .await?
             .ok_or_else(|| AppError::BadRequest("Gemini API key not configured".to_string()))?;
 
-        let default_endpoint = format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent", provider.model_name);
+        let default_endpoint = format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent",
+            provider.model_name
+        );
         let endpoint = match &provider.base_url {
             Some(url) if url.starts_with("http") => url.clone(),
-            Some(url) if !url.is_empty() => format!("https://generativelanguage.googleapis.com{}", if url.starts_with('/') { url.clone() } else { format!("/{}", url) }),
+            Some(url) if !url.is_empty() => format!(
+                "https://generativelanguage.googleapis.com{}",
+                if url.starts_with('/') {
+                    url.clone()
+                } else {
+                    format!("/{}", url)
+                }
+            ),
             _ => default_endpoint,
         };
 
@@ -434,7 +544,8 @@ impl LlmIntegrationService {
 
         body["generationConfig"] = provider.model_config.clone();
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .post(&format!("{}?key={}", endpoint, api_key))
             .header("Content-Type", "application/json")
             .json(&body)
@@ -444,15 +555,21 @@ impl LlmIntegrationService {
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            return Err(AppError::ExternalServiceError(format!("Gemini API error: {}", error_text)));
+            return Err(AppError::ExternalServiceError(format!(
+                "Gemini API error: {}",
+                error_text
+            )));
         }
 
-        let response_data: Value = response.json().await
-            .map_err(|e| AppError::ExternalServiceError(format!("Failed to parse Gemini response: {}", e)))?;
+        let response_data: Value = response.json().await.map_err(|e| {
+            AppError::ExternalServiceError(format!("Failed to parse Gemini response: {}", e))
+        })?;
 
         let content = response_data["candidates"][0]["content"]["parts"][0]["text"]
             .as_str()
-            .ok_or_else(|| AppError::ExternalServiceError("Invalid Gemini response format".to_string()))?
+            .ok_or_else(|| {
+                AppError::ExternalServiceError("Invalid Gemini response format".to_string())
+            })?
             .to_string();
 
         Ok(LlmResponse {
@@ -464,9 +581,17 @@ impl LlmIntegrationService {
         })
     }
 
-    async fn call_deepseek(&self, provider: &LlmProviderModel, request: LlmRequest) -> Result<LlmResponse, AppError> {
+    async fn call_deepseek(
+        &self,
+        provider: &LlmProviderModel,
+        request: LlmRequest,
+    ) -> Result<LlmResponse, AppError> {
         // Try to get API key from database first
-        let api_key = match self.llm_provider_repo.get_decrypted_api_key(provider).await? {
+        let api_key = match self
+            .llm_provider_repo
+            .get_decrypted_api_key(provider)
+            .await?
+        {
             Some(key) => key,
             None => {
                 // Fallback to environment variable
@@ -478,7 +603,14 @@ impl LlmIntegrationService {
         let default_endpoint = "https://api.deepseek.com/v1/chat/completions".to_string();
         let endpoint = match &provider.base_url {
             Some(url) if url.starts_with("http") => url.clone(),
-            Some(url) if !url.is_empty() => format!("https://api.deepseek.com{}", if url.starts_with('/') { url.clone() } else { format!("/{}", url) }),
+            Some(url) if !url.is_empty() => format!(
+                "https://api.deepseek.com{}",
+                if url.starts_with('/') {
+                    url.clone()
+                } else {
+                    format!("/{}", url)
+                }
+            ),
             _ => default_endpoint,
         };
 
@@ -503,7 +635,10 @@ impl LlmIntegrationService {
             "messages": messages
         });
 
-        println!("Request body: {}", serde_json::to_string_pretty(&body).unwrap_or_default());
+        println!(
+            "Request body: {}",
+            serde_json::to_string_pretty(&body).unwrap_or_default()
+        );
 
         if let Some(temp) = request.temperature {
             body["temperature"] = json!(temp);
@@ -541,29 +676,44 @@ impl LlmIntegrationService {
         if !response.status().is_success() {
             let status_code = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            tracing::error!("DeepSeek API error - Status: {}, Body: {}", status_code, error_text);
+            tracing::error!(
+                "DeepSeek API error - Status: {}, Body: {}",
+                status_code,
+                error_text
+            );
 
             return Err(AppError::ExternalServiceError(format!(
                 "DeepSeek API returned error {}: {}",
                 status_code,
-                if error_text.is_empty() { "No error details provided" } else { &error_text }
+                if error_text.is_empty() {
+                    "No error details provided"
+                } else {
+                    &error_text
+                }
             )));
         }
 
-        let response_data: Value = response.json().await
-            .map_err(|e| {
-                tracing::error!("Failed to parse DeepSeek response JSON: {}", e);
-                AppError::ExternalServiceError(format!("Failed to parse DeepSeek response: {}", e))
-            })?;
+        let response_data: Value = response.json().await.map_err(|e| {
+            tracing::error!("Failed to parse DeepSeek response JSON: {}", e);
+            AppError::ExternalServiceError(format!("Failed to parse DeepSeek response: {}", e))
+        })?;
 
         let content = response_data["choices"][0]["message"]["content"]
             .as_str()
-            .ok_or_else(|| AppError::ExternalServiceError("Invalid DeepSeek response format".to_string()))?
+            .ok_or_else(|| {
+                AppError::ExternalServiceError("Invalid DeepSeek response format".to_string())
+            })?
             .to_string();
 
-        let tokens_used = response_data["usage"]["total_tokens"].as_u64().map(|t| t as u32);
+        let tokens_used = response_data["usage"]["total_tokens"]
+            .as_u64()
+            .map(|t| t as u32);
 
-        tracing::info!("DeepSeek API call successful - Model: {}, Tokens used: {:?}", provider.model_name, tokens_used);
+        tracing::info!(
+            "DeepSeek API call successful - Model: {}, Tokens used: {:?}",
+            provider.model_name,
+            tokens_used
+        );
 
         Ok(LlmResponse {
             content,
@@ -574,14 +724,21 @@ impl LlmIntegrationService {
         })
     }
 
-    async fn call_custom(&self, provider: &LlmProviderModel, request: LlmRequest) -> Result<LlmResponse, AppError> {
-        let base_url = provider.base_url.as_ref()
-            .ok_or_else(|| AppError::BadRequest("Custom provider endpoint not configured".to_string()))?;
-        
+    async fn call_custom(
+        &self,
+        provider: &LlmProviderModel,
+        request: LlmRequest,
+    ) -> Result<LlmResponse, AppError> {
+        let base_url = provider.base_url.as_ref().ok_or_else(|| {
+            AppError::BadRequest("Custom provider endpoint not configured".to_string())
+        })?;
+
         let endpoint = if base_url.starts_with("http") {
             base_url.clone()
         } else {
-            return Err(AppError::BadRequest("Custom provider endpoint must be a valid HTTP URL".to_string()));
+            return Err(AppError::BadRequest(
+                "Custom provider endpoint must be a valid HTTP URL".to_string(),
+            ));
         };
 
         // For custom providers, we'll use the provider's format specification
@@ -593,14 +750,14 @@ impl LlmIntegrationService {
                     "temperature": request.temperature.unwrap_or(0.7),
                     "max_tokens": request.max_tokens.unwrap_or(1000)
                 })
-            },
+            }
             "anthropic" => {
                 json!({
                     "model": provider.model_name,
                     "messages": [{"role": "user", "content": request.prompt}],
                     "max_tokens": request.max_tokens.unwrap_or(1000)
                 })
-            },
+            }
             "custom" => {
                 // Use the model_config as the template for custom format
                 if provider.model_config.is_null() {
@@ -608,7 +765,7 @@ impl LlmIntegrationService {
                 } else {
                     provider.model_config.clone()
                 }
-            },
+            }
             _ => {
                 json!({
                     "prompt": request.prompt
@@ -616,28 +773,38 @@ impl LlmIntegrationService {
             }
         };
 
-        let mut req_builder = self.http_client
+        let mut req_builder = self
+            .http_client
             .post(endpoint)
             .header("Content-Type", "application/json");
 
         // Add API key if available
-        if let Some(api_key) = self.llm_provider_repo.get_decrypted_api_key(provider).await? {
+        if let Some(api_key) = self
+            .llm_provider_repo
+            .get_decrypted_api_key(provider)
+            .await?
+        {
             req_builder = req_builder.header("Authorization", format!("Bearer {}", api_key));
         }
 
-        let response = req_builder
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| AppError::ExternalServiceError(format!("Custom provider API error: {}", e)))?;
+        let response = req_builder.json(&body).send().await.map_err(|e| {
+            AppError::ExternalServiceError(format!("Custom provider API error: {}", e))
+        })?;
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            return Err(AppError::ExternalServiceError(format!("Custom provider API error: {}", error_text)));
+            return Err(AppError::ExternalServiceError(format!(
+                "Custom provider API error: {}",
+                error_text
+            )));
         }
 
-        let response_data: Value = response.json().await
-            .map_err(|e| AppError::ExternalServiceError(format!("Failed to parse custom provider response: {}", e)))?;
+        let response_data: Value = response.json().await.map_err(|e| {
+            AppError::ExternalServiceError(format!(
+                "Failed to parse custom provider response: {}",
+                e
+            ))
+        })?;
 
         // For custom providers, assume the response is in the 'content' field
         // This can be made configurable based on provider settings
@@ -645,7 +812,11 @@ impl LlmIntegrationService {
             .as_str()
             .or_else(|| response_data["response"].as_str())
             .or_else(|| response_data["text"].as_str())
-            .ok_or_else(|| AppError::ExternalServiceError("Invalid custom provider response format".to_string()))?
+            .ok_or_else(|| {
+                AppError::ExternalServiceError(
+                    "Invalid custom provider response format".to_string(),
+                )
+            })?
             .to_string();
 
         Ok(LlmResponse {

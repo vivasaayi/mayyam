@@ -1,10 +1,12 @@
-use std::sync::Arc;
-use serde_json::json;
 use crate::errors::AppError;
-use crate::services::aws::aws_types::dynamodb::{DynamoDBGetItemRequest, DynamoDBPutItemRequest, DynamoDBQueryRequest};
+use crate::models::aws_account::AwsAccountDto;
+use crate::services::aws::aws_types::dynamodb::{
+    DynamoDBGetItemRequest, DynamoDBPutItemRequest, DynamoDBQueryRequest,
+};
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::AwsService;
-use crate::models::aws_account::AwsAccountDto;
+use serde_json::json;
+use std::sync::Arc;
 use uuid;
 
 // Data plane implementation for DynamoDB
@@ -17,8 +19,15 @@ impl DynamoDBDataPlane {
         Self { aws_service }
     }
 
-    pub async fn get_item(&self, aws_account_dto: &AwsAccountDto, request: &DynamoDBGetItemRequest) -> Result<serde_json::Value, AppError> {
-        let client = self.aws_service.create_dynamodb_client(aws_account_dto).await?;
+    pub async fn get_item(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        request: &DynamoDBGetItemRequest,
+    ) -> Result<serde_json::Value, AppError> {
+        let client = self
+            .aws_service
+            .create_dynamodb_client(aws_account_dto)
+            .await?;
 
         // In a real implementation, this would call get_item
         let response = json!({
@@ -28,12 +37,19 @@ impl DynamoDBDataPlane {
                 "count": {"N": "42"}
             }
         });
-        
+
         Ok(response)
     }
 
-    pub async fn put_item(&self, aws_account_dto: &AwsAccountDto, request: &DynamoDBPutItemRequest) -> Result<serde_json::Value, AppError> {
-        let client = self.aws_service.create_dynamodb_client(aws_account_dto).await?;
+    pub async fn put_item(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        request: &DynamoDBPutItemRequest,
+    ) -> Result<serde_json::Value, AppError> {
+        let client = self
+            .aws_service
+            .create_dynamodb_client(aws_account_dto)
+            .await?;
 
         // In a real implementation, this would call put_item
         let response = json!({
@@ -42,12 +58,19 @@ impl DynamoDBDataPlane {
                 "CapacityUnits": 1.0
             }
         });
-        
+
         Ok(response)
     }
 
-    pub async fn query(&self, aws_account_dto: &AwsAccountDto, request: &DynamoDBQueryRequest) -> Result<serde_json::Value, AppError> {
-        let client = self.aws_service.create_dynamodb_client(aws_account_dto).await?;
+    pub async fn query(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        request: &DynamoDBQueryRequest,
+    ) -> Result<serde_json::Value, AppError> {
+        let client = self
+            .aws_service
+            .create_dynamodb_client(aws_account_dto)
+            .await?;
 
         // In a real implementation, this would call query
         let response = json!({
@@ -70,7 +93,7 @@ impl DynamoDBDataPlane {
                 "CapacityUnits": 0.5
             }
         });
-        
+
         Ok(response)
     }
 }

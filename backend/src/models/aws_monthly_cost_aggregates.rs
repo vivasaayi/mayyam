@@ -51,11 +51,19 @@ impl From<Model> for MonthlyCostAggregateModel {
             service_name: model.service_name,
             month_year: model.month_year.format("%Y-%m").to_string(),
             total_cost: model.total_cost.to_string().parse().unwrap_or(0.0),
-            usage_amount: model.usage_amount.map(|d| d.to_string().parse().unwrap_or(0.0)),
+            usage_amount: model
+                .usage_amount
+                .map(|d| d.to_string().parse().unwrap_or(0.0)),
             usage_unit: model.usage_unit,
-            cost_change_pct: model.cost_change_pct.map(|d| d.to_string().parse().unwrap_or(0.0)),
-            cost_change_amount: model.cost_change_amount.map(|d| d.to_string().parse().unwrap_or(0.0)),
-            anomaly_score: model.anomaly_score.map(|d| d.to_string().parse().unwrap_or(0.0)),
+            cost_change_pct: model
+                .cost_change_pct
+                .map(|d| d.to_string().parse().unwrap_or(0.0)),
+            cost_change_amount: model
+                .cost_change_amount
+                .map(|d| d.to_string().parse().unwrap_or(0.0)),
+            anomaly_score: model
+                .anomaly_score
+                .map(|d| d.to_string().parse().unwrap_or(0.0)),
             is_anomaly: model.is_anomaly,
             tags_summary: model.tags_summary.map(|j| j.into()),
         }

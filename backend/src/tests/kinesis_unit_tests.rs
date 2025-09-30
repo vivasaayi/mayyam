@@ -17,8 +17,9 @@ mod kinesis_validation_tests {
         };
 
         // Simulate the validation logic from the actual implementation
-        let shard_count_result = request.shard_count
-            .ok_or_else(|| AppError::ExternalService("Missing shard_count in create stream request".to_string()));
+        let shard_count_result = request.shard_count.ok_or_else(|| {
+            AppError::ExternalService("Missing shard_count in create stream request".to_string())
+        });
 
         // Assert
         assert!(shard_count_result.is_err());
@@ -46,20 +47,33 @@ mod kinesis_validation_tests {
             // Simulate the validation logic
             let validation_result = if let Some(count) = request.shard_count {
                 if count <= 0 {
-                    Err(AppError::ExternalService("Invalid shard_count: must be greater than 0".to_string()))
+                    Err(AppError::ExternalService(
+                        "Invalid shard_count: must be greater than 0".to_string(),
+                    ))
                 } else {
                     Ok(count)
                 }
             } else {
-                Err(AppError::ExternalService("Missing shard_count in create stream request".to_string()))
+                Err(AppError::ExternalService(
+                    "Missing shard_count in create stream request".to_string(),
+                ))
             };
 
             // Assert
-            assert!(validation_result.is_err(), "Test case '{}' should fail", description);
+            assert!(
+                validation_result.is_err(),
+                "Test case '{}' should fail",
+                description
+            );
             let error = validation_result.unwrap_err();
             match error {
-                AppError::ExternalService(msg) => assert!(msg.contains("Invalid shard_count") || msg.contains("Missing shard_count")),
-                _ => panic!("Expected ExternalService error for test case '{}'", description),
+                AppError::ExternalService(msg) => assert!(
+                    msg.contains("Invalid shard_count") || msg.contains("Missing shard_count")
+                ),
+                _ => panic!(
+                    "Expected ExternalService error for test case '{}'",
+                    description
+                ),
             }
         }
     }
@@ -78,16 +92,24 @@ mod kinesis_validation_tests {
             // Simulate the validation logic
             let validation_result = if let Some(count) = request.shard_count {
                 if count <= 0 {
-                    Err(AppError::ExternalService("Invalid shard_count: must be greater than 0".to_string()))
+                    Err(AppError::ExternalService(
+                        "Invalid shard_count: must be greater than 0".to_string(),
+                    ))
                 } else {
                     Ok(count)
                 }
             } else {
-                Err(AppError::ExternalService("Missing shard_count in create stream request".to_string()))
+                Err(AppError::ExternalService(
+                    "Missing shard_count in create stream request".to_string(),
+                ))
             };
 
             // Assert
-            assert!(validation_result.is_ok(), "Shard count {} should be valid", shard_count);
+            assert!(
+                validation_result.is_ok(),
+                "Shard count {} should be valid",
+                shard_count
+            );
             assert_eq!(validation_result.unwrap(), shard_count);
         }
     }
@@ -111,22 +133,39 @@ mod kinesis_validation_tests {
 
             // Basic stream name validation
             let name_validation = if request.stream_name.is_empty() {
-                Err(AppError::ExternalService("Stream name cannot be empty".to_string()))
+                Err(AppError::ExternalService(
+                    "Stream name cannot be empty".to_string(),
+                ))
             } else if request.stream_name.len() > 128 {
-                Err(AppError::ExternalService("Stream name too long".to_string()))
+                Err(AppError::ExternalService(
+                    "Stream name too long".to_string(),
+                ))
             } else {
                 Ok(())
             };
 
             // Assert
             if should_be_valid {
-                assert!(name_validation.is_ok(), "Test case '{}' should pass validation", description);
+                assert!(
+                    name_validation.is_ok(),
+                    "Test case '{}' should pass validation",
+                    description
+                );
             } else {
-                assert!(name_validation.is_err(), "Test case '{}' should fail validation", description);
+                assert!(
+                    name_validation.is_err(),
+                    "Test case '{}' should fail validation",
+                    description
+                );
                 let error = name_validation.unwrap_err();
                 match error {
-                    AppError::ExternalService(msg) => assert!(msg.contains("empty") || msg.contains("long")),
-                    _ => panic!("Expected ExternalService error for test case '{}'", description),
+                    AppError::ExternalService(msg) => {
+                        assert!(msg.contains("empty") || msg.contains("long"))
+                    }
+                    _ => panic!(
+                        "Expected ExternalService error for test case '{}'",
+                        description
+                    ),
                 }
             }
         }
@@ -144,17 +183,23 @@ mod kinesis_validation_tests {
         let validation_result = {
             // Check stream name
             if valid_request.stream_name.is_empty() {
-                Err(AppError::ExternalService("Stream name cannot be empty".to_string()))
+                Err(AppError::ExternalService(
+                    "Stream name cannot be empty".to_string(),
+                ))
             } else if valid_request.stream_name.len() > 128 {
-                Err(AppError::ExternalService("Stream name too long".to_string()))
+                Err(AppError::ExternalService(
+                    "Stream name too long".to_string(),
+                ))
             } else {
                 // Check shard count
                 match valid_request.shard_count {
-                    Some(count) if count <= 0 => {
-                        Err(AppError::ExternalService("Invalid shard_count: must be greater than 0".to_string()))
-                    }
+                    Some(count) if count <= 0 => Err(AppError::ExternalService(
+                        "Invalid shard_count: must be greater than 0".to_string(),
+                    )),
                     Some(count) => Ok((valid_request.stream_name.clone(), count)),
-                    None => Err(AppError::ExternalService("Missing shard_count in create stream request".to_string()))
+                    None => Err(AppError::ExternalService(
+                        "Missing shard_count in create stream request".to_string(),
+                    )),
                 }
             }
         };

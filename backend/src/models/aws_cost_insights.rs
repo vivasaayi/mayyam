@@ -59,7 +59,9 @@ impl From<Model> for CostInsightModel {
             llm_response: model.llm_response,
             summary: model.summary,
             recommendations: model.recommendations.map(|j| j.into()),
-            confidence_score: model.confidence_score.map(|d| d.to_string().parse().unwrap_or(0.0)),
+            confidence_score: model
+                .confidence_score
+                .map(|d| d.to_string().parse().unwrap_or(0.0)),
             tokens_used: model.tokens_used,
             processing_time_ms: model.processing_time_ms,
             created_at: model.created_at.to_rfc3339(),

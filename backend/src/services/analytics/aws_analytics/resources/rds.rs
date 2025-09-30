@@ -1,8 +1,8 @@
 use crate::errors::AppError;
 use crate::models::aws_resource;
-use crate::services::aws::aws_types::cloud_watch;
-use crate::services::analytics::aws_analytics::models::resource_workflows::ResourceAnalysisWorkflow;
 use crate::services::analytics::aws_analytics::metrics::MetricsAnalyzer;
+use crate::services::analytics::aws_analytics::models::resource_workflows::ResourceAnalysisWorkflow;
+use crate::services::aws::aws_types::cloud_watch;
 
 pub struct RdsAnalyzer;
 
@@ -35,22 +35,27 @@ impl RdsAnalyzer {
                         avg / (1024.0 * 1024.0)
                     ));
                 }
-            },
+            }
             ResourceAnalysisWorkflow::Storage => {
                 analysis.push_str("# RDS Storage Analysis\n\n");
 
                 // Storage usage analysis
-                if let Some(storage_metric) = MetricsAnalyzer::find_metric(metrics, "FreeStorageSpace") {
-                    let (avg, _) = MetricsAnalyzer::calculate_statistics(&storage_metric.datapoints);
+                if let Some(storage_metric) =
+                    MetricsAnalyzer::find_metric(metrics, "FreeStorageSpace")
+                {
+                    let (avg, _) =
+                        MetricsAnalyzer::calculate_statistics(&storage_metric.datapoints);
                     analysis.push_str(&format!(
                         "## Storage Usage\n- Average Free Space: {:.2} GB\n\n",
                         avg / (1024.0 * 1024.0 * 1024.0)
                     ));
                 }
-            },
-            _ => return Err(AppError::BadRequest(
-                "Unsupported workflow type for RDS instance".to_string()
-            )),
+            }
+            _ => {
+                return Err(AppError::BadRequest(
+                    "Unsupported workflow type for RDS instance".to_string(),
+                ))
+            }
         }
 
         Ok(analysis)

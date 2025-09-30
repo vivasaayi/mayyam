@@ -1,10 +1,12 @@
-use std::sync::Arc;
-use chrono::{DateTime, Utc, Duration};
-use serde_json::json;
 use crate::errors::AppError;
 use crate::models::aws_account::AwsAccountDto;
+use crate::services::aws::aws_data_plane::cloudwatch::{
+    CloudWatchMetricData, CloudWatchMetrics, CloudWatchMetricsRequest, CloudWatchService,
+};
 use crate::services::llm::LlmIntegrationService;
-use crate::services::aws::aws_data_plane::cloudwatch::{CloudWatchMetrics, CloudWatchService, CloudWatchMetricsRequest, CloudWatchMetricData};
+use chrono::{DateTime, Duration, Utc};
+use serde_json::json;
+use std::sync::Arc;
 
 #[derive(Debug, Clone)]
 pub struct CloudWatchAnalyzer {
@@ -34,7 +36,9 @@ impl CloudWatchAnalyzer {
 
         for period in time_periods {
             let (start_time, end_time) = self.parse_time_period(period)?;
-            let is_unused = self.check_resource_unused(resource_type, resource_id, region, start_time, end_time).await?;
+            let is_unused = self
+                .check_resource_unused(resource_type, resource_id, region, start_time, end_time)
+                .await?;
 
             results[period] = json!({
                 "unused": is_unused,
@@ -56,7 +60,9 @@ impl CloudWatchAnalyzer {
         end_time: DateTime<Utc>,
     ) -> Result<i32, AppError> {
         // Get metrics for classification
-        let metrics = self.get_resource_metrics(resource_type, resource_id, region, start_time, end_time).await?;
+        let metrics = self
+            .get_resource_metrics(resource_type, resource_id, region, start_time, end_time)
+            .await?;
 
         // Calculate usage score (1-10 scale)
         let score = self.calculate_usage_score(resource_type, &metrics)?;
@@ -72,10 +78,13 @@ impl CloudWatchAnalyzer {
         start_time: DateTime<Utc>,
         end_time: DateTime<Utc>,
     ) -> Result<String, AppError> {
-        let metrics = self.get_resource_metrics(resource_type, resource_id, region, start_time, end_time).await?;
+        let metrics = self
+            .get_resource_metrics(resource_type, resource_id, region, start_time, end_time)
+            .await?;
 
         // Use LLM to analyze patterns
-        let _prompt = self.generate_pattern_analysis_prompt(resource_type, resource_id, &metrics)?;
+        let _prompt =
+            self.generate_pattern_analysis_prompt(resource_type, resource_id, &metrics)?;
 
         // For now, return a placeholder - would need provider ID
         Ok("Pattern analysis requires LLM provider configuration".to_string())
@@ -92,7 +101,12 @@ impl CloudWatchAnalyzer {
             "2 weeks" => now - Duration::weeks(2),
             "1 month" => now - Duration::days(30),
             "2 months" => now - Duration::days(60),
-            _ => return Err(AppError::BadRequest(format!("Invalid time period: {}", period))),
+            _ => {
+                return Err(AppError::BadRequest(format!(
+                    "Invalid time period: {}",
+                    period
+                )))
+            }
         };
 
         Ok((start_time, end_time))
@@ -106,35 +120,36 @@ impl CloudWatchAnalyzer {
         start_time: DateTime<Utc>,
         end_time: DateTime<Utc>,
     ) -> Result<bool, AppError> {
-        let metrics = self.get_resource_metrics(resource_type, resource_id, region, start_time, end_time).await?;
+        let metrics = self
+            .get_resource_metrics(resource_type, resource_id, region, start_time, end_time)
+            .await?;
 
         // Check if all key metrics are zero or very low
         match resource_type {
             "Kinesis" => {
-                let has_throughput = metrics.iter().any(|m|
-                    (m.metric_name == "IncomingBytes" || m.metric_name == "OutgoingBytes") 
-                    && m.datapoints.iter().any(|d| d.value > 0.0)
-                );
+                let has_throughput = metrics.iter().any(|m| {
+                    (m.metric_name == "IncomingBytes" || m.metric_name == "OutgoingBytes")
+                        && m.datapoints.iter().any(|d| d.value > 0.0)
+                });
                 Ok(!has_throughput)
-            },
+            }
             "SQS" => {
-                let has_messages = metrics.iter().any(|m|
-                    m.metric_name == "NumberOfMessagesSent" 
-                    && m.datapoints.iter().any(|d| d.value > 0.0)
-                );
+                let has_messages = metrics.iter().any(|m| {
+                    m.metric_name == "NumberOfMessagesSent"
+                        && m.datapoints.iter().any(|d| d.value > 0.0)
+                });
                 Ok(!has_messages)
-            },
+            }
             "RDS" => {
-                let has_connections = metrics.iter().any(|m|
-                    m.metric_name == "DatabaseConnections" 
-                    && m.datapoints.iter().any(|d| d.value > 0.0)
-                );
-                let has_cpu = metrics.iter().any(|m|
-                    m.metric_name == "CPUUtilization" 
-                    && m.datapoints.iter().any(|d| d.value > 5.0)
-                );
+                let has_connections = metrics.iter().any(|m| {
+                    m.metric_name == "DatabaseConnections"
+                        && m.datapoints.iter().any(|d| d.value > 0.0)
+                });
+                let has_cpu = metrics.iter().any(|m| {
+                    m.metric_name == "CPUUtilization" && m.datapoints.iter().any(|d| d.value > 5.0)
+                });
                 Ok(!has_connections && !has_cpu)
-            },
+            }
             _ => Ok(false),
         }
     }
@@ -159,7 +174,10 @@ impl CloudWatchAnalyzer {
 
         let aws_account_dto = AwsAccountDto::new_with_profile("", "us-east-1");
 
-        let result = self.cloudwatch_service.get_metrics(&aws_account_dto, &request).await?;
+        let result = self
+            .cloudwatch_service
+            .get_metrics(&aws_account_dto, &request)
+            .await?;
         Ok(result.metrics)
     }
 
@@ -186,37 +204,59 @@ impl CloudWatchAnalyzer {
         }
     }
 
-    fn calculate_usage_score(&self, resource_type: &str, metrics: &[CloudWatchMetricData]) -> Result<i32, AppError> {
+    fn calculate_usage_score(
+        &self,
+        resource_type: &str,
+        metrics: &[CloudWatchMetricData],
+    ) -> Result<i32, AppError> {
         match resource_type {
             "Kinesis" => {
-                let avg_throughput = metrics.iter()
-                    .filter(|m| m.metric_name == "IncomingBytes" || m.metric_name == "OutgoingBytes")
-                    .map(|m| m.datapoints.iter().map(|d| d.value).sum::<f64>() / m.datapoints.len() as f64)
+                let avg_throughput = metrics
+                    .iter()
+                    .filter(|m| {
+                        m.metric_name == "IncomingBytes" || m.metric_name == "OutgoingBytes"
+                    })
+                    .map(|m| {
+                        m.datapoints.iter().map(|d| d.value).sum::<f64>()
+                            / m.datapoints.len() as f64
+                    })
                     .sum::<f64>();
 
                 // Scale: < 1MB/s = 1, > 100MB/s = 10
                 let score = ((avg_throughput / 1000000.0).log10() * 3.0).clamp(1.0, 10.0) as i32;
                 Ok(score)
-            },
+            }
             "SQS" => {
-                let avg_messages = metrics.iter()
+                let avg_messages = metrics
+                    .iter()
                     .filter(|m| m.metric_name == "NumberOfMessagesSent")
-                    .map(|m| m.datapoints.iter().map(|d| d.value).sum::<f64>() / m.datapoints.len() as f64)
+                    .map(|m| {
+                        m.datapoints.iter().map(|d| d.value).sum::<f64>()
+                            / m.datapoints.len() as f64
+                    })
                     .sum::<f64>();
 
                 // Scale: < 1 msg/min = 1, > 1000 msg/min = 10
                 let score = ((avg_messages / 60.0).log10() * 2.0).clamp(1.0, 10.0) as i32;
                 Ok(score)
-            },
+            }
             "RDS" => {
-                let avg_cpu = metrics.iter()
+                let avg_cpu = metrics
+                    .iter()
                     .filter(|m| m.metric_name == "CPUUtilization")
-                    .map(|m| m.datapoints.iter().map(|d| d.value).sum::<f64>() / m.datapoints.len() as f64)
+                    .map(|m| {
+                        m.datapoints.iter().map(|d| d.value).sum::<f64>()
+                            / m.datapoints.len() as f64
+                    })
                     .sum::<f64>();
 
-                let avg_connections = metrics.iter()
+                let avg_connections = metrics
+                    .iter()
                     .filter(|m| m.metric_name == "DatabaseConnections")
-                    .map(|m| m.datapoints.iter().map(|d| d.value).sum::<f64>() / m.datapoints.len() as f64)
+                    .map(|m| {
+                        m.datapoints.iter().map(|d| d.value).sum::<f64>()
+                            / m.datapoints.len() as f64
+                    })
                     .sum::<f64>();
 
                 // Combined score based on CPU and connections
@@ -225,7 +265,7 @@ impl CloudWatchAnalyzer {
                 let combined = (cpu_score + conn_score) / 2.0;
 
                 Ok(combined as i32)
-            },
+            }
             _ => Ok(5), // Default medium usage
         }
     }
@@ -242,7 +282,11 @@ impl CloudWatchAnalyzer {
         );
 
         for metric in metrics.iter().take(20) {
-            prompt.push_str(&format!("- {}: {} data points\n", metric.metric_name, metric.datapoints.len()));
+            prompt.push_str(&format!(
+                "- {}: {} data points\n",
+                metric.metric_name,
+                metric.datapoints.len()
+            ));
             for point in metric.datapoints.iter().take(5) {
                 prompt.push_str(&format!("  {}: {}\n", point.timestamp, point.value));
             }

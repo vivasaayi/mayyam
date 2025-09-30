@@ -1,16 +1,18 @@
-use std::sync::Arc;
-use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, IntoActiveModel, ModelTrait, Order, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait, Set
-};
 use chrono::Utc;
-use uuid::Uuid;
-use tracing::{info, error};
-
-use crate::models::aws_resource::{
-    self, ActiveModel, AwsResourceDto, AwsResourceQuery, AwsResourcePage, Entity as AwsResource, Model,
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, Condition, DatabaseConnection, EntityTrait, IntoActiveModel,
+    ModelTrait, Order, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait, Set,
 };
-use crate::errors::AppError;
+use std::sync::Arc;
+use tracing::{error, info};
+use uuid::Uuid;
+
 use crate::config::Config;
+use crate::errors::AppError;
+use crate::models::aws_resource::{
+    self, ActiveModel, AwsResourceDto, AwsResourcePage, AwsResourceQuery, Entity as AwsResource,
+    Model,
+};
 
 #[derive(Debug)]
 pub struct AwsResourceRepository {
@@ -26,7 +28,7 @@ impl AwsResourceRepository {
     // Create a new AWS resource entry
     pub async fn create(&self, resource: &AwsResourceDto) -> Result<Model, AppError> {
         let now = Utc::now();
-        
+
         let active_model = ActiveModel {
             id: Set(Uuid::new_v4()),
             sync_id: Set(resource.sync_id),
@@ -121,58 +123,53 @@ impl AwsResourceRepository {
             .order_by(aws_resource::Column::Name, Order::Asc)
             .all(&*self.db)
             .await
-            .map_err(|e| {
-                AppError::Database(e)
-            })?;
+            .map_err(|e| AppError::Database(e))?;
 
         Ok(resources)
     }
 
     // Search resources with pagination
-    pub async fn search(
-        &self,
-        query: &AwsResourceQuery,
-    ) -> Result<AwsResourcePage, AppError> {
+    pub async fn search(&self, query: &AwsResourceQuery) -> Result<AwsResourcePage, AppError> {
         let page = query.page.unwrap_or(0);
         let page_size = query.page_size.unwrap_or(10);
-        
+
         let mut condition = Condition::all();
-        
+
         if let Some(account_id) = &query.account_id {
             condition = condition.add(aws_resource::Column::AccountId.eq(account_id.clone()));
         }
-        
+
         if let Some(profile) = &query.profile {
             condition = condition.add(aws_resource::Column::Profile.eq(profile.clone()));
         }
-        
+
         if let Some(region) = &query.region {
             condition = condition.add(aws_resource::Column::Region.eq(region.clone()));
         }
-        
+
         if let Some(resource_type) = &query.resource_type {
             condition = condition.add(aws_resource::Column::ResourceType.eq(resource_type.clone()));
         }
-        
+
         if let Some(resource_id) = &query.resource_id {
             condition = condition.add(aws_resource::Column::ResourceId.eq(resource_id.clone()));
         }
-        
+
         if let Some(sync_id) = &query.sync_id {
             condition = condition.add(aws_resource::Column::SyncId.eq(*sync_id));
         }
-        
+
         if let Some(name) = &query.name {
             condition = condition.add(aws_resource::Column::Name.like(format!("%{}%", name)));
         }
-        
+
         // Count total results first
         let total = AwsResource::find()
             .filter(condition.clone())
             .count(&*self.db)
             .await
             .map_err(|e| AppError::Database(e))?;
-        
+
         // Then fetch the requested page
         let resources = AwsResource::find()
             .filter(condition)
@@ -182,9 +179,9 @@ impl AwsResourceRepository {
             .all(&*self.db)
             .await
             .map_err(|e| AppError::Database(e))?;
-        
+
         let total_pages = (total as f64 / page_size as f64).ceil() as u64;
-        
+
         Ok(AwsResourcePage {
             resources,
             total,

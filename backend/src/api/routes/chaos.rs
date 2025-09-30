@@ -8,8 +8,11 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .route("/experiments/{id}", web::delete().to(delete_experiment))
         .route("/experiments/{id}/start", web::post().to(start_experiment))
         .route("/experiments/{id}/stop", web::post().to(stop_experiment))
-        .route("/experiments/{id}/results", web::get().to(get_experiment_results));
-    
+        .route(
+            "/experiments/{id}/results",
+            web::get().to(get_experiment_results),
+        );
+
     cfg.service(scope);
 }
 

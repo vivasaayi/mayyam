@@ -4,10 +4,12 @@ use serde_json::Value;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::errors::AppError;
+use crate::models::data_source::{
+    DataSourceResponseDto, DataSourceStatus, DataSourceType, ResourceType, SourceType,
+};
 use crate::repositories::data_source::DataSourceRepository;
 use crate::services::data_collection::DataCollectionService;
-use crate::models::data_source::{DataSourceType, ResourceType, SourceType, DataSourceStatus, DataSourceResponseDto};
-use crate::errors::AppError;
 
 #[derive(Debug, Deserialize)]
 pub struct CreateDataSourceRequest {
@@ -97,10 +99,7 @@ impl DataSourceController {
         &self,
         id: Uuid,
     ) -> Result<Option<DataSourceResponseDto>, AppError> {
-        let data_source = self
-            .data_source_repo
-            .find_by_id(id)
-            .await?;
+        let data_source = self.data_source_repo.find_by_id(id).await?;
 
         Ok(data_source.map(|model| DataSourceResponseDto::from(&model)))
     }
@@ -110,13 +109,11 @@ impl DataSourceController {
         query: DataSourceQueryParams,
     ) -> Result<DataSourceListResponse, AppError> {
         let data_sources = if let Some(resource_type) = &query.resource_type {
-            self
-                .data_source_repo
+            self.data_source_repo
                 .find_by_resource_type(resource_type.clone())
                 .await?
         } else if let Some(source_type) = &query.source_type {
-            self
-                .data_source_repo
+            self.data_source_repo
                 .find_by_source_type(source_type.clone())
                 .await?
         } else {
@@ -155,10 +152,7 @@ impl DataSourceController {
         Ok(DataSourceResponseDto::from(data_source))
     }
 
-    pub async fn delete_data_source(
-        &self,
-        id: Uuid,
-    ) -> Result<(), AppError> {
+    pub async fn delete_data_source(&self, id: Uuid) -> Result<(), AppError> {
         self.data_source_repo.delete(id).await?;
         Ok(())
     }

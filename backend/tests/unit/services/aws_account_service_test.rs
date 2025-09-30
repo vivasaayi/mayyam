@@ -233,23 +233,14 @@ mod aws_account_service_tests {
 
         let mut mock_control_plane = MockAwsControlPlaneImpl::new();
         mock_control_plane.expect_clone().returning(|| MockAwsControlPlaneImpl::new());
+        let sync_repo = Arc::new(SyncRunRepository::new(Arc::new(test_db.conn().clone())));
+        let service = AwsAccountService::new(repo.clone(), Arc::new(mock_control_plane), sync_repo);
 
-        let service = AwsAccountService::new(repo.clone(), Arc::new(mock_control_plane));
+        // Attempting to sync a non-existent account should return a not found error
+        let result = service
+            .sync_account_resources(uuid::Uuid::new_v4(), uuid::Uuid::new_v4())
+            .await;
 
-        // Create account
-        let create_dto = factories::fake_aws_account();
-        let created = service.create_account(create_dto).await.unwrap();
-
-        // Test sync (this would need proper mocking of the AWS control plane)
-        // For now, just ensure the method exists and can be called
-        let sync_request = crate::services::aws::aws_types::resource_sync::ResourceSyncRequest {
-            account_id: created.account_id.clone(),
-            regions: vec!["us-east-1".to_string()],
-            services: vec!["ec2".to_string(), "s3".to_string()],
-        };
-
-        // This would typically call the AWS control plane to sync resources
-        // let result = service.sync_account_resources(created.id, sync_request).await;
-        // assert!(result.is_ok());
+        assert!(matches!(result, Err(AppError::NotFound(_))));
     }
 }

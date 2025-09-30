@@ -1,11 +1,11 @@
+use crate::errors::AppError;
+use crate::models::aws_account::AwsAccountDto;
+use crate::services::aws::aws_types::opensearch::OpenSearchClusterHealthRequest;
+use crate::services::aws::client_factory::AwsClientFactory;
+use crate::services::AwsService;
+use serde_json::json;
 use std::sync::Arc;
 use tracing::info;
-use serde_json::json;
-use crate::errors::AppError;
-use crate::services::aws::client_factory::AwsClientFactory;
-use crate::services::aws::aws_types::opensearch::OpenSearchClusterHealthRequest;
-use crate::services::AwsService;
-use crate::models::aws_account::AwsAccountDto;
 use uuid;
 
 pub struct OpenSearchDataPlane {
@@ -17,11 +17,18 @@ impl OpenSearchDataPlane {
         Self { aws_service }
     }
 
-    pub async fn get_cluster_health(&self, aws_account_dto: &AwsAccountDto, request: &OpenSearchClusterHealthRequest) -> Result<serde_json::Value, AppError> {
-        let client = self.aws_service.create_opensearch_client(aws_account_dto).await?;
+    pub async fn get_cluster_health(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        request: &OpenSearchClusterHealthRequest,
+    ) -> Result<serde_json::Value, AppError> {
+        let client = self
+            .aws_service
+            .create_opensearch_client(aws_account_dto)
+            .await?;
 
         info!("Getting cluster health for domain {}", request.domain_name);
-        
+
         // Mock implementation
         let response = json!({
             "cluster_name": request.domain_name,
@@ -40,7 +47,7 @@ impl OpenSearchDataPlane {
             "task_max_waiting_in_queue_millis": 0,
             "active_shards_percent_as_number": 100.0
         });
-        
+
         Ok(response)
     }
 }

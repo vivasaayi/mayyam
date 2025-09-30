@@ -1,9 +1,9 @@
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use sea_orm::entity::prelude::*;
 use sea_orm::ActiveValue::Set;
+use serde::{Deserialize, Serialize};
 use std::str::FromStr;
+use uuid::Uuid;
 
 /// Data source configuration entity for managing different data source types
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
@@ -14,12 +14,12 @@ pub struct Model {
     pub name: String,
     pub description: Option<String>,
     pub data_source_type: String,
-    pub resource_type: String, // e.g., "DynamoDB", "Kubernetes", "RDS"
-    pub source_type: String,   // e.g., "CloudWatch", "Dynatrace", "Splunk", "Prometheus"
+    pub resource_type: String,   // e.g., "DynamoDB", "Kubernetes", "RDS"
+    pub source_type: String,     // e.g., "CloudWatch", "Dynatrace", "Splunk", "Prometheus"
     pub connection_config: Json, // Connection configuration specific to source type
     pub metric_config: Option<Json>, // Configuration for metric collection
     pub thresholds: Option<Json>, // Threshold configurations
-    pub enabled: bool, // Indicates if the data source is enabled
+    pub enabled: bool,           // Indicates if the data source is enabled
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -52,7 +52,7 @@ pub struct MetricDefinition {
     pub description: String,
     pub unit: String,
     pub metric_type: MetricType,
-    pub purpose: String, // What this metric is used for in analysis
+    pub purpose: String,           // What this metric is used for in analysis
     pub collection_method: String, // How to collect this metric
     pub thresholds: Option<MetricThresholds>,
 }
@@ -300,7 +300,8 @@ impl std::fmt::Display for DataSourceStatus {
 // Conversions
 impl From<Model> for DataSourceDomain {
     fn from(entity: Model) -> Self {
-        let metric_definitions: Vec<MetricDefinition> = entity.metric_config
+        let metric_definitions: Vec<MetricDefinition> = entity
+            .metric_config
             .as_ref()
             .and_then(|config| serde_json::from_value(config.clone()).ok())
             .unwrap_or_default();
@@ -350,8 +351,8 @@ impl From<DataSourceCreateDto> for ActiveModel {
             source_type: Set(dto.source_type),
             connection_config: Set(dto.connection_config),
             metric_config: Set(Some(metric_definitions_json)), // Map metric_definitions to metric_config
-            thresholds: Set(None), // Add default value
-            status: Set("active".to_string()), // Add default status
+            thresholds: Set(None),                             // Add default value
+            status: Set("active".to_string()),                 // Add default status
             created_at: Set(now),
             updated_at: Set(now),
             enabled: todo!(),
@@ -363,23 +364,27 @@ impl From<DataSourceCreateDto> for ActiveModel {
 impl From<Model> for DataSourceResponseDto {
     fn from(entity: Model) -> Self {
         // Parse the string fields back to enums
-        let resource_type: ResourceType = serde_json::from_str(&format!("\"{}\"", entity.resource_type))
-            .unwrap_or(ResourceType::Custom);
+        let resource_type: ResourceType =
+            serde_json::from_str(&format!("\"{}\"", entity.resource_type))
+                .unwrap_or(ResourceType::Custom);
         let source_type: SourceType = serde_json::from_str(&format!("\"{}\"", entity.source_type))
             .unwrap_or(SourceType::Custom);
-        let data_source_type: DataSourceType = serde_json::from_str(&format!("\"{}\"", entity.data_source_type))
-            .unwrap_or(DataSourceType::CustomMetrics);
+        let data_source_type: DataSourceType =
+            serde_json::from_str(&format!("\"{}\"", entity.data_source_type))
+                .unwrap_or(DataSourceType::CustomMetrics);
         let status: DataSourceStatus = serde_json::from_str(&format!("\"{}\"", entity.status))
             .unwrap_or(DataSourceStatus::Active);
 
         // Extract metric_definitions from metric_config if available
-        let metric_definitions: Vec<MetricDefinition> = entity.metric_config
+        let metric_definitions: Vec<MetricDefinition> = entity
+            .metric_config
             .as_ref()
             .and_then(|config| serde_json::from_value(config.clone()).ok())
             .unwrap_or_default();
 
         // Extract thresholds if available
-        let thresholds: Option<MetricThresholds> = entity.thresholds
+        let thresholds: Option<MetricThresholds> = entity
+            .thresholds
             .as_ref()
             .and_then(|t| serde_json::from_value(t.clone()).ok());
 

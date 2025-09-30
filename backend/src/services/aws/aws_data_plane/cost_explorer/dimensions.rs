@@ -1,8 +1,8 @@
+use super::base::AwsCostService;
+use crate::{errors::AppError, models::aws_account::AwsAccountDto};
+use aws_sdk_costexplorer::types::{Context, DateInterval};
 use serde_json::{json, Value};
 use tracing::{debug, error};
-use crate::{errors::AppError, models::aws_account::AwsAccountDto};
-use super::base::AwsCostService;
-use aws_sdk_costexplorer::types::{DateInterval, Context};
 
 pub trait DimensionValues {
     async fn get_dimension_values(
@@ -34,23 +34,28 @@ impl DimensionValues for AwsCostService {
         end_date: &str,
     ) -> Result<Value, AppError> {
         let client = self.create_client(aws_account_dto).await?;
-        
+
         let time_period = DateInterval::builder()
             .start(start_date)
             .end(end_date)
             .build()
-            .map_err(|e| AppError::ExternalService(format!("Failed to build time period: {}", e)))?;
-        
+            .map_err(|e| {
+                AppError::ExternalService(format!("Failed to build time period: {}", e))
+            })?;
+
         debug!("Fetching dimension values for {}", dimension);
-        
-        let response = client.get_dimension_values()
+
+        let response = client
+            .get_dimension_values()
             .time_period(time_period)
             .dimension(aws_sdk_costexplorer::types::Dimension::from(dimension))
             .context(Context::CostAndUsage)
             .send()
             .await
-            .map_err(|e| AppError::ExternalService(format!("Failed to get dimension values: {}", e)))?;
-        
+            .map_err(|e| {
+                AppError::ExternalService(format!("Failed to get dimension values: {}", e))
+            })?;
+
         let mut result = json!({
             "dimension": dimension,
             "account_id": account_id,
@@ -64,7 +69,7 @@ impl DimensionValues for AwsCostService {
                 }
             }
         }
-        
+
         Ok(result)
     }
 

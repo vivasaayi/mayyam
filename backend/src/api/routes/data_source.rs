@@ -2,7 +2,9 @@ use actix_web::{web, HttpResponse, Result};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::controllers::data_source::{DataSourceController, CreateDataSourceRequest, UpdateDataSourceRequest, DataSourceQueryParams};
+use crate::controllers::data_source::{
+    CreateDataSourceRequest, DataSourceController, DataSourceQueryParams, UpdateDataSourceRequest,
+};
 
 pub fn configure(cfg: &mut web::ServiceConfig, controller: Arc<DataSourceController>) {
     cfg.service(
@@ -14,7 +16,7 @@ pub fn configure(cfg: &mut web::ServiceConfig, controller: Arc<DataSourceControl
             .route("/{id}", web::put().to(update_data_source))
             .route("/{id}", web::delete().to(delete_data_source))
             .route("/{id}/test", web::post().to(test_data_source_connection))
-            .route("/search", web::get().to(search_data_sources))
+            .route("/search", web::get().to(search_data_sources)),
     );
 }
 
@@ -55,7 +57,7 @@ async fn get_data_source(
     path: web::Path<Uuid>,
 ) -> Result<HttpResponse> {
     let id = path.into_inner();
-    
+
     match controller.get_data_source(id).await {
         Ok(Some(data_source)) => Ok(HttpResponse::Ok().json(data_source)),
         Ok(None) => Ok(HttpResponse::NotFound().json(serde_json::json!({
@@ -77,8 +79,11 @@ async fn update_data_source(
     request: web::Json<UpdateDataSourceRequest>,
 ) -> Result<HttpResponse> {
     let id = path.into_inner();
-    
-    match controller.update_data_source(id, request.into_inner()).await {
+
+    match controller
+        .update_data_source(id, request.into_inner())
+        .await
+    {
         Ok(data_source) => Ok(HttpResponse::Ok().json(data_source)),
         Err(e) => {
             tracing::error!("Failed to update data source {}: {:?}", id, e);
@@ -95,7 +100,7 @@ async fn delete_data_source(
     path: web::Path<Uuid>,
 ) -> Result<HttpResponse> {
     let id = path.into_inner();
-    
+
     match controller.delete_data_source(id).await {
         Ok(()) => Ok(HttpResponse::NoContent().finish()),
         Err(e) => {
@@ -113,7 +118,7 @@ async fn test_data_source_connection(
     path: web::Path<Uuid>,
 ) -> Result<HttpResponse> {
     let id = path.into_inner();
-    
+
     match controller.test_data_source_connection(id).await {
         Ok(result) => Ok(HttpResponse::Ok().json(result)),
         Err(e) => {

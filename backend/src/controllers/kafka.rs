@@ -1,17 +1,16 @@
-use actix_web::{web, HttpResponse, Responder};
 use crate::errors::AppError;
 use crate::middleware::auth::Claims;
+use actix_web::{web, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::{info, error};
+use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::services::kafka::{
-    KafkaService, KafkaCluster, KafkaTopic, KafkaMessage, 
-    ConsumeOptions, OffsetReset, PartitionOffset,
-    ClusterUpdateRequest, TopicConfigUpdateRequest, PartitionAdditionRequest,
-    MessageBackupRequest, MessageBackupResponse, MessageRestoreRequest, MessageRestoreResponse,
-    MessageMigrationRequest, MessageMigrationResponse, QueueDrainRequest, QueueDrainResponse
+    ClusterUpdateRequest, ConsumeOptions, KafkaCluster, KafkaMessage, KafkaService, KafkaTopic,
+    MessageBackupRequest, MessageBackupResponse, MessageMigrationRequest, MessageMigrationResponse,
+    MessageRestoreRequest, MessageRestoreResponse, OffsetReset, PartitionAdditionRequest,
+    PartitionOffset, QueueDrainRequest, QueueDrainResponse, TopicConfigUpdateRequest,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -71,10 +70,10 @@ pub async fn health_check(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let cluster_id = path.into_inner();
-    
+
     // Use the KafkaService to perform health check
     let health_status = kafka_service.health_check(&cluster_id, &config).await?;
-    
+
     Ok(HttpResponse::Ok().json(health_status))
 }
 
@@ -84,7 +83,7 @@ pub async fn get_metrics(
 ) -> Result<impl Responder, AppError> {
     // Get current metrics from the Kafka service
     let metrics = kafka_service.get_metrics()?;
-    
+
     Ok(HttpResponse::Ok().json(metrics))
 }
 
@@ -101,19 +100,23 @@ pub async fn produce_batch(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let cluster_id = path.into_inner();
-    
+
     // Convert request messages to service models
-    let kafka_messages: Vec<KafkaMessage> = batch_req.messages.iter().map(|msg| {
-        KafkaMessage {
+    let kafka_messages: Vec<KafkaMessage> = batch_req
+        .messages
+        .iter()
+        .map(|msg| KafkaMessage {
             key: msg.key.clone(),
             value: msg.value.clone(),
             headers: msg.headers.clone(),
-        }
-    }).collect();
-    
+        })
+        .collect();
+
     // Use the KafkaService to produce batch messages
-    let response = kafka_service.produce_batch(&cluster_id, "batch-topic", kafka_messages, &config).await?;
-    
+    let response = kafka_service
+        .produce_batch(&cluster_id, "batch-topic", kafka_messages, &config)
+        .await?;
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -131,19 +134,27 @@ pub async fn produce_with_retry(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let cluster_id = path.into_inner();
-    
+
     // Convert request to service model
     let kafka_message = KafkaMessage {
         key: retry_req.message.key.clone(),
         value: retry_req.message.value.clone(),
         headers: retry_req.message.headers.clone(),
     };
-    
+
     let max_retries = retry_req.max_retries.unwrap_or(3);
-    
+
     // Use the KafkaService to produce message with retry
-    let response = kafka_service.produce_with_retry(&cluster_id, "retry-topic", &kafka_message, &config, max_retries).await?;
-    
+    let response = kafka_service
+        .produce_with_retry(
+            &cluster_id,
+            "retry-topic",
+            &kafka_message,
+            &config,
+            max_retries,
+        )
+        .await?;
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -151,21 +162,26 @@ pub async fn list_clusters(
     config: web::Data<crate::config::Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let clusters: Vec<serde_json::Value> = config.kafka.clusters.iter().map(|cluster| {
-        serde_json::json!({
-            "id": cluster.name, // Using name as ID for now
-            "name": cluster.name,
-            "bootstrap_servers": cluster.bootstrap_servers,
-            "security_protocol": cluster.security_protocol,
-            "sasl_mechanism": cluster.sasl_mechanism,
+    let clusters: Vec<serde_json::Value> = config
+        .kafka
+        .clusters
+        .iter()
+        .map(|cluster| {
+            serde_json::json!({
+                "id": cluster.name, // Using name as ID for now
+                "name": cluster.name,
+                "bootstrap_servers": cluster.bootstrap_servers,
+                "security_protocol": cluster.security_protocol,
+                "sasl_mechanism": cluster.sasl_mechanism,
+            })
         })
-    }).collect();
-    
+        .collect();
+
     let response = serde_json::json!({
         "clusters": clusters,
         "total": clusters.len()
     });
-    
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -176,15 +192,15 @@ pub async fn create_cluster(
 ) -> Result<impl Responder, AppError> {
     // In a real implementation, this would save the cluster to configuration
     // For now, we'll return a dummy response
-    
+
     let cluster_id = Uuid::new_v4().to_string();
-    
+
     let response = serde_json::json!({
         "id": cluster_id,
         "name": cluster.name,
         "message": "Kafka cluster connection created successfully"
     });
-    
+
     Ok(HttpResponse::Created().json(response))
 }
 
@@ -194,7 +210,7 @@ pub async fn get_cluster(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let cluster_id = path.into_inner();
-    
+
     // In a real implementation, we'd look up by ID, but for now find by name
     if let Some(cluster) = config.kafka.clusters.iter().find(|c| c.name == cluster_id) {
         let response = serde_json::json!({
@@ -204,10 +220,13 @@ pub async fn get_cluster(
             "security_protocol": cluster.security_protocol,
             "sasl_mechanism": cluster.sasl_mechanism,
         });
-        
+
         Ok(HttpResponse::Ok().json(response))
     } else {
-        Err(AppError::NotFound(format!("Kafka cluster with ID {} not found", cluster_id)))
+        Err(AppError::NotFound(format!(
+            "Kafka cluster with ID {} not found",
+            cluster_id
+        )))
     }
 }
 
@@ -218,10 +237,10 @@ pub async fn list_topics(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let cluster_id = path.into_inner();
-    
+
     // Use the KafkaService to list topics
     let topics = kafka_service.list_topics(&cluster_id, &config).await?;
-    
+
     Ok(HttpResponse::Ok().json(topics))
 }
 
@@ -233,7 +252,7 @@ pub async fn create_topic(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let cluster_id = path.into_inner();
-    
+
     // Convert request to service model
     let kafka_topic = KafkaTopic {
         name: topic_req.name.clone(),
@@ -241,10 +260,12 @@ pub async fn create_topic(
         replication_factor: topic_req.replication_factor,
         configs: topic_req.configs.clone(),
     };
-    
+
     // Use the KafkaService to create the topic
-    let response = kafka_service.create_topic(&cluster_id, &kafka_topic, &config).await?;
-    
+    let response = kafka_service
+        .create_topic(&cluster_id, &kafka_topic, &config)
+        .await?;
+
     Ok(HttpResponse::Created().json(response))
 }
 
@@ -255,10 +276,12 @@ pub async fn get_topic(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let (cluster_id, topic_name) = path.into_inner();
-    
+
     // Use the KafkaService to get topic details
-    let topic_details = kafka_service.get_topic_details(&cluster_id, &topic_name, &config).await?;
-    
+    let topic_details = kafka_service
+        .get_topic_details(&cluster_id, &topic_name, &config)
+        .await?;
+
     Ok(HttpResponse::Ok().json(topic_details))
 }
 
@@ -269,10 +292,12 @@ pub async fn delete_topic(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let (cluster_id, topic_name) = path.into_inner();
-    
+
     // Use the KafkaService to delete the topic
-    let response = kafka_service.delete_topic(&cluster_id, &topic_name, &config).await?;
-    
+    let response = kafka_service
+        .delete_topic(&cluster_id, &topic_name, &config)
+        .await?;
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -284,17 +309,19 @@ pub async fn produce_message(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let (cluster_id, topic_name) = path.into_inner();
-    
+
     // Convert request to service model
     let kafka_message = KafkaMessage {
         key: message.key.clone(),
         value: message.value.clone(),
         headers: message.headers.clone(),
     };
-    
+
     // Use the KafkaService to produce the message
-    let response = kafka_service.produce_message(&cluster_id, &topic_name, &kafka_message, &config).await?;
-    
+    let response = kafka_service
+        .produce_message(&cluster_id, &topic_name, &kafka_message, &config)
+        .await?;
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -306,7 +333,7 @@ pub async fn consume_messages(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let (cluster_id, topic_name) = path.into_inner();
-    
+
     // Convert request to service model
     let consume_options = ConsumeOptions {
         group_id: consume_req.group_id.clone(),
@@ -314,10 +341,12 @@ pub async fn consume_messages(
         timeout_ms: consume_req.timeout_ms,
         from_beginning: consume_req.from_beginning,
     };
-    
+
     // Use the KafkaService to consume messages
-    let messages = kafka_service.consume_messages(&cluster_id, &topic_name, &consume_options, &config).await?;
-    
+    let messages = kafka_service
+        .consume_messages(&cluster_id, &topic_name, &consume_options, &config)
+        .await?;
+
     Ok(HttpResponse::Ok().json(messages))
 }
 
@@ -328,10 +357,12 @@ pub async fn list_consumer_groups(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let cluster_id = path.into_inner();
-    
+
     // Use the KafkaService to list consumer groups
-    let consumer_groups = kafka_service.list_consumer_groups(&cluster_id, &config).await?;
-    
+    let consumer_groups = kafka_service
+        .list_consumer_groups(&cluster_id, &config)
+        .await?;
+
     Ok(HttpResponse::Ok().json(consumer_groups))
 }
 
@@ -342,10 +373,12 @@ pub async fn get_consumer_group(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let (cluster_id, group_id) = path.into_inner();
-    
+
     // Use the KafkaService to get consumer group details
-    let group_details = kafka_service.get_consumer_group(&cluster_id, &group_id, &config).await?;
-    
+    let group_details = kafka_service
+        .get_consumer_group(&cluster_id, &group_id, &config)
+        .await?;
+
     Ok(HttpResponse::Ok().json(group_details))
 }
 
@@ -357,7 +390,7 @@ pub async fn reset_offsets(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let (cluster_id, group_id) = path.into_inner();
-    
+
     // Convert request to service model
     let offset_reset = OffsetReset {
         partitions: offset_req.partitions.clone(),
@@ -365,10 +398,12 @@ pub async fn reset_offsets(
         to_latest: offset_req.to_latest,
         to_offset: offset_req.to_offset,
     };
-    
+
     // Use the KafkaService to reset offsets
-    let response = kafka_service.reset_offsets(&cluster_id, &group_id, &offset_reset, &config).await?;
-    
+    let response = kafka_service
+        .reset_offsets(&cluster_id, &group_id, &offset_reset, &config)
+        .await?;
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -382,16 +417,18 @@ pub async fn update_topic_config(
 ) -> Result<impl Responder, AppError> {
     let (cluster_id, topic_name) = path.into_inner();
     let validate_only = config_req.validate_only.unwrap_or(false);
-    
+
     // Use the KafkaService to update topic configuration
-    let response = kafka_service.update_topic_config(
-        &cluster_id,
-        &topic_name,
-        config_req.configs.clone(),
-        validate_only,
-        &config
-    ).await?;
-    
+    let response = kafka_service
+        .update_topic_config(
+            &cluster_id,
+            &topic_name,
+            config_req.configs.clone(),
+            validate_only,
+            &config,
+        )
+        .await?;
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -404,10 +441,12 @@ pub async fn update_cluster(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let cluster_id = path.into_inner();
-    
+
     // Use the KafkaService to update cluster configuration
-    let response = kafka_service.update_cluster_config(&cluster_id, &*update_req, &config).await?;
-    
+    let response = kafka_service
+        .update_cluster_config(&cluster_id, &*update_req, &config)
+        .await?;
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -421,16 +460,18 @@ pub async fn add_topic_partitions(
 ) -> Result<impl Responder, AppError> {
     let (cluster_id, topic_name) = path.into_inner();
     let validate_only = partition_req.validate_only.unwrap_or(false);
-    
+
     // Use the KafkaService to add partitions
-    let response = kafka_service.add_topic_partitions(
-        &cluster_id,
-        &topic_name,
-        partition_req.count,
-        validate_only,
-        &config
-    ).await?;
-    
+    let response = kafka_service
+        .add_topic_partitions(
+            &cluster_id,
+            &topic_name,
+            partition_req.count,
+            validate_only,
+            &config,
+        )
+        .await?;
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -442,16 +483,18 @@ pub async fn get_broker_status(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let cluster_id = path.into_inner();
-    
+
     // Use the KafkaService to get broker status
-    let brokers = kafka_service.get_broker_status(&cluster_id, &config).await?;
-    
+    let brokers = kafka_service
+        .get_broker_status(&cluster_id, &config)
+        .await?;
+
     let response = serde_json::json!({
         "cluster_id": cluster_id,
         "brokers": brokers,
         "total_brokers": brokers.len()
     });
-    
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -466,9 +509,11 @@ pub async fn backup_topic_messages(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let cluster_id = path.into_inner();
-    
-    let response = kafka_service.backup_topic_messages(&cluster_id, &*backup_req, &config).await?;
-    
+
+    let response = kafka_service
+        .backup_topic_messages(&cluster_id, &*backup_req, &config)
+        .await?;
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -481,9 +526,11 @@ pub async fn restore_topic_messages(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let cluster_id = path.into_inner();
-    
-    let response = kafka_service.restore_topic_messages(&cluster_id, &*restore_req, &config).await?;
-    
+
+    let response = kafka_service
+        .restore_topic_messages(&cluster_id, &*restore_req, &config)
+        .await?;
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -494,8 +541,10 @@ pub async fn migrate_topic_messages(
     config: web::Data<crate::config::Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let response = kafka_service.migrate_topic_messages(&*migration_req, &config).await?;
-    
+    let response = kafka_service
+        .migrate_topic_messages(&*migration_req, &config)
+        .await?;
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -508,8 +557,10 @@ pub async fn wait_for_queue_drain(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let cluster_id = path.into_inner();
-    
-    let response = kafka_service.wait_for_queue_drain(&cluster_id, &*drain_req, &config).await?;
-    
+
+    let response = kafka_service
+        .wait_for_queue_drain(&cluster_id, &*drain_req, &config)
+        .await?;
+
     Ok(HttpResponse::Ok().json(response))
 }

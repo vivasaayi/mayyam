@@ -1,8 +1,8 @@
-use std::sync::Arc;
 use actix_web::{web, HttpResponse, Responder};
+use serde::Deserialize;
+use std::sync::Arc;
 use tracing::{debug, info};
 use uuid::Uuid;
-use serde::Deserialize;
 
 use crate::errors::AppError;
 use crate::middleware::auth::Claims;
@@ -50,7 +50,9 @@ pub async fn update_account(
     service: web::Data<Arc<AwsAccountService>>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let account = service.update_account(id.into_inner(), dto.into_inner()).await?;
+    let account = service
+        .update_account(id.into_inner(), dto.into_inner())
+        .await?;
     Ok(HttpResponse::Ok().json(account))
 }
 
@@ -72,8 +74,13 @@ pub async fn sync_account_resources(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let sync_id = query.sync_id.unwrap_or_else(Uuid::new_v4);
-    debug!("Syncing resources for AWS account: {} with sync_id: {}", id, sync_id);
-    let response = service.sync_account_resources(id.into_inner(), sync_id).await?;
+    debug!(
+        "Syncing resources for AWS account: {} with sync_id: {}",
+        id, sync_id
+    );
+    let response = service
+        .sync_account_resources(id.into_inner(), sync_id)
+        .await?;
     Ok(HttpResponse::Ok().json(response))
 }
 

@@ -1,14 +1,14 @@
-use actix_web::{web, HttpResponse, Responder};
 use crate::errors::AppError;
 use crate::middleware::auth::Claims;
+use crate::services::llm::interface::LlmRequestBuilder;
+use crate::services::llm::manager::{LlmGenerationRequest, UnifiedLlmManager};
+use actix_web::web::Bytes;
+use actix_web::{web, HttpResponse, Responder};
+use futures::{stream, StreamExt};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::info;
-use regex::Regex;
-use actix_web::web::Bytes;
-use futures::{StreamExt, stream};
-use crate::services::llm::manager::{UnifiedLlmManager, LlmGenerationRequest};
-use crate::services::llm::interface::LlmRequestBuilder;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChatRequest {
@@ -108,53 +108,77 @@ pub async fn chat(
     req: web::Json<ChatRequest>,
     config: Option<web::Data<crate::config::Config>>,
     llm_integration_service: Option<web::Data<Arc<crate::services::llm::LlmIntegrationService>>>,
-    llm_provider_repo: Option<web::Data<Arc<crate::repositories::llm_provider::LlmProviderRepository>>>,
+    llm_provider_repo: Option<
+        web::Data<Arc<crate::repositories::llm_provider::LlmProviderRepository>>,
+    >,
     _claims: Option<web::ReqData<Claims>>,
 ) -> Result<impl Responder, AppError> {
     // Basic input validation & limits
     const MAX_MESSAGE_LEN: usize = 4000;
     const MAX_MESSAGES: usize = 50;
     if req.messages.is_empty() {
-        return Err(AppError::BadRequest("At least one message is required".to_string()));
+        return Err(AppError::BadRequest(
+            "At least one message is required".to_string(),
+        ));
     }
     if req.messages.len() > MAX_MESSAGES {
-        return Err(AppError::BadRequest(format!("Too many messages (max {})", MAX_MESSAGES)));
+        return Err(AppError::BadRequest(format!(
+            "Too many messages (max {})",
+            MAX_MESSAGES
+        )));
     }
-    let too_long = req.messages.iter().any(|m| m.content.len() > MAX_MESSAGE_LEN);
+    let too_long = req
+        .messages
+        .iter()
+        .any(|m| m.content.len() > MAX_MESSAGE_LEN);
     if too_long {
-        return Err(AppError::BadRequest(format!("Message too long (max {} chars)", MAX_MESSAGE_LEN)));
+        return Err(AppError::BadRequest(format!(
+            "Message too long (max {} chars)",
+            MAX_MESSAGE_LEN
+        )));
     }
     // Optional simple sanitization to avoid accidental HTML/script injection echoes
     let strip_html = Regex::new(r"<[^>]+>").ok();
     // Find provider by model name (or fallback to default)
-    let config = config.ok_or_else(|| AppError::Internal("Missing Config in app state".to_string()))?;
-    let llm_provider_repo = llm_provider_repo.ok_or_else(|| AppError::Internal("Missing LlmProviderRepository in app state".to_string()))?;
-    let llm_integration_service = llm_integration_service.ok_or_else(|| AppError::Internal("Missing LlmIntegrationService in app state".to_string()))?;
+    let config =
+        config.ok_or_else(|| AppError::Internal("Missing Config in app state".to_string()))?;
+    let llm_provider_repo = llm_provider_repo.ok_or_else(|| {
+        AppError::Internal("Missing LlmProviderRepository in app state".to_string())
+    })?;
+    let llm_integration_service = llm_integration_service.ok_or_else(|| {
+        AppError::Internal("Missing LlmIntegrationService in app state".to_string())
+    })?;
     let model_name = req.model.clone().unwrap_or_else(|| config.ai.model.clone());
     let provider = llm_provider_repo
         .find_by_model_name(&model_name)
         .await?
-        .ok_or_else(|| AppError::NotFound(format!("LLM provider for model '{}' not found", model_name)))?;
+        .ok_or_else(|| {
+            AppError::NotFound(format!("LLM provider for model '{}' not found", model_name))
+        })?;
     let provider_id = provider.id;
 
     // Compose prompt from chat history (simple: join user messages)
-    let prompt = req.messages.iter()
+    let prompt = req
+        .messages
+        .iter()
         .filter(|m| m.role == "user")
         .map(|m| {
             let mut c = m.content.clone();
-            if let Some(re) = &strip_html { c = re.replace_all(&c, "").to_string(); }
+            if let Some(re) = &strip_html {
+                c = re.replace_all(&c, "").to_string();
+            }
             c
         })
         .collect::<Vec<_>>()
         .join("\n");
 
-    let system_prompt = req.messages.iter()
-        .find(|m| m.role == "system")
-        .map(|m| {
-            let mut c = m.content.clone();
-            if let Some(re) = &strip_html { c = re.replace_all(&c, "").to_string(); }
-            c
-        });
+    let system_prompt = req.messages.iter().find(|m| m.role == "system").map(|m| {
+        let mut c = m.content.clone();
+        if let Some(re) = &strip_html {
+            c = re.replace_all(&c, "").to_string();
+        }
+        c
+    });
 
     let llm_request = crate::services::llm::LlmRequest {
         prompt,
@@ -194,60 +218,85 @@ pub async fn chat(
 pub async fn chat_stream(
     req: web::Json<ChatRequest>,
     llm_manager: Option<web::Data<Arc<UnifiedLlmManager>>>,
-    llm_provider_repo: Option<web::Data<Arc<crate::repositories::llm_provider::LlmProviderRepository>>>,
+    llm_provider_repo: Option<
+        web::Data<Arc<crate::repositories::llm_provider::LlmProviderRepository>>,
+    >,
     _claims: Option<web::ReqData<Claims>>,
     config: Option<web::Data<crate::config::Config>>,
-)
--> Result<HttpResponse, AppError> {
+) -> Result<HttpResponse, AppError> {
     // Validation (same limits as non-streaming)
     const MAX_MESSAGE_LEN: usize = 4000;
     const MAX_MESSAGES: usize = 50;
     if req.messages.is_empty() {
-        return Err(AppError::BadRequest("At least one message is required".to_string()));
+        return Err(AppError::BadRequest(
+            "At least one message is required".to_string(),
+        ));
     }
     if req.messages.len() > MAX_MESSAGES {
-        return Err(AppError::BadRequest(format!("Too many messages (max {})", MAX_MESSAGES)));
+        return Err(AppError::BadRequest(format!(
+            "Too many messages (max {})",
+            MAX_MESSAGES
+        )));
     }
-    if req.messages.iter().any(|m| m.content.len() > MAX_MESSAGE_LEN) {
-        return Err(AppError::BadRequest(format!("Message too long (max {} chars)", MAX_MESSAGE_LEN)));
+    if req
+        .messages
+        .iter()
+        .any(|m| m.content.len() > MAX_MESSAGE_LEN)
+    {
+        return Err(AppError::BadRequest(format!(
+            "Message too long (max {} chars)",
+            MAX_MESSAGE_LEN
+        )));
     }
 
     // Only resolve dependencies after validation to keep tests simple
-    let config = config.ok_or_else(|| AppError::Internal("Missing Config in app state".to_string()))?;
-    let llm_provider_repo = llm_provider_repo.ok_or_else(|| AppError::Internal("Missing LlmProviderRepository in app state".to_string()))?;
-    let llm_manager = llm_manager.ok_or_else(|| AppError::Internal("Missing UnifiedLlmManager in app state".to_string()))?;
+    let config =
+        config.ok_or_else(|| AppError::Internal("Missing Config in app state".to_string()))?;
+    let llm_provider_repo = llm_provider_repo.ok_or_else(|| {
+        AppError::Internal("Missing LlmProviderRepository in app state".to_string())
+    })?;
+    let llm_manager = llm_manager
+        .ok_or_else(|| AppError::Internal("Missing UnifiedLlmManager in app state".to_string()))?;
 
     let model_name = req.model.clone().unwrap_or_else(|| config.ai.model.clone());
     let provider = llm_provider_repo
         .find_by_model_name(&model_name)
         .await?
-        .ok_or_else(|| AppError::NotFound(format!("LLM provider for model '{}' not found", model_name)))?;
+        .ok_or_else(|| {
+            AppError::NotFound(format!("LLM provider for model '{}' not found", model_name))
+        })?;
 
     // Build prompt/system
     let strip_html = Regex::new(r"<[^>]+>").ok();
-    let prompt = req.messages.iter()
+    let prompt = req
+        .messages
+        .iter()
         .filter(|m| m.role == "user")
         .map(|m| {
             let mut c = m.content.clone();
-            if let Some(re) = &strip_html { c = re.replace_all(&c, "").to_string(); }
+            if let Some(re) = &strip_html {
+                c = re.replace_all(&c, "").to_string();
+            }
             c
         })
         .collect::<Vec<_>>()
         .join("\n");
-    let system_prompt = req.messages.iter()
-        .find(|m| m.role == "system")
-        .map(|m| {
-            let mut c = m.content.clone();
-            if let Some(re) = &strip_html { c = re.replace_all(&c, "").to_string(); }
-            c
-        });
+    let system_prompt = req.messages.iter().find(|m| m.role == "system").map(|m| {
+        let mut c = m.content.clone();
+        if let Some(re) = &strip_html {
+            c = re.replace_all(&c, "").to_string();
+        }
+        c
+    });
 
     let mut builder = LlmRequestBuilder::new()
         .prompt(prompt)
         .temperature(req.temperature.unwrap_or(1.0))
         .max_tokens(1000)
         .stream(true);
-    if let Some(sp) = system_prompt { builder = builder.system_prompt(sp); }
+    if let Some(sp) = system_prompt {
+        builder = builder.system_prompt(sp);
+    }
     let llm_request = builder.build();
 
     // Request streaming from the provider via manager
@@ -290,7 +339,7 @@ pub async fn analyze_logs(
 ) -> Result<impl Responder, AppError> {
     // In a real implementation, we would process the logs and call an AI API
     // For now, simulate a response
-    
+
     let analysis = serde_json::json!({
         "summary": "Simulated log analysis summary",
         "issues": [
@@ -314,7 +363,7 @@ pub async fn analyze_logs(
             "Review database query performance and consider optimization"
         ]
     });
-    
+
     Ok(HttpResponse::Ok().json(analysis))
 }
 
@@ -325,7 +374,7 @@ pub async fn analyze_metrics(
 ) -> Result<impl Responder, AppError> {
     // In a real implementation, we would process the metrics and call an AI API
     // For now, simulate a response
-    
+
     let analysis = serde_json::json!({
         "summary": "Simulated metrics analysis summary",
         "anomalies": [
@@ -357,7 +406,7 @@ pub async fn analyze_metrics(
             "Consider scaling resources if latency trend continues"
         ]
     });
-    
+
     Ok(HttpResponse::Ok().json(analysis))
 }
 
@@ -368,10 +417,10 @@ pub async fn optimize_query(
 ) -> Result<impl Responder, AppError> {
     // In a real implementation, we would analyze the query and call an AI API
     // For now, simulate a response
-    
+
     // Example original query
     let original_query = &req.query;
-    
+
     let optimization = serde_json::json!({
         "original_query": original_query,
         "optimized_query": "SELECT u.id, u.name, COUNT(o.id) as order_count FROM users u LEFT JOIN orders o ON u.id = o.user_id WHERE u.status = 'active' GROUP BY u.id, u.name",
@@ -389,7 +438,7 @@ pub async fn optimize_query(
             }
         ]
     });
-    
+
     Ok(HttpResponse::Ok().json(optimization))
 }
 
@@ -400,7 +449,7 @@ pub async fn explain_kubernetes(
 ) -> Result<impl Responder, AppError> {
     // In a real implementation, we would analyze the K8s resource and call an AI API
     // For now, simulate a response
-    
+
     let explanation = serde_json::json!({
         "resource_type": req.resource_type,
         "explanation": "This Kubernetes Deployment manages a replicated application, ensuring that the specified number of pod replicas are running at all times. It uses a selector to identify which pods it manages, and a template that defines the pod specification.",
@@ -438,7 +487,7 @@ pub async fn explain_kubernetes(
             "Use network policies to restrict traffic"
         ]
     });
-    
+
     Ok(HttpResponse::Ok().json(explanation))
 }
 
@@ -449,7 +498,7 @@ pub async fn troubleshoot(
 ) -> Result<impl Responder, AppError> {
     // In a real implementation, we would analyze the issue and call an AI API
     // For now, simulate a response
-    
+
     let troubleshooting = serde_json::json!({
         "issue_summary": req.issue,
         "diagnosis": [
@@ -486,7 +535,7 @@ pub async fn troubleshoot(
             "SELECT * FROM performance_schema.events_statements_summary_by_digest ORDER BY sum_timer_wait DESC LIMIT 10;"
         ]
     });
-    
+
     Ok(HttpResponse::Ok().json(troubleshooting))
 }
 
@@ -498,16 +547,21 @@ pub async fn analyze_rds_instance(
     llm_provider_repo: web::Data<Arc<crate::repositories::llm_provider::LlmProviderRepository>>,
 ) -> Result<impl Responder, AppError> {
     let (instance_id, workflow) = path.into_inner();
-    
-    info!("Analyzing RDS instance {} with workflow {}", instance_id, workflow);
-    
+
+    info!(
+        "Analyzing RDS instance {} with workflow {}",
+        instance_id, workflow
+    );
+
     // Get the default LLM provider
     let model_name = config.ai.model.clone();
     let provider = llm_provider_repo
         .find_by_model_name(&model_name)
         .await?
-        .ok_or_else(|| AppError::NotFound(format!("LLM provider for model '{}' not found", model_name)))?;
-    
+        .ok_or_else(|| {
+            AppError::NotFound(format!("LLM provider for model '{}' not found", model_name))
+        })?;
+
     // Create real LLM analysis based on workflow
     let (prompt, related_questions) = match workflow.as_str() {
         "memory-usage" => (
@@ -552,7 +606,7 @@ pub async fn analyze_rds_instance(
         ),
         _ => return Err(AppError::BadRequest(format!("Unknown workflow: {}", workflow))),
     };
-    
+
     // Make real LLM call
     let llm_request = crate::services::llm::LlmRequest {
         prompt,
@@ -571,7 +625,7 @@ pub async fn analyze_rds_instance(
         content: llm_response.content,
         related_questions,
     };
-    
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -582,20 +636,25 @@ pub async fn answer_rds_question(
     llm_integration_service: web::Data<Arc<crate::services::llm::LlmIntegrationService>>,
     llm_provider_repo: web::Data<Arc<crate::repositories::llm_provider::LlmProviderRepository>>,
 ) -> Result<impl Responder, AppError> {
-    info!("Answering question about RDS instance {}: {}", req.instance_id, req.question);
-    
+    info!(
+        "Answering question about RDS instance {}: {}",
+        req.instance_id, req.question
+    );
+
     // Get the default LLM provider
     let model_name = config.ai.model.clone();
     let provider = llm_provider_repo
         .find_by_model_name(&model_name)
         .await?
-        .ok_or_else(|| AppError::NotFound(format!("LLM provider for model '{}' not found", model_name)))?;
-    
+        .ok_or_else(|| {
+            AppError::NotFound(format!("LLM provider for model '{}' not found", model_name))
+        })?;
+
     let prompt = format!(
         "Answer this specific question about RDS instance '{}': {}\n\nProvide a detailed, actionable response based on AWS RDS best practices and performance optimization principles. Format the response in markdown.",
         req.instance_id, req.question
     );
-    
+
     // Make real LLM call
     let llm_request = crate::services::llm::LlmRequest {
         prompt,
@@ -618,7 +677,7 @@ pub async fn answer_rds_question(
             "How can I automate this optimization process?".to_string(),
         ],
     };
-    
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -631,16 +690,21 @@ pub async fn analyze_dynamodb_table(
     llm_provider_repo: web::Data<Arc<crate::repositories::llm_provider::LlmProviderRepository>>,
 ) -> Result<impl Responder, AppError> {
     let (table_id, workflow) = path.into_inner();
-    
-    info!("Analyzing DynamoDB table {} with workflow {}", table_id, workflow);
-    
+
+    info!(
+        "Analyzing DynamoDB table {} with workflow {}",
+        table_id, workflow
+    );
+
     // Get the default LLM provider
     let model_name = config.ai.model.clone();
     let provider = llm_provider_repo
         .find_by_model_name(&model_name)
         .await?
-        .ok_or_else(|| AppError::NotFound(format!("LLM provider for model '{}' not found", model_name)))?;
-    
+        .ok_or_else(|| {
+            AppError::NotFound(format!("LLM provider for model '{}' not found", model_name))
+        })?;
+
     // Create real LLM analysis based on workflow
     let (prompt, related_questions) = match workflow.as_str() {
         "provisioned-capacity" => (
@@ -685,7 +749,7 @@ pub async fn analyze_dynamodb_table(
         ),
         _ => return Err(AppError::BadRequest(format!("Unknown workflow: {}", workflow))),
     };
-    
+
     // Make real LLM call
     let llm_request = crate::services::llm::LlmRequest {
         prompt,
@@ -704,7 +768,7 @@ pub async fn analyze_dynamodb_table(
         content: llm_response.content,
         related_questions,
     };
-    
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -716,20 +780,25 @@ pub async fn answer_dynamodb_question(
     llm_integration_service: web::Data<Arc<crate::services::llm::LlmIntegrationService>>,
     llm_provider_repo: web::Data<Arc<crate::repositories::llm_provider::LlmProviderRepository>>,
 ) -> Result<impl Responder, AppError> {
-    info!("Answering question about DynamoDB table {}: {}", req.instance_id, req.question);
-    
+    info!(
+        "Answering question about DynamoDB table {}: {}",
+        req.instance_id, req.question
+    );
+
     // Get the default LLM provider
     let model_name = config.ai.model.clone();
     let provider = llm_provider_repo
         .find_by_model_name(&model_name)
         .await?
-        .ok_or_else(|| AppError::NotFound(format!("LLM provider for model '{}' not found", model_name)))?;
-    
+        .ok_or_else(|| {
+            AppError::NotFound(format!("LLM provider for model '{}' not found", model_name))
+        })?;
+
     let prompt = format!(
         "Answer this specific question about DynamoDB table '{}': {}\n\nProvide a detailed, actionable response based on AWS DynamoDB best practices, performance optimization, and cost management principles. Format the response in markdown.",
         req.instance_id, req.question
     );
-    
+
     // Make real LLM call
     let llm_request = crate::services::llm::LlmRequest {
         prompt,
@@ -752,7 +821,7 @@ pub async fn answer_dynamodb_question(
             "How can I automate these optimizations?".to_string(),
         ],
     };
-    
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -808,7 +877,8 @@ Storage usage is at 68% of allocated capacity with a growth rate of approximatel
 4. **Monitoring**: Enable storage auto-scaling to prevent reaching capacity limits
 
 ## Projected Growth
-At current growth rate, you will reach 85% capacity in approximately 14 weeks."#.to_string()
+At current growth rate, you will reach 85% capacity in approximately 14 weeks."#
+        .to_string()
 }
 
 fn get_mock_performance_analysis() -> String {
@@ -887,7 +957,8 @@ LIMIT 30
 1. Implement query caching for repeated analytical queries
 2. Review application ORM settings to prevent N+1 query patterns
 3. Consider creating read replicas for reporting and analytics workloads
-4. Schedule regular EXPLAIN ANALYZE on critical queries"#.to_string()
+4. Schedule regular EXPLAIN ANALYZE on critical queries"#
+        .to_string()
 }
 
 fn get_mock_dynamodb_capacity_analysis() -> String {
@@ -922,7 +993,8 @@ Your DynamoDB table is using provisioned capacity mode with:
 ## Monitoring Improvements
 Set up CloudWatch alarms for:
 - Throttling events > 5 in 5 minutes
-- Sustained capacity above 80% for 15 minutes"#.to_string()
+- Sustained capacity above 80% for 15 minutes"#
+        .to_string()
 }
 
 fn get_mock_dynamodb_read_analysis() -> String {
@@ -955,7 +1027,8 @@ fn get_mock_dynamodb_read_analysis() -> String {
 1. Create a GSI with status as partition key
 2. Implement DynamoDB Accelerator (DAX)
 3. Add TTL for old items
-4. Use Parallel Scan for large datasets"#.to_string()
+4. Use Parallel Scan for large datasets"#
+        .to_string()
 }
 
 fn get_mock_dynamodb_write_analysis() -> String {
@@ -987,7 +1060,8 @@ fn get_mock_dynamodb_write_analysis() -> String {
    - Implement exponential backoff retry
 2. **Capacity Management**
    - Schedule AutoScaling for known peak periods
-   - Consider reserved capacity"#.to_string()
+   - Consider reserved capacity"#
+        .to_string()
 }
 
 fn get_mock_dynamodb_hotspots_analysis() -> String {
@@ -1023,7 +1097,8 @@ fn get_mock_dynamodb_hotspots_analysis() -> String {
    - Implement write sharding
 3. **Monitoring**
    - Track PartitionCount metric
-   - Alert on throttling events"#.to_string()
+   - Alert on throttling events"#
+        .to_string()
 }
 
 fn get_mock_dynamodb_cost_analysis() -> String {
@@ -1064,5 +1139,6 @@ Implement TTL for old data
 1. Enable TTL immediately
 2. Test on-demand pricing for 2 weeks
 3. Review reserved capacity options
-4. Implement DAX for frequent queries"#.to_string()
+4. Implement DAX for frequent queries"#
+        .to_string()
 }

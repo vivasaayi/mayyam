@@ -1,11 +1,14 @@
 use crate::errors::AppError;
 use crate::models::cluster::KubernetesClusterConfig;
 use crate::services::kubernetes::client::ClientFactory;
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use k8s_openapi::api::core::v1::Secret;
-use kube::{api::{Api, ListParams, PatchParams, Patch, DeleteParams}, ResourceExt};
+use kube::{
+    api::{Api, DeleteParams, ListParams, Patch, PatchParams},
+    ResourceExt,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SecretInfo {
@@ -20,7 +23,9 @@ pub struct SecretInfo {
 pub struct SecretsService;
 
 impl SecretsService {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 
     async fn api(
         cluster_config: &KubernetesClusterConfig,
@@ -46,10 +51,18 @@ impl SecretsService {
     ) -> Result<Vec<SecretInfo>, AppError> {
         let api = Self::api(cluster_config, namespace).await?;
         let mut lp = ListParams::default();
-        if let Some(ls) = label_selector { lp = lp.labels(&ls); }
-        if let Some(fs) = field_selector { lp = lp.fields(&fs); }
-        if let Some(l) = limit { lp = lp.limit(l); }
-        if let Some(ct) = continue_token { lp = lp.continue_token(&ct); }
+        if let Some(ls) = label_selector {
+            lp = lp.labels(&ls);
+        }
+        if let Some(fs) = field_selector {
+            lp = lp.fields(&fs);
+        }
+        if let Some(l) = limit {
+            lp = lp.limit(l);
+        }
+        if let Some(ct) = continue_token {
+            lp = lp.continue_token(&ct);
+        }
         let items = api
             .list(&lp)
             .await
@@ -59,7 +72,13 @@ impl SecretsService {
             .into_iter()
             .map(|s| SecretInfo {
                 name: s.name_any(),
-                namespace: s.namespace().unwrap_or_else(|| if namespace == "all" { String::new() } else { namespace.to_string() }),
+                namespace: s.namespace().unwrap_or_else(|| {
+                    if namespace == "all" {
+                        String::new()
+                    } else {
+                        namespace.to_string()
+                    }
+                }),
                 type_field: s.type_.clone(),
                 data_keys: s.data.unwrap_or_default().keys().cloned().collect(),
                 labels: s.metadata.labels.clone(),
@@ -75,11 +94,14 @@ impl SecretsService {
         name: &str,
     ) -> Result<Secret, AppError> {
         let api = Self::api(cluster_config, namespace).await?;
-        let mut s = api.get(name).await.map_err(|e| AppError::Kubernetes(e.to_string()))?;
-    // Redact values
+        let mut s = api
+            .get(name)
+            .await
+            .map_err(|e| AppError::Kubernetes(e.to_string()))?;
+        // Redact values
         if let Some(ref mut data) = s.data {
             for (_k, v) in data.iter_mut() {
-        // Overwrite with redaction marker bytes; API serializes as base64 automatically
+                // Overwrite with redaction marker bytes; API serializes as base64 automatically
                 *v = k8s_openapi::ByteString(b"***".to_vec());
             }
         }

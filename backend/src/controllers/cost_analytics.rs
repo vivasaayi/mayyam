@@ -1,21 +1,21 @@
-use std::sync::Arc;
 use actix_web::{web, HttpResponse, Result as ActixResult};
-use serde::{Deserialize, Serialize};
 use chrono::NaiveDate;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::services::aws_cost_analytics::{AwsCostAnalyticsService, CostAnalysisRequest};
-use crate::repositories::cost_analytics::CostAnalyticsRepository;
 use crate::errors::AppError;
 use crate::middleware::auth::Claims;
+use crate::repositories::cost_analytics::CostAnalyticsRepository;
+use crate::services::aws_cost_analytics::{AwsCostAnalyticsService, CostAnalysisRequest};
 
 #[derive(Debug, Deserialize)]
 pub struct CostAnalysisQuery {
     pub account_id: String,
-    pub start_date: String, // YYYY-MM-DD format
-    pub end_date: String,   // YYYY-MM-DD format
+    pub start_date: String,             // YYYY-MM-DD format
+    pub end_date: String,               // YYYY-MM-DD format
     pub service_filter: Option<String>, // Comma-separated service names
-    pub granularity: Option<String>, // "DAILY" or "MONTHLY", default "MONTHLY"
+    pub granularity: Option<String>,    // "DAILY" or "MONTHLY", default "MONTHLY"
 }
 
 #[derive(Debug, Deserialize)]
@@ -78,23 +78,29 @@ pub async fn fetch_cost_data(
     tracing::info!("Fetching cost data for account {}", query.account_id);
 
     // Parse dates
-    let start_date = NaiveDate::parse_from_str(&query.start_date, "%Y-%m-%d")
-        .map_err(|e| actix_web::error::ErrorBadRequest(format!("Invalid start_date format: {}", e)))?;
-    
-    let end_date = NaiveDate::parse_from_str(&query.end_date, "%Y-%m-%d")
-        .map_err(|e| actix_web::error::ErrorBadRequest(format!("Invalid end_date format: {}", e)))?;
+    let start_date = NaiveDate::parse_from_str(&query.start_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid start_date format: {}", e))
+    })?;
+
+    let end_date = NaiveDate::parse_from_str(&query.end_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid end_date format: {}", e))
+    })?;
 
     // Parse service filter
-    let service_filter = query.service_filter.as_ref().map(|s| {
-        s.split(',').map(|s| s.trim().to_string()).collect()
-    });
+    let service_filter = query
+        .service_filter
+        .as_ref()
+        .map(|s| s.split(',').map(|s| s.trim().to_string()).collect());
 
     let request = CostAnalysisRequest {
         account_id: query.account_id.clone(),
         start_date,
         end_date,
         service_filter,
-        granularity: query.granularity.clone().unwrap_or_else(|| "MONTHLY".to_string()),
+        granularity: query
+            .granularity
+            .clone()
+            .unwrap_or_else(|| "MONTHLY".to_string()),
     };
 
     match cost_service.fetch_cost_data(&request).await {
@@ -126,9 +132,15 @@ pub async fn get_monthly_aggregates(
     query: web::Query<MonthlyAggregatesQuery>,
     _claims: web::ReqData<Claims>,
 ) -> ActixResult<HttpResponse> {
-    tracing::info!("Getting monthly aggregates for account {}", query.account_id);
+    tracing::info!(
+        "Getting monthly aggregates for account {}",
+        query.account_id
+    );
 
-    match repository.get_monthly_aggregates_by_account(&query.account_id, query.months).await {
+    match repository
+        .get_monthly_aggregates_by_account(&query.account_id, query.months)
+        .await
+    {
         Ok(aggregates) => {
             let response = CostAnalysisResponse {
                 success: true,
@@ -162,13 +174,22 @@ pub async fn get_top_services(
     query: web::Query<TopServicesQuery>,
     _claims: web::ReqData<Claims>,
 ) -> ActixResult<HttpResponse> {
-    tracing::info!("Getting top services for account {} and month {}", query.account_id, query.month_year);
+    tracing::info!(
+        "Getting top services for account {} and month {}",
+        query.account_id,
+        query.month_year
+    );
 
     // Parse month_year
     let month_date = NaiveDate::parse_from_str(&format!("{}-01", query.month_year), "%Y-%m-%d")
-        .map_err(|e| actix_web::error::ErrorBadRequest(format!("Invalid month_year format: {}", e)))?;
+        .map_err(|e| {
+            actix_web::error::ErrorBadRequest(format!("Invalid month_year format: {}", e))
+        })?;
 
-    match repository.get_top_services_by_cost(&query.account_id, month_date, query.limit).await {
+    match repository
+        .get_top_services_by_cost(&query.account_id, month_date, query.limit)
+        .await
+    {
         Ok(services) => {
             let response = CostAnalysisResponse {
                 success: true,
@@ -202,7 +223,14 @@ pub async fn get_cost_anomalies(
 ) -> ActixResult<HttpResponse> {
     tracing::info!("Getting cost anomalies for account {}", query.account_id);
 
-    match repository.get_cost_anomalies_by_account(&query.account_id, query.severity.clone(), query.status.clone()).await {
+    match repository
+        .get_cost_anomalies_by_account(
+            &query.account_id,
+            query.severity.clone(),
+            query.status.clone(),
+        )
+        .await
+    {
         Ok(anomalies) => {
             let response = CostAnalysisResponse {
                 success: true,
@@ -242,7 +270,10 @@ pub async fn get_cost_insights(
 ) -> ActixResult<HttpResponse> {
     tracing::info!("Getting cost insights for account {}", query.account_id);
 
-    match repository.get_recent_insights(&query.account_id, query.insight_type.clone(), query.limit).await {
+    match repository
+        .get_recent_insights(&query.account_id, query.insight_type.clone(), query.limit)
+        .await
+    {
         Ok(insights) => {
             let response = CostAnalysisResponse {
                 success: true,
@@ -276,9 +307,15 @@ pub async fn compute_monthly_aggregates(
     query: web::Query<MonthlyAggregatesQuery>,
     _claims: web::ReqData<Claims>,
 ) -> ActixResult<HttpResponse> {
-    tracing::info!("Computing monthly aggregates for account {}", query.account_id);
+    tracing::info!(
+        "Computing monthly aggregates for account {}",
+        query.account_id
+    );
 
-    match cost_service.compute_monthly_aggregates(&query.account_id).await {
+    match cost_service
+        .compute_monthly_aggregates(&query.account_id)
+        .await
+    {
         Ok(()) => {
             let response = CostAnalysisResponse {
                 success: true,

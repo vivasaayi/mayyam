@@ -20,10 +20,10 @@ clap = { version = "4.4", features = ["derive"] }
 env_logger = "0.10"
 
 # Database ORM
-sea-orm = { version = "0.12", features = ["sqlx-postgres", "sqlx-mysql", "runtime-tokio-rustls", "macros"] }
+sea-orm = { version = "0.12", features = ["sqlx-postgres", "sqlx-mysql", "sqlx-sqlite", "runtime-tokio-rustls", "macros"] }
 sea-orm-migration = "0.12"
 sea-query = "0.30"
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "mysql", "json", "chrono", "uuid"] }
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "mysql", "sqlite", "json", "chrono", "uuid"] }
 redis = { version = "0.23", features = ["tokio-comp"] }
 opensearch = "2.2"
 

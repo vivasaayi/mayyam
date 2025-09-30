@@ -1,9 +1,9 @@
-use kube::{Client, Api, ResourceExt};
-use kube::api::ListParams;
-use kube::config::{Kubeconfig, KubeConfigOptions, Config as KubeConfig};
-use k8s_openapi::api::core::v1::Service;
-use serde::{Serialize, Deserialize};
 use chrono::Utc;
+use k8s_openapi::api::core::v1::Service;
+use kube::api::ListParams;
+use kube::config::{Config as KubeConfig, KubeConfigOptions, Kubeconfig};
+use kube::{Api, Client, ResourceExt};
+use serde::{Deserialize, Serialize};
 
 use crate::errors::AppError;
 use crate::models::cluster::KubernetesClusterConfig;
@@ -38,19 +38,37 @@ impl ServicesService {
 
     async fn get_kube_client(cluster_config: &KubernetesClusterConfig) -> Result<Client, AppError> {
         let kubeconfig = if let Some(path) = &cluster_config.kube_config_path {
-            Kubeconfig::read_from(path).map_err(|e| AppError::ExternalService(format!("Failed to read kubeconfig from path: {}", e)))?
+            Kubeconfig::read_from(path).map_err(|e| {
+                AppError::ExternalService(format!("Failed to read kubeconfig from path: {}", e))
+            })?
         } else {
-            let infer_config = kube::Config::infer().await.map_err(|e| AppError::ExternalService(format!("Failed to infer Kubernetes config: {}", e)))?;
-            return Client::try_from(infer_config).map_err(|e| AppError::ExternalService(format!("Failed to create Kubernetes client from inferred config: {}", e)));
+            let infer_config = kube::Config::infer().await.map_err(|e| {
+                AppError::ExternalService(format!("Failed to infer Kubernetes config: {}", e))
+            })?;
+            return Client::try_from(infer_config).map_err(|e| {
+                AppError::ExternalService(format!(
+                    "Failed to create Kubernetes client from inferred config: {}",
+                    e
+                ))
+            });
         };
-        
-        let client_config = KubeConfig::from_custom_kubeconfig(kubeconfig, &KubeConfigOptions {
-            context: cluster_config.kube_context.clone(),
-            cluster: None,
-            user: None,
-        }).await.map_err(|e| AppError::ExternalService(format!("Failed to create Kubernetes client config: {}", e)))?;
 
-        Client::try_from(client_config).map_err(|e| AppError::ExternalService(format!("Failed to create Kubernetes client: {}", e)))
+        let client_config = KubeConfig::from_custom_kubeconfig(
+            kubeconfig,
+            &KubeConfigOptions {
+                context: cluster_config.kube_context.clone(),
+                cluster: None,
+                user: None,
+            },
+        )
+        .await
+        .map_err(|e| {
+            AppError::ExternalService(format!("Failed to create Kubernetes client config: {}", e))
+        })?;
+
+        Client::try_from(client_config).map_err(|e| {
+            AppError::ExternalService(format!("Failed to create Kubernetes client: {}", e))
+        })
     }
 
     pub async fn list_services(
@@ -62,7 +80,10 @@ impl ServicesService {
         let api: Api<Service> = Api::namespaced(client, namespace);
         let lp = ListParams::default();
         let service_list = api.list(&lp).await.map_err(|e| {
-            AppError::ExternalService(format!("Failed to list services in namespace '{}': {}", namespace, e))
+            AppError::ExternalService(format!(
+                "Failed to list services in namespace '{}': {}",
+                namespace, e
+            ))
         })?;
 
         let mut infos = Vec::new();
@@ -76,11 +97,16 @@ impl ServicesService {
                 |ts| {
                     let creation_time = ts.0;
                     let duration = Utc::now().signed_duration_since(creation_time);
-                    if duration.num_days() > 0 { format!("{}d", duration.num_days()) }
-                    else if duration.num_hours() > 0 { format!("{}h", duration.num_hours()) }
-                    else if duration.num_minutes() > 0 { format!("{}m", duration.num_minutes()) }
-                    else { format!("{}s", duration.num_seconds()) }
-                }
+                    if duration.num_days() > 0 {
+                        format!("{}d", duration.num_days())
+                    } else if duration.num_hours() > 0 {
+                        format!("{}h", duration.num_hours())
+                    } else if duration.num_minutes() > 0 {
+                        format!("{}m", duration.num_minutes())
+                    } else {
+                        format!("{}s", duration.num_seconds())
+                    }
+                },
             );
 
             let ports_info = spec.and_then(|s_spec| s_spec.ports.as_ref()).map_or_else(Vec::new, |k8s_ports| {
@@ -95,14 +121,20 @@ impl ServicesService {
                     node_port: p.node_port,
                 }).collect()
             });
-            
-            let external_ips = spec.and_then(|s_spec| s_spec.external_ips.clone()).unwrap_or_default();
+
+            let external_ips = spec
+                .and_then(|s_spec| s_spec.external_ips.clone())
+                .unwrap_or_default();
 
             infos.push(ServiceInfo {
                 name,
                 namespace: namespace.to_string(),
-                service_type: spec.and_then(|s_spec| s_spec.type_.clone()).unwrap_or_else(|| "Unknown".to_string()),
-                cluster_ip: spec.and_then(|s_spec| s_spec.cluster_ip.clone()).filter(|ip| ip != "None"),
+                service_type: spec
+                    .and_then(|s_spec| s_spec.type_.clone())
+                    .unwrap_or_else(|| "Unknown".to_string()),
+                cluster_ip: spec
+                    .and_then(|s_spec| s_spec.cluster_ip.clone())
+                    .filter(|ip| ip != "None"),
                 external_ips,
                 ports: ports_info,
                 age,
@@ -120,7 +152,10 @@ impl ServicesService {
         let client = Self::get_kube_client(cluster_config).await?;
         let api: Api<Service> = Api::namespaced(client, namespace);
         api.get(name).await.map_err(|e| {
-            AppError::ExternalService(format!("Failed to get service '{}' in namespace '{}': {}", name, namespace, e))
+            AppError::ExternalService(format!(
+                "Failed to get service '{}' in namespace '{}': {}",
+                name, namespace, e
+            ))
         })
     }
 }

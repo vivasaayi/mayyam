@@ -1,11 +1,13 @@
-use std::sync::Arc;
-use serde_json::json;
 use crate::errors::AppError;
-use crate::services::aws::aws_types::cloud_watch::{CloudWatchMetricsRequest, CloudWatchMetricsResult};
+use crate::models::aws_account::AwsAccountDto;
+use crate::services::aws::aws_types::cloud_watch::{
+    CloudWatchMetricsRequest, CloudWatchMetricsResult,
+};
 use crate::services::aws::aws_types::sqs::{SqsReceiveMessageRequest, SqsSendMessageRequest};
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::AwsService;
-use crate::models::aws_account::AwsAccountDto;
+use serde_json::json;
+use std::sync::Arc;
 use uuid;
 
 // Data plane implementation for SQS
@@ -18,7 +20,11 @@ impl SqsDataPlane {
         Self { aws_service }
     }
 
-    pub async fn send_message(&self, aws_account_dto: &AwsAccountDto, request: &SqsSendMessageRequest) -> Result<serde_json::Value, AppError> {
+    pub async fn send_message(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        request: &SqsSendMessageRequest,
+    ) -> Result<serde_json::Value, AppError> {
         let client = self.aws_service.create_sqs_client(aws_account_dto).await?;
 
         // In a real implementation, this would call send_message
@@ -26,11 +32,15 @@ impl SqsDataPlane {
             "MessageId": format!("msg-{}", chrono::Utc::now().timestamp()),
             "MD5OfMessageBody": "d41d8cd98f00b204e9800998ecf8427e"
         });
-        
+
         Ok(response)
     }
 
-    pub async fn receive_messages(&self, aws_account_dto: &AwsAccountDto, request: &SqsReceiveMessageRequest) -> Result<serde_json::Value, AppError> {
+    pub async fn receive_messages(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        request: &SqsReceiveMessageRequest,
+    ) -> Result<serde_json::Value, AppError> {
         let client = self.aws_service.create_sqs_client(aws_account_dto).await?;
 
         // In a real implementation, this would call receive_message
@@ -44,12 +54,19 @@ impl SqsDataPlane {
                 }
             ]
         });
-        
+
         Ok(response)
     }
 
-    pub async fn get_queue_metrics(&self, aws_account_dto: &AwsAccountDto, request: &CloudWatchMetricsRequest) -> Result<CloudWatchMetricsResult, AppError> {
-        let client = self.aws_service.create_cloudwatch_client(aws_account_dto).await?;
+    pub async fn get_queue_metrics(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        request: &CloudWatchMetricsRequest,
+    ) -> Result<CloudWatchMetricsResult, AppError> {
+        let client = self
+            .aws_service
+            .create_cloudwatch_client(aws_account_dto)
+            .await?;
 
         // SQS-specific metric collection logic would go here
         // For now returning empty result

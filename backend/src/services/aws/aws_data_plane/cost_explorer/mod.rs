@@ -10,12 +10,8 @@ pub use forecasting::CostForecasting;
 
 // Re-export the types that are used in public interfaces
 pub use aws_sdk_costexplorer::types::{
-    DateInterval,
+    Context, DateInterval, DimensionValues as AwsDimensionValues, Expression, Granularity,
     GroupDefinition,
-    Granularity,
-    Context,
-    Expression,
-    DimensionValues as AwsDimensionValues,
 };
 
 // Example usage for your use case:

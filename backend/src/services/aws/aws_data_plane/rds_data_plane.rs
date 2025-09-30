@@ -1,9 +1,11 @@
-use std::sync::Arc;
 use crate::errors::AppError;
-use crate::services::aws::aws_types::cloud_watch::{CloudWatchMetricsRequest, CloudWatchMetricsResult};
+use crate::models::aws_account::AwsAccountDto;
+use crate::services::aws::aws_types::cloud_watch::{
+    CloudWatchMetricsRequest, CloudWatchMetricsResult,
+};
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::AwsService;
-use crate::models::aws_account::AwsAccountDto;
+use std::sync::Arc;
 use uuid;
 
 // Data plane implementation for RDS
@@ -16,8 +18,15 @@ impl RdsDataPlane {
         Self { aws_service }
     }
 
-    pub async fn get_instance_metrics(&self, aws_account_dto: &AwsAccountDto, request: &CloudWatchMetricsRequest) -> Result<CloudWatchMetricsResult, AppError> {
-        let client = self.aws_service.create_cloudwatch_client(aws_account_dto).await?;
+    pub async fn get_instance_metrics(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        request: &CloudWatchMetricsRequest,
+    ) -> Result<CloudWatchMetricsResult, AppError> {
+        let client = self
+            .aws_service
+            .create_cloudwatch_client(aws_account_dto)
+            .await?;
 
         // RDS-specific metric collection logic would go here
         // For now returning empty result

@@ -1,9 +1,9 @@
-use std::sync::Arc;
-use chrono::{DateTime, Utc};
-use serde_json::json;
+use super::cloudwatch_analyzer::CloudWatchAnalyzer;
 use crate::errors::AppError;
 use crate::models::aws_resource::Model as AwsResource;
-use super::cloudwatch_analyzer::CloudWatchAnalyzer;
+use chrono::{DateTime, Utc};
+use serde_json::json;
+use std::sync::Arc;
 
 pub struct RdsAnalyzer;
 
@@ -13,7 +13,9 @@ impl RdsAnalyzer {
         resource: &AwsResource,
         workflow: &str,
     ) -> Result<String, AppError> {
-        let time_periods = vec!["6 hours", "1 day", "3 days", "7 days", "2 weeks", "1 month", "2 months"];
+        let time_periods = vec![
+            "6 hours", "1 day", "3 days", "7 days", "2 weeks", "1 month", "2 months",
+        ];
 
         match workflow {
             "unused" => {
@@ -118,23 +120,33 @@ impl RdsAnalyzer {
         // Simple question answering based on RDS metrics
         let response = format!(
             "# RDS Question Analysis: {}\n\n**Resource**: {}\n\n",
-            question,
-            resource.resource_id
+            question, resource.resource_id
         );
 
         // Add basic analysis based on available metrics
         for metric in &metrics.metrics {
             match metric.metric_name.as_str() {
                 "CPUUtilization" => {
-                    if let Some(avg) = metric.datapoints.iter().map(|d| d.value).max_by(|a, b| a.partial_cmp(b).unwrap()) {
+                    if let Some(avg) = metric
+                        .datapoints
+                        .iter()
+                        .map(|d| d.value)
+                        .max_by(|a, b| a.partial_cmp(b).unwrap())
+                    {
                         let response = format!("{}**CPU Utilization**: {:.2}%\n", response, avg);
                     }
-                },
+                }
                 "DatabaseConnections" => {
-                    if let Some(avg) = metric.datapoints.iter().map(|d| d.value).max_by(|a, b| a.partial_cmp(b).unwrap()) {
-                        let response = format!("{}**Database Connections**: {:.0}\n", response, avg);
+                    if let Some(avg) = metric
+                        .datapoints
+                        .iter()
+                        .map(|d| d.value)
+                        .max_by(|a, b| a.partial_cmp(b).unwrap())
+                    {
+                        let response =
+                            format!("{}**Database Connections**: {:.0}\n", response, avg);
                     }
-                },
+                }
                 _ => {}
             }
         }

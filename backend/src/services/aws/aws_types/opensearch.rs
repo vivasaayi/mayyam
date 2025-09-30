@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-// OpenSearch Types 
+// OpenSearch Types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenSearchClusterHealthRequest {
     pub domain_name: String,

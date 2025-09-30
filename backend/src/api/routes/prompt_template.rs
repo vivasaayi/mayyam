@@ -2,7 +2,10 @@ use actix_web::{web, HttpResponse, Result};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::controllers::prompt_template::{PromptTemplateController, CreatePromptTemplateRequest, UpdatePromptTemplateRequest, PromptTemplateQueryParams};
+use crate::controllers::prompt_template::{
+    CreatePromptTemplateRequest, PromptTemplateController, PromptTemplateQueryParams,
+    UpdatePromptTemplateRequest,
+};
 
 pub fn configure(cfg: &mut web::ServiceConfig, controller: Arc<PromptTemplateController>) {
     cfg.service(
@@ -14,7 +17,7 @@ pub fn configure(cfg: &mut web::ServiceConfig, controller: Arc<PromptTemplateCon
             .route("/{id}", web::put().to(update_prompt_template))
             .route("/{id}", web::delete().to(delete_prompt_template))
             .route("/categories", web::get().to(get_categories))
-            .route("/types", web::get().to(get_prompt_types))
+            .route("/types", web::get().to(get_prompt_types)),
     );
 }
 
@@ -54,14 +57,10 @@ async fn delete_prompt_template(
     PromptTemplateController::delete_prompt_template(controller, path).await
 }
 
-async fn get_categories(
-    controller: web::Data<PromptTemplateController>,
-) -> Result<HttpResponse> {
+async fn get_categories(controller: web::Data<PromptTemplateController>) -> Result<HttpResponse> {
     PromptTemplateController::get_categories(controller).await
 }
 
-async fn get_prompt_types(
-    controller: web::Data<PromptTemplateController>,
-) -> Result<HttpResponse> {
+async fn get_prompt_types(controller: web::Data<PromptTemplateController>) -> Result<HttpResponse> {
     PromptTemplateController::get_prompt_types(controller).await
 }

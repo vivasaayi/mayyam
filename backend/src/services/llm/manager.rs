@@ -1,16 +1,16 @@
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::services::llm::interface::{
-    LlmProvider, UnifiedLlmRequest, UnifiedLlmResponse, LlmRequestBuilder
-};
-use crate::services::llm::formatting::{ResponseFormatter, FormattedResponse};
-use crate::services::llm::providers::{OpenAIProvider, AnthropicProvider, DeepSeekProvider};
 use crate::errors::AppError;
-use crate::repositories::llm_provider::LlmProviderRepository;
 use crate::models::llm_provider::LlmProviderModel;
+use crate::repositories::llm_provider::LlmProviderRepository;
+use crate::services::llm::formatting::{FormattedResponse, ResponseFormatter};
+use crate::services::llm::interface::{
+    LlmProvider, LlmRequestBuilder, UnifiedLlmRequest, UnifiedLlmResponse,
+};
+use crate::services::llm::providers::{AnthropicProvider, DeepSeekProvider, OpenAIProvider};
 
 /// Unified LLM Manager - The main interface for all LLM operations
 #[derive(Debug)]
@@ -24,16 +24,16 @@ pub struct UnifiedLlmManager {
 pub struct LlmGenerationRequest {
     /// Provider identifier (openai, anthropic, deepseek, etc.)
     pub provider: String,
-    
+
     /// Model name (gpt-4, claude-3-opus, etc.)
     pub model: Option<String>,
-    
+
     /// The request parameters
     pub request: UnifiedLlmRequest,
-    
+
     /// Whether to format the response
     pub format_response: Option<bool>,
-    
+
     /// Custom formatting options
     pub formatting_options: Option<FormattingOptions>,
 }
@@ -68,26 +68,31 @@ impl UnifiedLlmManager {
             default_formatter: ResponseFormatter::default(),
         }
     }
-    
+
     /// Register a provider with the manager
     pub fn register_provider(&mut self, name: String, provider: Arc<dyn LlmProvider>) {
         self.providers.insert(name, provider);
     }
-    
+
     /// Initialize with common providers
     pub async fn initialize_common_providers(&mut self) -> Result<(), AppError> {
         // Get all configured providers from database
         let db_providers = self.provider_repo.find_all().await?;
-        
+
         for db_provider in db_providers {
             if !db_provider.enabled {
                 continue;
             }
-            
+
             match db_provider.provider_type.as_str() {
                 "openai" => {
-                    if let Some(api_key) = self.provider_repo.get_decrypted_api_key(&db_provider).await? {
-                        let mut provider = OpenAIProvider::new(api_key, db_provider.model_name.clone());
+                    if let Some(api_key) = self
+                        .provider_repo
+                        .get_decrypted_api_key(&db_provider)
+                        .await?
+                    {
+                        let mut provider =
+                            OpenAIProvider::new(api_key, db_provider.model_name.clone());
                         if let Some(base_url) = &db_provider.base_url {
                             provider = provider.with_base_url(base_url.clone());
                         }
@@ -95,8 +100,13 @@ impl UnifiedLlmManager {
                     }
                 }
                 "anthropic" => {
-                    if let Some(api_key) = self.provider_repo.get_decrypted_api_key(&db_provider).await? {
-                        let mut provider = AnthropicProvider::new(api_key, db_provider.model_name.clone());
+                    if let Some(api_key) = self
+                        .provider_repo
+                        .get_decrypted_api_key(&db_provider)
+                        .await?
+                    {
+                        let mut provider =
+                            AnthropicProvider::new(api_key, db_provider.model_name.clone());
                         if let Some(base_url) = &db_provider.base_url {
                             provider = provider.with_base_url(base_url.clone());
                         }
@@ -104,8 +114,13 @@ impl UnifiedLlmManager {
                     }
                 }
                 "deepseek" => {
-                    if let Some(api_key) = self.provider_repo.get_decrypted_api_key(&db_provider).await? {
-                        let mut provider = DeepSeekProvider::new(api_key, db_provider.model_name.clone());
+                    if let Some(api_key) = self
+                        .provider_repo
+                        .get_decrypted_api_key(&db_provider)
+                        .await?
+                    {
+                        let mut provider =
+                            DeepSeekProvider::new(api_key, db_provider.model_name.clone());
                         if let Some(base_url) = &db_provider.base_url {
                             provider = provider.with_base_url(base_url.clone());
                         }
@@ -118,17 +133,20 @@ impl UnifiedLlmManager {
                 }
             }
         }
-        
+
         Ok(())
     }
-    
+
     /// Generate response using specified provider
-    pub async fn generate(&self, request: LlmGenerationRequest) -> Result<LlmGenerationResponse, AppError> {
+    pub async fn generate(
+        &self,
+        request: LlmGenerationRequest,
+    ) -> Result<LlmGenerationResponse, AppError> {
         let provider = self.get_provider(&request.provider)?;
-        
+
         // Generate response
         let response = provider.generate(request.request.clone()).await?;
-        
+
         // Format response if requested
         let formatted = if request.format_response.unwrap_or(false) {
             let formatter = self.create_formatter(&request.formatting_options);
@@ -136,7 +154,7 @@ impl UnifiedLlmManager {
         } else {
             None
         };
-        
+
         Ok(LlmGenerationResponse {
             response,
             formatted,
@@ -147,20 +165,23 @@ impl UnifiedLlmManager {
             },
         })
     }
-    
+
     /// Generate streaming response
     pub async fn generate_stream(
-        &self, 
-        request: LlmGenerationRequest
+        &self,
+        request: LlmGenerationRequest,
     ) -> Result<tokio::sync::mpsc::Receiver<Result<String, AppError>>, AppError> {
         let provider = self.get_provider(&request.provider)?;
         provider.generate_stream(request.request).await
     }
-    
+
     /// Smart provider selection based on request characteristics
-    pub async fn generate_smart(&self, request: UnifiedLlmRequest) -> Result<LlmGenerationResponse, AppError> {
+    pub async fn generate_smart(
+        &self,
+        request: UnifiedLlmRequest,
+    ) -> Result<LlmGenerationResponse, AppError> {
         let provider_name = self.select_best_provider(&request)?;
-        
+
         let generation_request = LlmGenerationRequest {
             provider: provider_name,
             model: None, // Use provider's default model
@@ -168,49 +189,55 @@ impl UnifiedLlmManager {
             format_response: Some(true),
             formatting_options: None,
         };
-        
+
         self.generate(generation_request).await
     }
-    
+
     /// Get available providers
     pub fn list_providers(&self) -> Vec<String> {
         self.providers.keys().cloned().collect()
     }
-    
+
     /// Get provider capabilities
-    pub fn get_provider_capabilities(&self, provider_name: &str) -> Result<crate::services::llm::interface::ProviderCapabilities, AppError> {
+    pub fn get_provider_capabilities(
+        &self,
+        provider_name: &str,
+    ) -> Result<crate::services::llm::interface::ProviderCapabilities, AppError> {
         let provider = self.get_provider(provider_name)?;
         Ok(provider.capabilities())
     }
-    
+
     /// Estimate cost for request across all providers
-    pub async fn estimate_costs(&self, request: &UnifiedLlmRequest) -> Result<HashMap<String, Option<f64>>, AppError> {
+    pub async fn estimate_costs(
+        &self,
+        request: &UnifiedLlmRequest,
+    ) -> Result<HashMap<String, Option<f64>>, AppError> {
         let mut costs = HashMap::new();
-        
+
         for (name, provider) in &self.providers {
             let cost = provider.estimate_cost(request).await?;
             costs.insert(name.clone(), cost);
         }
-        
+
         Ok(costs)
     }
-    
+
     /// Create a request builder
     pub fn request_builder() -> LlmRequestBuilder {
         LlmRequestBuilder::new()
     }
-    
+
     /// Get provider by name
     fn get_provider(&self, name: &str) -> Result<&Arc<dyn LlmProvider>, AppError> {
         self.providers
             .get(name)
             .ok_or_else(|| AppError::NotFound(format!("Provider '{}' not found", name)))
     }
-    
+
     /// Create formatter with options
     fn create_formatter(&self, options: &Option<FormattingOptions>) -> ResponseFormatter {
         let mut formatter = self.default_formatter.clone();
-        
+
         if let Some(opts) = options {
             if let Some(strip_markdown) = opts.strip_markdown {
                 formatter = formatter.strip_markdown(strip_markdown);
@@ -225,45 +252,46 @@ impl UnifiedLlmManager {
                 formatter = formatter.extract_structured_data(extract_structured);
             }
         }
-        
+
         formatter
     }
-    
+
     /// Smart provider selection logic
     fn select_best_provider(&self, request: &UnifiedLlmRequest) -> Result<String, AppError> {
         if self.providers.is_empty() {
             return Err(AppError::BadRequest("No providers available".to_string()));
         }
-        
+
         // Simple selection logic - can be made more sophisticated
         let prompt_length = request.prompt.len();
         let needs_thinking = request.enable_thinking.unwrap_or(false);
         let needs_streaming = request.stream.unwrap_or(false);
-        
+
         // Prefer providers based on request characteristics
         for (name, provider) in &self.providers {
             let capabilities = provider.capabilities();
-            
+
             // If thinking is needed, prefer providers that support it
             if needs_thinking && !capabilities.supports_thinking {
                 continue;
             }
-            
+
             // If streaming is needed, prefer providers that support it
             if needs_streaming && !capabilities.supports_streaming {
                 continue;
             }
-            
+
             // Check context length limits
             if let Some(max_context) = capabilities.max_context_length {
-                if prompt_length > (max_context as usize * 4) { // Rough token estimation
+                if prompt_length > (max_context as usize * 4) {
+                    // Rough token estimation
                     continue;
                 }
             }
-            
+
             return Ok(name.clone());
         }
-        
+
         // Fallback to first available provider
         Ok(self.providers.keys().next().unwrap().clone())
     }
@@ -277,7 +305,7 @@ impl UnifiedLlmManager {
             prompt: prompt.to_string(),
             ..Default::default()
         };
-        
+
         let generation_request = LlmGenerationRequest {
             provider: provider.to_string(),
             model: None,
@@ -285,19 +313,23 @@ impl UnifiedLlmManager {
             format_response: Some(false),
             formatting_options: None,
         };
-        
+
         let response = self.generate(generation_request).await?;
         Ok(response.response.content)
     }
-    
+
     /// Generate with thinking enabled
-    pub async fn generate_with_thinking(&self, provider: &str, prompt: &str) -> Result<(String, Option<String>), AppError> {
+    pub async fn generate_with_thinking(
+        &self,
+        provider: &str,
+        prompt: &str,
+    ) -> Result<(String, Option<String>), AppError> {
         let request = UnifiedLlmRequest {
             prompt: prompt.to_string(),
             enable_thinking: Some(true),
             ..Default::default()
         };
-        
+
         let generation_request = LlmGenerationRequest {
             provider: provider.to_string(),
             model: None,
@@ -305,19 +337,24 @@ impl UnifiedLlmManager {
             format_response: Some(false),
             formatting_options: None,
         };
-        
+
         let response = self.generate(generation_request).await?;
         Ok((response.response.content, response.response.thinking))
     }
-    
+
     /// Generate with custom temperature
-    pub async fn generate_with_temperature(&self, provider: &str, prompt: &str, temperature: f32) -> Result<String, AppError> {
+    pub async fn generate_with_temperature(
+        &self,
+        provider: &str,
+        prompt: &str,
+        temperature: f32,
+    ) -> Result<String, AppError> {
         let request = UnifiedLlmRequest {
             prompt: prompt.to_string(),
             temperature: Some(temperature),
             ..Default::default()
         };
-        
+
         let generation_request = LlmGenerationRequest {
             provider: provider.to_string(),
             model: None,
@@ -325,7 +362,7 @@ impl UnifiedLlmManager {
             format_response: Some(false),
             formatting_options: None,
         };
-        
+
         let response = self.generate(generation_request).await?;
         Ok(response.response.content)
     }

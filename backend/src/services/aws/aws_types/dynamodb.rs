@@ -58,12 +58,12 @@ pub struct DynamoDBDeleteItemRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DynamoDBBatchGetItemRequest {
-    pub request_items: serde_json::Value,  // Map of table name to keys to get
+    pub request_items: serde_json::Value, // Map of table name to keys to get
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DynamoDBBatchWriteItemRequest {
-    pub request_items: serde_json::Value,  // Map of table name to write requests
+    pub request_items: serde_json::Value, // Map of table name to write requests
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

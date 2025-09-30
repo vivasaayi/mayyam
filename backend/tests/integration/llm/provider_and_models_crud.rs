@@ -23,8 +23,14 @@ async fn provider_and_models_crud_roundtrip() {
         .post(&harness.build_url("/api/v1/llm-providers"))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .json(&create_payload)
-        .send().await.expect("create provider failed");
-    assert!(resp.status().is_success(), "create failed: {}", resp.status());
+        .send()
+        .await
+        .expect("create provider failed");
+    assert!(
+        resp.status().is_success(),
+        "create failed: {}",
+        resp.status()
+    );
     let created: serde_json::Value = resp.json().await.expect("invalid create response");
     let provider_id = Uuid::parse_str(created["id"].as_str().unwrap()).expect("uuid");
 
@@ -38,14 +44,18 @@ async fn provider_and_models_crud_roundtrip() {
         .put(&harness.build_url(&format!("/api/v1/llm-providers/{}", provider_id)))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .json(&update_payload)
-        .send().await.expect("update provider failed");
+        .send()
+        .await
+        .expect("update provider failed");
     assert!(resp.status().is_success());
 
     // Get provider and assert fields persisted
     let resp = client
         .get(&harness.build_url(&format!("/api/v1/llm-providers/{}", provider_id)))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
-        .send().await.expect("get provider failed");
+        .send()
+        .await
+        .expect("get provider failed");
     assert!(resp.status().is_success());
     let fetched: serde_json::Value = resp.json().await.expect("invalid get response");
     assert_eq!(fetched["name"], "Test DeepSeek Updated");
@@ -73,7 +83,9 @@ async fn provider_and_models_crud_roundtrip() {
     let list = client
         .get(&harness.build_url(&format!("/api/v1/llm-providers/{}/models", provider_id)))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
-        .send().await.expect("list models failed");
+        .send()
+        .await
+        .expect("list models failed");
     assert!(list.status().is_success());
     let list_body: serde_json::Value = list.json().await.expect("invalid list body");
     assert_eq!(list_body["total"].as_u64().unwrap_or(0), 2);
@@ -81,15 +93,22 @@ async fn provider_and_models_crud_roundtrip() {
     // Toggle a model
     let model_id = list_body["models"][0]["id"].as_str().unwrap().to_string();
     let toggle = client
-        .post(&harness.build_url(&format!("/api/v1/llm-providers/{}/models/{}/toggle?enabled=false", provider_id, model_id)))
+        .post(&harness.build_url(&format!(
+            "/api/v1/llm-providers/{}/models/{}/toggle?enabled=false",
+            provider_id, model_id
+        )))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
-        .send().await.expect("toggle model failed");
+        .send()
+        .await
+        .expect("toggle model failed");
     assert!(toggle.status().is_success());
 
     // Delete provider (cascade should remove models)
     let del = client
         .delete(&harness.build_url(&format!("/api/v1/llm-providers/{}", provider_id)))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
-        .send().await.expect("delete provider failed");
+        .send()
+        .await
+        .expect("delete provider failed");
     assert!(del.status().is_success() || del.status().as_u16() == 204);
 }

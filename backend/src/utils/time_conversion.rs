@@ -1,6 +1,6 @@
-use chrono::{DateTime, Utc};
 use aws_smithy_types::DateTime as AwsDateTime;
 use chrono::TimeZone;
+use chrono::{DateTime, Utc};
 
 /// Extension trait to add a to_chrono_utc method to AWS SDK DateTime
 pub trait AwsDateTimeExt {
@@ -23,7 +23,7 @@ pub fn to_aws_datetime(dt: &DateTime<Utc>) -> AwsDateTime {
 pub fn from_aws_datetime(dt: &AwsDateTime) -> DateTime<Utc> {
     match dt.to_millis() {
         Ok(millis) => DateTime::from_timestamp_millis(millis).unwrap_or_else(|| Utc::now()),
-        Err(_) => Utc::now()
+        Err(_) => Utc::now(),
     }
 }
 

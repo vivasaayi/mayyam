@@ -3,7 +3,10 @@ use std::sync::Arc;
 
 use crate::controllers::kubernetes_cluster_management::KubernetesClusterManagementController; // Renamed controller
 
-pub fn configure(cfg: &mut web::ServiceConfig, controller: Arc<KubernetesClusterManagementController>) {
+pub fn configure(
+    cfg: &mut web::ServiceConfig,
+    controller: Arc<KubernetesClusterManagementController>,
+) {
     cfg.service(
         web::scope("/api/kubernetes-clusters") // Changed scope from /clusters
             .route("", web::get().to({ // Get all Kubernetes clusters

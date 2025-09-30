@@ -3,10 +3,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::controllers::llm_analytics::{
-    LlmAnalyticsController, 
-    AnalyticsRequest, 
-    ResourceAnalyticsRequest, 
-    BatchAnalyticsRequest
+    AnalyticsRequest, BatchAnalyticsRequest, LlmAnalyticsController, ResourceAnalyticsRequest,
 };
 
 pub fn configure(cfg: &mut web::ServiceConfig, controller: Arc<LlmAnalyticsController>) {
@@ -17,9 +14,12 @@ pub fn configure(cfg: &mut web::ServiceConfig, controller: Arc<LlmAnalyticsContr
             .route("/resource", web::post().to(analyze_resource))
             .route("/batch", web::post().to(execute_batch_analytics))
             .route("/history", web::get().to(get_analytics_history))
-            .route("/analysis-types/{resource_type}", web::get().to(get_analysis_types))
+            .route(
+                "/analysis-types/{resource_type}",
+                web::get().to(get_analysis_types),
+            )
             .route("/metrics", web::get().to(get_analytics_metrics))
-            .route("/{analysis_id}/cancel", web::post().to(cancel_analytics))
+            .route("/{analysis_id}/cancel", web::post().to(cancel_analytics)),
     );
 }
 

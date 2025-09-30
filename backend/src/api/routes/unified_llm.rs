@@ -16,9 +16,12 @@ pub fn configure(cfg: &mut web::ServiceConfig, controller: Arc<UnifiedLlmControl
             // List available providers
             .route("/providers", web::get().to(list_providers))
             // Get provider capabilities
-            .route("/providers/{provider}/capabilities", web::get().to(get_provider_capabilities))
+            .route(
+                "/providers/{provider}/capabilities",
+                web::get().to(get_provider_capabilities),
+            )
             // Estimate costs for a request across all providers
-            .route("/estimate-costs", web::post().to(estimate_costs))
+            .route("/estimate-costs", web::post().to(estimate_costs)),
     );
 }
 
@@ -43,9 +46,7 @@ async fn quick_generate(
     controller.quick_generate(request).await
 }
 
-async fn list_providers(
-    controller: web::Data<Arc<UnifiedLlmController>>,
-) -> Result<HttpResponse> {
+async fn list_providers(controller: web::Data<Arc<UnifiedLlmController>>) -> Result<HttpResponse> {
     controller.list_providers().await
 }
 

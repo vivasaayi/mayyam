@@ -1,10 +1,15 @@
-use std::collections::HashMap;
-use chrono::{DateTime, Utc};
-use sea_orm::{DatabaseConnection, DbBackend, Statement};
 use crate::config::Config;
 use crate::errors::AppError;
-use crate::models::database::{ComputeMetrics, CostAnalysis, CostRecommendation, DatabaseAnalysis, DatabaseIssue, DatabaseQueryResponse, FrequentQuery, IndexStats, IssueCategory, IssueSeverity, PerformanceMetrics, QueryPlan, QueryPlanNode, QueryStatistics, ResourceCost, SlowQuery, StorageMetrics, TableStats, TrendDirection};
+use crate::models::database::{
+    ComputeMetrics, CostAnalysis, CostRecommendation, DatabaseAnalysis, DatabaseIssue,
+    DatabaseQueryResponse, FrequentQuery, IndexStats, IssueCategory, IssueSeverity,
+    PerformanceMetrics, QueryPlan, QueryPlanNode, QueryStatistics, ResourceCost, SlowQuery,
+    StorageMetrics, TableStats, TrendDirection,
+};
 use crate::utils::database_ext::DatabaseConnectionExt;
+use chrono::{DateTime, Utc};
+use sea_orm::{DatabaseConnection, DbBackend, Statement};
+use std::collections::HashMap;
 
 pub struct PostgresAnalyticsService {
     config: Config,
@@ -15,7 +20,10 @@ impl PostgresAnalyticsService {
         Self { config }
     }
 
-    pub async fn analyze_database(&self, conn: &DatabaseConnection) -> Result<DatabaseAnalysis, AppError> {
+    pub async fn analyze_database(
+        &self,
+        conn: &DatabaseConnection,
+    ) -> Result<DatabaseAnalysis, AppError> {
         let mut analysis = DatabaseAnalysis {
             issues: Vec::new(),
             query_stats: self.get_query_statistics(conn).await?,
@@ -24,10 +32,14 @@ impl PostgresAnalyticsService {
         };
 
         // Analyze and collect issues
-        self.analyze_performance_issues(conn, &mut analysis.issues).await?;
-        self.analyze_storage_issues(conn, &mut analysis.issues).await?;
-        self.analyze_security_issues(conn, &mut analysis.issues).await?;
-        self.analyze_configuration_issues(conn, &mut analysis.issues).await?;
+        self.analyze_performance_issues(conn, &mut analysis.issues)
+            .await?;
+        self.analyze_storage_issues(conn, &mut analysis.issues)
+            .await?;
+        self.analyze_security_issues(conn, &mut analysis.issues)
+            .await?;
+        self.analyze_configuration_issues(conn, &mut analysis.issues)
+            .await?;
 
         Ok(analysis)
     }
@@ -79,12 +91,15 @@ impl PostgresAnalyticsService {
         })
     }
 
-
-    async fn get_query_statistics(&self, conn: &DatabaseConnection) -> Result<QueryStatistics, AppError> {
+    async fn get_query_statistics(
+        &self,
+        conn: &DatabaseConnection,
+    ) -> Result<QueryStatistics, AppError> {
         // For PostgreSQL
-        let stats = conn.query_one(Statement::from_string(
-            DbBackend::Postgres,
-            r#"
+        let stats = conn
+            .query_one(Statement::from_string(
+                DbBackend::Postgres,
+                r#"
             WITH QueryStats AS (
                 SELECT query,
                     calls as execution_count,
@@ -101,7 +116,7 @@ impl PostgresAnalyticsService {
                 (SELECT COUNT(*) FROM QueryStats WHERE avg_time_ms > 1000) as slow_queries,
                 (SELECT AVG(avg_time_ms) FROM QueryStats) as avg_query_time
             "#,
-        ))
+            ))
             .await
             .map_err(AppError::Database)?;
 
@@ -117,7 +132,10 @@ impl PostgresAnalyticsService {
         })
     }
 
-    async fn get_performance_metrics(&self, conn: &DatabaseConnection) -> Result<PerformanceMetrics, AppError> {
+    async fn get_performance_metrics(
+        &self,
+        conn: &DatabaseConnection,
+    ) -> Result<PerformanceMetrics, AppError> {
         let stats = conn.query_one(Statement::from_string(
             DbBackend::Postgres,
             r#"
@@ -138,18 +156,23 @@ impl PostgresAnalyticsService {
 
         Ok(PerformanceMetrics {
             connection_count: stats.try_get::<i32, _>("current_conn")?,
-            active_sessions: stats.try_get::<i32, _>("current_conn")? - stats.try_get::<i32, _>("idle_conn")?,
+            active_sessions: stats.try_get::<i32, _>("current_conn")?
+                - stats.try_get::<i32, _>("idle_conn")?,
             idle_sessions: stats.try_get::<i32, _>("idle_conn")?,
             buffer_hit_ratio: stats.try_get::<f64, _>("buffer_ratio")?,
             cache_hit_ratio: 0.0, // Needs additional calculation
-            deadlocks: 0, // Need to get from pg_stat_database
+            deadlocks: 0,         // Need to get from pg_stat_database
             blocked_queries: stats.try_get::<i64, _>("blocked_queries")?,
             table_stats,
             index_stats,
         })
     }
 
-    async fn analyze_performance_issues(&self, conn: &DatabaseConnection, issues: &mut Vec<DatabaseIssue>) -> Result<(), AppError> {
+    async fn analyze_performance_issues(
+        &self,
+        conn: &DatabaseConnection,
+        issues: &mut Vec<DatabaseIssue>,
+    ) -> Result<(), AppError> {
         // Check for missing indexes on frequently queried columns
         let missing_indexes = conn.query_all(Statement::from_string(
             DbBackend::Postgres,
@@ -173,13 +196,17 @@ impl PostgresAnalyticsService {
             issues.push(DatabaseIssue {
                 severity: IssueSeverity::High,
                 category: IssueCategory::Performance,
-                title: format!("Missing index on frequently scanned table {}", row.try_get::<String, _>("tablename")?),
+                title: format!(
+                    "Missing index on frequently scanned table {}",
+                    row.try_get::<String, _>("tablename")?
+                ),
                 description: format!(
                     "Table {} is frequently scanned with {} rows per scan on average",
                     row.try_get::<String, _>("tablename")?,
                     row.try_get::<f64, _>("rows_per_scan")?
                 ),
-                recommendation: "Consider adding an index on the commonly queried columns".to_string(),
+                recommendation: "Consider adding an index on the commonly queried columns"
+                    .to_string(),
                 affected_objects: vec![format!(
                     "{}.{}",
                     row.try_get::<String, _>("schemaname")?,
@@ -191,10 +218,14 @@ impl PostgresAnalyticsService {
         // Add more performance issue checks...
         Ok(())
     }
-    async fn get_table_statistics(&self, conn: &DatabaseConnection) -> Result<Vec<TableStats>, AppError> {
-        let stats = conn.query_all(Statement::from_string(
-            DbBackend::Postgres,
-            r#"
+    async fn get_table_statistics(
+        &self,
+        conn: &DatabaseConnection,
+    ) -> Result<Vec<TableStats>, AppError> {
+        let stats = conn
+            .query_all(Statement::from_string(
+                DbBackend::Postgres,
+                r#"
             SELECT
                 relname as table_name,
                 pg_table_size(c.oid) as table_size,
@@ -207,7 +238,7 @@ impl PostgresAnalyticsService {
             FROM pg_stat_user_tables s
             JOIN pg_class c ON s.relid = c.oid
             "#,
-        ))
+            ))
             .await
             .map_err(AppError::Database)?;
 
@@ -229,10 +260,14 @@ impl PostgresAnalyticsService {
         Ok(table_stats)
     }
 
-    async fn get_index_statistics(&self, conn: &DatabaseConnection) -> Result<Vec<IndexStats>, AppError> {
-        let stats = conn.query_all(Statement::from_string(
-            DbBackend::Postgres,
-            r#"
+    async fn get_index_statistics(
+        &self,
+        conn: &DatabaseConnection,
+    ) -> Result<Vec<IndexStats>, AppError> {
+        let stats = conn
+            .query_all(Statement::from_string(
+                DbBackend::Postgres,
+                r#"
             SELECT
                 i.relname as index_name,
                 t.relname as table_name,
@@ -248,7 +283,7 @@ impl PostgresAnalyticsService {
             JOIN pg_class t ON s.relid = t.oid
             JOIN pg_index idx ON s.indexrelid = idx.indexrelid
             "#,
-        ))
+            ))
             .await
             .map_err(AppError::Database)?;
 
@@ -273,13 +308,17 @@ impl PostgresAnalyticsService {
         Ok(index_stats)
     }
 
-    async fn generate_cost_recommendations(&self, conn: &DatabaseConnection) -> Result<Vec<CostRecommendation>, AppError> {
+    async fn generate_cost_recommendations(
+        &self,
+        conn: &DatabaseConnection,
+    ) -> Result<Vec<CostRecommendation>, AppError> {
         let mut recommendations = Vec::new();
 
         // Check for unused indexes
-        let unused_indexes = conn.query_all(Statement::from_string(
-            DbBackend::Postgres,
-            r#"
+        let unused_indexes = conn
+            .query_all(Statement::from_string(
+                DbBackend::Postgres,
+                r#"
             SELECT
                 schemaname, tablename, indexname,
                 pg_relation_size(i.indexrelid) as index_size
@@ -293,14 +332,17 @@ impl PostgresAnalyticsService {
                     WHERE c.conindid = i.indexrelid
                 )
             "#,
-        ))
+            ))
             .await
             .map_err(AppError::Database)?;
 
         for row in unused_indexes {
             let index_size = row.try_get::<i64, _>("index_size")?;
             recommendations.push(CostRecommendation {
-                title: format!("Remove unused index {}", row.try_get::<String, _>("indexname")?),
+                title: format!(
+                    "Remove unused index {}",
+                    row.try_get::<String, _>("indexname")?
+                ),
                 description: format!(
                     "Index {} on table {}.{} is never used and consumes {} MB of storage",
                     row.try_get::<String, _>("indexname")?,
@@ -318,11 +360,16 @@ impl PostgresAnalyticsService {
         Ok(recommendations)
     }
 
-    async fn analyze_storage_issues(&self, conn: &DatabaseConnection, issues: &mut Vec<DatabaseIssue>) -> Result<(), AppError> {
+    async fn analyze_storage_issues(
+        &self,
+        conn: &DatabaseConnection,
+        issues: &mut Vec<DatabaseIssue>,
+    ) -> Result<(), AppError> {
         // Check for tables with high bloat
-        let bloated_tables = conn.query_all(Statement::from_string(
-            DbBackend::Postgres,
-            r#"
+        let bloated_tables = conn
+            .query_all(Statement::from_string(
+                DbBackend::Postgres,
+                r#"
             SELECT
                 schemaname, tablename,
                 pg_table_size(schemaname || '.' || tablename) as table_size,
@@ -332,7 +379,7 @@ impl PostgresAnalyticsService {
             ORDER BY dead_ratio DESC
             LIMIT 10
             "#,
-        ))
+            ))
             .await
             .map_err(AppError::Database)?;
 
@@ -340,7 +387,10 @@ impl PostgresAnalyticsService {
             issues.push(DatabaseIssue {
                 severity: IssueSeverity::Medium,
                 category: IssueCategory::Storage,
-                title: format!("Table {} has high dead tuple ratio", row.try_get::<String, _>("tablename")?),
+                title: format!(
+                    "Table {} has high dead tuple ratio",
+                    row.try_get::<String, _>("tablename")?
+                ),
                 description: format!(
                     "Table {}.{} has {}% dead tuples, wasting disk space",
                     row.try_get::<String, _>("schemaname")?,
@@ -360,7 +410,11 @@ impl PostgresAnalyticsService {
         Ok(())
     }
 
-    async fn analyze_security_issues(&self, conn: &DatabaseConnection, issues: &mut Vec<DatabaseIssue>) -> Result<(), AppError> {
+    async fn analyze_security_issues(
+        &self,
+        conn: &DatabaseConnection,
+        issues: &mut Vec<DatabaseIssue>,
+    ) -> Result<(), AppError> {
         // Check for excessive privileges
         let excessive_privileges = conn.query_all(Statement::from_string(
             DbBackend::Postgres,
@@ -378,16 +432,19 @@ impl PostgresAnalyticsService {
             issues.push(DatabaseIssue {
                 severity: IssueSeverity::High,
                 category: IssueCategory::Security,
-                title: format!("Excessive {} privilege for PUBLIC on {}",
-                               row.try_get::<String, _>("privilege_type")?,
-                               row.try_get::<String, _>("table_name")?),
+                title: format!(
+                    "Excessive {} privilege for PUBLIC on {}",
+                    row.try_get::<String, _>("privilege_type")?,
+                    row.try_get::<String, _>("table_name")?
+                ),
                 description: format!(
                     "Table {}.{} grants {} privilege to PUBLIC user",
                     row.try_get::<String, _>("table_schema")?,
                     row.try_get::<String, _>("table_name")?,
                     row.try_get::<String, _>("privilege_type")?
                 ),
-                recommendation: "Revoke excessive permissions and grant only to specific roles".to_string(),
+                recommendation: "Revoke excessive permissions and grant only to specific roles"
+                    .to_string(),
                 affected_objects: vec![format!(
                     "{}.{}",
                     row.try_get::<String, _>("table_schema")?,
@@ -400,11 +457,16 @@ impl PostgresAnalyticsService {
         Ok(())
     }
 
-    async fn analyze_configuration_issues(&self, conn: &DatabaseConnection, issues: &mut Vec<DatabaseIssue>) -> Result<(), AppError> {
+    async fn analyze_configuration_issues(
+        &self,
+        conn: &DatabaseConnection,
+        issues: &mut Vec<DatabaseIssue>,
+    ) -> Result<(), AppError> {
         // Check for suboptimal configuration settings
-        let config_settings = conn.query_all(Statement::from_string(
-            DbBackend::Postgres,
-            r#"
+        let config_settings = conn
+            .query_all(Statement::from_string(
+                DbBackend::Postgres,
+                r#"
             SELECT
                 name, setting, unit, context
             FROM pg_settings
@@ -413,7 +475,7 @@ impl PostgresAnalyticsService {
                 'effective_cache_size', 'max_connections'
             )
             "#,
-        ))
+            ))
             .await
             .map_err(AppError::Database)?;
 
@@ -421,7 +483,10 @@ impl PostgresAnalyticsService {
         for row in config_settings {
             let setting_name = row.try_get::<String, _>("name")?;
             if setting_name == "shared_buffers" {
-                let value = row.try_get::<String, _>("setting")?.parse::<i64>().unwrap_or(0);
+                let value = row
+                    .try_get::<String, _>("setting")?
+                    .parse::<i64>()
+                    .unwrap_or(0);
                 let unit = row.try_get::<String, _>("unit")?;
 
                 // Simple check - should be at least 128MB for production
@@ -442,11 +507,15 @@ impl PostgresAnalyticsService {
         Ok(())
     }
 
-    async fn get_slow_queries(&self, conn: &DatabaseConnection) -> Result<Vec<SlowQuery>, AppError> {
+    async fn get_slow_queries(
+        &self,
+        conn: &DatabaseConnection,
+    ) -> Result<Vec<SlowQuery>, AppError> {
         // Query for slow queries from pg_stat_statements
-        let slow_queries = conn.query_all(Statement::from_string(
-            DbBackend::Postgres,
-            r#"
+        let slow_queries = conn
+            .query_all(Statement::from_string(
+                DbBackend::Postgres,
+                r#"
             SELECT
                 query,
                 mean_time / 1000 as avg_execution_time_ms,
@@ -457,7 +526,7 @@ impl PostgresAnalyticsService {
             ORDER BY mean_time DESC
             LIMIT 10
             "#,
-        ))
+            ))
             .await
             .map_err(AppError::Database)?;
 
@@ -475,11 +544,15 @@ impl PostgresAnalyticsService {
         Ok(result)
     }
 
-    async fn get_frequent_queries(&self, conn: &DatabaseConnection) -> Result<Vec<FrequentQuery>, AppError> {
+    async fn get_frequent_queries(
+        &self,
+        conn: &DatabaseConnection,
+    ) -> Result<Vec<FrequentQuery>, AppError> {
         // Query for frequently executed queries
-        let frequent_queries = conn.query_all(Statement::from_string(
-            DbBackend::Postgres,
-            r#"
+        let frequent_queries = conn
+            .query_all(Statement::from_string(
+                DbBackend::Postgres,
+                r#"
             SELECT
                 query,
                 calls as execution_count,
@@ -489,7 +562,7 @@ impl PostgresAnalyticsService {
             ORDER BY calls DESC
             LIMIT 10
             "#,
-        ))
+            ))
             .await
             .map_err(AppError::Database)?;
 
@@ -506,11 +579,15 @@ impl PostgresAnalyticsService {
         Ok(result)
     }
 
-    async fn get_storage_metrics(&self, conn: &DatabaseConnection) -> Result<StorageMetrics, AppError> {
+    async fn get_storage_metrics(
+        &self,
+        conn: &DatabaseConnection,
+    ) -> Result<StorageMetrics, AppError> {
         // Query for database size and growth stats
-        let storage_stats = conn.query_one(Statement::from_string(
-            DbBackend::Postgres,
-            r#"
+        let storage_stats = conn
+            .query_one(Statement::from_string(
+                DbBackend::Postgres,
+                r#"
             SELECT
                 pg_database_size(current_database()) as database_size,
                 COALESCE(
@@ -526,7 +603,7 @@ impl PostgresAnalyticsService {
                      WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
                     ), 0) as index_size
             "#,
-        ))
+            ))
             .await
             .map_err(AppError::Database)?;
 
@@ -539,16 +616,24 @@ impl PostgresAnalyticsService {
             user_data_bytes: storage_stats.try_get::<i64, _>("user_data_size")?,
             index_bytes: storage_stats.try_get::<i64, _>("index_size")?,
             free_space_bytes: 0, // Would need to query file system
-            growth_rate, // Hard-coded for now
-            estimate_days_until_full: if growth_rate > 0.0 { Some(100.0 / (growth_rate * 100.0)) } else { None },
+            growth_rate,         // Hard-coded for now
+            estimate_days_until_full: if growth_rate > 0.0 {
+                Some(100.0 / (growth_rate * 100.0))
+            } else {
+                None
+            },
             top_tables_by_size: self.get_top_tables_by_size(conn).await?,
         })
     }
 
-    async fn get_top_tables_by_size(&self, conn: &DatabaseConnection) -> Result<HashMap<String, i64>, AppError> {
-        let top_tables = conn.query_all(Statement::from_string(
-            DbBackend::Postgres,
-            r#"
+    async fn get_top_tables_by_size(
+        &self,
+        conn: &DatabaseConnection,
+    ) -> Result<HashMap<String, i64>, AppError> {
+        let top_tables = conn
+            .query_all(Statement::from_string(
+                DbBackend::Postgres,
+                r#"
             SELECT
                 relname as table_name,
                 pg_total_relation_size(c.oid) as total_size
@@ -559,7 +644,7 @@ impl PostgresAnalyticsService {
             ORDER BY total_size DESC
             LIMIT 10
             "#,
-        ))
+            ))
             .await
             .map_err(AppError::Database)?;
 
@@ -574,8 +659,10 @@ impl PostgresAnalyticsService {
         Ok(result)
     }
 
-
-    async fn get_compute_metrics(&self, conn: &DatabaseConnection) -> Result<ComputeMetrics, AppError> {
+    async fn get_compute_metrics(
+        &self,
+        conn: &DatabaseConnection,
+    ) -> Result<ComputeMetrics, AppError> {
         // Query for CPU usage and related stats
         let compute_stats = conn.query_one(Statement::from_string(
             DbBackend::Postgres,
@@ -604,10 +691,11 @@ impl PostgresAnalyticsService {
         })
     }
 
-    async fn execute_postgres_query(&self,
-                                    conn_model: &crate::models::database::Model,
-                                    query: &str,
-                                    params: Option<&serde_json::Value>
+    async fn execute_postgres_query(
+        &self,
+        conn_model: &crate::models::database::Model,
+        query: &str,
+        params: Option<&serde_json::Value>,
     ) -> Result<(Vec<String>, Vec<serde_json::Value>), AppError> {
         // In a real implementation, we would:
         // 1. Build a connection string using conn_model details
@@ -645,7 +733,10 @@ impl PostgresAnalyticsService {
         Ok((columns, rows))
     }
 
-    pub async fn analyze_connection(&self, conn_model: &crate::models::database::Model) -> Result<DatabaseAnalysis, AppError> {
+    pub async fn analyze_connection(
+        &self,
+        conn_model: &crate::models::database::Model,
+    ) -> Result<DatabaseAnalysis, AppError> {
         // In a real implementation, you would establish a connection to the specified database
         // and then analyze that connection. For now, we'll return a mock analysis.
 
@@ -772,16 +863,25 @@ impl PostgresAnalyticsService {
         Ok(analysis)
     }
 
-    pub async fn execute_query(&self,
-                               conn_model: &crate::models::database::Model,
-                               query: &str,
-                               params: Option<&serde_json::Value>
+    pub async fn execute_query(
+        &self,
+        conn_model: &crate::models::database::Model,
+        query: &str,
+        params: Option<&serde_json::Value>,
     ) -> Result<DatabaseQueryResponse, AppError> {
         // Implement connection logic based on connection type
         let start_time = Utc::now();
         let (columns, rows) = match conn_model.connection_type.as_str() {
-            "postgres" => self.execute_postgres_query(conn_model, query, params).await?,
-            _ => return Err(AppError::BadRequest(format!("Unsupported database type: {}", conn_model.connection_type)))
+            "postgres" => {
+                self.execute_postgres_query(conn_model, query, params)
+                    .await?
+            }
+            _ => {
+                return Err(AppError::BadRequest(format!(
+                    "Unsupported database type: {}",
+                    conn_model.connection_type
+                )))
+            }
         };
 
         let execution_time = (Utc::now() - start_time).num_milliseconds() as u64;
@@ -797,10 +897,11 @@ impl PostgresAnalyticsService {
     }
 
     // Execute a query with EXPLAIN plan
-    pub async fn execute_query_with_explain(&self,
-                                            conn_model: &crate::models::database::Model,
-                                            query: &str,
-                                            params: Option<&serde_json::Value>
+    pub async fn execute_query_with_explain(
+        &self,
+        conn_model: &crate::models::database::Model,
+        query: &str,
+        params: Option<&serde_json::Value>,
     ) -> Result<DatabaseQueryResponse, AppError> {
         // First get regular query results
         let mut response = self.execute_query(conn_model, query, params).await?;
@@ -810,7 +911,9 @@ impl PostgresAnalyticsService {
             "postgres" => {
                 // Execute EXPLAIN command
                 let explain_query = format!("EXPLAIN (FORMAT JSON) {}", query);
-                let (_columns, rows) = self.execute_postgres_query(conn_model, &explain_query, params).await?;
+                let (_columns, rows) = self
+                    .execute_postgres_query(conn_model, &explain_query, params)
+                    .await?;
 
                 if !rows.is_empty() && rows[0].is_object() {
                     // In a real implementation, you would parse the JSON plan into your QueryPlan structure
@@ -820,20 +923,18 @@ impl PostgresAnalyticsService {
                         total_cost: 0.0, // Would be extracted from the actual plan
                         planning_time_ms: 0.0,
                         execution_time_ms: response.execution_time_ms as f64,
-                        nodes: vec![
-                            QueryPlanNode {
-                                node_type: "Root".to_string(),
-                                actual_rows: response.row_count as i64,
-                                plan_rows: response.row_count as i64,
-                                actual_time_ms: response.execution_time_ms as f64,
-                                total_cost: 0.0,
-                                description: "Query Plan Root".to_string(),
-                                children: Vec::new(),
-                            }
-                        ],
+                        nodes: vec![QueryPlanNode {
+                            node_type: "Root".to_string(),
+                            actual_rows: response.row_count as i64,
+                            plan_rows: response.row_count as i64,
+                            actual_time_ms: response.execution_time_ms as f64,
+                            total_cost: 0.0,
+                            description: "Query Plan Root".to_string(),
+                            children: Vec::new(),
+                        }],
                     });
                 }
-            },
+            }
             "mysql" => {
                 // For MySQL, we'd use a different EXPLAIN syntax
                 // But for now, just use the same mock plan for simplicity
@@ -842,19 +943,17 @@ impl PostgresAnalyticsService {
                     total_cost: 0.0,
                     planning_time_ms: 0.0,
                     execution_time_ms: response.execution_time_ms as f64,
-                    nodes: vec![
-                        QueryPlanNode {
-                            node_type: "Root".to_string(),
-                            actual_rows: response.row_count as i64,
-                            plan_rows: response.row_count as i64,
-                            actual_time_ms: response.execution_time_ms as f64,
-                            total_cost: 0.0,
-                            description: "MySQL Query Plan".to_string(),
-                            children: Vec::new(),
-                        }
-                    ],
+                    nodes: vec![QueryPlanNode {
+                        node_type: "Root".to_string(),
+                        actual_rows: response.row_count as i64,
+                        plan_rows: response.row_count as i64,
+                        actual_time_ms: response.execution_time_ms as f64,
+                        total_cost: 0.0,
+                        description: "MySQL Query Plan".to_string(),
+                        children: Vec::new(),
+                    }],
                 });
-            },
+            }
             _ => {
                 // Other database types don't support EXPLAIN
                 // Just return the query results as is

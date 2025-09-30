@@ -1,9 +1,9 @@
-use kube::{Client, Api, ResourceExt};
-use kube::api::{ListParams, PostParams, DeleteParams};
 use crate::services::kubernetes::client::ClientFactory;
-use k8s_openapi::api::core::v1::Namespace;
-use serde::{Serialize, Deserialize};
 use chrono::Utc;
+use k8s_openapi::api::core::v1::Namespace;
+use kube::api::{DeleteParams, ListParams, PostParams};
+use kube::{Api, Client, ResourceExt};
+use serde::{Deserialize, Serialize};
 
 use crate::errors::AppError;
 use crate::models::cluster::KubernetesClusterConfig;
@@ -33,32 +33,38 @@ impl NamespacesService {
         let client = Self::get_kube_client(cluster_config).await?;
         let api: Api<Namespace> = Api::all(client);
         let lp = ListParams::default();
-        let ns_list = api.list(&lp).await.map_err(|e| {
-            AppError::ExternalService(format!("Failed to list namespaces: {}", e))
-        })?;
+        let ns_list = api
+            .list(&lp)
+            .await
+            .map_err(|e| AppError::ExternalService(format!("Failed to list namespaces: {}", e)))?;
 
         let mut infos = Vec::new();
         for ns in ns_list {
             let name = ns.name_any();
-            let status = ns.status.as_ref().and_then(|s| s.phase.clone()).unwrap_or_else(|| "Unknown".to_string());
-            
+            let status = ns
+                .status
+                .as_ref()
+                .and_then(|s| s.phase.clone())
+                .unwrap_or_else(|| "Unknown".to_string());
+
             let age = ns.metadata.creation_timestamp.as_ref().map_or_else(
                 || "Unknown".to_string(),
                 |ts| {
                     let creation_time = ts.0;
                     let duration = Utc::now().signed_duration_since(creation_time);
-                    if duration.num_days() > 0 { format!("{}d", duration.num_days()) }
-                    else if duration.num_hours() > 0 { format!("{}h", duration.num_hours()) }
-                    else if duration.num_minutes() > 0 { format!("{}m", duration.num_minutes()) }
-                    else { format!("{}s", duration.num_seconds()) }
-                }
+                    if duration.num_days() > 0 {
+                        format!("{}d", duration.num_days())
+                    } else if duration.num_hours() > 0 {
+                        format!("{}h", duration.num_hours())
+                    } else if duration.num_minutes() > 0 {
+                        format!("{}m", duration.num_minutes())
+                    } else {
+                        format!("{}s", duration.num_seconds())
+                    }
+                },
             );
 
-            infos.push(NamespaceInfo {
-                name,
-                status,
-                age,
-            });
+            infos.push(NamespaceInfo { name, status, age });
         }
         Ok(infos)
     }
@@ -103,9 +109,11 @@ impl NamespacesService {
     ) -> Result<(), AppError> {
         let client = Self::get_kube_client(cluster_config).await?;
         let api: Api<Namespace> = Api::all(client);
-        api.delete(name, &DeleteParams::default()).await.map_err(|e| {
-            AppError::ExternalService(format!("Failed to delete namespace '{}': {}", name, e))
-        })?;
+        api.delete(name, &DeleteParams::default())
+            .await
+            .map_err(|e| {
+                AppError::ExternalService(format!("Failed to delete namespace '{}': {}", name, e))
+            })?;
         Ok(())
     }
 }

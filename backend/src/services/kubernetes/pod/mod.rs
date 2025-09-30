@@ -1,17 +1,20 @@
-use kube::{api::{DeleteParams, ListParams, LogParams, ObjectMeta}, Api, Client, ResourceExt};
-use k8s_openapi::api::core::v1::{Pod, Event, PodSpec, PodStatus};
-use serde::{Deserialize, Serialize};
-use tracing::{debug, info, error};
 use chrono::Utc;
+use k8s_openapi::api::core::v1::{Event, Pod, PodSpec, PodStatus};
+use kube::{
+    api::{DeleteParams, ListParams, LogParams, ObjectMeta},
+    Api, Client, ResourceExt,
+};
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use tracing::{debug, error, info};
 
-use crate::{models::cluster::KubernetesClusterConfig, errors::AppError};
 use crate::services::kubernetes::client::ClientFactory;
+use crate::{errors::AppError, models::cluster::KubernetesClusterConfig};
 use kube::api::AttachParams;
 use tokio::io::AsyncReadExt;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PodDetail { 
+pub struct PodDetail {
     pub metadata: Option<ObjectMeta>,
     pub spec: Option<PodSpec>,
     pub status: Option<PodStatus>,
@@ -53,12 +56,12 @@ pub struct ContainerInfo {
 pub struct PodInfo {
     pub name: String,
     pub namespace: String,
-    pub status: String, 
+    pub status: String,
     pub age: String,
     pub ip: Option<String>,
     pub node_name: Option<String>,
     pub containers: Vec<ContainerInfo>,
-    pub restart_count: i32, 
+    pub restart_count: i32,
     pub controlled_by: Option<String>,
     pub controller_kind: Option<String>,
     pub labels: Option<BTreeMap<String, String>>,
@@ -70,32 +73,45 @@ pub struct PodInfo {
 // This can be used by other services like DeploymentsService, StatefulSetsService, etc.
 pub fn convert_kube_pod_to_pod_info(pod: &Pod, current_namespace: &str) -> PodInfo {
     let pod_name = pod.name_any();
-    let pod_namespace = pod.namespace().unwrap_or_else(|| current_namespace.to_string());
+    let pod_namespace = pod
+        .namespace()
+        .unwrap_or_else(|| current_namespace.to_string());
 
-    let status_phase = pod.status.as_ref().and_then(|s| s.phase.clone()).unwrap_or_else(|| "Unknown".to_string());
+    let status_phase = pod
+        .status
+        .as_ref()
+        .and_then(|s| s.phase.clone())
+        .unwrap_or_else(|| "Unknown".to_string());
     let pod_ip = pod.status.as_ref().and_then(|s| s.pod_ip.clone());
     let node_name = pod.spec.as_ref().and_then(|s| s.node_name.clone());
-    
+
     let age = pod.metadata.creation_timestamp.as_ref().map_or_else(
         || "Unknown".to_string(),
         |ts| {
             let creation_time = ts.0;
             let duration = Utc::now().signed_duration_since(creation_time);
-            if duration.num_days() > 0 { format!("{}d", duration.num_days()) }
-            else if duration.num_hours() > 0 { format!("{}h", duration.num_hours()) }
-            else if duration.num_minutes() > 0 { format!("{}m", duration.num_minutes()) }
-            else { format!("{}s", duration.num_seconds().max(0)) }
-        }
+            if duration.num_days() > 0 {
+                format!("{}d", duration.num_days())
+            } else if duration.num_hours() > 0 {
+                format!("{}h", duration.num_hours())
+            } else if duration.num_minutes() > 0 {
+                format!("{}m", duration.num_minutes())
+            } else {
+                format!("{}s", duration.num_seconds().max(0))
+            }
+        },
     );
 
     let mut container_infos = Vec::new();
     let mut total_restarts: i32 = 0;
     if let Some(spec_containers) = pod.spec.as_ref().map(|s| &s.containers) {
-        let k8s_container_statuses = pod.status.as_ref().and_then(|s| s.container_statuses.as_ref());
+        let k8s_container_statuses = pod
+            .status
+            .as_ref()
+            .and_then(|s| s.container_statuses.as_ref());
         for container_spec in spec_containers {
-            let status_opt = k8s_container_statuses.and_then(|statuses| {
-                statuses.iter().find(|cs| cs.name == container_spec.name)
-            });
+            let status_opt = k8s_container_statuses
+                .and_then(|statuses| statuses.iter().find(|cs| cs.name == container_spec.name));
 
             let ready = status_opt.map_or(false, |cs| cs.ready);
             let restarts = status_opt.map_or(0, |cs| cs.restart_count);
@@ -109,10 +125,15 @@ pub fn convert_kube_pod_to_pod_info(pod: &Pod, current_namespace: &str) -> PodIn
             });
         }
     }
-    
-    let (controlled_by, controller_kind) = pod.metadata.owner_references.as_ref()
+
+    let (controlled_by, controller_kind) = pod
+        .metadata
+        .owner_references
+        .as_ref()
         .and_then(|owners| owners.first())
-        .map_or((None, None), |owner_ref| (Some(owner_ref.name.clone()), Some(owner_ref.kind.clone())));
+        .map_or((None, None), |owner_ref| {
+            (Some(owner_ref.name.clone()), Some(owner_ref.kind.clone()))
+        });
 
     PodInfo {
         name: pod_name,
@@ -150,8 +171,8 @@ impl PodService {
     ) -> Result<Vec<PodInfo>, AppError> {
         debug!(target: "mayyam::services::kubernetes::pod", cluster_name = cluster_config.api_server_url.as_deref().unwrap_or("unknown"), %namespace, "Listing pods");
         let client = Self::get_kube_client(cluster_config).await?;
-        
-        let api: Api<Pod> = if namespace.is_empty() || namespace == "all" { 
+
+        let api: Api<Pod> = if namespace.is_empty() || namespace == "all" {
             Api::all(client)
         } else {
             Api::namespaced(client, namespace)
@@ -160,8 +181,13 @@ impl PodService {
         match api.list(&lp).await {
             Ok(pod_list) => {
                 info!(target: "mayyam::services::kubernetes::pod", cluster_name = cluster_config.api_server_url.as_deref().unwrap_or("unknown"), %namespace, count = pod_list.items.len(), "Successfully listed pods");
-                let actual_namespace = if namespace.is_empty() || namespace == "all" { "" } else { namespace };
-                let pod_infos = pod_list.iter()
+                let actual_namespace = if namespace.is_empty() || namespace == "all" {
+                    ""
+                } else {
+                    namespace
+                };
+                let pod_infos = pod_list
+                    .iter()
                     .map(|p| convert_kube_pod_to_pod_info(p, actual_namespace))
                     .collect();
                 Ok(pod_infos)
@@ -208,7 +234,7 @@ impl PodService {
             error!(target: "mayyam::services::kubernetes::pod", cluster_name = cluster_config.api_server_url.as_deref().unwrap_or("unknown"), %namespace, %pod_name, error = %e, "Failed to retrieve pod to get its UID for events");
             AppError::NotFound(format!("Could not retrieve pod '{}' to get its UID: {}", pod_name, e))
         })?;
-        
+
         let pod_uid = pod_object.metadata.uid.ok_or_else(|| {
             error!(target: "mayyam::services::kubernetes::pod", cluster_name = cluster_config.api_server_url.as_deref().unwrap_or("unknown"), %namespace, %pod_name, "Pod is missing UID, cannot fetch events.");
             AppError::Internal(format!("Pod '{}' in namespace '{}' does not have a UID, cannot fetch events.", pod_name, namespace))
@@ -237,7 +263,7 @@ impl PodService {
         namespace: &str,
         pod_name: &str,
         container_name: Option<&str>,
-        previous: bool, 
+        previous: bool,
         tail_lines: Option<i64>,
     ) -> Result<String, AppError> {
         debug!(target: "mayyam::services::kubernetes::pod", cluster_name = cluster_config.api_server_url.as_deref().unwrap_or("unknown"), %namespace, %pod_name, "Getting pod logs");
@@ -299,21 +325,27 @@ impl PodService {
             .stderr(true)
             .stdin(opts.stdin.unwrap_or(false))
             .tty(opts.tty.unwrap_or(false));
-        if let Some(c) = opts.container.clone() { ap = ap.container(c.as_str()); }
+        if let Some(c) = opts.container.clone() {
+            ap = ap.container(c.as_str());
+        }
 
-    let cmd: Vec<String> = opts.command.clone();
-    let mut attached = api.exec(pod_name, cmd.as_slice(), &ap).await
+        let cmd: Vec<String> = opts.command.clone();
+        let mut attached = api
+            .exec(pod_name, cmd.as_slice(), &ap)
+            .await
             .map_err(|e| AppError::Kubernetes(e.to_string()))?;
 
         let mut stdout_buf: Vec<u8> = Vec::new();
         let mut stderr_buf: Vec<u8> = Vec::new();
 
         if let Some(mut out) = attached.stdout().take() {
-            out.read_to_end(&mut stdout_buf).await
+            out.read_to_end(&mut stdout_buf)
+                .await
                 .map_err(|e| AppError::Kubernetes(format!("Failed reading stdout: {}", e)))?;
         }
         if let Some(mut err) = attached.stderr().take() {
-            err.read_to_end(&mut stderr_buf).await
+            err.read_to_end(&mut stderr_buf)
+                .await
                 .map_err(|e| AppError::Kubernetes(format!("Failed reading stderr: {}", e)))?;
         }
 
