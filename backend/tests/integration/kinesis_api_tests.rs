@@ -1,5 +1,6 @@
 #![cfg(feature = "integration-tests")]
 
+use chrono::Utc;
 use reqwest::Client;
 use serde_json::json;
 use std::time::Duration;
@@ -93,6 +94,45 @@ fn api_url(path: &str) -> String {
     )
 }
 
+fn unique_stream_name(prefix: &str) -> String {
+    format!("{}-{}", prefix, Utc::now().timestamp_millis())
+}
+
+async fn create_stream_resource(
+    client: &Client,
+    token: &str,
+    stream_name: &str,
+) -> reqwest::Result<reqwest::Response> {
+    let request = KinesisCreateStreamRequest {
+        stream_name: stream_name.to_string(),
+        shard_count: Some(1),
+    };
+
+    client
+        .post(&api_url("/streams"))
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&request)
+        .send()
+        .await
+}
+
+async fn delete_stream_resource(
+    client: &Client,
+    token: &str,
+    stream_name: &str,
+) -> reqwest::Result<reqwest::Response> {
+    let request = KinesisDeleteStreamRequest {
+        stream_name: stream_name.to_string(),
+    };
+
+    client
+        .delete(&api_url("/streams"))
+        .header("Authorization", format!("Bearer {}", token))
+        .json(&request)
+        .send()
+        .await
+}
+
 #[tokio::test]
 async fn kinesis_put_record_api() {
     if !tests_enabled() {
@@ -102,9 +142,22 @@ async fn kinesis_put_record_api() {
 
     let (client, token) = authorized_client().await.expect("auth token");
 
+    let stream_name = unique_stream_name("test-stream-put");
+
+    let create = create_stream_resource(&client, &token, &stream_name)
+        .await
+        .expect("stream creation request failed");
+    assert!(
+        create.status().is_success(),
+        "stream creation failed: {}",
+        create.status()
+    );
+
+    sleep(Duration::from_secs(5)).await;
+
     let url = api_url("");
     let request = KinesisPutRecordRequest {
-        stream_name: "test-stream".to_string(),
+        stream_name: stream_name.clone(),
         data: base64::encode("test data"),
         partition_key: "test-key".to_string(),
         sequence_number: None,
@@ -118,7 +171,16 @@ async fn kinesis_put_record_api() {
         .await
         .expect("HTTP request must succeed");
 
-    assert!(response.status().is_success(), "expected success, got {}", response.status());
+    assert!(
+        response.status().is_success(),
+        "expected success, got {}",
+        response.status()
+    );
+
+    let cleanup = delete_stream_resource(&client, &token, &stream_name)
+        .await
+        .expect("cleanup request failed");
+    assert!(cleanup.status().is_success(), "cleanup failed: {}", cleanup.status());
 }
 
 #[tokio::test]
@@ -130,9 +192,11 @@ async fn kinesis_create_stream_api() {
 
     let (client, token) = authorized_client().await.expect("auth token");
 
+    let stream_name = unique_stream_name("test-integration-stream");
+
     let url = api_url("/streams");
     let request = KinesisCreateStreamRequest {
-        stream_name: "test-integration-stream".to_string(),
+        stream_name: stream_name.clone(),
         shard_count: Some(1),
     };
 
@@ -144,7 +208,16 @@ async fn kinesis_create_stream_api() {
         .await
         .expect("HTTP request must succeed");
 
-    assert!(response.status().is_success(), "expected success, got {}", response.status());
+    assert!(
+        response.status().is_success(),
+        "expected success, got {}",
+        response.status()
+    );
+
+    let cleanup = delete_stream_resource(&client, &token, &stream_name)
+        .await
+        .expect("cleanup request failed");
+    assert!(cleanup.status().is_success(), "cleanup failed: {}", cleanup.status());
 }
 
 #[tokio::test]
@@ -156,9 +229,22 @@ async fn kinesis_describe_stream_api() {
 
     let (client, token) = authorized_client().await.expect("auth token");
 
+    let stream_name = unique_stream_name("test-describe-stream");
+
+    let create = create_stream_resource(&client, &token, &stream_name)
+        .await
+        .expect("stream creation request failed");
+    assert!(
+        create.status().is_success(),
+        "stream creation failed: {}",
+        create.status()
+    );
+
+    sleep(Duration::from_secs(5)).await;
+
     let url = api_url("/streams");
     let request = KinesisDescribeStreamRequest {
-        stream_name: "test-integration-stream".to_string(),
+        stream_name: stream_name.clone(),
     };
 
     let response = client
@@ -169,7 +255,16 @@ async fn kinesis_describe_stream_api() {
         .await
         .expect("HTTP request must succeed");
 
-    assert!(response.status().is_success(), "expected success, got {}", response.status());
+    assert!(
+        response.status().is_success(),
+        "expected success, got {}",
+        response.status()
+    );
+
+    let cleanup = delete_stream_resource(&client, &token, &stream_name)
+        .await
+        .expect("cleanup request failed");
+    assert!(cleanup.status().is_success(), "cleanup failed: {}", cleanup.status());
 }
 
 #[tokio::test]
@@ -179,23 +274,36 @@ async fn kinesis_delete_stream_api() {
         return;
     }
 
-    // Allow create to settle before delete so AWS has time to propagate the stream.
-    sleep(Duration::from_secs(15)).await;
-
     let (client, token) = authorized_client().await.expect("auth token");
 
-    let url = api_url("/streams");
+    let stream_name = unique_stream_name("test-delete-stream");
+
+    let create = create_stream_resource(&client, &token, &stream_name)
+        .await
+        .expect("stream creation request failed");
+    assert!(
+        create.status().is_success(),
+        "stream creation failed: {}",
+        create.status()
+    );
+
+    sleep(Duration::from_secs(5)).await;
+
     let request = KinesisDeleteStreamRequest {
-        stream_name: "test-integration-stream".to_string(),
+        stream_name: stream_name.clone(),
     };
 
     let response = client
-        .delete(&url)
+        .delete(&api_url("/streams"))
         .header("Authorization", format!("Bearer {token}"))
         .json(&request)
         .send()
         .await
         .expect("HTTP request must succeed");
 
-    assert!(response.status().is_success(), "expected success, got {}", response.status());
+    assert!(
+        response.status().is_success(),
+        "expected success, got {}",
+        response.status()
+    );
 }

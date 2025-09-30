@@ -163,8 +163,8 @@ impl AwsAccountService {
         };
 
         // Log the sync attempt with account details for better debugging
-        info!("Attempting to sync resources for AWS account {} (id: {}) with sync_id: {} profile: {:?}, region: {}, auth_method: {}", 
-               account.account_id, id, sync_id, account.profile, account.default_region, 
+        info!("Attempting to sync resources for AWS account {} (id: {}) with sync_id: {} profile: {:?}, region: {}, auth_method: {}",
+         account.account_id, id, sync_id, account.profile, account.default_region,
                if account.use_role { "IAM Role" } else { "Access Key" });
 
         // Mark the sync run as running if it exists (best-effort)

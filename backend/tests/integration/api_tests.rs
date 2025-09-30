@@ -21,9 +21,6 @@ mod aws_account_integration_tests {
 
         harness.test_delay().await; // Small delay to prevent overwhelming server
 
-        println!("Auth token: {}", harness.auth_token());
-        println!("Token length: {}", harness.auth_token().len());
-
         let (access_key, secret_key, region, _) = get_aws_credentials();
         let test_account_id = get_test_account_id();
 
@@ -46,12 +43,24 @@ mod aws_account_integration_tests {
             .await
             .expect("Failed to create account");
 
-        println!("Response status: {}", response.status());
-        let response_text = response.text().await.expect("Failed to get response text");
-        println!("Response body: {}", response_text);
+        assert_eq!(response.status().as_u16(), 201);
 
-        // For now, just assert we get a response (we'll fix the 201 vs 400 later)
-        // assert_eq!(response.status(), 201);
+        let created: serde_json::Value = response
+            .json()
+            .await
+            .expect("Failed to parse created account JSON");
+
+        let created_id = created["id"].as_str().expect("missing id");
+
+        let cleanup = harness
+            .client()
+            .delete(&harness.build_url(&format!("/api/aws/accounts/{}", created_id)))
+            .header("Authorization", format!("Bearer {}", harness.auth_token()))
+            .send()
+            .await
+            .expect("Failed to cleanup created account");
+
+        assert_eq!(cleanup.status().as_u16(), 204);
     }
 
     /// Test getting all AWS accounts via API
@@ -138,6 +147,16 @@ mod aws_account_integration_tests {
 
         assert_eq!(retrieved_account["id"], account_id);
         assert_eq!(retrieved_account["account_id"], test_account_id);
+
+        let cleanup = harness
+            .client()
+            .delete(&harness.build_url(&format!("/api/aws/accounts/{}", account_id)))
+            .header("Authorization", format!("Bearer {}", harness.auth_token()))
+            .send()
+            .await
+            .expect("Failed to cleanup created account");
+
+        assert_eq!(cleanup.status().as_u16(), 204);
     }
 
     /// Test updating AWS account via API
@@ -208,6 +227,16 @@ mod aws_account_integration_tests {
 
         assert_eq!(updated_account["account_name"], "Updated Test Account");
         assert_eq!(updated_account["default_region"], "us-west-2");
+
+        let cleanup = harness
+            .client()
+            .delete(&harness.build_url(&format!("/api/aws/accounts/{}", account_id)))
+            .header("Authorization", format!("Bearer {}", harness.auth_token()))
+            .send()
+            .await
+            .expect("Failed to cleanup updated account");
+
+        assert_eq!(cleanup.status().as_u16(), 204);
     }
 
     /// Test deleting AWS account via API

@@ -10,12 +10,15 @@ pub struct TestDb {
 
 impl TestDb {
     pub async fn new() -> Result<Self, sea_orm::DbErr> {
-        let temp_dir = TempDir::new()
-            .map_err(|e| sea_orm::DbErr::Custom(format!("Temp dir error: {e}")))?;
+        let temp_dir =
+            TempDir::new().map_err(|e| sea_orm::DbErr::Custom(format!("Temp dir error: {e}")))?;
         let db_path = temp_dir.path().join("test.db");
 
         let mut options = ConnectOptions::new(format!("sqlite://{}?mode=rwc", db_path.display()));
-        options.max_connections(1).min_connections(1).sqlx_logging(false);
+        options
+            .max_connections(1)
+            .min_connections(1)
+            .sqlx_logging(false);
 
         let connection = Database::connect(options).await?;
 
@@ -117,6 +120,9 @@ pub mod assertions {
     where
         F: Fn(&T) -> bool,
     {
-        assert!(items.iter().any(predicate), "Expected item not found in collection");
+        assert!(
+            items.iter().any(predicate),
+            "Expected item not found in collection"
+        );
     }
 }

@@ -13,7 +13,9 @@ async fn missing_shard_count_is_rejected() {
     });
 
     assert!(shard_count.is_err());
-    let AppError::ExternalService(message) = shard_count.expect_err("expected external service error") else {
+    let AppError::ExternalService(message) =
+        shard_count.expect_err("expected external service error")
+    else {
         panic!("expected external service error");
     };
     assert!(message.contains("Missing shard_count"));
@@ -67,10 +69,7 @@ async fn valid_shard_counts_pass_validation() {
 
 #[tokio::test]
 async fn stream_name_validation_checks_empty_and_length() {
-    let scenarios = [
-        ("valid", "stream_name", true),
-        ("empty", "", false),
-    ];
+    let scenarios = [("valid", "stream_name", true), ("empty", "", false)];
 
     for (label, stream_name, expected_valid) in scenarios {
         let request = KinesisCreateStreamRequest {
@@ -79,9 +78,13 @@ async fn stream_name_validation_checks_empty_and_length() {
         };
 
         let validation = if request.stream_name.is_empty() {
-            Err(AppError::ExternalService("Stream name cannot be empty".to_string()))
+            Err(AppError::ExternalService(
+                "Stream name cannot be empty".to_string(),
+            ))
         } else if request.stream_name.len() > 128 {
-            Err(AppError::ExternalService("Stream name too long".to_string()))
+            Err(AppError::ExternalService(
+                "Stream name too long".to_string(),
+            ))
         } else {
             Ok(())
         };
