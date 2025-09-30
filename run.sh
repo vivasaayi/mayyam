@@ -5,6 +5,9 @@
 
 set -e
 
+# Source environment variables from .env file
+source .env
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -158,12 +161,12 @@ show_access_info() {
         echo "🌐 Application: http://localhost"
         echo "🏥 Health Check: Built-in monitoring"
     else
-        echo "🌐 Frontend:     http://localhost:3000"
-        echo "🔌 Backend API:  http://localhost:8080"
-        echo "🗄️  PHPMyAdmin:   http://localhost:8081"
-        echo "📨 Kafka:        localhost:9092"
-        echo "🐘 PostgreSQL:   localhost:5432"
-        echo "🦭 MySQL:        localhost:3306"
+        echo "🌐 Frontend:     http://localhost:${FRONTEND_PORT:-3000}"
+        echo "🔌 Backend API:  http://localhost:${BACKEND_PORT:-8080}"
+        echo "🗄️  PHPMyAdmin:   http://localhost:${PHPMYADMIN_PORT:-8081}"
+        echo "📨 Kafka:        localhost:${KAFKA_PORT:-9092}"
+        echo "🐘 PostgreSQL:   localhost:${POSTGRES_PORT:-5432}"
+        echo "🦭 MySQL:        localhost:${MYSQL_PORT:-3306}"
     fi
 
     echo ""

@@ -29,6 +29,7 @@ impl AwsResourceRepository {
         
         let active_model = ActiveModel {
             id: Set(Uuid::new_v4()),
+            sync_id: Set(resource.sync_id),
             account_id: Set(resource.account_id.clone()),
             profile: Set(resource.profile.clone()),
             region: Set(resource.region.clone()),
@@ -155,6 +156,10 @@ impl AwsResourceRepository {
         
         if let Some(resource_id) = &query.resource_id {
             condition = condition.add(aws_resource::Column::ResourceId.eq(resource_id.clone()));
+        }
+        
+        if let Some(sync_id) = &query.sync_id {
+            condition = condition.add(aws_resource::Column::SyncId.eq(*sync_id));
         }
         
         if let Some(name) = &query.name {

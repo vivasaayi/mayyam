@@ -30,3 +30,5 @@ pub mod authz;
 pub mod node_ops;
 pub mod cost_analytics;
 pub mod unified_llm;
+pub mod llm_model;
+pub mod sync_run;

@@ -177,7 +177,8 @@ const LlmProviders = () => {
 
   return (
     <>
-      <h2 className="mb-4">LLM Providers Management</h2>
+  <h2 className="mb-2">LLM Providers Management</h2>
+  <p className="text-muted">We now support multiple models per provider. Use the LLM Providers list for advanced management.</p>
       {error && <CAlert color="danger">{error}</CAlert>}
       {success && <CAlert color="success">{success}</CAlert>}
       <CCard className="mb-4">
@@ -256,6 +257,7 @@ const LlmProviders = () => {
               <option>Anthropic</option>
               <option>Local</option>
               <option>Gemini</option>
+              <option>DeepSeek</option>
               <option>Custom</option>
             </CFormSelect>
             <CFormLabel className="mt-2">Model Name</CFormLabel>

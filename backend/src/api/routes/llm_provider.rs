@@ -4,18 +4,27 @@ use uuid::Uuid;
 
 use crate::controllers::llm_provider::LlmProviderController;
 use crate::controllers::llm_provider::{CreateLlmProviderRequest, UpdateLlmProviderRequest, LlmProviderQueryParams};
+use crate::controllers::llm_model::LlmModelController;
 
-pub fn configure(cfg: &mut web::ServiceConfig, controller: Arc<LlmProviderController>) {
+pub fn configure(cfg: &mut web::ServiceConfig, controller: Arc<LlmProviderController>, model_controller: Arc<LlmModelController>) {
     cfg.service(
         web::scope("/api/v1/llm-providers")
-            .app_data(web::Data::from(controller))
+        .app_data(web::Data::from(controller))
+        .app_data(web::Data::from(model_controller))
             .route("", web::get().to(list_llm_providers))
             .route("", web::post().to(create_llm_provider))
             .route("/{id}", web::get().to(get_llm_provider))
             .route("/{id}", web::put().to(update_llm_provider))
             .route("/{id}", web::delete().to(delete_llm_provider))
             .route("/{id}/test", web::post().to(test_llm_provider))
-            .route("/{id}/models", web::get().to(list_available_models))
+            .service(
+                web::scope("/{id}/models")
+            .route("", web::get().to(list_models))
+            .route("", web::post().to(create_model))
+            .route("/{model_id}", web::put().to(update_model))
+            .route("/{model_id}", web::delete().to(delete_model))
+            .route("/{model_id}/toggle", web::post().to(toggle_model))
+            )
             .route("/search", web::get().to(search_llm_providers))
     );
 }
@@ -66,16 +75,25 @@ async fn test_llm_provider(
     LlmProviderController::test_llm_provider(controller, path, test_request).await
 }
 
-// Simplified functions for endpoints that don't exist in the controller
-async fn list_available_models(
-    _controller: web::Data<LlmProviderController>,
-    _path: web::Path<Uuid>,
-) -> Result<HttpResponse> {
-    // Placeholder implementation
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "models": [],
-        "message": "Model listing not implemented yet"
-    })))
+// LLM Provider Model routes delegations
+async fn list_models(model_controller: web::Data<LlmModelController>, path: web::Path<Uuid>) -> Result<HttpResponse> {
+    LlmModelController::list(model_controller, path).await
+}
+
+async fn create_model(model_controller: web::Data<LlmModelController>, path: web::Path<Uuid>, req: web::Json<crate::controllers::llm_model::CreateModelRequest>) -> Result<HttpResponse> {
+    LlmModelController::create(model_controller, path, req).await
+}
+
+async fn update_model(model_controller: web::Data<LlmModelController>, path: web::Path<(Uuid, Uuid)>, req: web::Json<crate::controllers::llm_model::UpdateModelRequest>) -> Result<HttpResponse> {
+    LlmModelController::update(model_controller, path, req).await
+}
+
+async fn delete_model(model_controller: web::Data<LlmModelController>, path: web::Path<(Uuid, Uuid)>) -> Result<HttpResponse> {
+    LlmModelController::delete(model_controller, path).await
+}
+
+async fn toggle_model(model_controller: web::Data<LlmModelController>, path: web::Path<(Uuid, Uuid)>, query: web::Query<std::collections::HashMap<String, String>>) -> Result<HttpResponse> {
+    LlmModelController::toggle(model_controller, path, query).await
 }
 
 async fn search_llm_providers(

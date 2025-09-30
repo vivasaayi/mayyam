@@ -29,12 +29,16 @@ import {
   updateAwsAccount, 
   deleteAwsAccount, 
   syncAwsAccountResources,
-  syncAllAwsAccountResources
+  syncAllAwsAccountResources,
+  createSyncRun
 } from "../../services/api";
 
 const AwsAccountManagement = () => {
   const [loading, setLoading] = useState(false);
   const [syncLoading, setSyncLoading] = useState(false);
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [syncTargetAccountId, setSyncTargetAccountId] = useState(null);
+  const [syncName, setSyncName] = useState("");
   const [accounts, setAccounts] = useState([]);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -175,48 +179,45 @@ const AwsAccountManagement = () => {
   };
   
   // Handle sync for a specific account
-  const handleSync = async (accountId) => {
+  const openSyncModal = (accountId) => {
+    setSyncTargetAccountId(accountId);
+    setSyncName("");
+    setSyncModalOpen(true);
+  };
+
+  const closeSyncModal = () => {
+    setSyncModalOpen(false);
+    setSyncTargetAccountId(null);
+    setSyncName("");
+  };
+
+  const confirmSync = async () => {
+    if (!syncTargetAccountId) return;
+    if (!syncName || syncName.trim() === "") {
+      setError("Please provide a name for this sync run.");
+      return;
+    }
+
     try {
       setSyncLoading(true);
       setError(null);
-      
-      const response = await syncAwsAccountResources(accountId);
-      setSuccess(`Successfully synced ${response.count || 0} resources from AWS account!`);
-      
+
+      // 1) Create a sync run (server will generate UUID)
+      const run = await createSyncRun({ name: syncName, aws_account_id: syncTargetAccountId });
+      const syncId = run.id;
+
+      // 2) Trigger account sync with the sync_id
+      const response = await syncAwsAccountResources(syncTargetAccountId, syncId);
+      setSuccess(`Started sync '${syncName}' (ID: ${syncId}). ${response.count || 0} resources processed.`);
+
       // Refresh accounts list to show updated last_synced_at
       fetchAccounts();
     } catch (err) {
-      console.error("Error syncing AWS account:", err);
-      
-      // Provide more specific error messages for common failures
-      if (err.response?.data?.error === "CONFIG_ERROR") {
-        const message = err.response?.data?.message || "Configuration error";
-        
-        // Handle profile not found errors with more helpful message
-        if (message.includes("AWS configuration not found for profile")) {
-          const profileName = message.match(/profile: Some\("([^"]+)"\)/) || 
-                            message.match(/profile: "([^"]+)"/) ||
-                            ["", "unknown"];
-          
-          setError(
-            <>
-              <p><strong>AWS Profile Not Found:</strong> "{profileName[1]}"</p>
-              <p>Please check that:</p>
-              <ol>
-                <li>This profile exists in your AWS credentials file (~/.aws/credentials)</li>
-                <li>The profile name is spelled correctly (case-sensitive)</li>
-                <li>The application has access to your AWS credentials directory</li>
-              </ol>
-            </>
-          );
-        } else {
-          setError(`AWS configuration error: ${message}`);
-        }
-      } else {
-        setError("Failed to sync resources from AWS account. Please try again.");
-      }
+      console.error("Error starting sync run:", err);
+      setError(err.response?.data?.message || "Failed to start sync. Please try again.");
     } finally {
       setSyncLoading(false);
+      closeSyncModal();
     }
   };
   
@@ -447,7 +448,7 @@ const AwsAccountManagement = () => {
                           className="text-primary"
                           onClick={(e) => {
                             e.preventDefault();
-                            handleSync(account.id);
+                            openSyncModal(account.id);
                           }}
                           style={{ textDecoration: 'none', fontWeight: 'bold' }}
                           id={`sync-${account.id}`}
@@ -708,6 +709,35 @@ const AwsAccountManagement = () => {
                 {editMode ? "Update" : "Add"} Account
               </>
             )}
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Sync Run Modal */}
+      <Modal isOpen={syncModalOpen} toggle={closeSyncModal}>
+        <ModalHeader toggle={closeSyncModal}>Start Sync</ModalHeader>
+        <ModalBody>
+          <Form onSubmit={(e) => { e.preventDefault(); confirmSync(); }}>
+            <FormGroup>
+              <Label for="sync_name">Sync Name</Label>
+              <Input
+                type="text"
+                name="sync_name"
+                id="sync_name"
+                placeholder="e.g., Nightly snapshot, Investigate Kinesis, etc."
+                value={syncName}
+                onChange={(e) => setSyncName(e.target.value)}
+                required
+              />
+              <small className="text-muted">Give this sync a name to track it later.</small>
+            </FormGroup>
+          </Form>
+        </ModalBody>
+        <ModalFooter>
+          <Button color="secondary" onClick={closeSyncModal}>Cancel</Button>
+          <Button color="primary" onClick={confirmSync} disabled={syncLoading}>
+            {syncLoading ? <Spinner size="sm" className="me-1" /> : <i className="fas fa-play me-1"></i>}
+            Start Sync
           </Button>
         </ModalFooter>
       </Modal>

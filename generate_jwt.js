@@ -1,23 +1,27 @@
-// JWT Token generation script
+// JWT Token generation script (dev utility)
 const jwt = require('jsonwebtoken');
 const fs = require('fs');
 
-// Sample user payload
+// Compute issued-at and expiration
+const nowSec = Math.floor(Date.now() / 1000);
+const expSec = nowSec + 60 * 60 * 24; // 24 hours
+
+// Payload must match backend Claims struct in backend/src/middleware/auth.rs
+// Claims { sub: String, username: String, email: Option<String>, roles: Vec<String>, exp: i64, iat: i64 }
 const userPayload = {
-  user_id: 1,
+  sub: "admin", // can be any string identifier; in prod this is usually the user UUID
   username: "admin",
-  email: "admin@example.com",
-  role: "admin",
-  sub: "admin", // Required field
-  roles: ["admin"], // Required field as an array
-  exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24) // 24 hours expiration
+  email: "admin@mayyam.local",
+  roles: ["admin", "user"],
+  iat: nowSec,
+  exp: expSec,
 };
 
-// Secret key from config.yml
-const secretKey = "change_this_to_a_secure_secret_in_production_environment";
+// Prefer JWT_SECRET env var; fallback matches backend/config.yml dev default
+const secretKey = process.env.JWT_SECRET || "change_this_to_a_secure_secret_in_production_environment";
 
-// Generate token
-const token = jwt.sign(userPayload, secretKey);
+// Generate token (HS256 by default)
+const token = jwt.sign(userPayload, secretKey, { algorithm: 'HS256' });
 
 // Save token to file
 fs.writeFileSync('token.txt', token);

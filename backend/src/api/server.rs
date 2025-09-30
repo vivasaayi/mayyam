@@ -35,9 +35,11 @@ use crate::controllers::{
     kubernetes_cluster_management::KubernetesClusterManagementController,
     data_source::DataSourceController,
     llm_provider::LlmProviderController,
+    llm_model::LlmModelController,
     prompt_template::PromptTemplateController,
     llm_analytics::LlmAnalyticsController,
 };
+use crate::controllers::sync_run::SyncRunController;
 use crate::services::analytics::aws_analytics::aws_analytics::AwsAnalyticsService;
 use crate::services::aws::aws_control_plane::dynamodb_control_plane::DynamoDbControlPlane;
 use crate::services::aws::aws_control_plane::kinesis_control_plane::KinesisControlPlane;
@@ -83,17 +85,29 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     
     // Connect to the database
     let db_connection_val = database::connect(&config).await?;
+    // Ensure critical tables exist in case migrations weren't applied
+    if let Err(e) = database::ensure_llm_provider_models_table(&db_connection_val).await {
+        tracing::warn!("Failed to ensure llm_provider_models table exists: {}", e);
+    }
+    if let Err(e) = database::ensure_sync_runs_table(&db_connection_val).await {
+        tracing::warn!("Failed to ensure sync_runs table exists: {}", e);
+    }
+    if let Err(e) = database::ensure_aws_resources_table(&db_connection_val).await {
+        tracing::warn!("Failed to ensure aws_resources table exists: {}", e);
+    }
     let db_connection = Arc::new(db_connection_val);
     
     // Initialize repositories
     let user_repo = Arc::new(UserRepository::new(db_connection.clone()));
+    let aws_account_repo = Arc::new(AwsAccountRepository::new(db_connection.clone()));
     let database_repo = Arc::new(DatabaseRepository::new(db_connection.clone(), config.clone()));
     let cluster_repo = Arc::new(ClusterRepository::new(db_connection.clone(), config.clone()));
     let aws_resource_repo = Arc::new(AwsResourceRepository::new(db_connection.clone(), config.clone()));
-    let aws_account_repo = Arc::new(AwsAccountRepository::new(db_connection.clone()));
+        let sync_run_repo = Arc::new(crate::repositories::sync_run::SyncRunRepository::new(db_connection.clone()));
     let data_source_repo = Arc::new(DataSourceRepository::new(db_connection.clone()));
     let llm_provider_repo = Arc::new(LlmProviderRepository::new(db_connection.clone(), config.clone()));
     let prompt_template_repo = Arc::new(PromptTemplateRepository::new((*db_connection).clone()));
+    let llm_provider_model_repo = Arc::new(crate::repositories::llm_model::LlmProviderModelRepository::new(db_connection.clone()));
     let cost_analytics_repo = Arc::new(CostAnalyticsRepository::new(db_connection.clone()));
     
     // Initialize services
@@ -106,7 +120,11 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     let aws_data_plane = Arc::new(AwsDataPlane::new(aws_service.clone()));
     let aws_cost_service = Arc::new(AwsCostService::new(aws_service.clone()));
     let cloudwatch_service = Arc::new(CloudWatchService::new(aws_service.clone()));
-    let aws_account_service = Arc::new(AwsAccountService::new(aws_account_repo.clone(), aws_control_plane.clone()));
+    let aws_account_service = Arc::new(AwsAccountService::new(
+        aws_account_repo.clone(),
+        aws_control_plane.clone(),
+        sync_run_repo.clone(),
+    ));
     
     // Initialize LLM Integration service first (needed by AWS analytics)
     let llm_integration_service = Arc::new(LlmIntegrationService::new(
@@ -131,9 +149,9 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
         config.clone(),
     ));
     // Initialize Unified LLM Manager
-    let mut unified_llm_manager = crate::services::llm::UnifiedLlmManager::new(llm_provider_repo.clone());
-    unified_llm_manager.initialize_common_providers().await?;
-    let unified_llm_manager = Arc::new(unified_llm_manager);
+    let mut llm_manager_init = crate::services::llm::UnifiedLlmManager::new(llm_provider_repo.clone());
+    llm_manager_init.initialize_common_providers().await?;
+    let unified_llm_manager = Arc::new(llm_manager_init);
 
     let llm_analytics_service = Arc::new(LlmAnalyticsService::new(
         unified_llm_manager.clone(),
@@ -209,6 +227,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     let unified_llm_controller = Arc::new(crate::controllers::unified_llm::UnifiedLlmController::new(
         unified_llm_manager.clone(),
     ));
+    let sync_run_controller = Arc::new(SyncRunController::new(sync_run_repo.clone()));
 
     let s3_data_plane = Arc::new(S3DataPlane::new(aws_service.clone()));
     let s3_control_plane = Arc::new(s3_control_plane::S3ControlPlane::new(aws_service.clone()));
@@ -298,9 +317,11 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
 	    .app_data(web::Data::new(kubernetes_cluster_management_controller.clone()))
             .app_data(web::Data::new(data_source_controller.clone()))
             .app_data(web::Data::new(llm_provider_controller.clone()))
+            .app_data(web::Data::new(Arc::new(LlmModelController::new(llm_provider_model_repo.clone()))))
             .app_data(web::Data::new(prompt_template_controller.clone()))
             .app_data(web::Data::new(llm_analytics_controller.clone()))
             .app_data(web::Data::new(unified_llm_controller.clone()))
+            .app_data(web::Data::new(sync_run_controller.clone()))
             .app_data(web::Data::new(s3_data_plane.clone()))
             .app_data(web::Data::new(s3_control_plane.clone()))
             .app_data(web::Data::new(dynamodb_data_plane.clone()))
@@ -317,16 +338,21 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
                 info!("Registering AWS analytics routes with highest priority");
                 routes::aws_analytics::configure(cfg_param, aws_analytics_controller.clone());
 
+                info!("Registering AI routes");
+                routes::ai::configure(cfg_param);
+
                 info!("Registering Kubernetes cluster management routes");
                 routes::kubernetes_cluster_management::configure(cfg_param, kubernetes_cluster_management_controller.clone());
                 
                 info!("Registering LLM Analytics Platform routes");
                 routes::data_source::configure(cfg_param, data_source_controller.clone());
-                routes::llm_provider::configure(cfg_param, llm_provider_controller.clone());
+                routes::llm_provider::configure(cfg_param, llm_provider_controller.clone(), Arc::new(LlmModelController::new(llm_provider_model_repo.clone())));
                 routes::prompt_template::configure(cfg_param, prompt_template_controller.clone());
                 routes::query_template::configure(cfg_param);
                 routes::llm_analytics::configure(cfg_param, llm_analytics_controller.clone());
                 routes::unified_llm::configure(cfg_param, unified_llm_controller.clone());
+                // Sync runs API
+                cfg_param.service(crate::api::routes::sync_run::configure(sync_run_controller.clone()));
                 
                 info!("Registering AWS Cost Analytics routes");
                 routes::cost_analytics::configure_routes(cfg_param);

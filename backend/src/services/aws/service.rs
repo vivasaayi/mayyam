@@ -21,9 +21,9 @@ use crate::errors::AppError;
 use crate::models::aws_auth::AccountAuthInfo;
 use super::client_factory::AwsClientFactory;
 use async_trait::async_trait;
-use tracing::debug;
 use std::fs;
 use crate::models::aws_account::AwsAccountDto;
+use tracing::{trace, debug, error};
 
 // Base AWS service
 #[derive(Debug)]
@@ -120,9 +120,6 @@ impl AwsService {
                 "static-credentials"
             );
             config_builder.credentials_provider(credentials_provider).load().await
-        } else if let Some(role_arn) = aws_config.role_arn {
-            debug!("Using IAM role authentication with role: {}", role_arn);
-            config_builder.load().await
         } else if let Some(profile_name) = &aws_config.profile {
             debug!("Attempting to use AWS profile: {}", profile_name);
             let provider = aws_config::profile::ProfileFileCredentialsProvider::builder()
@@ -130,7 +127,10 @@ impl AwsService {
                 .build();
             
             config_builder.credentials_provider(provider).load().await
-        } else {
+        } else if let Some(role_arn) = aws_config.role_arn {
+            debug!("Using IAM role authentication with role: {}", role_arn);
+            config_builder.load().await
+         } else {
             debug!("No explicit authentication method configured, using default credential provider chain");
             config_builder.load().await
         };
@@ -170,6 +170,7 @@ impl AwsClientFactory for AwsService {
 
     async fn create_ec2_client(&self, aws_account_dto: &AwsAccountDto) -> Result<Ec2Client, AppError> {
         let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        trace!("EC2 Client Config: {:?}", config);
         Ok(Ec2Client::new(&config))
     }
 

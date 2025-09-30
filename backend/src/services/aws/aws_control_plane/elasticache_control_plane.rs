@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use aws_sdk_elasticache::Client as ElasticacheClient;
+use uuid::Uuid;
 use serde_json::json;
 use crate::errors::AppError;
 use crate::models::aws_account::AwsAccountDto;
@@ -7,6 +8,7 @@ use crate::models::aws_auth::AccountAuthInfo;
 use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel};
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::AwsService;
+use tracing::{debug, error};
 
 pub struct ElasticacheControlPlane {
     aws_service: Arc<AwsService>,
@@ -17,7 +19,8 @@ impl ElasticacheControlPlane {
         Self { aws_service }
     }
 
-    pub async fn sync_clusters(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<AwsResourceModel>, AppError> {
+    pub async fn sync_clusters(&self, aws_account_dto: &AwsAccountDto, sync_id: Uuid) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!("Syncing ElastiCache clusters for account: {} with sync_id: {}", &aws_account_dto.account_id, sync_id);
         let client = self.aws_service.create_elasticache_client(aws_account_dto).await?;
 
         // Get ElastiCache clusters from AWS
@@ -25,13 +28,20 @@ impl ElasticacheControlPlane {
             .show_cache_node_info(true)
             .send()
             .await
-            .map_err(|e| AppError::ExternalService(format!("Failed to describe ElastiCache clusters: {}", e)))?;
-            
+            .map_err(|e| {
+                error!("Failed to describe ElastiCache clusters: {}", e);
+                let inner_aws_error = e.into_service_error();
+                error!("Error raw response: {:?}", inner_aws_error);
+                AppError::ExternalService(format!("Failed to describe ElastiCache clusters: {}", inner_aws_error))
+            })?;
+
         let mut clusters = Vec::new();
-        
-    
+
+        debug!("Fetched {} ElastiCache clusters", response.cache_clusters().len());
+
         for cache_cluster in response.cache_clusters() {
             let cluster_id = cache_cluster.cache_cluster_id().unwrap_or_default();
+            debug!("Found ElastiCache cluster: {}", &cluster_id);
             
             // Get ARN for the cluster
             let arn = cache_cluster.arn().unwrap_or_default();
@@ -142,6 +152,7 @@ impl ElasticacheControlPlane {
                 name,
                 tags: serde_json::Value::Object(tags_map),
                 resource_data: serde_json::Value::Object(resource_data),
+                sync_id: Some(sync_id),
             };
             
             clusters.push(cluster);

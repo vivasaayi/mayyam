@@ -2,7 +2,7 @@ import axios from "axios";
 
 // Create axios instance with default config
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || "http://localhost:8080",
+  baseURL: process.env.REACT_APP_API_URL || "http://localhost:8010",
   headers: {
     "Content-Type": "application/json",
   },
@@ -40,7 +40,7 @@ api.interceptors.response.use(
 // Fetch with authentication included
 export const fetchWithAuth = async (url, options = {}) => {
   const token = localStorage.getItem("token");
-  const backendUrl = process.env.REACT_APP_API_URL || "http://localhost:8080";
+  const backendUrl = process.env.REACT_APP_API_URL || "http://localhost:8010";
   const fullUrl = url.startsWith('http') ? url : `${backendUrl}${url}`;
   
   const headers = {
@@ -284,9 +284,10 @@ export const deleteAwsAccount = async (accountId) => {
 };
 
 // Sync resources for an AWS account
-export const syncAwsAccountResources = async (accountId) => {
+export const syncAwsAccountResources = async (accountId, syncId = null) => {
   try {
-    const response = await api.post(`/api/aws/accounts/${accountId}/sync`);
+    const params = syncId ? { params: { sync_id: syncId } } : undefined;
+    const response = await api.post(`/api/aws/accounts/${accountId}/sync`, null, params);
     return response.data;
   } catch (error) {
     console.error(`Error syncing resources for AWS account ${accountId}:`, error);
@@ -301,6 +302,41 @@ export const syncAllAwsAccountResources = async () => {
     return response.data;
   } catch (error) {
     console.error('Error syncing resources for all AWS accounts:', error);
+    throw error;
+  }
+};
+
+// Sync Runs API
+export const createSyncRun = async ({ name, aws_account_id = null, account_id = null, profile = null, region = null, metadata = {} }) => {
+  try {
+    const response = await api.post('/api/sync-runs', { name, aws_account_id, account_id, profile, region, metadata });
+    return response.data; // returns SyncRunDto including id (sync_id)
+  } catch (error) {
+    console.error('Error creating sync run:', error);
+    throw error;
+  }
+};
+
+export const getSyncRuns = async (status = null, limit = 50, offset = 0) => {
+  try {
+    const params = {};
+    if (status) params.status = status;
+    if (limit != null) params.limit = limit;
+    if (offset != null) params.offset = offset;
+    const response = await api.get('/api/sync-runs', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching sync runs:', error);
+    throw error;
+  }
+};
+
+export const getSyncRun = async (id) => {
+  try {
+    const response = await api.get(`/api/sync-runs/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching sync run:', error);
     throw error;
   }
 };

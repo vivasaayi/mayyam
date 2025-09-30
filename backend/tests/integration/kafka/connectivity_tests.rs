@@ -2,9 +2,14 @@
 mod tests {
     use std::time::Duration;
     use crate::tests::integration::helpers::kafka_test_helper::KafkaTestHelper;
+    
+    fn kafka_tests_enabled() -> bool {
+        std::env::var("ENABLE_KAFKA_TESTS").ok().as_deref() == Some("1")
+    }
 
     #[tokio::test]
     async fn test_kafka_connectivity() {
+    if !kafka_tests_enabled() { eprintln!("Skipping Kafka test: set ENABLE_KAFKA_TESTS=1 to run"); return; }
         let helper = KafkaTestHelper::new("localhost:9092")
             .await
             .expect("Failed to create Kafka test helper");
@@ -22,6 +27,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_topic_creation_and_deletion() {
+    if !kafka_tests_enabled() { eprintln!("Skipping Kafka test: set ENABLE_KAFKA_TESTS=1 to run"); return; }
         let helper = KafkaTestHelper::new("localhost:9092")
             .await
             .expect("Failed to create Kafka test helper");
@@ -59,6 +65,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_message_produce_and_consume() {
+    if !kafka_tests_enabled() { eprintln!("Skipping Kafka test: set ENABLE_KAFKA_TESTS=1 to run"); return; }
         let helper = KafkaTestHelper::new("localhost:9092")
             .await
             .expect("Failed to create Kafka test helper");
