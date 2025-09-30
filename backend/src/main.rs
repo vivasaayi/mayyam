@@ -1,19 +1,6 @@
 use clap::{Parser, Subcommand};
+use mayyam::{api, cli, config, utils};
 use std::error::Error;
-
-mod api;
-mod cli;
-mod config;
-mod controllers;
-pub mod errors;
-mod integrations;
-mod middleware;
-pub mod models;
-pub mod repositories;
-pub mod services;
-#[cfg(test)]
-mod tests;
-mod utils;
 
 #[derive(Parser)]
 #[command(name = "mayyam")]

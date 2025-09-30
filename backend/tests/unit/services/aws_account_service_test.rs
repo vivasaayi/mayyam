@@ -1,16 +1,15 @@
 use std::sync::Arc;
+
+use mayyam::errors::AppError;
+use mayyam::models::aws_account::{AwsAccountCreateDto, AwsAccountDto, AwsAccountUpdateDto};
+use mayyam::repositories::aws_account::AwsAccountRepository;
+use mayyam::repositories::sync_run::SyncRunRepository;
+use mayyam::services::aws::AwsControlPlane;
+use mayyam::services::aws_account::AwsAccountService;
 use rstest::*;
-use mockall::predicate::*;
 use serial_test::serial;
 
-use crate::services::aws_account::AwsAccountService;
-use crate::repositories::aws_account::AwsAccountRepository;
-use crate::repositories::sync_run::SyncRunRepository;
-use crate::models::aws_account::{AwsAccountCreateDto, AwsAccountDto};
-use crate::services::aws::AwsControlPlane;
-use crate::errors::AppError;
-
-use crate::test_utils::{TestDb, get_test_db};
+use crate::common::test_utils::{factories, get_test_db};
 
 /// Mock AWS Control Plane for testing
 #[cfg(test)]

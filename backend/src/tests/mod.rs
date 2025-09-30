@@ -1,14 +1,6 @@
-#[cfg(test)]
-mod aws_account_test;
+// Legacy tests from `src/tests` have been migrated under the top-level
+// `tests/` directory. This module now only exposes helper glue for integration
+// suites that expect to reach `crate::tests::integration::helpers`.
 
-#[cfg(test)]
-mod kinesis_api_tests;
-
-#[cfg(test)]
-mod kinesis_unit_tests;
-
-#[cfg(test)]
-mod ai_chat_stream;
-
-// Integration helpers are now organized under `tests/integration`, so we don't
-// re-export an `integration` module from the crate root to avoid duplication.
+#[cfg(feature = "integration-tests")]
+pub mod integration;

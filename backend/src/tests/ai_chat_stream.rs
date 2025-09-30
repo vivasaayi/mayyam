@@ -1,24 +1,5 @@
-use actix_web::{test, App};
-
-#[actix_rt::test]
-async fn chat_stream_empty_messages_returns_400() {
-    // Build the app using the real route configure function inside the crate
-    let app = test::init_service(App::new().configure(|cfg| {
-        crate::api::routes::ai::configure(cfg);
-    }))
-    .await;
-
-    let payload = serde_json::json!({
-        "messages": [],
-        "model": null,
-        "temperature": 1.0
-    });
-
-    let req = test::TestRequest::post()
-        .uri("/api/ai/chat/stream")
-        .set_json(&payload)
-        .to_request();
-
-    let resp = test::call_service(&app, req).await;
-    assert!(resp.status().is_client_error());
-}
+//! Legacy placeholder.
+//!
+//! The AI chat stream integration test now lives in
+//! `tests/integration/ai_chat_stream_test.rs`. This file remains only to avoid
+//! breaking older paths that might still reference `crate::tests::ai_chat_stream`.
