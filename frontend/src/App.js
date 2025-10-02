@@ -58,7 +58,7 @@ const App = () => {
             <Route index element={<Dashboard />} />
             <Route path="databases/*" element={<Databases />} />
             <Route path="kafka/*" element={<Kafka />} />
-            <Route path="cloud/*" element={<Cloud />} />
+            <Route path="cloud-accounts" element={<Cloud />} />
             <Route path="kinesis-analysis" element={<KinesisAnalysis />} />
             <Route path="rds-analysis/:id" element={<RDSAnalysis />} />
             <Route path="resource-analysis/:id" element={<ResourceAnalysis />} />

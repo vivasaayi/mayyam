@@ -419,3 +419,99 @@ pub async fn ensure_aws_resources_table(db: &DatabaseConnection) -> Result<(), D
 
     Ok(())
 }
+
+/// Ensure the unified cloud_resources table exists and has expected indexes/constraints
+/// This table stores multi-cloud normalized resources with a sync_id to support
+/// multiple scans over time without collisions.
+pub async fn ensure_cloud_resources_table(db: &DatabaseConnection) -> Result<(), DbErr> {
+    // Create table if it doesn't exist
+    let create_table_sql = r#"
+        CREATE TABLE IF NOT EXISTS cloud_resources (
+            id UUID PRIMARY KEY,
+            sync_id UUID NOT NULL,
+            provider TEXT NOT NULL,
+            account_id TEXT NOT NULL,
+            region TEXT NOT NULL,
+            resource_type TEXT NOT NULL,
+            resource_id TEXT NOT NULL,
+            arn_or_uri TEXT NULL,
+            name TEXT NULL,
+            tags JSONB NOT NULL DEFAULT '{}'::jsonb,
+            resource_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_refreshed TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    "#;
+
+    db.execute(Statement::from_string(
+        DbBackend::Postgres,
+        create_table_sql.to_string(),
+    ))
+    .await?;
+
+    // Helpful indexes for common queries
+    let idx_sync =
+        r#"CREATE INDEX IF NOT EXISTS idx_cloud_resources_sync_id ON cloud_resources(sync_id)"#;
+    let idx_updated = r#"CREATE INDEX IF NOT EXISTS idx_cloud_resources_updated_at ON cloud_resources(updated_at DESC)"#;
+    let idx_type_sync = r#"CREATE INDEX IF NOT EXISTS idx_cloud_resources_type_sync ON cloud_resources(resource_type, sync_id)"#;
+    let idx_acct_region = r#"CREATE INDEX IF NOT EXISTS idx_cloud_resources_account_region ON cloud_resources(account_id, region)"#;
+    db.execute(Statement::from_string(DbBackend::Postgres, idx_sync.to_string()))
+        .await?;
+    db.execute(Statement::from_string(
+        DbBackend::Postgres,
+        idx_updated.to_string(),
+    ))
+    .await?;
+    db.execute(Statement::from_string(
+        DbBackend::Postgres,
+        idx_type_sync.to_string(),
+    ))
+    .await?;
+    db.execute(Statement::from_string(
+        DbBackend::Postgres,
+        idx_acct_region.to_string(),
+    ))
+    .await?;
+
+    // Add a uniqueness guard to avoid duplicates for the same resource within a sync
+    let add_unique = r#"
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint c
+                JOIN pg_class t ON c.conrelid = t.oid
+                WHERE t.relname = 'cloud_resources' AND c.conname = 'uniq_cloud_sync_resource'
+            ) THEN
+                ALTER TABLE cloud_resources
+                ADD CONSTRAINT uniq_cloud_sync_resource UNIQUE (sync_id, provider, account_id, region, resource_type, resource_id);
+            END IF;
+        END $$;
+    "#;
+    db.execute(Statement::from_string(
+        DbBackend::Postgres,
+        add_unique.to_string(),
+    ))
+    .await?;
+
+    // Ensure trigger to auto-update updated_at exists (uses set_updated_at created earlier)
+    let drop_trigger = r#"DROP TRIGGER IF EXISTS trg_cloud_resources_updated_at ON cloud_resources"#;
+    let create_trigger = r#"
+        CREATE TRIGGER trg_cloud_resources_updated_at
+        BEFORE UPDATE ON cloud_resources
+        FOR EACH ROW
+        EXECUTE PROCEDURE set_updated_at();
+    "#;
+    db.execute(Statement::from_string(
+        DbBackend::Postgres,
+        drop_trigger.to_string(),
+    ))
+    .await?;
+    db.execute(Statement::from_string(
+        DbBackend::Postgres,
+        create_trigger.to_string(),
+    ))
+    .await?;
+
+    Ok(())
+}

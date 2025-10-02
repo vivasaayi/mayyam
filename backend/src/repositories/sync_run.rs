@@ -27,6 +27,15 @@ impl SyncRunRepository {
 
         let now = Utc::now();
         let id = Uuid::new_v4();
+
+        // Merge regions/all_regions into metadata for retrieval during sync
+        let mut metadata = dto.metadata.unwrap_or_else(|| serde_json::json!({}));
+        if let Some(true) = dto.all_regions {
+            metadata["all_regions"] = serde_json::json!(true);
+        }
+        if let Some(regions) = dto.regions.clone() {
+            metadata["regions"] = serde_json::json!(regions);
+        }
         let model = ActiveModel {
             id: Set(id),
             name: Set(dto.name),
@@ -39,7 +48,7 @@ impl SyncRunRepository {
             success_count: Set(0),
             failure_count: Set(0),
             error_summary: Set(None),
-            metadata: Set(dto.metadata.unwrap_or_else(|| serde_json::json!({}))),
+            metadata: Set(metadata),
             started_at: Set(None),
             completed_at: Set(None),
             created_at: Set(now),
@@ -111,6 +120,31 @@ impl SyncRunRepository {
             am.success_count = Set(success);
             am.failure_count = Set(failure);
             am.completed_at = Set(Some(Utc::now()));
+            am.update(&*self.db).await.map_err(AppError::Database)?;
+        }
+        Ok(())
+    }
+
+    pub async fn update_metadata(
+        &self,
+        id: Uuid,
+        patch: serde_json::Value,
+    ) -> Result<(), AppError> {
+        if let Some(m) = SyncRun::find_by_id(id)
+            .one(&*self.db)
+            .await
+            .map_err(AppError::Database)?
+        {
+            let mut meta = m.metadata.clone();
+            // Merge simple keys from patch into existing metadata
+            if let Some(obj) = patch.as_object() {
+                for (k, v) in obj.iter() {
+                    meta[k] = v.clone();
+                }
+            }
+            let mut am: ActiveModel = m.into();
+            am.metadata = Set(meta);
+            am.updated_at = Set(Utc::now());
             am.update(&*self.db).await.map_err(AppError::Database)?;
         }
         Ok(())

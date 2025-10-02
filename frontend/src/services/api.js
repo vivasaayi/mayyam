@@ -341,4 +341,19 @@ export const getSyncRun = async (id) => {
   }
 };
 
+// AWS Regions (live via DescribeRegions)
+export const listAwsRegions = async ({ accountId = null, profile = null, region = null } = {}) => {
+  try {
+    const params = {};
+    if (accountId) params.account_id = accountId;
+    if (profile) params.profile = profile;
+    if (region) params.region = region;
+    const response = await api.get('/api/aws/regions', { params });
+    return response.data?.regions || [];
+  } catch (error) {
+    console.error('Error listing AWS regions:', error);
+    throw error;
+  }
+};
+
 export default api;

@@ -1,5 +1,6 @@
 pub mod aws_account;
 pub mod aws_resource;
+pub mod cloud_resource;
 pub mod cluster;
 pub mod cost_analytics;
 pub mod data_source;

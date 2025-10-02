@@ -1,6 +1,7 @@
 use crate::errors::AppError;
 use crate::middleware::auth::Claims;
 use crate::models::aws_resource::{AwsResourceQuery, AwsResourceType};
+use crate::models::cloud_resource::CloudResourceQuery;
 use actix_web::{web, HttpResponse, Responder};
 use chrono::Utc;
 use std::sync::Arc;
@@ -8,7 +9,6 @@ use tracing::info;
 use uuid::Uuid;
 
 use crate::models::aws_account::AwsAccountDto;
-use crate::services::aws::aws_control_plane::kinesis_control_plane::KinesisControlPlane;
 use crate::services::aws::aws_data_plane::cloudwatch::{
     CloudWatchLogs, CloudWatchLogsRequest, CloudWatchMetrics, CloudWatchMetricsRequest,
     CloudWatchService,
@@ -16,22 +16,23 @@ use crate::services::aws::aws_data_plane::cloudwatch::{
 use crate::services::aws::aws_data_plane::cost_explorer::CostAndUsage;
 use crate::services::aws::aws_data_plane::dynamodb_data_plane::DynamoDBDataPlane;
 use crate::services::aws::aws_data_plane::kinesis_data_plane::KinesisDataPlane;
-use crate::services::aws::aws_data_plane::s3_data_plane::S3DataPlane;
 use crate::services::aws::aws_data_plane::sqs_data_plane::SqsDataPlane;
 use crate::services::aws::aws_types::dynamodb::{
     DynamoDBGetItemRequest, DynamoDBPutItemRequest, DynamoDBQueryRequest,
 };
 use crate::services::aws::aws_types::kinesis::{
     KinesisCreateStreamRequest, KinesisDeleteStreamRequest, KinesisDescribeStreamRequest,
-    KinesisEnhancedMonitoringRequest, KinesisGetRecordsRequest, KinesisGetRecordsResponse,
-    KinesisGetShardIteratorRequest, KinesisGetShardIteratorResponse, KinesisListShardsRequest,
-    KinesisListStreamsRequest, KinesisPutRecordRequest, KinesisPutRecordsRequest,
-    KinesisPutRecordsResponse, KinesisRetentionPeriodRequest, KinesisUpdateShardCountRequest,
+    KinesisEnhancedMonitoringRequest, KinesisGetRecordsRequest, KinesisGetShardIteratorRequest,
+    KinesisListShardsRequest, KinesisListStreamsRequest, KinesisPutRecordRequest,
+    KinesisPutRecordsRequest, KinesisRetentionPeriodRequest, KinesisUpdateShardCountRequest,
 };
-use crate::services::aws::aws_types::resource_sync::ResourceSyncRequest;
-use crate::services::aws::aws_types::s3::{S3GetObjectRequest, S3PutObjectRequest};
 use crate::services::aws::aws_types::sqs::{SqsReceiveMessageRequest, SqsSendMessageRequest};
 use crate::services::aws::{AwsControlPlane, AwsCostService, AwsDataPlane};
+// use crate::services::aws::aws_control_plane::kinesis_control_plane::KinesisControlPlane;
+use crate::services::aws::aws_data_plane::s3_data_plane::S3DataPlane;
+use crate::services::aws::aws_types::resource_sync::ResourceSyncRequest;
+use crate::services::aws::aws_types::s3::{S3GetObjectRequest, S3PutObjectRequest};
+use serde::Deserialize;
 
 // AWS Control Plane operations
 pub async fn sync_aws_resources(
@@ -44,6 +45,41 @@ pub async fn sync_aws_resources(
     let response = aws_control_plane.sync_resources(&req).await?;
 
     Ok(HttpResponse::Ok().json(response))
+}
+
+#[derive(Deserialize)]
+pub struct RegionsQuery {
+    pub account_id: Option<Uuid>,
+    pub profile: Option<String>,
+    pub region: Option<String>,
+}
+
+// Return available AWS regions for an account/profile using DescribeRegions
+pub async fn list_aws_regions(
+    query: web::Query<RegionsQuery>,
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    aws_account_repo: web::Data<Arc<crate::repositories::aws_account::AwsAccountRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let q = query.into_inner();
+    // Prefer account context when provided, otherwise use profile+region or fallback to us-east-1
+    let aws_account_dto = if let Some(account_uuid) = q.account_id {
+        if let Some(account) = aws_account_repo.get_by_id(account_uuid).await? {
+            AwsAccountDto::from(account)
+        } else {
+            AwsAccountDto::new_with_profile(
+                q.profile.as_deref().unwrap_or(""),
+                q.region.as_deref().unwrap_or("us-east-1"),
+            )
+        }
+    } else {
+        AwsAccountDto::new_with_profile(
+            q.profile.as_deref().unwrap_or(""),
+            q.region.as_deref().unwrap_or("us-east-1"),
+        )
+    };
+    let regions = aws_control_plane.list_all_regions(&aws_account_dto).await?;
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "regions": regions })))
 }
 
 // AWS EC2 specific endpoints
@@ -134,6 +170,17 @@ pub async fn search_aws_resources(
     let query_params = query.into_inner();
     let resources = aws_repo.search(&query_params).await?;
 
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+// Generic Cloud resource search endpoint (multi-cloud)
+pub async fn search_cloud_resources(
+    query: web::Query<CloudResourceQuery>,
+    repo: web::Data<Arc<crate::repositories::cloud_resource::CloudResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let params = query.into_inner();
+    let resources = repo.search(&params).await?;
     Ok(HttpResponse::Ok().json(resources))
 }
 

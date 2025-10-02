@@ -2,10 +2,14 @@ use super::client_factory::AwsClientFactory;
 use crate::config::{AwsConfig, Config};
 use crate::errors::AppError;
 use crate::models::aws_account::AwsAccountDto;
-use crate::models::aws_auth::AccountAuthInfo;
 use crate::repositories::aws_resource::AwsResourceRepository;
+use crate::repositories::cloud_resource::CloudResourceRepository;
 use async_trait::async_trait;
 use aws_config;
+use aws_config::sts::AssumeRoleProvider;
+use aws_config::BehaviorVersion;
+use aws_credential_types::provider::SharedCredentialsProvider;
+use aws_credential_types::Credentials as StaticCredentials;
 use aws_sdk_cloudwatch::Client as CloudWatchClient;
 use aws_sdk_cloudwatchlogs::Client as CloudWatchLogsClient;
 use aws_sdk_costexplorer::Client as CostExplorerClient;
@@ -23,19 +27,25 @@ use aws_sdk_sts::Client as StsClient;
 use aws_types;
 use std::fs;
 use std::sync::Arc;
-use tracing::{debug, error, trace};
+use tracing::{debug, trace};
 
 // Base AWS service
 #[derive(Debug)]
 pub struct AwsService {
     pub(crate) aws_resource_repo: Arc<AwsResourceRepository>,
+    pub(crate) cloud_resource_repo: Arc<CloudResourceRepository>,
     config: Config,
 }
 
 impl AwsService {
-    pub fn new(aws_resource_repo: Arc<AwsResourceRepository>, config: Config) -> Self {
+    pub fn new(
+        aws_resource_repo: Arc<AwsResourceRepository>,
+        cloud_resource_repo: Arc<CloudResourceRepository>,
+        config: Config,
+    ) -> Self {
         Self {
             aws_resource_repo,
+            cloud_resource_repo,
             config,
         }
     }
@@ -107,55 +117,146 @@ impl AwsService {
         &self,
         aws_account_dto: &AwsAccountDto,
     ) -> Result<aws_config::SdkConfig, AppError> {
-        // if(!aws_account_dto.profile) {
-        //     // Throw error
-        // }
+        let region = aws_types::region::Region::new(aws_account_dto.default_region.clone());
+        let mut base_builder =
+            aws_config::defaults(BehaviorVersion::latest()).region(region.clone());
 
-        // if aws_account_dto.profile.is_none() {
-        //     Err(AppError::InvalidInput("Missing AWS profile".to_string()))
-        // }
+        // Helper: build config with a specific credentials provider
+        async fn load_with_provider<
+            P: aws_credential_types::provider::ProvideCredentials + 'static,
+        >(
+            builder: aws_config::ConfigLoader,
+            provider: P,
+        ) -> aws_config::SdkConfig {
+            builder.credentials_provider(provider).load().await
+        }
 
-        let aws_config = AwsConfig {
-            name: "fallback".to_string(),
-            profile: aws_account_dto.profile.clone(),
-            region: aws_account_dto.default_region.clone(),
-            access_key_id: aws_account_dto.access_key_id.clone().map(String::from),
-            secret_access_key: aws_account_dto.secret_access_key.clone().map(String::from),
-            role_arn: Some("FIX_ME".to_string()),
+        // Normalize auth type
+        let auth_type = aws_account_dto.auth_type.to_lowercase();
+
+        // Fallback heuristics for legacy data (auth_type may be 'auto')
+        let resolved_auth = if auth_type == "auto" {
+            if let Some(profile) = &aws_account_dto.profile {
+                debug!("Auth[auto]: using profile {:?}", profile);
+                "profile".to_string()
+            } else if aws_account_dto.use_role && aws_account_dto.role_arn.is_some() {
+                debug!(
+                    "Auth[auto]: using assume_role with role {:?}",
+                    aws_account_dto.role_arn
+                );
+                "assume_role".to_string()
+            } else if aws_account_dto.has_access_key
+                || (aws_account_dto.access_key_id.is_some()
+                    && aws_account_dto.secret_access_key.is_some())
+            {
+                debug!("Auth[auto]: using access_keys");
+                "access_keys".to_string()
+            } else {
+                debug!("Auth[auto]: using default/instance role");
+                "instance_role".to_string()
+            }
+        } else {
+            auth_type
         };
 
-        let config_builder = aws_config::from_env().region(aws_types::region::Region::new(
-            aws_account_dto.default_region.clone(),
-        ));
+        // Apply profile name to builder when appropriate
+        let profile_to_use = match resolved_auth.as_str() {
+            "profile" => aws_account_dto.profile.clone(),
+            "sso" => aws_account_dto
+                .sso_profile
+                .clone()
+                .or_else(|| aws_account_dto.profile.clone()),
+            "assume_role" => aws_account_dto
+                .source_profile
+                .clone()
+                .or_else(|| aws_account_dto.profile.clone()),
+            _ => None,
+        };
+        if let Some(p) = profile_to_use.as_deref() {
+            base_builder = base_builder.profile_name(p);
+        }
 
-        let config = if let (Some(access_key), Some(secret_key)) =
-            (&aws_config.access_key_id, &aws_config.secret_access_key)
-        {
-            debug!("Using access key authentication");
-            let credentials_provider = aws_sdk_s3::config::Credentials::new(
-                access_key,
-                secret_key,
-                None,
-                None,
-                "static-credentials",
-            );
-            config_builder
-                .credentials_provider(credentials_provider)
-                .load()
-                .await
-        } else if let Some(profile_name) = &aws_config.profile {
-            debug!("Attempting to use AWS profile: {}", profile_name);
-            let provider = aws_config::profile::ProfileFileCredentialsProvider::builder()
-                .profile_name(profile_name)
-                .build();
+        let config = match resolved_auth.as_str() {
+            "access_keys" => {
+                if let (Some(ak), Some(sk)) = (
+                    &aws_account_dto.access_key_id,
+                    &aws_account_dto.secret_access_key,
+                ) {
+                    debug!(
+                        "Using static access keys for AWS auth (account {})",
+                        aws_account_dto.account_id
+                    );
+                    let static_creds = StaticCredentials::new(
+                        ak.clone(),
+                        sk.clone(),
+                        None,
+                        None,
+                        "static-credentials",
+                    );
+                    let provider = SharedCredentialsProvider::new(static_creds);
+                    load_with_provider(base_builder, provider).await
+                } else {
+                    debug!("Missing access keys, falling back to default chain");
+                    base_builder.load().await
+                }
+            }
+            "profile" => {
+                let pf = profile_to_use.unwrap_or_else(|| "default".to_string());
+                debug!("Using AWS profile '{}'", pf);
+                base_builder.load().await
+            }
+            "assume_role" => {
+                let role_arn = aws_account_dto.role_arn.clone().ok_or_else(|| {
+                    AppError::Validation("Missing role_arn for assume_role".into())
+                })?;
+                debug!(
+                    "Assuming role {} in region {}",
+                    role_arn, aws_account_dto.default_region
+                );
+                // Load a base config (from env / profile) for STS to call AssumeRole
+                let mut base_for_sts =
+                    aws_config::defaults(BehaviorVersion::latest()).region(region.clone());
+                if let Some(p) = profile_to_use.as_deref() {
+                    base_for_sts = base_for_sts.profile_name(p);
+                }
+                let base_conf = base_for_sts.load().await;
 
-            config_builder.credentials_provider(provider).load().await
-        } else if let Some(role_arn) = aws_config.role_arn {
-            debug!("Using IAM role authentication with role: {}", role_arn);
-            config_builder.load().await
-        } else {
-            debug!("No explicit authentication method configured, using default credential provider chain");
-            config_builder.load().await
+                // Build AssumeRole provider
+                let mut builder = AssumeRoleProvider::builder(role_arn);
+                if let Some(sn) = aws_account_dto.session_name.as_ref() {
+                    builder = builder.session_name(sn);
+                }
+                // Note: external_id may not be supported directly by builder in all SDK versions
+                // If available, uncomment next line:
+                // if let Some(ext) = aws_account_dto.external_id.as_ref() { builder = builder.external_id(ext); }
+                builder = builder.region(region.clone());
+                let assume_provider = builder.configure(&base_conf).build().await;
+                load_with_provider(base_builder, assume_provider).await
+            }
+            "web_identity" => {
+                // Leverage default chain for web identity by setting env vars if provided
+                if let Some(token_file) = &aws_account_dto.web_identity_token_file {
+                    std::env::set_var("AWS_WEB_IDENTITY_TOKEN_FILE", token_file);
+                }
+                if let Some(role_arn) = &aws_account_dto.role_arn {
+                    std::env::set_var("AWS_ROLE_ARN", role_arn);
+                }
+                if let Some(sn) = &aws_account_dto.session_name {
+                    std::env::set_var("AWS_ROLE_SESSION_NAME", sn);
+                }
+                debug!("Using web identity (OIDC) flow via default chain");
+                base_builder.load().await
+            }
+            "sso" => {
+                let pf = profile_to_use.unwrap_or_else(|| "default".to_string());
+                debug!("Using AWS SSO via profile '{}'", pf);
+                base_builder.load().await
+            }
+            // Default / instance / container / IRSA roles use the default chain
+            _ => {
+                debug!("Using default credential chain (may resolve to instance/task/IRSA role)");
+                base_builder.load().await
+            }
         };
 
         Ok(config)
@@ -165,7 +266,7 @@ impl AwsService {
     pub async fn get_account_id(
         &self,
         aws_account_dto: &AwsAccountDto,
-        region: &str,
+        _region: &str,
     ) -> Result<String, AppError> {
         let client = self.create_sts_client(aws_account_dto).await?;
         let identity = client.get_caller_identity().send().await.map_err(|e| {
@@ -178,6 +279,29 @@ impl AwsService {
                 AppError::ExternalService("Account ID not found in caller identity".to_string())
             })
             .map(|s| s.to_string())
+    }
+
+    // List all AWS regions available to this account using EC2 DescribeRegions
+    pub async fn list_all_regions(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<Vec<String>, AppError> {
+        // Use provided region to bootstrap the client; AWS will return regions globally
+        let ec2 = self.create_ec2_client(aws_account_dto).await?;
+        let resp = ec2
+            .describe_regions()
+            .all_regions(true)
+            .send()
+            .await
+            .map_err(|e| AppError::ExternalService(format!("Failed to list AWS regions: {}", e)))?;
+
+        let regions = resp
+            .regions()
+            .iter()
+            .filter_map(|r| r.region_name())
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>();
+        Ok(regions)
     }
 }
 

@@ -17,9 +17,13 @@ use crate::middleware::auth::AuthMiddleware;
 use crate::models::aws_account::AwsAccountDto;
 use crate::repositories::{
     aws_account::AwsAccountRepository, aws_resource::AwsResourceRepository,
-    cluster::ClusterRepository, cost_analytics::CostAnalyticsRepository,
-    data_source::DataSourceRepository, database::DatabaseRepository,
-    llm_provider::LlmProviderRepository, prompt_template::PromptTemplateRepository,
+    cloud_resource::CloudResourceRepository, 
+    cluster::ClusterRepository, 
+    cost_analytics::CostAnalyticsRepository,
+    data_source::DataSourceRepository, 
+    database::DatabaseRepository,
+    llm_provider::LlmProviderRepository, 
+    prompt_template::PromptTemplateRepository,
     user::UserRepository,
 };
 use crate::services::analytics::aws_analytics::aws_analytics::AwsAnalyticsService;
@@ -87,6 +91,9 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     if let Err(e) = database::ensure_aws_resources_table(&db_connection_val).await {
         tracing::warn!("Failed to ensure aws_resources table exists: {}", e);
     }
+    if let Err(e) = database::ensure_cloud_resources_table(&db_connection_val).await {
+        tracing::warn!("Failed to ensure cloud_resources table exists: {}", e);
+    }
     let db_connection = Arc::new(db_connection_val);
 
     // Initialize repositories
@@ -104,6 +111,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
         db_connection.clone(),
         config.clone(),
     ));
+    let cloud_resource_repo = Arc::new(CloudResourceRepository::new(db_connection.clone()));
     let sync_run_repo = Arc::new(crate::repositories::sync_run::SyncRunRepository::new(
         db_connection.clone(),
     ));
@@ -124,7 +132,11 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     let kafka_service = Arc::new(KafkaService::new(cluster_repo.clone()));
 
     // AWS services
-    let aws_service = Arc::new(AwsService::new(aws_resource_repo.clone(), config.clone()));
+    let aws_service = Arc::new(AwsService::new(
+        aws_resource_repo.clone(),
+        cloud_resource_repo.clone(),
+        config.clone(),
+    ));
     let aws_control_plane = Arc::new(AwsControlPlane::new(aws_service.clone()));
     let aws_data_plane = Arc::new(AwsDataPlane::new(aws_service.clone()));
     let aws_cost_service = Arc::new(AwsCostService::new(aws_service.clone()));
@@ -282,6 +294,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             .app_data(web::Data::new(database_repo.clone()))
             .app_data(web::Data::new(cluster_repo.clone()))
             .app_data(web::Data::new(aws_resource_repo.clone()))
+            .app_data(web::Data::new(cloud_resource_repo.clone()))
             .app_data(web::Data::new(aws_account_repo.clone()))
             .app_data(web::Data::new(data_source_repo.clone()))
             .app_data(web::Data::new(llm_provider_repo.clone()))

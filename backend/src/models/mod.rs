@@ -4,6 +4,7 @@ pub mod user;
 
 pub mod aws_auth;
 pub mod aws_resource;
+pub mod cloud_resource;
 
 pub mod analytics;
 pub mod aws_account;

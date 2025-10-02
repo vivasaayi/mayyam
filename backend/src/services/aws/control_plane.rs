@@ -1,9 +1,8 @@
-use crate::api::routes::aws_account;
 use crate::errors::AppError;
 use crate::models::aws_account::AwsAccountDto;
-use crate::models::aws_auth::AccountAuthInfo;
 use crate::models::aws_resource::{AwsResourceDto, AwsResourceType, Model as AwsResourceModel};
-use crate::services::aws::{self, AwsService};
+use crate::models::cloud_resource::CloudResourceDto;
+use crate::services::aws::AwsService;
 use aws_sdk_kinesis::types::StreamDescription;
 use chrono::Utc;
 use serde_json::{json, Value};
@@ -51,6 +50,14 @@ pub struct AwsControlPlane {
 impl AwsControlPlane {
     pub fn new(aws_service: Arc<AwsService>) -> Self {
         Self { aws_service }
+    }
+
+    // Helper to expose region enumeration to callers without exposing inner service
+    pub async fn list_all_regions(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<Vec<String>, AppError> {
+        self.aws_service.list_all_regions(aws_account_dto).await
     }
 
     async fn sync_ec2_resources(
@@ -283,11 +290,33 @@ impl AwsControlPlane {
         request: &ResourceSyncRequest,
     ) -> Result<ResourceSyncResponse, AppError> {
         let region = &request.region;
-
-        let aws_account_dto = &AwsAccountDto::new_with_profile(
-            request.profile.as_deref().unwrap_or_default(),
-            region,
-        );
+        // Build a rich AwsAccountDto carrying account_id, auth and region from the request
+        let aws_account = AwsAccountDto {
+            id: Uuid::new_v4(),
+            account_id: request.account_id.clone(),
+            account_name: request
+                .profile
+                .clone()
+                .unwrap_or_else(|| "aws-account".to_string()),
+            profile: request.profile.clone(),
+            default_region: region.clone(),
+            regions: None,
+            use_role: request.use_role,
+            role_arn: request.role_arn.clone(),
+            external_id: request.external_id.clone(),
+            has_access_key: request.access_key_id.is_some(),
+            access_key_id: request.access_key_id.clone(),
+            secret_access_key: request.secret_access_key.clone(),
+            auth_type: "auto".to_string(),
+            source_profile: None,
+            sso_profile: None,
+            web_identity_token_file: None,
+            session_name: None,
+            last_synced_at: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        let aws_account_dto = &aws_account;
 
         debug!(
             "Sync Request with sync_id {}: {:?}",
@@ -376,6 +405,26 @@ impl AwsControlPlane {
                             .aws_service
                             .aws_resource_repo
                             .create(&resource_dto)
+                            .await;
+
+                        // Dual-write to cloud_resources (unified table)
+                        let cloud_dto = CloudResourceDto {
+                            id: None,
+                            sync_id: request.sync_id,
+                            provider: "aws".to_string(),
+                            account_id: resource.account_id.clone(),
+                            region: resource.region.clone(),
+                            resource_type: resource.resource_type.clone(),
+                            resource_id: resource.resource_id.clone(),
+                            arn_or_uri: Some(resource.arn.clone()),
+                            name: resource.name.clone(),
+                            tags: resource.tags.clone(),
+                            resource_data: resource.resource_data.clone(),
+                        };
+                        let _ = self
+                            .aws_service
+                            .cloud_resource_repo
+                            .create(&cloud_dto)
                             .await;
                     }
 

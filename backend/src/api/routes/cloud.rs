@@ -1,16 +1,20 @@
 use crate::api::routes::aws_account;
 use crate::controllers::cloud;
-use actix_web::{web, HttpResponse};
+use actix_web::web;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     // General cloud provider routes
-    let cloud_scope =
-        web::scope("/api/cloud").route("/providers", web::get().to(cloud::list_providers));
+    let cloud_scope = web::scope("/api/cloud")
+        .route("/providers", web::get().to(cloud::list_providers))
+        // Unified multi-cloud resources search
+        .route("/resources", web::get().to(cloud::search_cloud_resources));
 
     // AWS resource management (control plane)
     let aws_scope = web::scope("/api/aws")
         // Resource syncing
         .route("/sync", web::post().to(cloud::sync_aws_resources))
+        // Regions listing (DescribeRegions)
+        .route("/regions", web::get().to(cloud::list_aws_regions))
         // General resource search
         .route("/resources", web::get().to(cloud::search_aws_resources))
         .route("/resources/{id}", web::get().to(cloud::get_aws_resource))

@@ -27,7 +27,7 @@ impl DynamoDbControlPlane {
         aws_account_dto: &AwsAccountDto,
         sync_id: Uuid,
     ) -> Result<Vec<AwsResourceModel>, AppError> {
-        debug!(
+        info!(
             "Syncing DynamoDB tables for account: {} with sync_id: {}",
             &aws_account_dto.account_id, sync_id
         );
