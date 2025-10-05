@@ -17,14 +17,10 @@ use crate::middleware::auth::AuthMiddleware;
 use crate::models::aws_account::AwsAccountDto;
 use crate::repositories::{
     aws_account::AwsAccountRepository, aws_resource::AwsResourceRepository,
-    cloud_resource::CloudResourceRepository, 
-    cluster::ClusterRepository, 
-    cost_analytics::CostAnalyticsRepository,
-    data_source::DataSourceRepository, 
-    database::DatabaseRepository,
-    llm_provider::LlmProviderRepository, 
-    prompt_template::PromptTemplateRepository,
-    user::UserRepository,
+    cloud_resource::CloudResourceRepository, cluster::ClusterRepository,
+    cost_analytics::CostAnalyticsRepository, data_source::DataSourceRepository,
+    database::DatabaseRepository, llm_provider::LlmProviderRepository,
+    prompt_template::PromptTemplateRepository, user::UserRepository,
 };
 use crate::services::analytics::aws_analytics::aws_analytics::AwsAnalyticsService;
 use crate::services::aws::aws_control_plane::dynamodb_control_plane::DynamoDbControlPlane;

@@ -456,8 +456,11 @@ pub async fn ensure_cloud_resources_table(db: &DatabaseConnection) -> Result<(),
     let idx_updated = r#"CREATE INDEX IF NOT EXISTS idx_cloud_resources_updated_at ON cloud_resources(updated_at DESC)"#;
     let idx_type_sync = r#"CREATE INDEX IF NOT EXISTS idx_cloud_resources_type_sync ON cloud_resources(resource_type, sync_id)"#;
     let idx_acct_region = r#"CREATE INDEX IF NOT EXISTS idx_cloud_resources_account_region ON cloud_resources(account_id, region)"#;
-    db.execute(Statement::from_string(DbBackend::Postgres, idx_sync.to_string()))
-        .await?;
+    db.execute(Statement::from_string(
+        DbBackend::Postgres,
+        idx_sync.to_string(),
+    ))
+    .await?;
     db.execute(Statement::from_string(
         DbBackend::Postgres,
         idx_updated.to_string(),
@@ -495,7 +498,8 @@ pub async fn ensure_cloud_resources_table(db: &DatabaseConnection) -> Result<(),
     .await?;
 
     // Ensure trigger to auto-update updated_at exists (uses set_updated_at created earlier)
-    let drop_trigger = r#"DROP TRIGGER IF EXISTS trg_cloud_resources_updated_at ON cloud_resources"#;
+    let drop_trigger =
+        r#"DROP TRIGGER IF EXISTS trg_cloud_resources_updated_at ON cloud_resources"#;
     let create_trigger = r#"
         CREATE TRIGGER trg_cloud_resources_updated_at
         BEFORE UPDATE ON cloud_resources

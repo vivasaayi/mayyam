@@ -90,7 +90,10 @@ impl CloudWatchAnalyzer {
         Ok("Pattern analysis requires LLM provider configuration".to_string())
     }
 
-    fn parse_time_period(&self, period: &str) -> Result<(DateTime<Utc>, DateTime<Utc>), AppError> {
+    pub fn parse_time_period(
+        &self,
+        period: &str,
+    ) -> Result<(DateTime<Utc>, DateTime<Utc>), AppError> {
         let now = Utc::now();
         let end_time = now;
         let start_time = match period {
@@ -172,13 +175,255 @@ impl CloudWatchAnalyzer {
             period: 300, // 5 minutes
         };
 
-        let aws_account_dto = AwsAccountDto::new_with_profile("", "us-east-1");
+        // Use the provided region instead of default to ensure correct CloudWatch reads
+        let aws_account_dto = AwsAccountDto::new_with_profile("", region);
 
         let result = self
             .cloudwatch_service
             .get_metrics(&aws_account_dto, &request)
             .await?;
         Ok(result.metrics)
+    }
+
+    /// Map generic resource types to CloudWatch-specific names for namespace/dimensions
+    pub fn map_to_cw_resource_type(&self, resource_type: &str) -> String {
+        match resource_type {
+            "Kinesis" => "KinesisStream".to_string(),
+            "SQS" => "SqsQueue".to_string(),
+            "RDS" => "RdsInstance".to_string(),
+            "DynamoDB" => "DynamoDbTable".to_string(),
+            "S3" => "S3Bucket".to_string(),
+            other => other.to_string(),
+        }
+    }
+
+    /// Hourly-window unused detection using Sum/Max statistics to avoid peak masking
+    pub async fn is_unused_in_window_by_hour(
+        &self,
+        resource_type: &str,
+        resource_id: &str,
+        region: &str,
+        start_time: DateTime<Utc>,
+        end_time: DateTime<Utc>,
+    ) -> Result<bool, AppError> {
+        let cw_type = self.map_to_cw_resource_type(resource_type);
+
+        // Build CloudWatch client context
+        let aws_account_dto = AwsAccountDto::new_with_profile("", region);
+        let namespace = self
+            .cloudwatch_service
+            .get_namespace_for_resource_type(&cw_type);
+        let dimensions = self
+            .cloudwatch_service
+            .create_dimensions_for_resource(&cw_type, resource_id);
+
+        // Helper to fetch hourly datapoints for a single metric/statistic
+        async fn fetch_stat(
+            svc: &CloudWatchService,
+            dto: &AwsAccountDto,
+            namespace: &str,
+            metric: &str,
+            dims: Vec<aws_sdk_cloudwatch::types::Dimension>,
+            start: DateTime<Utc>,
+            end: DateTime<Utc>,
+            stat: aws_sdk_cloudwatch::types::Statistic,
+        ) -> Result<
+            Vec<crate::services::aws::aws_data_plane::cloudwatch::CloudWatchDatapoint>,
+            AppError,
+        > {
+            svc.get_metric_statistics(
+                dto,
+                namespace,
+                metric,
+                dims,
+                start,
+                end,
+                3600, // 1 hour
+                vec![stat],
+            )
+            .await
+        }
+
+        // Choose metrics per resource type
+        match resource_type {
+            "Kinesis" => {
+                use aws_sdk_cloudwatch::types::Statistic;
+                let incoming_records_sum = fetch_stat(
+                    &self.cloudwatch_service,
+                    &aws_account_dto,
+                    namespace,
+                    "IncomingRecords",
+                    dimensions.clone(),
+                    start_time,
+                    end_time,
+                    Statistic::Sum,
+                )
+                .await?;
+                let incoming_bytes_max = fetch_stat(
+                    &self.cloudwatch_service,
+                    &aws_account_dto,
+                    namespace,
+                    "IncomingBytes",
+                    dimensions,
+                    start_time,
+                    end_time,
+                    Statistic::Maximum,
+                )
+                .await?;
+
+                let any_activity = incoming_records_sum.iter().any(|dp| dp.value > 0.0)
+                    || incoming_bytes_max.iter().any(|dp| dp.value > 0.0);
+                Ok(!any_activity)
+            }
+            "SQS" => {
+                use aws_sdk_cloudwatch::types::Statistic;
+                let sent_sum = fetch_stat(
+                    &self.cloudwatch_service,
+                    &aws_account_dto,
+                    namespace,
+                    "NumberOfMessagesSent",
+                    dimensions.clone(),
+                    start_time,
+                    end_time,
+                    Statistic::Sum,
+                )
+                .await?;
+                let received_max = fetch_stat(
+                    &self.cloudwatch_service,
+                    &aws_account_dto,
+                    namespace,
+                    "NumberOfMessagesReceived",
+                    dimensions,
+                    start_time,
+                    end_time,
+                    Statistic::Maximum,
+                )
+                .await?;
+
+                let any_activity = sent_sum.iter().any(|dp| dp.value > 0.0)
+                    || received_max.iter().any(|dp| dp.value > 0.0);
+                Ok(!any_activity)
+            }
+            "RDS" => {
+                use aws_sdk_cloudwatch::types::Statistic;
+                let cpu_max = fetch_stat(
+                    &self.cloudwatch_service,
+                    &aws_account_dto,
+                    namespace,
+                    "CPUUtilization",
+                    dimensions.clone(),
+                    start_time,
+                    end_time,
+                    Statistic::Maximum,
+                )
+                .await?;
+                let conn_sum = fetch_stat(
+                    &self.cloudwatch_service,
+                    &aws_account_dto,
+                    namespace,
+                    "DatabaseConnections",
+                    dimensions,
+                    start_time,
+                    end_time,
+                    Statistic::Sum,
+                )
+                .await?;
+
+                let any_activity = cpu_max.iter().any(|dp| dp.value > 5.0)
+                    || conn_sum.iter().any(|dp| dp.value > 0.0);
+                Ok(!any_activity)
+            }
+            "DynamoDB" | "DynamoDbTable" => {
+                use aws_sdk_cloudwatch::types::Statistic;
+                let read_sum = fetch_stat(
+                    &self.cloudwatch_service,
+                    &aws_account_dto,
+                    namespace,
+                    "ConsumedReadCapacityUnits",
+                    dimensions.clone(),
+                    start_time,
+                    end_time,
+                    Statistic::Sum,
+                )
+                .await?;
+                let write_sum = fetch_stat(
+                    &self.cloudwatch_service,
+                    &aws_account_dto,
+                    namespace,
+                    "ConsumedWriteCapacityUnits",
+                    dimensions,
+                    start_time,
+                    end_time,
+                    Statistic::Sum,
+                )
+                .await?;
+
+                let any_activity = read_sum.iter().any(|dp| dp.value > 0.0)
+                    || write_sum.iter().any(|dp| dp.value > 0.0);
+                Ok(!any_activity)
+            }
+            "S3" | "S3Bucket" => {
+                use aws_sdk_cloudwatch::types::Statistic;
+                // S3 request metrics often require FilterId="EntireBucket" dimension
+                let mut req_dims = dimensions.clone();
+                req_dims.push(
+                    aws_sdk_cloudwatch::types::Dimension::builder()
+                        .name("FilterId")
+                        .value("EntireBucket")
+                        .build(),
+                );
+
+                let get_sum = fetch_stat(
+                    &self.cloudwatch_service,
+                    &aws_account_dto,
+                    namespace,
+                    "GetRequests",
+                    req_dims.clone(),
+                    start_time,
+                    end_time,
+                    Statistic::Sum,
+                )
+                .await?;
+                let put_sum = fetch_stat(
+                    &self.cloudwatch_service,
+                    &aws_account_dto,
+                    namespace,
+                    "PutRequests",
+                    req_dims.clone(),
+                    start_time,
+                    end_time,
+                    Statistic::Sum,
+                )
+                .await?;
+                let delete_sum = fetch_stat(
+                    &self.cloudwatch_service,
+                    &aws_account_dto,
+                    namespace,
+                    "DeleteRequests",
+                    req_dims,
+                    start_time,
+                    end_time,
+                    Statistic::Sum,
+                )
+                .await?;
+
+                // If request metrics are disabled (empty datapoints), avoid false positives
+                let no_data = get_sum.is_empty() && put_sum.is_empty() && delete_sum.is_empty();
+                if no_data {
+                    return Ok(false);
+                }
+
+                let any_activity = get_sum.iter().any(|dp| dp.value > 0.0)
+                    || put_sum.iter().any(|dp| dp.value > 0.0)
+                    || delete_sum.iter().any(|dp| dp.value > 0.0);
+                Ok(!any_activity)
+            }
+            // Default fallback uses original average-based check
+            _ => {
+                self.check_resource_unused(resource_type, resource_id, region, start_time, end_time)
+                    .await
+            }
+        }
     }
 
     fn get_metrics_for_resource_type(&self, resource_type: &str) -> Vec<String> {

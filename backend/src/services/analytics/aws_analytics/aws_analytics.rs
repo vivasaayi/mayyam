@@ -17,7 +17,9 @@ use crate::services::analytics::aws_analytics::models::resource_workflows::*;
 use crate::services::analytics::aws_analytics::questions::QuestionGenerator;
 use crate::services::analytics::aws_analytics::resources::*;
 use crate::services::analytics::cloudwatch_analytics::{
-    CloudWatchAnalyzer, KinesisAnalyzer as CloudWatchKinesisAnalyzer, RdsAnalyzer, SqsAnalyzer,
+    CloudWatchAnalyzer, DynamoDbAnalyzer as CloudWatchDynamoDbAnalyzer,
+    KinesisAnalyzer as CloudWatchKinesisAnalyzer, RdsAnalyzer, S3Analyzer as CloudWatchS3Analyzer,
+    SqsAnalyzer,
 };
 
 pub struct AwsAnalyticsService {
@@ -123,9 +125,25 @@ impl AwsAnalyticsService {
             "EC2Instance" => {
                 Ec2Analyzer::analyze_ec2_instance(&resource, &workflow, &metrics).await?
             }
-            "S3Bucket" => S3Analyzer::analyze_s3_bucket(&resource, &workflow, &metrics).await?,
-            "DynamoDbTable" => {
-                DynamoDbAnalyzer::analyze_dynamodb_table(&resource, &workflow, &metrics).await?
+            "S3Bucket" => {
+                if let Some(ref analyzer) = self.cloudwatch_analyzer {
+                    CloudWatchS3Analyzer::analyze_s3_bucket(analyzer, &resource, &request.workflow)
+                        .await?
+                } else {
+                    S3Analyzer::analyze_s3_bucket(&resource, &workflow, &metrics).await?
+                }
+            }
+            "DynamoDbTable" | "DynamoDB" => {
+                if let Some(ref analyzer) = self.cloudwatch_analyzer {
+                    CloudWatchDynamoDbAnalyzer::analyze_dynamodb_table(
+                        analyzer,
+                        &resource,
+                        &request.workflow,
+                    )
+                    .await?
+                } else {
+                    DynamoDbAnalyzer::analyze_dynamodb_table(&resource, &workflow, &metrics).await?
+                }
             }
             "ElastiCache" => {
                 ElastiCacheAnalyzer::analyze_elasticache_cluster(&resource, &workflow, &metrics)

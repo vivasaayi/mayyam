@@ -9,7 +9,10 @@ use aws_sdk_cloudwatchlogs::{
 
 use super::base::CloudWatchService;
 use super::types::CloudWatchLogsRequest;
-use crate::{errors::AppError, models::aws_account::AwsAccountDto};
+use crate::{
+    errors::AppError, models::aws_account::AwsAccountDto,
+    utils::time_conversion::timestamp_millis_to_datetime,
+};
 
 pub trait CloudWatchLogs {
     async fn get_logs(
@@ -54,8 +57,7 @@ impl CloudWatchLogs for CloudWatchService {
             let mut event_data = json!({});
 
             if let Some(timestamp) = event.timestamp() {
-                let dt =
-                    DateTime::<Utc>::from_timestamp_millis(timestamp).unwrap_or_else(|| Utc::now());
+                let dt = timestamp_millis_to_datetime(timestamp);
                 event_data["timestamp"] = json!(dt.to_rfc3339());
             }
 
@@ -73,8 +75,7 @@ impl CloudWatchLogs for CloudWatchService {
             }
 
             if let Some(ingestion_time) = event.ingestion_time() {
-                let dt = DateTime::<Utc>::from_timestamp_millis(ingestion_time)
-                    .unwrap_or_else(|| Utc::now());
+                let dt = timestamp_millis_to_datetime(ingestion_time);
                 event_data["ingestionTime"] = json!(dt.to_rfc3339());
             }
 
@@ -130,8 +131,7 @@ impl CloudWatchLogs for CloudWatchService {
                 let mut event_data = json!({});
 
                 if let Some(timestamp) = event.timestamp() {
-                    let dt = DateTime::<Utc>::from_timestamp_millis(timestamp)
-                        .unwrap_or_else(|| Utc::now());
+                    let dt = timestamp_millis_to_datetime(timestamp);
                     event_data["timestamp"] = json!(dt.to_rfc3339());
                 }
 
@@ -148,8 +148,7 @@ impl CloudWatchLogs for CloudWatchService {
                 }
 
                 if let Some(ingestion_time) = event.ingestion_time() {
-                    let dt = DateTime::<Utc>::from_timestamp_millis(ingestion_time)
-                        .unwrap_or_else(|| Utc::now());
+                    let dt = timestamp_millis_to_datetime(ingestion_time);
                     event_data["ingestionTime"] = json!(dt.to_rfc3339());
                 }
 

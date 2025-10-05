@@ -20,12 +20,26 @@ impl KinesisAnalyzer {
         match workflow {
             "unused" => {
                 let stream_name = resource.name.as_ref().unwrap_or(&resource.resource_id);
-                let unused_analysis = analyzer.analyze_unused_resource(
-                    "Kinesis",
-                    &stream_name,
-                    "us-east-1",
-                    &time_periods,
-                ).await?;
+                // Use the resource's actual region and an hourly-aware unused check to avoid masking peaks
+                let mut unused_analysis = serde_json::json!({});
+                for period in &time_periods {
+                    let (start_time, end_time) = analyzer.parse_time_period(period)?;
+                    let is_unused = analyzer
+                        .is_unused_in_window_by_hour(
+                            "Kinesis",
+                            &stream_name,
+                            &resource.region,
+                            start_time,
+                            end_time,
+                        )
+                        .await?;
+                    unused_analysis[*period] = serde_json::json!({
+                        "unused": is_unused,
+                        "period": period,
+                        "start_time": start_time,
+                        "end_time": end_time
+                    });
+                }
 
                 let mut result = "# Kinesis Stream Unused Analysis\n\n".to_string();
 
