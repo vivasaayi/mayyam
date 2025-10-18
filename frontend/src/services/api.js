@@ -66,6 +66,26 @@ export const fetchWithAuth = async (url, options = {}) => {
   return response;
 };
 
+// Generic API call function
+export const apiCall = async (url, method = 'GET', data = null) => {
+  try {
+    const config = {
+      method,
+      url,
+    };
+
+    if (data && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
+      config.data = data;
+    }
+
+    const response = await api(config);
+    return response;
+  } catch (error) {
+    console.error(`API call error for ${url}:`, error);
+    throw error;
+  }
+};
+
 // Analyze RDS instance with specified workflow
 export const analyzeRdsInstance = async (instanceId, workflow) => {
   try {

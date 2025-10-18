@@ -36,6 +36,7 @@ const Configurations = lazy(() => import("./pages/Configurations")); // Import f
 const KinesisDashboard = lazy(() => import("./components/Kinesis/KinesisDashboard")); // Import for Kinesis Dashboard
 const SyncRunsDashboard = lazy(() => import("./pages/SyncRunsDashboard"));
 const CloudResources = lazy(() => import("./pages/CloudResources")); // New import for Cloud Resources
+const CostAnalytics = lazy(() => import("./pages/CostAnalytics")); // Import for Cost Analytics
 
 const App = () => {
   const { isAuthenticated, isLoading } = useAuth();
@@ -80,6 +81,7 @@ const App = () => {
             <Route path="kinesis" element={<KinesisDashboard />} /> {/* Route for Kinesis Dashboard */}
             <Route path="sync-runs" element={<SyncRunsDashboard />} />
             <Route path="cloud-resources" element={<CloudResources />} /> {/* New route for Cloud Resources */}
+            <Route path="cost-analytics" element={<CostAnalytics />} /> {/* Route for Cost Analytics */}
             <Route path="*" element={<NotFound />} />
           </Route>
         </Route>
