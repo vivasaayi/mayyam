@@ -7,7 +7,7 @@ mod service;
 
 // Re-export service structs
 pub use aws_data_plane::cost_explorer::AwsCostService;
-pub use control_plane::AwsControlPlane;
+pub use control_plane::{AwsControlPlane, AwsControlPlaneTrait};
 pub use data_plane::AwsDataPlane;
 pub use service::AwsService;
 mod aws_config_service;

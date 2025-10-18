@@ -4,7 +4,8 @@ use mayyam::errors::AppError;
 use mayyam::models::aws_account::{AwsAccountCreateDto, AwsAccountDto, AwsAccountUpdateDto};
 use mayyam::repositories::aws_account::AwsAccountRepository;
 use mayyam::repositories::sync_run::SyncRunRepository;
-use mayyam::services::aws::AwsControlPlane;
+use mayyam::services::aws::AwsControlPlaneTrait;
+use mayyam::services::aws::aws_types::resource_sync::{ResourceSyncRequest, ResourceSyncResponse};
 use mayyam::services::aws_account::AwsAccountService;
 use rstest::*;
 use serial_test::serial;
@@ -17,9 +18,14 @@ use mockall::mock;
 
 #[cfg(test)]
 mock! {
-    pub AwsControlPlaneImpl {}
-    impl Clone for AwsControlPlaneImpl {
+    pub AwsControlPlane {}
+    impl Clone for AwsControlPlane {
         fn clone(&self) -> Self;
+    }
+    #[async_trait::async_trait]
+    impl AwsControlPlaneTrait for AwsControlPlane {
+        async fn list_all_regions(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<String>, AppError>;
+        async fn sync_resources(&self, request: &ResourceSyncRequest) -> Result<ResourceSyncResponse, AppError>;
     }
 }
 
@@ -37,10 +43,10 @@ mod aws_account_service_tests {
         let repo = Arc::new(AwsAccountRepository::new(Arc::new(test_db.conn().clone())));
 
         // Create mock AWS control plane
-        let mut mock_control_plane = MockAwsControlPlaneImpl::new();
+        let mut mock_control_plane = MockAwsControlPlane::new();
         mock_control_plane
             .expect_clone()
-            .returning(|| MockAwsControlPlaneImpl::new());
+            .returning(|| MockAwsControlPlane::new());
 
         let sync_repo = Arc::new(SyncRunRepository::new(Arc::new(test_db.conn().clone())));
         let service = AwsAccountService::new(repo, Arc::new(mock_control_plane), sync_repo);
@@ -61,10 +67,10 @@ mod aws_account_service_tests {
         let test_db = get_test_db().await;
         let repo = Arc::new(AwsAccountRepository::new(Arc::new(test_db.conn().clone())));
 
-        let mut mock_control_plane = MockAwsControlPlaneImpl::new();
+        let mut mock_control_plane = MockAwsControlPlane::new();
         mock_control_plane
             .expect_clone()
-            .returning(|| MockAwsControlPlaneImpl::new());
+            .returning(|| MockAwsControlPlane::new());
 
         let sync_repo = Arc::new(SyncRunRepository::new(Arc::new(test_db.conn().clone())));
         let service = AwsAccountService::new(repo, Arc::new(mock_control_plane), sync_repo);
@@ -74,11 +80,17 @@ mod aws_account_service_tests {
             account_name: "Test Account".to_string(),
             profile: None,
             default_region: "us-east-1".to_string(),
+            regions: None,
             use_role: false,
             role_arn: None,
             external_id: None,
             access_key_id: None,     // Missing
             secret_access_key: None, // Missing
+            auth_type: None,
+            source_profile: None,
+            sso_profile: None,
+            web_identity_token_file: None,
+            session_name: None,
         };
 
         let result = service.create_account(create_dto).await;
@@ -97,10 +109,10 @@ mod aws_account_service_tests {
         let test_db = get_test_db().await;
         let repo = Arc::new(AwsAccountRepository::new(Arc::new(test_db.conn().clone())));
 
-        let mut mock_control_plane = MockAwsControlPlaneImpl::new();
+        let mut mock_control_plane = MockAwsControlPlane::new();
         mock_control_plane
             .expect_clone()
-            .returning(|| MockAwsControlPlaneImpl::new());
+            .returning(|| MockAwsControlPlane::new());
 
         let sync_repo = Arc::new(SyncRunRepository::new(Arc::new(test_db.conn().clone())));
         let service = AwsAccountService::new(repo.clone(), Arc::new(mock_control_plane), sync_repo);
@@ -124,10 +136,10 @@ mod aws_account_service_tests {
         let test_db = get_test_db().await;
         let repo = Arc::new(AwsAccountRepository::new(Arc::new(test_db.conn().clone())));
 
-        let mut mock_control_plane = MockAwsControlPlaneImpl::new();
+        let mut mock_control_plane = MockAwsControlPlane::new();
         mock_control_plane
             .expect_clone()
-            .returning(|| MockAwsControlPlaneImpl::new());
+            .returning(|| MockAwsControlPlane::new());
 
         let sync_repo = Arc::new(SyncRunRepository::new(Arc::new(test_db.conn().clone())));
         let service = AwsAccountService::new(repo, Arc::new(mock_control_plane), sync_repo);
@@ -149,10 +161,10 @@ mod aws_account_service_tests {
         let test_db = get_test_db().await;
         let repo = Arc::new(AwsAccountRepository::new(Arc::new(test_db.conn().clone())));
 
-        let mut mock_control_plane = MockAwsControlPlaneImpl::new();
+        let mut mock_control_plane = MockAwsControlPlane::new();
         mock_control_plane
             .expect_clone()
-            .returning(|| MockAwsControlPlaneImpl::new());
+            .returning(|| MockAwsControlPlane::new());
 
         let sync_repo = Arc::new(SyncRunRepository::new(Arc::new(test_db.conn().clone())));
         let service = AwsAccountService::new(repo.clone(), Arc::new(mock_control_plane), sync_repo);
@@ -183,10 +195,10 @@ mod aws_account_service_tests {
         let test_db = get_test_db().await;
         let repo = Arc::new(AwsAccountRepository::new(Arc::new(test_db.conn().clone())));
 
-        let mut mock_control_plane = MockAwsControlPlaneImpl::new();
+        let mut mock_control_plane = MockAwsControlPlane::new();
         mock_control_plane
             .expect_clone()
-            .returning(|| MockAwsControlPlaneImpl::new());
+            .returning(|| MockAwsControlPlane::new());
 
         let sync_repo = Arc::new(SyncRunRepository::new(Arc::new(test_db.conn().clone())));
         let service = AwsAccountService::new(repo.clone(), Arc::new(mock_control_plane), sync_repo);
@@ -196,15 +208,22 @@ mod aws_account_service_tests {
         let created = service.create_account(create_dto).await.unwrap();
 
         // Update account
-        let update_dto = crate::models::aws_account::AwsAccountUpdateDto {
-            account_name: Some("Updated Name".to_string()),
-            default_region: Some("us-west-2".to_string()),
+        let update_dto = mayyam::models::aws_account::AwsAccountUpdateDto {
+            account_id: created.account_id.clone(),
+            account_name: "Updated Name".to_string(),
+            default_region: "us-west-2".to_string(),
+            regions: Some(vec!["us-west-2".to_string()]),
             profile: Some("updated-profile".to_string()),
-            use_role: Some(false),
+            use_role: false,
             role_arn: None,
             external_id: None,
             access_key_id: Some("NEW_KEY".to_string()),
             secret_access_key: Some("NEW_SECRET".to_string()),
+            auth_type: Some("auto".to_string()),
+            source_profile: None,
+            sso_profile: None,
+            web_identity_token_file: None,
+            session_name: None,
         };
 
         let updated = service
@@ -225,10 +244,10 @@ mod aws_account_service_tests {
         let test_db = get_test_db().await;
         let repo = Arc::new(AwsAccountRepository::new(Arc::new(test_db.conn().clone())));
 
-        let mut mock_control_plane = MockAwsControlPlaneImpl::new();
+        let mut mock_control_plane = MockAwsControlPlane::new();
         mock_control_plane
             .expect_clone()
-            .returning(|| MockAwsControlPlaneImpl::new());
+            .returning(|| MockAwsControlPlane::new());
 
         let sync_repo = Arc::new(SyncRunRepository::new(Arc::new(test_db.conn().clone())));
         let service = AwsAccountService::new(repo.clone(), Arc::new(mock_control_plane), sync_repo);
@@ -253,10 +272,10 @@ mod aws_account_service_tests {
         let test_db = get_test_db().await;
         let repo = Arc::new(AwsAccountRepository::new(Arc::new(test_db.conn().clone())));
 
-        let mut mock_control_plane = MockAwsControlPlaneImpl::new();
+        let mut mock_control_plane = MockAwsControlPlane::new();
         mock_control_plane
             .expect_clone()
-            .returning(|| MockAwsControlPlaneImpl::new());
+            .returning(|| MockAwsControlPlane::new());
         let sync_repo = Arc::new(SyncRunRepository::new(Arc::new(test_db.conn().clone())));
         let service = AwsAccountService::new(repo.clone(), Arc::new(mock_control_plane), sync_repo);
 

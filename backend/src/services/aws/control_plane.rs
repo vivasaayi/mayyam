@@ -43,8 +43,25 @@ fn stream_description_to_json(stream_desc: &StreamDescription) -> Value {
 }
 
 // Base control plane for AWS resources
+#[async_trait::async_trait]
+pub trait AwsControlPlaneTrait: Send + Sync {
+    async fn list_all_regions(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<String>, AppError>;
+    async fn sync_resources(&self, request: &ResourceSyncRequest) -> Result<ResourceSyncResponse, AppError>;
+}
+
 pub struct AwsControlPlane {
     aws_service: Arc<AwsService>,
+}
+
+#[async_trait::async_trait]
+impl AwsControlPlaneTrait for AwsControlPlane {
+    async fn list_all_regions(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<String>, AppError> {
+        self.aws_service.list_all_regions(aws_account_dto).await
+    }
+
+    async fn sync_resources(&self, request: &ResourceSyncRequest) -> Result<ResourceSyncResponse, AppError> {
+        self.sync_resources(request).await
+    }
 }
 
 impl AwsControlPlane {

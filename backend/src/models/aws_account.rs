@@ -76,7 +76,7 @@ pub struct DomainModel {
 }
 
 /// DTO for creating a new AWS account
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AwsAccountCreateDto {
     pub account_id: String,
     pub account_name: String,

@@ -9,7 +9,7 @@ use crate::models::aws_account::{
 use crate::repositories::aws_account::AwsAccountRepository;
 use crate::repositories::sync_run::SyncRunRepository;
 use crate::services::aws::aws_types::resource_sync::ResourceSyncRequest;
-use crate::services::aws::AwsControlPlane;
+use crate::services::aws::AwsControlPlaneTrait;
 use futures::stream::{self, StreamExt};
 
 /// Service for AWS account management
@@ -18,14 +18,14 @@ use futures::stream::{self, StreamExt};
 /// integrates with AWS control plane for resource syncing
 pub struct AwsAccountService {
     repo: Arc<AwsAccountRepository>,
-    aws_control_plane: Arc<AwsControlPlane>,
+    aws_control_plane: Arc<dyn AwsControlPlaneTrait>,
     sync_run_repo: Arc<SyncRunRepository>,
 }
 
 impl AwsAccountService {
     pub fn new(
         repo: Arc<AwsAccountRepository>,
-        aws_control_plane: Arc<AwsControlPlane>,
+        aws_control_plane: Arc<dyn AwsControlPlaneTrait>,
         sync_run_repo: Arc<SyncRunRepository>,
     ) -> Self {
         Self {

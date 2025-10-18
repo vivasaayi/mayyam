@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use mayyam::config::Config;
 use mayyam::models::cluster::KafkaClusterConfig;
 use mayyam::errors::AppError;
 use mayyam::repositories::cluster::ClusterRepository;
