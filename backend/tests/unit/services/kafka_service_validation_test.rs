@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use mayyam::config::{Config, KafkaClusterConfig};
+use mayyam::models::cluster::KafkaClusterConfig;
 use mayyam::errors::AppError;
 use mayyam::repositories::cluster::ClusterRepository;
 use mayyam::services::kafka::KafkaService;
@@ -16,7 +16,6 @@ async fn build_service() -> KafkaService {
 
 fn valid_cluster_config() -> KafkaClusterConfig {
     KafkaClusterConfig {
-        name: "test-cluster".to_string(),
         bootstrap_servers: vec!["localhost:9092".to_string()],
         sasl_username: None,
         sasl_password: None,

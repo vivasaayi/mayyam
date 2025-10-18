@@ -199,6 +199,156 @@ pub async fn test_database_connection(
     Ok(())
 }
 
+/// Ensure the llm_providers table exists to support multiple models per provider.
+/// This is a targeted, idempotent setup used at startup to avoid 500s when saving models
+/// in environments where migrations haven't been applied.
+pub async fn ensure_llm_providers_table(db: &DatabaseConnection) -> Result<(), DbErr> {
+    // Create table if it doesn't exist
+    let create_table_sql = r#"
+        CREATE TABLE IF NOT EXISTS llm_providers (
+            id UUID PRIMARY KEY,
+            name VARCHAR(255) NOT NULL UNIQUE,
+            provider_type VARCHAR(50) NOT NULL,
+            base_url TEXT,
+            api_key TEXT,
+            model_name VARCHAR(255) NOT NULL,
+            model_config JSONB NOT NULL DEFAULT '{}'::jsonb,
+            prompt_format VARCHAR(50) NOT NULL,
+            enabled BOOLEAN NOT NULL DEFAULT TRUE,
+            is_default BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    "#;
+
+    db.execute(Statement::from_string(
+        DbBackend::Postgres,
+        create_table_sql.to_string(),
+    ))
+    .await?;
+
+    // Create indexes if they don't exist
+    let create_idx_name = r#"CREATE INDEX IF NOT EXISTS idx_llm_providers_name ON llm_providers(name)"#;
+    let create_idx_type = r#"CREATE INDEX IF NOT EXISTS idx_llm_providers_type ON llm_providers(provider_type)"#;
+    let create_idx_enabled = r#"CREATE INDEX IF NOT EXISTS idx_llm_providers_enabled ON llm_providers(enabled)"#;
+
+    db.execute(Statement::from_string(
+        DbBackend::Postgres,
+        create_idx_name.to_string(),
+    ))
+    .await?;
+    db.execute(Statement::from_string(
+        DbBackend::Postgres,
+        create_idx_type.to_string(),
+    ))
+    .await?;
+    db.execute(Statement::from_string(
+        DbBackend::Postgres,
+        create_idx_enabled.to_string(),
+    ))
+    .await?;
+
+    Ok(())
+}
+
+/// Ensure the aws_resources table has sync_id and correct indexes to allow multi-scan history
+pub async fn ensure_aws_resources_table(db: &DatabaseConnection) -> Result<(), DbErr> {
+    // Add sync_id column if missing
+    let add_sync_id = r#"
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'aws_resources' AND column_name = 'sync_id'
+            ) THEN
+                ALTER TABLE aws_resources ADD COLUMN sync_id UUID NULL;
+            END IF;
+        END $$;
+    "#;
+    db.execute(Statement::from_string(
+        DbBackend::Postgres,
+        add_sync_id.to_string(),
+    ))
+    .await?;
+
+    // Drop unique constraint on arn if exists to permit multiple versions across syncs
+    let drop_unique_arn = r#"
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1 FROM pg_indexes 
+                WHERE tablename = 'aws_resources' AND indexname = 'aws_resources_arn_key'
+            ) THEN
+                ALTER TABLE aws_resources DROP CONSTRAINT IF EXISTS aws_resources_arn_key;
+            END IF;
+        END $$;
+    "#;
+    db.execute(Statement::from_string(
+        DbBackend::Postgres,
+        drop_unique_arn.to_string(),
+    ))
+    .await?;
+
+    // Create index on sync_id
+    let idx_sync =
+        r#"CREATE INDEX IF NOT EXISTS idx_aws_resources_sync_id ON aws_resources(sync_id)"#;
+    db.execute(Statement::from_string(
+        DbBackend::Postgres,
+        idx_sync.to_string(),
+    ))
+    .await?;
+
+    // Add composite unique to avoid duplicate rows for same resource within the same sync
+    let add_unique = r#"
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint c
+                JOIN pg_class t ON c.conrelid = t.oid
+                WHERE t.relname = 'aws_resources' AND c.conname = 'uniq_sync_arn'
+            ) THEN
+                ALTER TABLE aws_resources
+                ADD CONSTRAINT uniq_sync_arn UNIQUE (sync_id, arn);
+            END IF;
+        END $$;
+    "#;
+    db.execute(Statement::from_string(
+        DbBackend::Postgres,
+        add_unique.to_string(),
+    ))
+    .await?;
+
+    // Add a more provider-agnostic uniqueness on natural key as well
+    let add_unique2 = r#"
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint c
+                JOIN pg_class t ON c.conrelid = t.oid
+                WHERE t.relname = 'aws_resources' AND c.conname = 'uniq_sync_resourcekey'
+            ) THEN
+                ALTER TABLE aws_resources
+                ADD CONSTRAINT uniq_sync_resourcekey UNIQUE (sync_id, account_id, region, resource_type, resource_id);
+            END IF;
+        END $$;
+    "#;
+    db.execute(Statement::from_string(
+        DbBackend::Postgres,
+        add_unique2.to_string(),
+    ))
+    .await?;
+
+    // Helpful composite index for queries by type and sync
+    let add_idx = r#"CREATE INDEX IF NOT EXISTS idx_aws_resources_type_sync ON aws_resources(resource_type, sync_id)"#;
+    db.execute(Statement::from_string(
+        DbBackend::Postgres,
+        add_idx.to_string(),
+    ))
+    .await?;
+
+    Ok(())
+}
+
 /// Ensure the llm_provider_models table exists to support multiple models per provider.
 /// This is a targeted, idempotent setup used at startup to avoid 500s when saving models
 /// in environments where migrations haven't been applied.
@@ -305,204 +455,6 @@ pub async fn ensure_sync_runs_table(db: &DatabaseConnection) -> Result<(), DbErr
     let create_trigger = r#"
         CREATE TRIGGER trg_sync_runs_updated_at
         BEFORE UPDATE ON sync_runs
-        FOR EACH ROW
-        EXECUTE PROCEDURE set_updated_at();
-    "#;
-    db.execute(Statement::from_string(
-        DbBackend::Postgres,
-        drop_trigger.to_string(),
-    ))
-    .await?;
-    db.execute(Statement::from_string(
-        DbBackend::Postgres,
-        create_trigger.to_string(),
-    ))
-    .await?;
-
-    Ok(())
-}
-
-/// Ensure aws_resources table has sync_id and correct indexes to allow multi-scan history
-pub async fn ensure_aws_resources_table(db: &DatabaseConnection) -> Result<(), DbErr> {
-    // Add sync_id column if missing
-    let add_sync_id = r#"
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1 FROM information_schema.columns 
-                WHERE table_name = 'aws_resources' AND column_name = 'sync_id'
-            ) THEN
-                ALTER TABLE aws_resources ADD COLUMN sync_id UUID NULL;
-            END IF;
-        END $$;
-    "#;
-    db.execute(Statement::from_string(
-        DbBackend::Postgres,
-        add_sync_id.to_string(),
-    ))
-    .await?;
-
-    // Drop unique constraint on arn if exists to permit multiple versions across syncs
-    let drop_unique_arn = r#"
-        DO $$
-        BEGIN
-            IF EXISTS (
-                SELECT 1 FROM pg_indexes 
-                WHERE tablename = 'aws_resources' AND indexname = 'aws_resources_arn_key'
-            ) THEN
-                ALTER TABLE aws_resources DROP CONSTRAINT IF EXISTS aws_resources_arn_key;
-            END IF;
-        END $$;
-    "#;
-    db.execute(Statement::from_string(
-        DbBackend::Postgres,
-        drop_unique_arn.to_string(),
-    ))
-    .await?;
-
-    // Create index on sync_id
-    let idx_sync =
-        r#"CREATE INDEX IF NOT EXISTS idx_aws_resources_sync_id ON aws_resources(sync_id)"#;
-    db.execute(Statement::from_string(
-        DbBackend::Postgres,
-        idx_sync.to_string(),
-    ))
-    .await?;
-
-    // Add composite unique to avoid duplicate rows for same resource within the same sync
-    let add_unique = r#"
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1 FROM pg_constraint c
-                JOIN pg_class t ON c.conrelid = t.oid
-                WHERE t.relname = 'aws_resources' AND c.conname = 'uniq_sync_arn'
-            ) THEN
-                ALTER TABLE aws_resources
-                ADD CONSTRAINT uniq_sync_arn UNIQUE (sync_id, arn);
-            END IF;
-        END $$;
-    "#;
-    db.execute(Statement::from_string(
-        DbBackend::Postgres,
-        add_unique.to_string(),
-    ))
-    .await?;
-
-    // Add a more provider-agnostic uniqueness on natural key as well
-    let add_unique2 = r#"
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1 FROM pg_constraint c
-                JOIN pg_class t ON c.conrelid = t.oid
-                WHERE t.relname = 'aws_resources' AND c.conname = 'uniq_sync_resourcekey'
-            ) THEN
-                ALTER TABLE aws_resources
-                ADD CONSTRAINT uniq_sync_resourcekey UNIQUE (sync_id, account_id, region, resource_type, resource_id);
-            END IF;
-        END $$;
-    "#;
-    db.execute(Statement::from_string(
-        DbBackend::Postgres,
-        add_unique2.to_string(),
-    ))
-    .await?;
-
-    // Helpful composite index for queries by type and sync
-    let add_idx = r#"CREATE INDEX IF NOT EXISTS idx_aws_resources_type_sync ON aws_resources(resource_type, sync_id)"#;
-    db.execute(Statement::from_string(
-        DbBackend::Postgres,
-        add_idx.to_string(),
-    ))
-    .await?;
-
-    Ok(())
-}
-
-/// Ensure the unified cloud_resources table exists and has expected indexes/constraints
-/// This table stores multi-cloud normalized resources with a sync_id to support
-/// multiple scans over time without collisions.
-pub async fn ensure_cloud_resources_table(db: &DatabaseConnection) -> Result<(), DbErr> {
-    // Create table if it doesn't exist
-    let create_table_sql = r#"
-        CREATE TABLE IF NOT EXISTS cloud_resources (
-            id UUID PRIMARY KEY,
-            sync_id UUID NOT NULL,
-            provider TEXT NOT NULL,
-            account_id TEXT NOT NULL,
-            region TEXT NOT NULL,
-            resource_type TEXT NOT NULL,
-            resource_id TEXT NOT NULL,
-            arn_or_uri TEXT NULL,
-            name TEXT NULL,
-            tags JSONB NOT NULL DEFAULT '{}'::jsonb,
-            resource_data JSONB NOT NULL DEFAULT '{}'::jsonb,
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            last_refreshed TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-    "#;
-
-    db.execute(Statement::from_string(
-        DbBackend::Postgres,
-        create_table_sql.to_string(),
-    ))
-    .await?;
-
-    // Helpful indexes for common queries
-    let idx_sync =
-        r#"CREATE INDEX IF NOT EXISTS idx_cloud_resources_sync_id ON cloud_resources(sync_id)"#;
-    let idx_updated = r#"CREATE INDEX IF NOT EXISTS idx_cloud_resources_updated_at ON cloud_resources(updated_at DESC)"#;
-    let idx_type_sync = r#"CREATE INDEX IF NOT EXISTS idx_cloud_resources_type_sync ON cloud_resources(resource_type, sync_id)"#;
-    let idx_acct_region = r#"CREATE INDEX IF NOT EXISTS idx_cloud_resources_account_region ON cloud_resources(account_id, region)"#;
-    db.execute(Statement::from_string(
-        DbBackend::Postgres,
-        idx_sync.to_string(),
-    ))
-    .await?;
-    db.execute(Statement::from_string(
-        DbBackend::Postgres,
-        idx_updated.to_string(),
-    ))
-    .await?;
-    db.execute(Statement::from_string(
-        DbBackend::Postgres,
-        idx_type_sync.to_string(),
-    ))
-    .await?;
-    db.execute(Statement::from_string(
-        DbBackend::Postgres,
-        idx_acct_region.to_string(),
-    ))
-    .await?;
-
-    // Add a uniqueness guard to avoid duplicates for the same resource within a sync
-    let add_unique = r#"
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1 FROM pg_constraint c
-                JOIN pg_class t ON c.conrelid = t.oid
-                WHERE t.relname = 'cloud_resources' AND c.conname = 'uniq_cloud_sync_resource'
-            ) THEN
-                ALTER TABLE cloud_resources
-                ADD CONSTRAINT uniq_cloud_sync_resource UNIQUE (sync_id, provider, account_id, region, resource_type, resource_id);
-            END IF;
-        END $$;
-    "#;
-    db.execute(Statement::from_string(
-        DbBackend::Postgres,
-        add_unique.to_string(),
-    ))
-    .await?;
-
-    // Ensure trigger to auto-update updated_at exists (uses set_updated_at created earlier)
-    let drop_trigger =
-        r#"DROP TRIGGER IF EXISTS trg_cloud_resources_updated_at ON cloud_resources"#;
-    let create_trigger = r#"
-        CREATE TRIGGER trg_cloud_resources_updated_at
-        BEFORE UPDATE ON cloud_resources
         FOR EACH ROW
         EXECUTE PROCEDURE set_updated_at();
     "#;

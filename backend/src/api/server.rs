@@ -78,6 +78,14 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     // Connect to the database
     let db_connection_val = database::connect(&config).await?;
     // Ensure critical tables exist in case migrations weren't applied
+    // Parent tables first (referenced by foreign keys)
+    if let Err(e) = database::ensure_llm_providers_table(&db_connection_val).await {
+        tracing::warn!("Failed to ensure llm_providers table exists: {}", e);
+    }
+    if let Err(e) = database::ensure_aws_resources_table(&db_connection_val).await {
+        tracing::warn!("Failed to ensure aws_resources table exists: {}", e);
+    }
+    // Child tables (with foreign key references)
     if let Err(e) = database::ensure_llm_provider_models_table(&db_connection_val).await {
         tracing::warn!("Failed to ensure llm_provider_models table exists: {}", e);
     }
@@ -86,9 +94,6 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     }
     if let Err(e) = database::ensure_aws_resources_table(&db_connection_val).await {
         tracing::warn!("Failed to ensure aws_resources table exists: {}", e);
-    }
-    if let Err(e) = database::ensure_cloud_resources_table(&db_connection_val).await {
-        tracing::warn!("Failed to ensure cloud_resources table exists: {}", e);
     }
     let db_connection = Arc::new(db_connection_val);
 

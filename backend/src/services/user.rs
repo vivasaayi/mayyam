@@ -1,6 +1,5 @@
-use chrono::Utc;
 use std::sync::Arc;
-use tracing::{error, info, warn};
+use tracing;
 use uuid::Uuid;
 
 use crate::errors::AppError;
@@ -17,6 +16,7 @@ impl UserService {
     }
 
     pub async fn get_user_by_id(&self, id: Uuid) -> Result<Option<UserModel>, AppError> {
+        tracing::debug!("Fetching user by ID: {}", id);
         self.user_repository.find_by_id(id).await
     }
 
@@ -24,21 +24,19 @@ impl UserService {
         &self,
         username: &str,
     ) -> Result<Option<UserModel>, AppError> {
+        tracing::debug!("Fetching user by username: {}", username);
         self.user_repository.find_by_username(username).await
     }
 
     pub async fn create_user(&self, user_data: &CreateUserDto) -> Result<UserModel, AppError> {
-        // Business logic can be added here
-        // For example, validate password strength, enforce organization policies, etc.
         if user_data.password.len() < 8 {
+            tracing::warn!("Unable to create user: {}", "Password must be at least 8 characters long");
             return Err(AppError::Validation(
                 "Password must be at least 8 characters long".to_string(),
             ));
         }
 
-        // Additional validation logic could be added here
-
-        // Delegate to repository for data persistence
+        tracing::info!("Creating user: {:?}", &user_data.username);
         self.user_repository.create(user_data).await
     }
 
@@ -46,14 +44,7 @@ impl UserService {
         &self,
         login_data: &LoginUserDto,
     ) -> Result<Option<UserModel>, AppError> {
-        // Business logic for authentication
-        // For example, handle rate limiting, account lockouts, etc.
-
-        // Here we could implement additional security measures:
-        // - Rate limiting failed attempts
-        // - Recording login attempts
-        // - Handling MFA if implemented
-
+        tracing::info!("Authenticating user: {:?}", &login_data.username);
         self.user_repository.verify_credentials(login_data).await
     }
 
@@ -62,12 +53,11 @@ impl UserService {
         id: Uuid,
         user_data: &UpdateUserDto,
     ) -> Result<UserModel, AppError> {
-        // Business logic for updates
-        // For example, enforce certain fields that can't be changed,
-        // or require additional verification for sensitive changes
+        tracing::debug!("Updating user: {:?}", &user_data.first_name);
 
         if let Some(password) = &user_data.password {
             if password.len() < 8 {
+                tracing::warn!("Unable to update user: {}", "Password must be at least 8 characters long");
                 return Err(AppError::Validation(
                     "Password must be at least 8 characters long".to_string(),
                 ));
@@ -82,9 +72,6 @@ impl UserService {
         page: u64,
         page_size: u64,
     ) -> Result<(Vec<UserModel>, u64), AppError> {
-        // Business logic for listing users
-        // For example, filtering, sorting, etc.
-
         let offset = page * page_size;
         let users = self.user_repository.list_users(page_size, offset).await?;
         let total = self.user_repository.count_users().await?;
@@ -93,12 +80,7 @@ impl UserService {
     }
 
     pub async fn delete_user(&self, id: Uuid) -> Result<(), AppError> {
-        // Business logic for deletion
-        // For example, archive instead of delete, handle dependencies, etc.
-
-        // We could implement soft deletion here or handle any cleanup
-        // before delegating to the repository
-
+        tracing::warn!("Deleting user: {}", id);
         self.user_repository.delete(id).await
     }
 }

@@ -1,5 +1,5 @@
 # Development Dockerfile for Backend with Hot Reloading
-FROM rust:1.85-slim
+FROM rust:1.86-slim
 
 WORKDIR /usr/src/app
 

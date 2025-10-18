@@ -39,6 +39,7 @@ use crate::services::aws::aws_types::kinesis::{
     // New request types
     KinesisRetentionPeriodRequest,
     KinesisSequenceNumberRange,
+    KinesisShard,
     KinesisShardInfo,
     KinesisSplitShardRequest,
     KinesisStartEncryptionRequest,
@@ -811,11 +812,23 @@ impl KinesisControlPlane {
         let shards = response.shards();
 
         Ok(KinesisListShardsResponse {
-            shards: vec![],
-            next_token: todo!(),
-            stream_name: todo!(),
-            stream_arn: todo!(),
-            stream_creation_timestamp: todo!(),
+            shards: shards.into_iter().map(|shard| KinesisShard {
+                shard_id: shard.shard_id().to_string(),
+                parent_shard_id: shard.parent_shard_id().map(|s| s.to_string()),
+                adjacent_parent_shard_id: shard.adjacent_parent_shard_id().map(|s| s.to_string()),
+                hash_key_range: KinesisHashKeyRange {
+                    starting_hash_key: shard.hash_key_range().expect("Hash key range should be present").starting_hash_key().to_string(),
+                    ending_hash_key: shard.hash_key_range().expect("Hash key range should be present").ending_hash_key().to_string(),
+                },
+                sequence_number_range: KinesisSequenceNumberRange {
+                    starting_sequence_number: shard.sequence_number_range().expect("Sequence number range should be present").starting_sequence_number().to_string(),
+                    ending_sequence_number: shard.sequence_number_range().expect("Sequence number range should be present").ending_sequence_number().map(|s| s.to_string()),
+                },
+            }).collect(),
+            next_token: response.next_token().map(|s| s.to_string()),
+            stream_name: None, // Not provided in ListShards response
+            stream_arn: None,  // Not provided in ListShards response
+            stream_creation_timestamp: None, // Not provided in ListShards response
         })
     }
 }

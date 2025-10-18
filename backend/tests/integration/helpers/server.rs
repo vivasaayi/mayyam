@@ -29,7 +29,7 @@ pub async fn ensure_server() -> String {
         candidate_urls.push(url);
     }
 
-    if let Ok(port) = std::env::var("BACKEND_PORT")
+    if let Some(port) = std::env::var("BACKEND_PORT")
         .ok()
         .and_then(|p| p.parse::<u16>().ok())
     {
@@ -63,7 +63,7 @@ pub async fn try_ensure_server() -> Option<String> {
         candidate_urls.push(url);
     }
 
-    if let Ok(port) = std::env::var("BACKEND_PORT")
+    if let Some(port) = std::env::var("BACKEND_PORT")
         .ok()
         .and_then(|p| p.parse::<u16>().ok())
     {

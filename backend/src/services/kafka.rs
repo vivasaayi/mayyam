@@ -1,5 +1,6 @@
-use crate::config::KafkaClusterConfig;
+use crate::models::cluster::KafkaClusterConfig;
 use crate::errors::AppError;
+use crate::models::cluster::CreateKafkaClusterRequest;
 use crate::repositories::cluster::ClusterRepository;
 use rdkafka::admin::{AdminClient, NewTopic, TopicReplication};
 use rdkafka::config::ClientConfig;
@@ -771,8 +772,62 @@ impl KafkaService {
             .clusters
             .iter()
             .find(|c| c.name == id)
-            .cloned()
+            .map(|c| KafkaClusterConfig {
+                bootstrap_servers: c.bootstrap_servers.clone(),
+                sasl_username: c.sasl_username.clone(),
+                sasl_password: c.sasl_password.clone(),
+                sasl_mechanism: c.sasl_mechanism.clone(),
+                security_protocol: c.security_protocol.clone(),
+            })
             .ok_or_else(|| AppError::NotFound(format!("Kafka cluster with ID {} not found", id)))
+    }
+
+    // Create a new Kafka cluster
+    pub async fn create_cluster(
+        &self,
+        request: &CreateKafkaClusterRequest,
+        user_id: &str,
+    ) -> Result<serde_json::Value, AppError> {
+        // Create the cluster in the database
+        let cluster = self.cluster_repository.create_kafka_cluster(request, user_id).await?;
+
+        Ok(serde_json::json!({
+            "id": cluster.id,
+            "name": cluster.name,
+            "cluster_type": cluster.cluster_type,
+            "message": "Kafka cluster created successfully"
+        }))
+    }
+
+    // List all Kafka clusters
+    pub async fn list_clusters(&self) -> Result<Vec<serde_json::Value>, AppError> {
+        let stored_clusters = self.cluster_repository.find_by_type("kafka").await?;
+
+        let clusters: Vec<serde_json::Value> = stored_clusters
+            .iter()
+            .map(|cluster| {
+                // Parse the config to extract bootstrap servers
+                let bootstrap_servers = if let Some(config) = cluster.config.as_object() {
+                    config.get("bootstrap_servers")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| arr.iter().filter_map(|v| v.as_str()).map(|s| s.to_string()).collect::<Vec<_>>())
+                        .unwrap_or_default()
+                } else {
+                    vec![]
+                };
+
+                serde_json::json!({
+                    "id": cluster.id,
+                    "name": cluster.name,
+                    "bootstrap_servers": bootstrap_servers,
+                    "status": cluster.status,
+                    "created_at": cluster.created_at,
+                    "last_connected_at": cluster.last_connected_at
+                })
+            })
+            .collect();
+
+        Ok(clusters)
     }
 
     // Build Kafka client configuration

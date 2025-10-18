@@ -1,5 +1,6 @@
 use crate::errors::AppError;
 use crate::middleware::auth::Claims;
+use crate::models::cluster;
 use actix_web::{web, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -159,23 +160,12 @@ pub async fn produce_with_retry(
 }
 
 pub async fn list_clusters(
-    config: web::Data<crate::config::Config>,
+    kafka_service: web::Data<Arc<KafkaService>>,
+    _config: web::Data<crate::config::Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let clusters: Vec<serde_json::Value> = config
-        .kafka
-        .clusters
-        .iter()
-        .map(|cluster| {
-            serde_json::json!({
-                "id": cluster.name, // Using name as ID for now
-                "name": cluster.name,
-                "bootstrap_servers": cluster.bootstrap_servers,
-                "security_protocol": cluster.security_protocol,
-                "sasl_mechanism": cluster.sasl_mechanism,
-            })
-        })
-        .collect();
+    // Get clusters from the service
+    let clusters = kafka_service.list_clusters().await?;
 
     let response = serde_json::json!({
         "clusters": clusters,
@@ -187,19 +177,22 @@ pub async fn list_clusters(
 
 pub async fn create_cluster(
     cluster: web::Json<KafkaClusterRequest>,
+    kafka_service: web::Data<Arc<KafkaService>>,
     _config: web::Data<crate::config::Config>,
-    _claims: web::ReqData<Claims>,
+    claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    // In a real implementation, this would save the cluster to configuration
-    // For now, we'll return a dummy response
+    // Convert the request to the service model
+    let create_request = cluster::CreateKafkaClusterRequest {
+        name: cluster.name.clone(),
+        bootstrap_servers: cluster.bootstrap_servers.clone(),
+        sasl_username: cluster.sasl_username.clone(),
+        sasl_password: cluster.sasl_password.clone(),
+        sasl_mechanism: cluster.sasl_mechanism.clone(),
+        security_protocol: cluster.security_protocol.clone().unwrap_or_else(|| "PLAINTEXT".to_string()),
+    };
 
-    let cluster_id = Uuid::new_v4().to_string();
-
-    let response = serde_json::json!({
-        "id": cluster_id,
-        "name": cluster.name,
-        "message": "Kafka cluster connection created successfully"
-    });
+    // Create the cluster using the service
+    let response = kafka_service.create_cluster(&create_request, &claims.sub).await?;
 
     Ok(HttpResponse::Created().json(response))
 }

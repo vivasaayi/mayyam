@@ -355,7 +355,7 @@ impl From<DataSourceCreateDto> for ActiveModel {
             status: Set("active".to_string()),                 // Add default status
             created_at: Set(now),
             updated_at: Set(now),
-            enabled: todo!(),
+            enabled: Set(true), // Default to enabled
         }
     }
 }
