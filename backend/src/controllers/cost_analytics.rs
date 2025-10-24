@@ -3,6 +3,7 @@ use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use uuid::Uuid;
+use csv::Writer;
 
 use crate::errors::AppError;
 use crate::middleware::auth::Claims;
@@ -10,6 +11,152 @@ use crate::repositories::aws_account::AwsAccountRepository;
 use crate::repositories::aws_resource::AwsResourceRepository;
 use crate::repositories::cost_analytics::CostAnalyticsRepository;
 use crate::services::aws_cost_analytics::{AwsCostAnalyticsService, CostAnalysisRequest};
+
+// CSV export helper functions
+fn export_new_resources_csv(resources: &[serde_json::Value]) -> Result<String, AppError> {
+    let mut wtr = Writer::from_writer(vec![]);
+    
+    // Write header
+    wtr.write_record(&[
+        "Resource ID", "Account ID", "Resource Type", "Name", "Region", 
+        "ARN", "Created At", "Tags", "Current Cost"
+    ]).map_err(|e| AppError::Internal(format!("CSV write error: {}", e)))?;
+    
+    // Write data
+    for resource in resources {
+        let resource_id = resource.get("resource_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let account_id = resource.get("account_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let resource_type = resource.get("resource_type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let name = resource.get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let region = resource.get("region")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let arn = resource.get("arn")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let created_at = resource.get("created_at")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let tags = resource.get("tags")
+            .and_then(|v| v.as_str())
+            .unwrap_or("{}");
+        let current_cost = resource.get("current_cost")
+            .and_then(|v| v.as_f64())
+            .map(|v| format!("{:.2}", v))
+            .unwrap_or("0.00".to_string());
+            
+        wtr.write_record(&[
+            resource_id, account_id, resource_type, name, region,
+            arn, created_at, tags, &current_cost
+        ]).map_err(|e| AppError::Internal(format!("CSV write error: {}", e)))?;
+    }
+    
+    wtr.flush().map_err(|e| AppError::Internal(format!("CSV flush error: {}", e)))?;
+    let csv_bytes = wtr.into_inner().map_err(|e| AppError::Internal(format!("CSV writer error: {}", e)))?;
+    let csv_data = String::from_utf8(csv_bytes).map_err(|e| AppError::Internal(format!("CSV encoding error: {}", e)))?;
+    Ok(csv_data)
+}
+
+fn export_cost_increases_csv(cost_increases: &[serde_json::Value]) -> Result<String, AppError> {
+    let mut wtr = Writer::from_writer(vec![]);
+    
+    // Write header
+    wtr.write_record(&[
+        "Resource ID", "Account ID", "Service", "Region", "Current Cost", 
+        "Previous Cost", "Cost Increase", "Percentage Increase", "Period Days"
+    ]).map_err(|e| AppError::Internal(format!("CSV write error: {}", e)))?;
+    
+    // Write data
+    for increase in cost_increases {
+        let resource_id = increase.get("resource_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let account_id = increase.get("account_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let service = increase.get("service")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let region = increase.get("region")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let current_cost = increase.get("current_cost")
+            .and_then(|v| v.as_f64())
+            .map(|v| format!("{:.2}", v))
+            .unwrap_or("0.00".to_string());
+        let previous_cost = increase.get("previous_cost")
+            .and_then(|v| v.as_f64())
+            .map(|v| format!("{:.2}", v))
+            .unwrap_or("0.00".to_string());
+        let cost_increase = increase.get("cost_increase")
+            .and_then(|v| v.as_f64())
+            .map(|v| format!("{:.2}", v))
+            .unwrap_or("0.00".to_string());
+        let percentage_increase = increase.get("percentage_increase")
+            .and_then(|v| v.as_f64())
+            .map(|v| format!("{:.2}", v))
+            .unwrap_or("0.00".to_string());
+        let period_days = increase.get("period_days")
+            .and_then(|v| v.as_i64())
+            .map(|v| v.to_string())
+            .unwrap_or("0".to_string());
+            
+        wtr.write_record(&[
+            resource_id, account_id, service, region, &current_cost,
+            &previous_cost, &cost_increase, &percentage_increase, &period_days
+        ]).map_err(|e| AppError::Internal(format!("CSV write error: {}", e)))?;
+    }
+    
+    wtr.flush().map_err(|e| AppError::Internal(format!("CSV flush error: {}", e)))?;
+    let csv_bytes = wtr.into_inner().map_err(|e| AppError::Internal(format!("CSV writer error: {}", e)))?;
+    let csv_data = String::from_utf8(csv_bytes).map_err(|e| AppError::Internal(format!("CSV encoding error: {}", e)))?;
+    Ok(csv_data)
+}
+
+fn export_cost_history_csv(cost_history: &[serde_json::Value], resource_id: &str) -> Result<String, AppError> {
+    let mut wtr = Writer::from_writer(vec![]);
+    
+    // Write header
+    wtr.write_record(&[
+        "Resource ID", "Period", "Total Cost", "Average Daily Cost", "Data Points"
+    ]).map_err(|e| AppError::Internal(format!("CSV write error: {}", e)))?;
+    
+    // Write data
+    for record in cost_history {
+        let period = record.get("period")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let total_cost = record.get("total_cost")
+            .and_then(|v| v.as_f64())
+            .map(|v| format!("{:.2}", v))
+            .unwrap_or("0.00".to_string());
+        let avg_daily_cost = record.get("avg_daily_cost")
+            .and_then(|v| v.as_f64())
+            .map(|v| format!("{:.2}", v))
+            .unwrap_or("0.00".to_string());
+        let data_points = record.get("data_points")
+            .and_then(|v| v.as_i64())
+            .map(|v| v.to_string())
+            .unwrap_or("0".to_string());
+            
+        wtr.write_record(&[
+            resource_id, period, &total_cost, &avg_daily_cost, &data_points
+        ]).map_err(|e| AppError::Internal(format!("CSV write error: {}", e)))?;
+    }
+    
+    wtr.flush().map_err(|e| AppError::Internal(format!("CSV flush error: {}", e)))?;
+    let csv_bytes = wtr.into_inner().map_err(|e| AppError::Internal(format!("CSV writer error: {}", e)))?;
+    let csv_data = String::from_utf8(csv_bytes).map_err(|e| AppError::Internal(format!("CSV encoding error: {}", e)))?;
+    Ok(csv_data)
+}
 
 #[derive(Debug, Deserialize)]
 pub struct CostAnalysisQuery {
@@ -65,6 +212,7 @@ pub struct NewResourcesQuery {
     pub account_id: Option<String>,
     pub days_back: Option<i64>,
     pub limit: Option<u64>,
+    pub format: Option<String>, // "json" or "csv", default "json"
 }
 
 #[derive(Debug, Deserialize)]
@@ -73,6 +221,7 @@ pub struct CostIncreaseQuery {
     pub days_back: Option<i64>,
     pub threshold_percentage: Option<f64>,
     pub min_cost_threshold: Option<f64>,
+    pub format: Option<String>, // "json" or "csv", default "json"
 }
 
 #[derive(Debug, Serialize)]
@@ -485,6 +634,7 @@ pub async fn get_new_resources(
 
     let days_back = query.days_back.unwrap_or(7); // Default to last 7 days
     let limit = query.limit.unwrap_or(100); // Default limit
+    let format = query.format.as_deref().unwrap_or("json");
 
     match aws_resource_repo
         .find_newly_added_resources(query.account_id.clone(), days_back, Some(limit))
@@ -492,26 +642,49 @@ pub async fn get_new_resources(
     {
         Ok(resources) => {
             let total_count = resources.len();
-            let response = CostAnalysisResponse {
-                success: true,
-                data: serde_json::json!({
-                    "new_resources": resources.into_iter().map(|r| serde_json::json!({
-                        "id": r.id,
-                        "account_id": r.account_id,
-                        "resource_type": r.resource_type,
-                        "resource_id": r.resource_id,
-                        "arn": r.arn,
-                        "name": r.name,
-                        "region": r.region,
-                        "created_at": r.created_at,
-                        "tags": r.tags
-                    })).collect::<Vec<_>>(),
-                    "days_back": days_back,
-                    "total_count": total_count
-                }),
-                message: format!("Found {} newly added resources in the last {} days", total_count, days_back),
-            };
-            Ok(HttpResponse::Ok().json(response))
+            
+            // Convert resources to JSON values for CSV export
+            let resources_json: Vec<serde_json::Value> = resources.into_iter().map(|r| {
+                serde_json::json!({
+                    "id": r.id,
+                    "account_id": r.account_id,
+                    "resource_type": r.resource_type,
+                    "resource_id": r.resource_id,
+                    "arn": r.arn,
+                    "name": r.name,
+                    "region": r.region,
+                    "created_at": r.created_at,
+                    "tags": r.tags,
+                    "current_cost": 0.0 // Placeholder, would need to be calculated
+                })
+            }).collect();
+            
+            if format == "csv" {
+                match export_new_resources_csv(&resources_json) {
+                    Ok(csv_data) => {
+                        Ok(HttpResponse::Ok()
+                            .content_type("text/csv")
+                            .append_header(("Content-Disposition", "attachment; filename=\"new_resources.csv\""))
+                            .body(csv_data))
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to export CSV: {}", e);
+                        let error_response = ErrorResponse::from(e);
+                        Ok(HttpResponse::InternalServerError().json(error_response))
+                    }
+                }
+            } else {
+                let response = CostAnalysisResponse {
+                    success: true,
+                    data: serde_json::json!({
+                        "new_resources": resources_json,
+                        "days_back": days_back,
+                        "total_count": total_count
+                    }),
+                    message: format!("Found {} newly added resources in the last {} days", total_count, days_back),
+                };
+                Ok(HttpResponse::Ok().json(response))
+            }
         }
         Err(e) => {
             tracing::error!("Failed to get new resources: {}", e);
@@ -567,6 +740,7 @@ pub async fn detect_cost_increases(
     let days_back = query.days_back.unwrap_or(30);
     let threshold_percentage = query.threshold_percentage.unwrap_or(20.0);
     let min_cost_threshold = query.min_cost_threshold.unwrap_or(10.0);
+    let format = query.format.as_deref().unwrap_or("json");
 
     match aws_resource_repo
         .detect_cost_increases(account_id, days_back, threshold_percentage, min_cost_threshold)
@@ -574,21 +748,38 @@ pub async fn detect_cost_increases(
     {
         Ok(cost_increases) => {
             let total_count = cost_increases.len();
-            let response = CostAnalysisResponse {
-                success: true,
-                data: serde_json::json!({
-                    "cost_increases": cost_increases,
-                    "days_back": days_back,
-                    "threshold_percentage": threshold_percentage,
-                    "min_cost_threshold": min_cost_threshold,
-                    "total_count": total_count
-                }),
-                message: format!(
-                    "Found {} resources with cost increases of {}% or more in the last {} days",
-                    total_count, threshold_percentage, days_back
-                ),
-            };
-            Ok(HttpResponse::Ok().json(response))
+            
+            if format == "csv" {
+                match export_cost_increases_csv(&cost_increases) {
+                    Ok(csv_data) => {
+                        Ok(HttpResponse::Ok()
+                            .content_type("text/csv")
+                            .append_header(("Content-Disposition", "attachment; filename=\"cost_increases.csv\""))
+                            .body(csv_data))
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to export CSV: {}", e);
+                        let error_response = ErrorResponse::from(e);
+                        Ok(HttpResponse::InternalServerError().json(error_response))
+                    }
+                }
+            } else {
+                let response = CostAnalysisResponse {
+                    success: true,
+                    data: serde_json::json!({
+                        "cost_increases": cost_increases,
+                        "days_back": days_back,
+                        "threshold_percentage": threshold_percentage,
+                        "min_cost_threshold": min_cost_threshold,
+                        "total_count": total_count
+                    }),
+                    message: format!(
+                        "Found {} resources with cost increases of {}% or more in the last {} days",
+                        total_count, threshold_percentage, days_back
+                    ),
+                };
+                Ok(HttpResponse::Ok().json(response))
+            }
         }
         Err(e) => {
             tracing::error!("Failed to detect cost increases: {}", e);
@@ -604,6 +795,7 @@ pub struct ResourceCostHistoryQuery {
     pub account_id: Option<String>,
     pub days_back: Option<i64>,
     pub granularity: Option<String>, // "daily" or "weekly"
+    pub format: Option<String>, // "json" or "csv", default "json"
 }
 
 pub async fn get_resource_cost_history(
@@ -613,6 +805,7 @@ pub async fn get_resource_cost_history(
 ) -> Result<HttpResponse, AppError> {
     let days_back = query.days_back.unwrap_or(30);
     let granularity = query.granularity.clone().unwrap_or_else(|| "daily".to_string());
+    let format = query.format.as_deref().unwrap_or("json");
 
     if days_back > 365 {
         return Err(AppError::Validation("days_back cannot exceed 365 days".to_string()));
@@ -632,12 +825,31 @@ pub async fn get_resource_cost_history(
         )
         .await?;
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "resource_id": query.resource_id,
-        "account_id": query.account_id,
-        "days_back": days_back,
-        "granularity": granularity_clone,
-        "data": cost_history,
-        "total_periods": cost_history.len()
-    })))
+    if format == "csv" {
+        match export_cost_history_csv(&cost_history, &query.resource_id) {
+            Ok(csv_data) => {
+                Ok(HttpResponse::Ok()
+                    .content_type("text/csv")
+                    .append_header(("Content-Disposition", format!("attachment; filename=\"{}_cost_history.csv\"", query.resource_id)))
+                    .body(csv_data))
+            }
+            Err(e) => {
+                tracing::error!("Failed to export CSV: {}", e);
+                Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                    "success": false,
+                    "error": "CSV export failed",
+                    "message": e.to_string()
+                })))
+            }
+        }
+    } else {
+        Ok(HttpResponse::Ok().json(serde_json::json!({
+            "resource_id": query.resource_id,
+            "account_id": query.account_id,
+            "days_back": days_back,
+            "granularity": granularity_clone,
+            "data": cost_history,
+            "total_periods": cost_history.len()
+        })))
+    }
 }
