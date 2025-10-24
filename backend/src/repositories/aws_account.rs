@@ -17,6 +17,7 @@ use crate::models::aws_account::{
 ///
 /// Uses SeaORM for database interactions, providing type-safe
 /// query operations and entity management
+#[derive(Debug)]
 pub struct AwsAccountRepository {
     db: Arc<DatabaseConnection>,
 }

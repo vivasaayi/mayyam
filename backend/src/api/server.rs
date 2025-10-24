@@ -186,22 +186,10 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
 
     // AWS Cost Analytics service
     let aws_cost_analytics_service = {
-        let aws_account_dto = AwsAccountDto::new_with_profile("", "us-east-1");
-        let aws_sdk_config = aws_service
-            .get_aws_sdk_config(&aws_account_dto)
-            .await
-            .unwrap_or_else(|e| {
-                tracing::warn!(
-                    "Failed to load AWS SDK config for cost analytics: {}. Using default config.",
-                    e
-                );
-                // Create a minimal default config
-                aws_config::SdkConfig::builder().build()
-            });
-
         Arc::new(AwsCostAnalyticsService::new(
-            &aws_sdk_config,
             cost_analytics_repo.clone(),
+            aws_account_repo.clone(),
+            aws_service.clone(),
             llm_integration_service.clone(),
         ))
     };
@@ -400,7 +388,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
                 ));
 
                 info!("Registering AWS Cost Analytics routes");
-                routes::cost_analytics::configure_routes(cfg_param);
+                routes::cost_analytics::configure_routes(cfg_param, aws_account_repo.clone(), aws_resource_repo.clone());
 
                 info!("Registering other general routes");
                 // Pass Arc<DatabaseConnection> to the general routes::configure function

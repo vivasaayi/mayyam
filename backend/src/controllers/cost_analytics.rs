@@ -6,6 +6,8 @@ use uuid::Uuid;
 
 use crate::errors::AppError;
 use crate::middleware::auth::Claims;
+use crate::repositories::aws_account::AwsAccountRepository;
+use crate::repositories::aws_resource::AwsResourceRepository;
 use crate::repositories::cost_analytics::CostAnalyticsRepository;
 use crate::services::aws_cost_analytics::{AwsCostAnalyticsService, CostAnalysisRequest};
 
@@ -39,10 +41,38 @@ pub struct AnomaliesQuery {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct ResourceCostQuery {
+    pub account_id: String,
+    pub resource_id: Option<String>,
+    pub service_name: Option<String>,
+    pub region: Option<String>,
+    pub availability_zone: Option<String>,
+    pub instance_type: Option<String>,
+    pub start_date: String,
+    pub end_date: String,
+    pub limit: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct InsightsQuery {
     pub account_id: String,
     pub insight_type: Option<String>,
     pub limit: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NewResourcesQuery {
+    pub account_id: Option<String>,
+    pub days_back: Option<i64>,
+    pub limit: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CostIncreaseQuery {
+    pub account_id: Option<String>,
+    pub days_back: Option<i64>,
+    pub threshold_percentage: Option<f64>,
+    pub min_cost_threshold: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -72,6 +102,7 @@ impl From<AppError> for ErrorResponse {
 /// Fetch real-time cost data from AWS Cost Explorer
 pub async fn fetch_cost_data(
     cost_service: web::Data<Arc<AwsCostAnalyticsService>>,
+    aws_account_repo: web::Data<Arc<AwsAccountRepository>>,
     query: web::Query<CostAnalysisQuery>,
     _claims: web::ReqData<Claims>,
 ) -> ActixResult<HttpResponse> {
@@ -357,6 +388,70 @@ pub async fn get_cost_summary(
     }
 }
 
+/// Get costs by specific resources
+pub async fn get_resource_costs(
+    repository: web::Data<Arc<CostAnalyticsRepository>>,
+    query: web::Query<ResourceCostQuery>,
+    _claims: web::ReqData<Claims>,
+) -> ActixResult<HttpResponse> {
+    tracing::info!("Getting resource costs for account {}", query.account_id);
+
+    // Parse dates
+    let start_date = NaiveDate::parse_from_str(&query.start_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid start_date format: {}", e))
+    })?;
+
+    let end_date = NaiveDate::parse_from_str(&query.end_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid end_date format: {}", e))
+    })?;
+
+    match repository
+        .get_resource_costs(
+            &query.account_id,
+            start_date,
+            end_date,
+            query.resource_id.as_deref(),
+            query.service_name.as_deref(),
+            query.region.as_deref(),
+            query.availability_zone.as_deref(),
+            query.instance_type.as_deref(),
+            query.limit,
+        )
+        .await
+    {
+        Ok(resources) => {
+            let response = CostAnalysisResponse {
+                success: true,
+                data: serde_json::json!({
+                    "resources": resources.into_iter().map(|r| serde_json::json!({
+                        "id": r.id,
+                        "account_id": r.account_id,
+                        "service_name": r.service_name,
+                        "usage_type": r.usage_type,
+                        "operation": r.operation,
+                        "region": r.region,
+                        "resource_id": r.tags.as_ref().and_then(|t| t.get("resource_id")),
+                        "usage_start": r.usage_start,
+                        "usage_end": r.usage_end,
+                        "unblended_cost": r.unblended_cost,
+                        "blended_cost": r.blended_cost,
+                        "usage_amount": r.usage_amount,
+                        "usage_unit": r.usage_unit,
+                        "currency": r.currency
+                    })).collect::<Vec<_>>()
+                }),
+                message: "Resource costs retrieved successfully".to_string(),
+            };
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            tracing::error!("Failed to get resource costs: {}", e);
+            let error_response = ErrorResponse::from(e);
+            Ok(HttpResponse::InternalServerError().json(error_response))
+        }
+    }
+}
+
 /// Generate LLM analysis for a specific cost trend or anomaly
 pub async fn analyze_cost_with_llm(
     cost_service: web::Data<Arc<AwsCostAnalyticsService>>,
@@ -378,4 +473,171 @@ pub async fn analyze_cost_with_llm(
     };
 
     Ok(HttpResponse::Ok().json(response))
+}
+
+/// Get newly added resources across accounts
+pub async fn get_new_resources(
+    aws_resource_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    query: web::Query<NewResourcesQuery>,
+    _claims: web::ReqData<Claims>,
+) -> ActixResult<HttpResponse> {
+    tracing::info!("Getting newly added resources");
+
+    let days_back = query.days_back.unwrap_or(7); // Default to last 7 days
+    let limit = query.limit.unwrap_or(100); // Default limit
+
+    match aws_resource_repo
+        .find_newly_added_resources(query.account_id.clone(), days_back, Some(limit))
+        .await
+    {
+        Ok(resources) => {
+            let total_count = resources.len();
+            let response = CostAnalysisResponse {
+                success: true,
+                data: serde_json::json!({
+                    "new_resources": resources.into_iter().map(|r| serde_json::json!({
+                        "id": r.id,
+                        "account_id": r.account_id,
+                        "resource_type": r.resource_type,
+                        "resource_id": r.resource_id,
+                        "arn": r.arn,
+                        "name": r.name,
+                        "region": r.region,
+                        "created_at": r.created_at,
+                        "tags": r.tags
+                    })).collect::<Vec<_>>(),
+                    "days_back": days_back,
+                    "total_count": total_count
+                }),
+                message: format!("Found {} newly added resources in the last {} days", total_count, days_back),
+            };
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            tracing::error!("Failed to get new resources: {}", e);
+            let error_response = ErrorResponse::from(e);
+            Ok(HttpResponse::InternalServerError().json(error_response))
+        }
+    }
+}
+
+/// Get resource count changes over time
+pub async fn get_resource_count_trends(
+    aws_resource_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    query: web::Query<NewResourcesQuery>,
+    _claims: web::ReqData<Claims>,
+) -> ActixResult<HttpResponse> {
+    tracing::info!("Getting resource count trends");
+
+    let days_back = query.days_back.unwrap_or(30); // Default to last 30 days
+
+    match aws_resource_repo
+        .get_resource_count_changes(query.account_id.clone(), days_back)
+        .await
+    {
+        Ok(trends) => {
+            let response = CostAnalysisResponse {
+                success: true,
+                data: serde_json::json!({
+                    "trends": trends.into_iter().map(|(date, count)| serde_json::json!({
+                        "date": date,
+                        "new_resources_count": count
+                    })).collect::<Vec<_>>(),
+                    "days_back": days_back
+                }),
+                message: "Resource count trends retrieved successfully".to_string(),
+            };
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            tracing::error!("Failed to get resource count trends: {}", e);
+            let error_response = ErrorResponse::from(e);
+            Ok(HttpResponse::InternalServerError().json(error_response))
+        }
+    }
+}
+
+#[tracing::instrument(skip(aws_resource_repo))]
+pub async fn detect_cost_increases(
+    query: web::Query<CostIncreaseQuery>,
+    aws_resource_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> ActixResult<HttpResponse> {
+    let account_id = query.account_id.clone();
+    let days_back = query.days_back.unwrap_or(30);
+    let threshold_percentage = query.threshold_percentage.unwrap_or(20.0);
+    let min_cost_threshold = query.min_cost_threshold.unwrap_or(10.0);
+
+    match aws_resource_repo
+        .detect_cost_increases(account_id, days_back, threshold_percentage, min_cost_threshold)
+        .await
+    {
+        Ok(cost_increases) => {
+            let total_count = cost_increases.len();
+            let response = CostAnalysisResponse {
+                success: true,
+                data: serde_json::json!({
+                    "cost_increases": cost_increases,
+                    "days_back": days_back,
+                    "threshold_percentage": threshold_percentage,
+                    "min_cost_threshold": min_cost_threshold,
+                    "total_count": total_count
+                }),
+                message: format!(
+                    "Found {} resources with cost increases of {}% or more in the last {} days",
+                    total_count, threshold_percentage, days_back
+                ),
+            };
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            tracing::error!("Failed to detect cost increases: {}", e);
+            let error_response = ErrorResponse::from(e);
+            Ok(HttpResponse::InternalServerError().json(error_response))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct ResourceCostHistoryQuery {
+    pub resource_id: String,
+    pub account_id: Option<String>,
+    pub days_back: Option<i64>,
+    pub granularity: Option<String>, // "daily" or "weekly"
+}
+
+pub async fn get_resource_cost_history(
+    query: web::Query<ResourceCostHistoryQuery>,
+    claims: web::ReqData<Claims>,
+    aws_resource_repo: web::Data<AwsResourceRepository>,
+) -> Result<HttpResponse, AppError> {
+    let days_back = query.days_back.unwrap_or(30);
+    let granularity = query.granularity.clone().unwrap_or_else(|| "daily".to_string());
+
+    if days_back > 365 {
+        return Err(AppError::Validation("days_back cannot exceed 365 days".to_string()));
+    }
+
+    if !["daily", "weekly"].contains(&granularity.as_str()) {
+        return Err(AppError::Validation("granularity must be 'daily' or 'weekly'".to_string()));
+    }
+
+    let granularity_clone = granularity.clone();
+    let cost_history = aws_resource_repo
+        .get_resource_cost_history(
+            &query.resource_id,
+            query.account_id.clone(),
+            days_back,
+            granularity,
+        )
+        .await?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "resource_id": query.resource_id,
+        "account_id": query.account_id,
+        "days_back": days_back,
+        "granularity": granularity_clone,
+        "data": cost_history,
+        "total_periods": cost_history.len()
+    })))
 }

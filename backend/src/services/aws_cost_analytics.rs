@@ -19,6 +19,8 @@ use crate::models::{
     aws_monthly_cost_aggregates::ActiveModel as MonthlyCostAggregateActiveModel,
 };
 use crate::repositories::cost_analytics::CostAnalyticsRepository;
+use crate::repositories::aws_account::AwsAccountRepository;
+use crate::services::aws::AwsService;
 use crate::services::llm::LlmIntegrationService;
 
 #[derive(Debug, Clone)]
@@ -51,22 +53,23 @@ pub struct CostAnalysisRequest {
 
 #[derive(Debug)]
 pub struct AwsCostAnalyticsService {
-    cost_explorer_client: CostExplorerClient,
     repository: Arc<CostAnalyticsRepository>,
+    aws_account_repo: Arc<AwsAccountRepository>,
+    aws_service: Arc<AwsService>,
     llm_service: Arc<LlmIntegrationService>,
 }
 
 impl AwsCostAnalyticsService {
     pub fn new(
-        aws_config: &SdkConfig,
         repository: Arc<CostAnalyticsRepository>,
+        aws_account_repo: Arc<AwsAccountRepository>,
+        aws_service: Arc<AwsService>,
         llm_service: Arc<LlmIntegrationService>,
     ) -> Self {
-        let cost_explorer_client = CostExplorerClient::new(aws_config);
-
         Self {
-            cost_explorer_client,
             repository,
+            aws_account_repo,
+            aws_service,
             llm_service,
         }
     }
@@ -83,6 +86,22 @@ impl AwsCostAnalyticsService {
             request.end_date
         );
 
+        // Get AWS account details
+        let aws_account = self
+            .aws_account_repo
+            .get_by_account_id(&request.account_id)
+            .await?
+            .ok_or_else(|| {
+                AppError::NotFound(format!("AWS account {} not found", request.account_id))
+            })?;
+
+        // Convert to DTO for AWS service
+        let aws_account_dto = crate::models::aws_account::AwsAccountDto::from(aws_account);
+
+        // Create AWS SDK config for this account
+        let aws_config = self.aws_service.get_aws_sdk_config(&aws_account_dto).await?;
+        let cost_explorer_client = CostExplorerClient::new(&aws_config);
+
         // Create time period
         let time_period = DateInterval::builder()
             .start(request.start_date.format("%Y-%m-%d").to_string())
@@ -93,36 +112,32 @@ impl AwsCostAnalyticsService {
         // Create granularity
         let granularity = Granularity::from(request.granularity.as_str());
 
-        // Add service filter if provided - TODO: Fix when AWS SDK types are available
-        // if let Some(services) = &request.service_filter {
-        //     let dimension_key = DimensionKey::builder()
-        //         .key("SERVICE")
-        //         .set_values(Some(services.clone()))
-        //         .build()
-        //         .map_err(|e| AppError::CloudProvider(format!("Failed to build dimension key: {}", e)))?;
-        //
-        //     let filter = Expression::builder()
-        //         .dimensions(dimension_key)
-        //         .build()
-        //         .map_err(|e| AppError::CloudProvider(format!("Failed to build filter expression: {}", e)))?;
-        //
-        //     cost_request = cost_request.filter(filter);
-        // }
-
         // Execute the API call
-        let response = self
-            .cost_explorer_client
+        let response = cost_explorer_client
             .get_cost_and_usage()
             .time_period(time_period)
             .granularity(granularity)
             .set_metrics(Some(vec![
                 "UnblendedCost".to_string(),
                 "BlendedCost".to_string(),
+                "UsageQuantity".to_string(),
             ]))
             .set_group_by(Some(vec![
                 GroupDefinition::builder()
                     .r#type(GroupDefinitionType::Dimension)
                     .key("SERVICE")
+                    .build(),
+                GroupDefinition::builder()
+                    .r#type(GroupDefinitionType::Dimension)
+                    .key("AZ")  // Availability Zone
+                    .build(),
+                GroupDefinition::builder()
+                    .r#type(GroupDefinitionType::Dimension)
+                    .key("INSTANCE_TYPE")  // For EC2 instances
+                    .build(),
+                GroupDefinition::builder()
+                    .r#type(GroupDefinitionType::Dimension)
+                    .key("RESOURCE_ID")  // Individual resource identifier
                     .build(),
                 GroupDefinition::builder()
                     .r#type(GroupDefinitionType::Dimension)
@@ -151,8 +166,13 @@ impl AwsCostAnalyticsService {
                 if let Some(groups) = time_result.groups {
                     for group in groups {
                         let keys = group.keys.unwrap_or_default();
+                        
+                        // Extract dimensions: SERVICE, AZ, INSTANCE_TYPE, RESOURCE_ID, USAGE_TYPE
                         let service_name = keys.get(0).cloned().unwrap_or_default();
-                        let usage_type = keys.get(1).cloned();
+                        let availability_zone = keys.get(1).cloned();
+                        let instance_type = keys.get(2).cloned();
+                        let resource_id = keys.get(3).cloned();
+                        let usage_type = keys.get(4).cloned();
 
                         if let Some(metrics) = group.metrics {
                             let unblended_cost = metrics
@@ -186,8 +206,8 @@ impl AwsCostAnalyticsService {
                                 account_id: ActiveValue::Set(request.account_id.clone()),
                                 service_name: ActiveValue::Set(service_name),
                                 usage_type: ActiveValue::Set(usage_type),
-                                operation: ActiveValue::NotSet,
-                                region: ActiveValue::NotSet,
+                                operation: ActiveValue::Set(instance_type), // Store instance type in operation field
+                                region: ActiveValue::Set(availability_zone), // Store AZ in region field
                                 usage_start: ActiveValue::Set(start_date),
                                 usage_end: ActiveValue::Set(end_date),
                                 unblended_cost: ActiveValue::Set(
@@ -202,7 +222,9 @@ impl AwsCostAnalyticsService {
                                 ),
                                 usage_unit: ActiveValue::Set(usage_unit),
                                 currency: ActiveValue::Set("USD".to_string()),
-                                tags: ActiveValue::NotSet,
+                                tags: ActiveValue::Set(resource_id.map(|rid| {
+                                    serde_json::json!({ "resource_id": rid })
+                                })), // Store resource_id in tags
                                 created_at: ActiveValue::Set(Utc::now().into()),
                                 updated_at: ActiveValue::Set(Utc::now().into()),
                             };

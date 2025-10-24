@@ -1,5 +1,6 @@
 use chrono::{NaiveDate, Utc};
 use sea_orm::*;
+use sea_query::Expr;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -278,6 +279,63 @@ impl CostAnalyticsRepository {
 
             results.push((month, total.to_string().parse().unwrap_or(0.0)));
         }
+
+        Ok(results)
+    }
+
+    pub async fn get_resource_costs(
+        &self,
+        account_id: &str,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+        resource_id: Option<&str>,
+        service_name: Option<&str>,
+        region: Option<&str>,
+        availability_zone: Option<&str>,
+        instance_type: Option<&str>,
+        limit: Option<u64>,
+    ) -> Result<Vec<CostDataModel>, AppError> {
+        let mut query = CostData::find()
+            .filter(crate::models::aws_cost_data::Column::AccountId.eq(account_id))
+            .filter(crate::models::aws_cost_data::Column::UsageStart.gte(start_date))
+            .filter(crate::models::aws_cost_data::Column::UsageEnd.lte(end_date));
+
+        // Apply optional filters
+        if let Some(resource) = resource_id {
+            // Filter by resource_id in tags JSON
+            query = query.filter(
+                Expr::cust_with_values("tags->>'resource_id' = ?", vec![resource.to_string()])
+            );
+        }
+
+        if let Some(service) = service_name {
+            query = query.filter(crate::models::aws_cost_data::Column::ServiceName.eq(service));
+        }
+
+        if let Some(reg) = region {
+            query = query.filter(crate::models::aws_cost_data::Column::Region.eq(reg));
+        }
+
+        if let Some(az) = availability_zone {
+            // Filter by availability zone in tags JSON
+            query = query.filter(
+                Expr::cust_with_values("tags->>'availability_zone' = ?", vec![az.to_string()])
+            );
+        }
+
+        if let Some(instance) = instance_type {
+            // Filter by instance type in tags JSON
+            query = query.filter(
+                Expr::cust_with_values("tags->>'instance_type' = ?", vec![instance.to_string()])
+            );
+        }
+
+        let results = query
+            .order_by_desc(crate::models::aws_cost_data::Column::UnblendedCost)
+            .limit(limit.unwrap_or(100))
+            .all(&*self.db)
+            .await
+            .map_err(|e| AppError::Database(e))?;
 
         Ok(results)
     }
