@@ -224,6 +224,13 @@ pub struct CostIncreaseQuery {
     pub format: Option<String>, // "json" or "csv", default "json"
 }
 
+#[derive(Debug, Deserialize)]
+pub struct ForecastQuery {
+    pub account_id: String,
+    pub days_ahead: Option<i32>, // Number of days to forecast ahead, default 30
+    pub confidence_level: Option<f64>, // Confidence level for prediction intervals, default 0.95
+}
+
 #[derive(Debug, Serialize)]
 pub struct CostAnalysisResponse {
     pub success: bool,
@@ -531,6 +538,37 @@ pub async fn get_cost_summary(
         }
         Err(e) => {
             tracing::error!("Failed to get cost summary: {}", e);
+            let error_response = ErrorResponse::from(e);
+            Ok(HttpResponse::InternalServerError().json(error_response))
+        }
+    }
+}
+
+/// Get cost forecasting for an account
+pub async fn get_cost_forecast(
+    cost_service: web::Data<Arc<AwsCostAnalyticsService>>,
+    query: web::Query<ForecastQuery>,
+    _claims: web::ReqData<Claims>,
+) -> ActixResult<HttpResponse> {
+    let days_ahead = query.days_ahead.unwrap_or(30);
+    let months_ahead = (days_ahead / 30).max(1) as u32; // Convert days to months, minimum 1
+
+    tracing::info!(
+        "Getting cost forecast for account {} ({} days / {} months ahead)",
+        query.account_id, days_ahead, months_ahead
+    );
+
+    match cost_service.forecast_costs(&query.account_id, months_ahead, None).await {
+        Ok(forecast) => {
+            let response = CostAnalysisResponse {
+                success: true,
+                data: forecast,
+                message: format!("Cost forecast generated successfully for {} months ahead", months_ahead),
+            };
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            tracing::error!("Failed to generate cost forecast: {}", e);
             let error_response = ErrorResponse::from(e);
             Ok(HttpResponse::InternalServerError().json(error_response))
         }

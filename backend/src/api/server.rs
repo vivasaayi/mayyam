@@ -191,6 +191,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             aws_account_repo.clone(),
             aws_service.clone(),
             llm_integration_service.clone(),
+            llm_provider_repo.clone(),
         ))
     };
 

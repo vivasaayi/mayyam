@@ -339,4 +339,17 @@ impl CostAnalyticsRepository {
 
         Ok(results)
     }
+
+    // Cost Insights operations
+    pub async fn create_cost_insight(
+        &self,
+        insight: crate::models::aws_cost_insights::ActiveModel,
+    ) -> Result<CostInsightModel, AppError> {
+        let result = CostInsights::insert(insight)
+            .exec_with_returning(&*self.db)
+            .await
+            .map_err(|e| AppError::Database(e))?;
+
+        Ok(result)
+    }
 }

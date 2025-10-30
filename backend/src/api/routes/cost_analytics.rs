@@ -50,6 +50,7 @@ pub fn configure_routes(
                 "/analyze/{anomaly_id}",
                 web::post().to(cost_analytics::analyze_cost_with_llm),
             )
+            .route("/{account_id}/forecast", web::get().to(cost_analytics::get_cost_forecast))
             .route("/health", web::get().to(health_check)),
     );
 }

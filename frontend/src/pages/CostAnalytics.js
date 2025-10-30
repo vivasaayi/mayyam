@@ -28,6 +28,7 @@ import {
 } from '@coreui/react';
 import { CChartLine, CChartBar } from '@coreui/react-chartjs';
 import { apiCall } from '../services/api';
+import ResourceCostHistory from '../components/ResourceCostHistory';
 
 const CostAnalytics = () => {
   const [loading, setLoading] = useState(false);
@@ -37,6 +38,9 @@ const CostAnalytics = () => {
   const [error, setError] = useState(null);
   const [selectedAnomaly, setSelectedAnomaly] = useState(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [resourceCosts, setResourceCosts] = useState([]);
+  const [showResourceHistory, setShowResourceHistory] = useState(false);
+  const [selectedResource, setSelectedResource] = useState(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -46,7 +50,7 @@ const CostAnalytics = () => {
     granularity: 'MONTHLY'
   });
 
-  const fetchCostData = async () => {
+    const fetchCostData = async () => {
     if (!formData.accountId || !formData.startDate || !formData.endDate) {
       setError('Please fill in all required fields');
       return;
@@ -56,23 +60,42 @@ const CostAnalytics = () => {
     setError(null);
 
     try {
-      const params = new URLSearchParams({
+      // Fetch main cost data
+      const response = await apiCall('/api/cost-analytics/fetch', 'POST', {
         account_id: formData.accountId,
         start_date: formData.startDate,
         end_date: formData.endDate,
         granularity: formData.granularity
       });
 
-      const response = await apiCall(`/api/cost-analytics/fetch?${params}`);
-      setCostData(response.data);
+      if (response.success) {
+        setCostData(response.data);
+      }
 
-      // Fetch anomalies and insights
+      // Fetch resource costs for drill-down
+      await fetchResourceCosts();
+
+      // Fetch anomalies
       await fetchAnomalies();
+
+      // Fetch insights
       await fetchInsights();
+
     } catch (err) {
       setError(err.message || 'Failed to fetch cost data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchResourceCosts = async () => {
+    try {
+      const response = await apiCall(`/api/cost-analytics/resource-costs?account_id=${formData.accountId}&start_date=${formData.startDate}&end_date=${formData.endDate}&limit=100`);
+      if (response.success) {
+        setResourceCosts(response.data.resources || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch resource costs:', err);
     }
   };
 
@@ -111,6 +134,16 @@ const CostAnalytics = () => {
     }
   };
 
+  const viewResourceHistory = (resource) => {
+    setSelectedResource(resource);
+    setShowResourceHistory(true);
+  };
+
+  const closeResourceHistory = () => {
+    setShowResourceHistory(false);
+    setSelectedResource(null);
+  };
+
   const getSeverityColor = (severity) => {
     switch (severity?.toLowerCase()) {
       case 'critical': return 'danger';
@@ -120,6 +153,17 @@ const CostAnalytics = () => {
       default: return 'secondary';
     }
   };
+
+  // Show resource cost history if selected
+  if (showResourceHistory && selectedResource) {
+    return (
+      <ResourceCostHistory
+        resourceId={selectedResource.resource_id}
+        accountId={selectedResource.account_id}
+        onClose={closeResourceHistory}
+      />
+    );
+  }
 
   return (
     <CContainer fluid>
@@ -337,6 +381,48 @@ const CostAnalytics = () => {
                         onClick={() => setSelectedAnomaly(anomaly)}
                       >
                         Analyze
+                      </CButton>
+                    </CTableDataCell>
+                  </CTableRow>
+                ))}
+              </CTableBody>
+            </CTable>
+          </CCardBody>
+        </CCard>
+      )}
+
+      {/* Resource Costs Table */}
+      {resourceCosts.length > 0 && (
+        <CCard className="mb-4">
+          <CCardHeader>
+            <CCardTitle>Resource Costs</CCardTitle>
+            <small className="text-muted">Click on a resource to view detailed cost history</small>
+          </CCardHeader>
+          <CCardBody>
+            <CTable hover>
+              <CTableHead>
+                <CTableRow>
+                  <CTableHeaderCell>Resource ID</CTableHeaderCell>
+                  <CTableHeaderCell>Service</CTableHeaderCell>
+                  <CTableHeaderCell>Region</CTableHeaderCell>
+                  <CTableHeaderCell>Total Cost</CTableHeaderCell>
+                  <CTableHeaderCell>Actions</CTableHeaderCell>
+                </CTableRow>
+              </CTableHead>
+              <CTableBody>
+                {resourceCosts.map((resource, index) => (
+                  <CTableRow key={index}>
+                    <CTableDataCell>{resource.resource_id}</CTableDataCell>
+                    <CTableDataCell>{resource.service_name}</CTableDataCell>
+                    <CTableDataCell>{resource.region}</CTableDataCell>
+                    <CTableDataCell>${resource.total_cost?.toFixed(2)}</CTableDataCell>
+                    <CTableDataCell>
+                      <CButton
+                        size="sm"
+                        color="primary"
+                        onClick={() => viewResourceHistory(resource)}
+                      >
+                        View History
                       </CButton>
                     </CTableDataCell>
                   </CTableRow>
