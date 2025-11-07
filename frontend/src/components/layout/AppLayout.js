@@ -68,6 +68,24 @@ const AppLayout = () => {
             <CNavLink as={Link} to="/cost-analytics">Cost Analytics</CNavLink>
           </CNavItem>
           <CNavItem>
+            <CNavLink as={Link} to="/performance-analysis">Performance Analysis</CNavLink>
+          </CNavItem>
+          <CNavItem>
+            <CNavLink as={Link} to="/aurora-clusters">Aurora Clusters</CNavLink>
+          </CNavItem>
+          <CNavItem>
+            <CNavLink as={Link} to="/slow-queries">Slow Query Analysis</CNavLink>
+          </CNavItem>
+          <CNavItem>
+            <CNavLink as={Link} to="/query-fingerprints">Query Fingerprints</CNavLink>
+          </CNavItem>
+          <CNavItem>
+            <CNavLink as={Link} to="/explain-plans">Explain Plans</CNavLink>
+          </CNavItem>
+          <CNavItem>
+            <CNavLink as={Link} to="/ai-analysis">AI Analysis</CNavLink>
+          </CNavItem>
+          <CNavItem>
             <CNavLink as={Link} to="/chaos">Chaos Engineering</CNavLink>
           </CNavItem>
           <CNavItem>

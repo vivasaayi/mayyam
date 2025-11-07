@@ -377,3 +377,301 @@ export const listAwsRegions = async ({ accountId = null, profile = null, region 
 };
 
 export default api;
+
+// Performance Analysis API functions
+
+// Aurora Clusters
+export const getAuroraClusters = async () => {
+  try {
+    const response = await api.get('/api/aurora-clusters');
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching Aurora clusters:', error);
+    throw error;
+  }
+};
+
+export const getAuroraCluster = async (id) => {
+  try {
+    const response = await api.get(`/api/aurora-clusters/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching Aurora cluster:', error);
+    throw error;
+  }
+};
+
+export const createAuroraCluster = async (clusterData) => {
+  try {
+    const response = await api.post('/api/aurora-clusters', clusterData);
+    return response.data;
+  } catch (error) {
+    console.error('Error creating Aurora cluster:', error);
+    throw error;
+  }
+};
+
+export const updateAuroraCluster = async (id, clusterData) => {
+  try {
+    const response = await api.put(`/api/aurora-clusters/${id}`, clusterData);
+    return response.data;
+  } catch (error) {
+    console.error('Error updating Aurora cluster:', error);
+    throw error;
+  }
+};
+
+export const deleteAuroraCluster = async (id) => {
+  try {
+    const response = await api.delete(`/api/aurora-clusters/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error deleting Aurora cluster:', error);
+    throw error;
+  }
+};
+
+export const testAuroraClusterConnection = async (id) => {
+  try {
+    const response = await api.post(`/api/aurora-clusters/${id}/test-connection`);
+    return response.data;
+  } catch (error) {
+    console.error('Error testing Aurora cluster connection:', error);
+    throw error;
+  }
+};
+
+// Slow Query Events
+export const getSlowQueryEvents = async (params = {}) => {
+  try {
+    const response = await api.get('/api/slow-queries', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching slow query events:', error);
+    throw error;
+  }
+};
+
+export const getSlowQueryEvent = async (id) => {
+  try {
+    const response = await api.get(`/api/slow-queries/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching slow query event:', error);
+    throw error;
+  }
+};
+
+export const analyzeSlowQueries = async (clusterId, params = {}) => {
+  try {
+    const response = await api.post(`/api/slow-queries/analyze/${clusterId}`, params);
+    return response.data;
+  } catch (error) {
+    console.error('Error analyzing slow queries:', error);
+    throw error;
+  }
+};
+
+export const getSlowQueryStatistics = async (clusterId, params = {}) => {
+  try {
+    const response = await api.get(`/api/slow-queries/statistics/${clusterId}`, { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching slow query statistics:', error);
+    throw error;
+  }
+};
+
+// Query Fingerprints
+export const getQueryFingerprints = async (params = {}) => {
+  try {
+    const response = await api.get('/api/query-fingerprints', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching query fingerprints:', error);
+    throw error;
+  }
+};
+
+export const getQueryFingerprint = async (id) => {
+  try {
+    const response = await api.get(`/api/query-fingerprints/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching query fingerprint:', error);
+    throw error;
+  }
+};
+
+export const getFingerprintAnalysis = async (id) => {
+  try {
+    const response = await api.get(`/api/query-fingerprints/${id}/analysis`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching fingerprint analysis:', error);
+    throw error;
+  }
+};
+
+export const getFingerprintPatterns = async (clusterId) => {
+  try {
+    const response = await api.get(`/api/query-fingerprints/patterns/${clusterId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching fingerprint patterns:', error);
+    throw error;
+  }
+};
+
+// Explain Plans
+export const getExplainPlans = async (params = {}) => {
+  try {
+    const response = await api.get('/api/explain-plans', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching explain plans:', error);
+    throw error;
+  }
+};
+
+export const getExplainPlan = async (id) => {
+  try {
+    const response = await api.get(`/api/explain-plans/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching explain plan:', error);
+    throw error;
+  }
+};
+
+export const createExplainPlan = async (planData) => {
+  try {
+    const response = await api.post('/api/explain-plans', planData);
+    return response.data;
+  } catch (error) {
+    console.error('Error creating explain plan:', error);
+    throw error;
+  }
+};
+
+export const compareExplainPlans = async (planIds) => {
+  try {
+    const response = await api.post('/api/explain-plans/compare', { plan_ids: planIds });
+    return response.data;
+  } catch (error) {
+    console.error('Error comparing explain plans:', error);
+    throw error;
+  }
+};
+
+export const getPlanOptimization = async (id) => {
+  try {
+    const response = await api.get(`/api/explain-plans/${id}/optimization`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching plan optimization:', error);
+    throw error;
+  }
+};
+
+// AI Analysis
+export const getAiAnalyses = async (params = {}) => {
+  try {
+    const response = await api.get('/api/ai-analysis', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching AI analyses:', error);
+    throw error;
+  }
+};
+
+export const getAiAnalysis = async (id) => {
+  try {
+    const response = await api.get(`/api/ai-analysis/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching AI analysis:', error);
+    throw error;
+  }
+};
+
+export const generateAiAnalysis = async (analysisData) => {
+  try {
+    const response = await api.post('/api/ai-analysis/generate', analysisData);
+    return response.data;
+  } catch (error) {
+    console.error('Error generating AI analysis:', error);
+    throw error;
+  }
+};
+
+export const getAiInsights = async (clusterId, params = {}) => {
+  try {
+    const response = await api.get(`/api/ai-analysis/insights/${clusterId}`, { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching AI insights:', error);
+    throw error;
+  }
+};
+
+// Performance Monitoring
+export const getPerformanceSnapshots = async (params = {}) => {
+  try {
+    const response = await api.get('/api/performance-monitoring/snapshots', { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching performance snapshots:', error);
+    throw error;
+  }
+};
+
+export const getPerformanceSnapshot = async (id) => {
+  try {
+    const response = await api.get(`/api/performance-monitoring/snapshots/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching performance snapshot:', error);
+    throw error;
+  }
+};
+
+export const createPerformanceSnapshot = async (snapshotData) => {
+  try {
+    const response = await api.post('/api/performance-monitoring/snapshots', snapshotData);
+    return response.data;
+  } catch (error) {
+    console.error('Error creating performance snapshot:', error);
+    throw error;
+  }
+};
+
+export const getPerformanceHealthScore = async (clusterId) => {
+  try {
+    const response = await api.get(`/api/performance-monitoring/health/${clusterId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching performance health score:', error);
+    throw error;
+  }
+};
+
+export const getPerformanceTrends = async (clusterId, params = {}) => {
+  try {
+    const response = await api.get(`/api/performance-monitoring/trends/${clusterId}`, { params });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching performance trends:', error);
+    throw error;
+  }
+};
+
+export const getPerformanceAlerts = async (clusterId) => {
+  try {
+    const response = await api.get(`/api/performance-monitoring/alerts/${clusterId}`);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching performance alerts:', error);
+    throw error;
+  }
+};
