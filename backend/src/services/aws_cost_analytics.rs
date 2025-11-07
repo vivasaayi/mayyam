@@ -13,7 +13,6 @@ use uuid::Uuid;
 
 use crate::errors::AppError;
 use crate::models::{
-
     aws_cost_anomalies::ActiveModel as CostAnomalyActiveModel,
     aws_cost_data::ActiveModel as CostDataActiveModel,
     aws_cost_insights::ActiveModel as CostInsightActiveModel,
@@ -21,9 +20,9 @@ use crate::models::{
 };
 use crate::repositories::aws_account::AwsAccountRepository;
 use crate::repositories::cost_analytics::CostAnalyticsRepository;
+use crate::repositories::llm_provider::LlmProviderRepository;
 use crate::services::aws::AwsService;
 use crate::services::llm::LlmIntegrationService;
-use crate::repositories::llm_provider::LlmProviderRepository;
 
 #[derive(Debug, Clone)]
 pub struct CostMetrics {
@@ -278,8 +277,8 @@ impl AdvancedAnomalyMetrics {
 
         let method_component = (methods_hit as f64 / 4.0).min(1.0);
         let data_component = (metrics.data_points as f64 / 6.0).min(1.0);
-        metrics.confidence = ((method_component * 0.6) + (data_component * 0.4))
-            * composite.clamp(0.25, 1.0);
+        metrics.confidence =
+            ((method_component * 0.6) + (data_component * 0.4)) * composite.clamp(0.25, 1.0);
         metrics.confidence = metrics.confidence.clamp(0.0, 1.0);
 
         metrics
@@ -427,7 +426,10 @@ impl AwsCostAnalyticsService {
         let aws_account_dto = crate::models::aws_account::AwsAccountDto::from(aws_account);
 
         // Create AWS SDK config for this account
-        let aws_config = self.aws_service.get_aws_sdk_config(&aws_account_dto).await?;
+        let aws_config = self
+            .aws_service
+            .get_aws_sdk_config(&aws_account_dto)
+            .await?;
         let cost_explorer_client = CostExplorerClient::new(&aws_config);
 
         // Create time period
@@ -457,15 +459,15 @@ impl AwsCostAnalyticsService {
                     .build(),
                 GroupDefinition::builder()
                     .r#type(GroupDefinitionType::Dimension)
-                    .key("AZ")  // Availability Zone
+                    .key("AZ") // Availability Zone
                     .build(),
                 GroupDefinition::builder()
                     .r#type(GroupDefinitionType::Dimension)
-                    .key("INSTANCE_TYPE")  // For EC2 instances
+                    .key("INSTANCE_TYPE") // For EC2 instances
                     .build(),
                 GroupDefinition::builder()
                     .r#type(GroupDefinitionType::Dimension)
-                    .key("RESOURCE_ID")  // Individual resource identifier
+                    .key("RESOURCE_ID") // Individual resource identifier
                     .build(),
                 GroupDefinition::builder()
                     .r#type(GroupDefinitionType::Dimension)
@@ -494,7 +496,7 @@ impl AwsCostAnalyticsService {
                 if let Some(groups) = time_result.groups {
                     for group in groups {
                         let keys = group.keys.unwrap_or_default();
-                        
+
                         // Extract dimensions: SERVICE, AZ, INSTANCE_TYPE, RESOURCE_ID, USAGE_TYPE
                         let service_name = keys.get(0).cloned().unwrap_or_default();
                         let availability_zone = keys.get(1).cloned();
@@ -550,9 +552,10 @@ impl AwsCostAnalyticsService {
                                 ),
                                 usage_unit: ActiveValue::Set(usage_unit),
                                 currency: ActiveValue::Set("USD".to_string()),
-                                tags: ActiveValue::Set(resource_id.map(|rid| {
-                                    serde_json::json!({ "resource_id": rid })
-                                })), // Store resource_id in tags
+                                tags: ActiveValue::Set(
+                                    resource_id
+                                        .map(|rid| serde_json::json!({ "resource_id": rid })),
+                                ), // Store resource_id in tags
                                 created_at: ActiveValue::Set(Utc::now().into()),
                                 updated_at: ActiveValue::Set(Utc::now().into()),
                             };
@@ -909,7 +912,10 @@ Respond in JSON format with the following structure:
         // Get the first active LLM provider
         let providers = self.llm_provider_repo.find_active().await?;
         if providers.is_empty() {
-            tracing::warn!("No active LLM providers found, skipping insight generation for anomaly {}", anomaly.id);
+            tracing::warn!(
+                "No active LLM providers found, skipping insight generation for anomaly {}",
+                anomaly.id
+            );
             return Ok(());
         }
         let provider = &providers[0];
@@ -922,7 +928,11 @@ Respond in JSON format with the following structure:
             variables: None,
         };
 
-        match self.llm_service.generate_response(provider.id, llm_request).await {
+        match self
+            .llm_service
+            .generate_response(provider.id, llm_request)
+            .await
+        {
             Ok(response) => {
                 tracing::info!(
                     "Generated LLM insights for anomaly {} in service {}: {}",
@@ -945,16 +955,20 @@ Respond in JSON format with the following structure:
                         llm_model: ActiveValue::Set(response.model),
                         llm_response: ActiveValue::Set(response.content.clone()),
                         summary: ActiveValue::Set(
-                            insights.get("summary")
+                            insights
+                                .get("summary")
                                 .and_then(|v| v.as_str())
-                                .map(|s| s.to_string())
+                                .map(|s| s.to_string()),
                         ),
                         recommendations: ActiveValue::Set(
-                            insights.get("recommendations")
+                            insights
+                                .get("recommendations")
                                 .and_then(|v| v.as_array())
-                                .map(|arr| serde_json::Value::Array(arr.clone()))
+                                .map(|arr| serde_json::Value::Array(arr.clone())),
                         ),
-                        confidence_score: ActiveValue::Set(Some(Decimal::from(8) / Decimal::from(10))), // Default confidence
+                        confidence_score: ActiveValue::Set(Some(
+                            Decimal::from(8) / Decimal::from(10),
+                        )), // Default confidence
                         tokens_used: ActiveValue::Set(response.tokens_used.map(|t| t as i32)),
                         processing_time_ms: ActiveValue::Set(None), // Not available in LlmResponse
                         created_at: ActiveValue::Set(Utc::now().into()),
@@ -1036,17 +1050,21 @@ Respond in JSON format with the following structure:
         service_filter: Option<&str>,
     ) -> Result<serde_json::Value, AppError> {
         // Get historical data (last 12 months)
-        let historical_data = self.repository
+        let historical_data = self
+            .repository
             .get_monthly_aggregates_by_account(account_id, Some(12))
             .await?;
 
         if historical_data.is_empty() {
-            return Err(AppError::NotFound("Insufficient historical data for forecasting".to_string()));
+            return Err(AppError::NotFound(
+                "Insufficient historical data for forecasting".to_string(),
+            ));
         }
 
         // Filter by service if specified
         let filtered_data: Vec<_> = if let Some(service) = service_filter {
-            historical_data.into_iter()
+            historical_data
+                .into_iter()
                 .filter(|agg| agg.service_name == service)
                 .collect()
         } else {
@@ -1054,7 +1072,10 @@ Respond in JSON format with the following structure:
         };
 
         if filtered_data.is_empty() {
-            return Err(AppError::NotFound(format!("No data found for service: {}", service_filter.unwrap_or("all"))));
+            return Err(AppError::NotFound(format!(
+                "No data found for service: {}",
+                service_filter.unwrap_or("all")
+            )));
         }
 
         // Sort by date
@@ -1067,7 +1088,13 @@ Respond in JSON format with the following structure:
 
         for (i, data_point) in sorted_data.iter().enumerate() {
             x_values.push(i as f64);
-            y_values.push(data_point.total_cost.to_string().parse::<f64>().unwrap_or(0.0));
+            y_values.push(
+                data_point
+                    .total_cost
+                    .to_string()
+                    .parse::<f64>()
+                    .unwrap_or(0.0),
+            );
         }
 
         // Calculate linear regression
@@ -1095,7 +1122,9 @@ Respond in JSON format with the following structure:
         let n = x_values.len() as f64;
 
         if n < 2.0 {
-            return Err(AppError::BadRequest("Need at least 2 data points for forecasting".to_string()));
+            return Err(AppError::BadRequest(
+                "Need at least 2 data points for forecasting".to_string(),
+            ));
         }
 
         // Calculate means
@@ -1112,7 +1141,9 @@ Respond in JSON format with the following structure:
         }
 
         if denominator == 0.0 {
-            return Err(AppError::BadRequest("Cannot calculate regression: division by zero".to_string()));
+            return Err(AppError::BadRequest(
+                "Cannot calculate regression: division by zero".to_string(),
+            ));
         }
 
         let slope = numerator / denominator;
@@ -1203,13 +1234,15 @@ Respond in JSON format with the following structure:
         // Calculate volatility (standard deviation of changes)
         let mut changes = Vec::new();
         for i in 1..y_values.len() {
-            changes.push(y_values[i] - y_values[i-1]);
+            changes.push(y_values[i] - y_values[i - 1]);
         }
 
         let avg_change = changes.iter().sum::<f64>() / changes.len() as f64;
-        let variance = changes.iter()
+        let variance = changes
+            .iter()
             .map(|change| (change - avg_change).powi(2))
-            .sum::<f64>() / changes.len() as f64;
+            .sum::<f64>()
+            / changes.len() as f64;
         let volatility = variance.sqrt();
 
         let trend_direction = if average_change_per_period > 0.0 {

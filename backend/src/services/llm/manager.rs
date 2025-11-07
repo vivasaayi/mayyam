@@ -10,7 +10,9 @@ use crate::services::llm::formatting::{FormattedResponse, ResponseFormatter};
 use crate::services::llm::interface::{
     LlmProvider, LlmRequestBuilder, UnifiedLlmRequest, UnifiedLlmResponse,
 };
-use crate::services::llm::providers::{AnthropicProvider, DeepSeekProvider, OpenAIProvider};
+use crate::services::llm::providers::{
+    AnthropicProvider, DeepSeekProvider, LocalChatGptProvider, OpenAIProvider,
+};
 
 /// Unified LLM Manager - The main interface for all LLM operations
 #[derive(Debug)]
@@ -126,6 +128,22 @@ impl UnifiedLlmManager {
                         }
                         self.register_provider(db_provider.id.to_string(), Arc::new(provider));
                     }
+                }
+                "local" | "ollama" => {
+                    let base_url = db_provider
+                        .base_url
+                        .clone()
+                        .unwrap_or_else(|| {
+                            tracing::warn!(
+                                "Local/Ollama provider '{}' missing base URL; defaulting to http://localhost:11434",
+                                db_provider.name
+                            );
+                            "http://localhost:11434".to_string()
+                        });
+
+                    let provider =
+                        LocalChatGptProvider::new(base_url, db_provider.model_name.clone());
+                    self.register_provider(db_provider.id.to_string(), Arc::new(provider));
                 }
                 _ => {
                     // Skip unsupported provider types

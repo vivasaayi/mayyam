@@ -2,6 +2,7 @@ pub mod client;
 pub mod configmaps_service;
 pub mod daemon_sets;
 pub mod deployments_service;
+pub mod metrics_service;
 pub mod namespaces_service;
 pub mod nodes_service;
 pub mod persistent_volume_claims_service;
@@ -36,6 +37,7 @@ pub mod prelude {
     pub use super::ingress_service::IngressService;
     pub use super::jobs_service::JobsService;
     pub use super::limit_ranges_service::LimitRangesService;
+    pub use super::metrics_service::MetricsService;
     pub use super::namespaces_service::NamespacesService;
     pub use super::network_policies_service::NetworkPoliciesService;
     pub use super::nodes_ops_service::NodeOpsService;

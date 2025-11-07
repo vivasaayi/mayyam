@@ -52,6 +52,7 @@ use crate::services::kubernetes::hpa_service::HorizontalPodAutoscalerService;
 use crate::services::kubernetes::ingress_service::IngressService;
 use crate::services::kubernetes::jobs_service::JobsService;
 use crate::services::kubernetes::limit_ranges_service::LimitRangesService;
+use crate::services::kubernetes::metrics_service::MetricsService;
 use crate::services::kubernetes::network_policies_service::NetworkPoliciesService;
 use crate::services::kubernetes::nodes_ops_service::NodeOpsService;
 use crate::services::kubernetes::pdb_service::PodDisruptionBudgetsService;
@@ -209,6 +210,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
         Arc::new(crate::services::kubernetes::configmaps_service::ConfigMapsService::new());
     let secrets_service =
         Arc::new(crate::services::kubernetes::secrets_service::SecretsService::new());
+    let metrics_service = Arc::new(MetricsService::new());
     let jobs_service = Arc::new(JobsService::new());
     let cronjobs_service = Arc::new(CronJobsService::new());
     let ingress_service = Arc::new(IngressService::new());
@@ -318,6 +320,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             .app_data(web::Data::new(persistent_volumes_service.clone()))
             .app_data(web::Data::new(configmaps_service.clone()))
             .app_data(web::Data::new(secrets_service.clone()))
+            .app_data(web::Data::new(metrics_service.clone()))
             .app_data(web::Data::new(jobs_service.clone()))
             .app_data(web::Data::new(cronjobs_service.clone()))
             .app_data(web::Data::new(ingress_service.clone()))
@@ -389,7 +392,11 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
                 ));
 
                 info!("Registering AWS Cost Analytics routes");
-                routes::cost_analytics::configure_routes(cfg_param, aws_account_repo.clone(), aws_resource_repo.clone());
+                routes::cost_analytics::configure_routes(
+                    cfg_param,
+                    aws_account_repo.clone(),
+                    aws_resource_repo.clone(),
+                );
 
                 info!("Registering other general routes");
                 // Pass Arc<DatabaseConnection> to the general routes::configure function

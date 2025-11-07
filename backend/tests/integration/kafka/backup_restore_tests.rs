@@ -15,10 +15,7 @@ fn cluster_id() -> String {
 async fn create_topic(harness: &TestHarness, topic_name: &str) {
     let response = harness
         .client()
-        .post(&harness.build_url(&format!(
-            "/api/kafka/clusters/{}/topics",
-            cluster_id()
-        )))
+        .post(&harness.build_url(&format!("/api/kafka/clusters/{}/topics", cluster_id())))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .json(&json!({
             "name": topic_name,
@@ -42,7 +39,8 @@ async fn delete_topic(harness: &TestHarness, topic_name: &str) {
         .client()
         .delete(&harness.build_url(&format!(
             "/api/kafka/clusters/{}/topics/{}",
-            cluster_id(), topic_name
+            cluster_id(),
+            topic_name
         )))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .send()
@@ -62,7 +60,8 @@ async fn produce_messages(harness: &TestHarness, topic_name: &str, messages: Vec
             .client()
             .post(&harness.build_url(&format!(
                 "/api/kafka/clusters/{}/topics/{}/produce",
-                cluster_id(), topic_name
+                cluster_id(),
+                topic_name
             )))
             .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .json(&message)
@@ -121,10 +120,7 @@ async fn test_backup_topic_messages() {
 
     let backup_response = harness
         .client()
-        .post(&harness.build_url(&format!(
-            "/api/kafka/clusters/{}/backup",
-            cluster_id()
-        )))
+        .post(&harness.build_url(&format!("/api/kafka/clusters/{}/backup", cluster_id())))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .json(&backup_request)
         .send()
@@ -197,10 +193,7 @@ async fn test_backup_and_restore_topic_messages() {
 
     let backup_response = harness
         .client()
-        .post(&harness.build_url(&format!(
-            "/api/kafka/clusters/{}/backup",
-            cluster_id()
-        )))
+        .post(&harness.build_url(&format!("/api/kafka/clusters/{}/backup", cluster_id())))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .json(&backup_request)
         .send()
@@ -228,10 +221,7 @@ async fn test_backup_and_restore_topic_messages() {
 
     let restore_response = harness
         .client()
-        .post(&harness.build_url(&format!(
-            "/api/kafka/clusters/{}/restore",
-            cluster_id()
-        )))
+        .post(&harness.build_url(&format!("/api/kafka/clusters/{}/restore", cluster_id())))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .json(&restore_request)
         .send()
@@ -265,7 +255,8 @@ async fn test_backup_and_restore_topic_messages() {
         .client()
         .post(&harness.build_url(&format!(
             "/api/kafka/clusters/{}/topics/{}/consume",
-            cluster_id(), target_topic
+            cluster_id(),
+            target_topic
         )))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .json(&consume_payload)
@@ -280,10 +271,15 @@ async fn test_backup_and_restore_topic_messages() {
         .await
         .expect("invalid consume response");
 
-    assert_eq!(consumed_messages.len(), 2, "expected 2 messages in restored topic");
+    assert_eq!(
+        consumed_messages.len(),
+        2,
+        "expected 2 messages in restored topic"
+    );
 
     // Verify message content
-    let keys: Vec<&str> = consumed_messages.iter()
+    let keys: Vec<&str> = consumed_messages
+        .iter()
         .map(|msg| msg["key"].as_str().unwrap())
         .collect();
 
@@ -309,13 +305,15 @@ async fn test_backup_with_filters() {
     create_topic(&harness, &topic_name).await;
 
     // Produce multiple messages
-    let messages = (1..=10).map(|i| {
-        json!({
-            "key": format!("key{}", i),
-            "value": format!("{{\"id\":{},\"data\":\"message {}\"}}", i, i),
-            "headers": {"batch": "test"}
+    let messages = (1..=10)
+        .map(|i| {
+            json!({
+                "key": format!("key{}", i),
+                "value": format!("{{\"id\":{},\"data\":\"message {}\"}}", i, i),
+                "headers": {"batch": "test"}
+            })
         })
-    }).collect::<Vec<_>>();
+        .collect::<Vec<_>>();
 
     produce_messages(&harness, &topic_name, messages).await;
 
@@ -332,10 +330,7 @@ async fn test_backup_with_filters() {
 
     let backup_response = harness
         .client()
-        .post(&harness.build_url(&format!(
-            "/api/kafka/clusters/{}/backup",
-            cluster_id()
-        )))
+        .post(&harness.build_url(&format!("/api/kafka/clusters/{}/backup", cluster_id())))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .json(&backup_request)
         .send()
@@ -350,7 +345,10 @@ async fn test_backup_with_filters() {
         .expect("invalid backup response");
 
     let total_messages = backup_result["total_messages"].as_u64().unwrap();
-    assert_eq!(total_messages, 5, "expected only 5 messages due to max_messages limit");
+    assert_eq!(
+        total_messages, 5,
+        "expected only 5 messages due to max_messages limit"
+    );
 
     // Clean up
     delete_topic(&harness, &topic_name).await;

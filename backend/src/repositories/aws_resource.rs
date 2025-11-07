@@ -1,7 +1,8 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait, IntoActiveModel,
-    ModelTrait, Order, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait, Set,
+    ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait,
+    IntoActiveModel, ModelTrait, Order, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
+    QueryTrait, Set,
 };
 use std::sync::Arc;
 use tracing::{error, info};
@@ -297,10 +298,7 @@ impl AwsResourceRepository {
                 .unwrap_or_default()
         );
 
-        let statement = sea_orm::Statement::from_string(
-            sea_orm::DatabaseBackend::Postgres,
-            query,
-        );
+        let statement = sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres, query);
 
         let query_result = self
             .db
@@ -310,9 +308,7 @@ impl AwsResourceRepository {
 
         let mut results = Vec::new();
         for row in query_result {
-            let date: String = row
-                .try_get("", "date")
-                .map_err(|e| AppError::Database(e))?;
+            let date: String = row.try_get("", "date").map_err(|e| AppError::Database(e))?;
             let count: i64 = row
                 .try_get("", "count")
                 .map_err(|e| AppError::Database(e))?;
@@ -398,10 +394,7 @@ impl AwsResourceRepository {
             threshold_percentage
         );
 
-        let statement = sea_orm::Statement::from_string(
-            sea_orm::DatabaseBackend::Postgres,
-            query,
-        );
+        let statement = sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres, query);
 
         let query_result = self
             .db
@@ -467,10 +460,7 @@ impl AwsResourceRepository {
             group_by_clause
         );
 
-        let statement = sea_orm::Statement::from_string(
-            sea_orm::DatabaseBackend::Postgres,
-            query,
-        );
+        let statement = sea_orm::Statement::from_string(sea_orm::DatabaseBackend::Postgres, query);
 
         let query_result = self
             .db
@@ -480,18 +470,10 @@ impl AwsResourceRepository {
 
         let mut results = Vec::new();
         for row in query_result {
-            let period: String = row
-                .try_get::<String>("", "period")
-                .unwrap_or_default();
-            let total_cost: f64 = row
-                .try_get::<f64>("", "total_cost")
-                .unwrap_or(0.0);
-            let avg_daily_cost: f64 = row
-                .try_get::<f64>("", "avg_daily_cost")
-                .unwrap_or(0.0);
-            let data_points: i64 = row
-                .try_get::<i64>("", "data_points")
-                .unwrap_or(0);
+            let period: String = row.try_get::<String>("", "period").unwrap_or_default();
+            let total_cost: f64 = row.try_get::<f64>("", "total_cost").unwrap_or(0.0);
+            let avg_daily_cost: f64 = row.try_get::<f64>("", "avg_daily_cost").unwrap_or(0.0);
+            let data_points: i64 = row.try_get::<i64>("", "data_points").unwrap_or(0);
 
             let result = serde_json::json!({
                 "period": period,

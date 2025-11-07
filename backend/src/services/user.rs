@@ -30,7 +30,10 @@ impl UserService {
 
     pub async fn create_user(&self, user_data: &CreateUserDto) -> Result<UserModel, AppError> {
         if user_data.password.len() < 8 {
-            tracing::warn!("Unable to create user: {}", "Password must be at least 8 characters long");
+            tracing::warn!(
+                "Unable to create user: {}",
+                "Password must be at least 8 characters long"
+            );
             return Err(AppError::Validation(
                 "Password must be at least 8 characters long".to_string(),
             ));
@@ -57,7 +60,10 @@ impl UserService {
 
         if let Some(password) = &user_data.password {
             if password.len() < 8 {
-                tracing::warn!("Unable to update user: {}", "Password must be at least 8 characters long");
+                tracing::warn!(
+                    "Unable to update user: {}",
+                    "Password must be at least 8 characters long"
+                );
                 return Err(AppError::Validation(
                     "Password must be at least 8 characters long".to_string(),
                 ));

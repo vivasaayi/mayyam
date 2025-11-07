@@ -13,6 +13,10 @@ use aws_credential_types::Credentials as StaticCredentials;
 use aws_sdk_cloudwatch::Client as CloudWatchClient;
 use aws_sdk_cloudwatchlogs::Client as CloudWatchLogsClient;
 use aws_sdk_costexplorer::Client as CostExplorerClient;
+use aws_sdk_apigateway::Client as ApiGatewayClient;
+use aws_sdk_cloudfront::Client as CloudFrontClient;
+use aws_sdk_elb::Client as ElbClient;
+use aws_sdk_elbv2::Client as Elbv2Client;
 use aws_sdk_dynamodb::Client as DynamoDbClient;
 use aws_sdk_ec2::Client as Ec2Client;
 use aws_sdk_elasticache::Client as ElasticacheClient;
@@ -418,5 +422,37 @@ impl AwsClientFactory for AwsService {
     ) -> Result<StsClient, AppError> {
         let config = self.get_aws_sdk_config(aws_account_dto).await?;
         Ok(StsClient::new(&config))
+    }
+
+    async fn create_elbv2_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<Elbv2Client, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(Elbv2Client::new(&config))
+    }
+
+    async fn create_elb_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<ElbClient, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(ElbClient::new(&config))
+    }
+
+    async fn create_cloudfront_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<CloudFrontClient, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(CloudFrontClient::new(&config))
+    }
+
+    async fn create_api_gateway_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<ApiGatewayClient, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(ApiGatewayClient::new(&config))
     }
 }

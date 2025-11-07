@@ -45,6 +45,68 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             "/accounts/{account_id}/regions/{region}/dynamodb",
             web::get().to(cloud::list_dynamodb_tables),
         )
+        // VPC resources
+        .route(
+            "/accounts/{account_id}/regions/{region}/vpcs",
+            web::get().to(cloud::list_vpcs),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/subnets",
+            web::get().to(cloud::list_subnets),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/security-groups",
+            web::get().to(cloud::list_security_groups),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/internet-gateways",
+            web::get().to(cloud::list_internet_gateways),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/nat-gateways",
+            web::get().to(cloud::list_nat_gateways),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/route-tables",
+            web::get().to(cloud::list_route_tables),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/network-acls",
+            web::get().to(cloud::list_network_acls),
+        )
+        // Load Balancing resources
+        .route(
+            "/accounts/{account_id}/regions/{region}/albs",
+            web::get().to(cloud::list_albs),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/nlbs",
+            web::get().to(cloud::list_nlbs),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/elbs",
+            web::get().to(cloud::list_elbs),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/cloudfront",
+            web::get().to(cloud::list_cloudfront_distributions),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/api-gateway/rest-apis",
+            web::get().to(cloud::list_api_gateway_rest_apis),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/api-gateway/stages",
+            web::get().to(cloud::list_api_gateway_stages),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/api-gateway/resources",
+            web::get().to(cloud::list_api_gateway_resources),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/api-gateway/methods",
+            web::get().to(cloud::list_api_gateway_methods),
+        )
         // CloudWatch metrics
         .route(
             "/profiles/{profile}/regions/{region}/metrics/{resource_type}/{resource_id}",

@@ -188,11 +188,16 @@ pub async fn create_cluster(
         sasl_username: cluster.sasl_username.clone(),
         sasl_password: cluster.sasl_password.clone(),
         sasl_mechanism: cluster.sasl_mechanism.clone(),
-        security_protocol: cluster.security_protocol.clone().unwrap_or_else(|| "PLAINTEXT".to_string()),
+        security_protocol: cluster
+            .security_protocol
+            .clone()
+            .unwrap_or_else(|| "PLAINTEXT".to_string()),
     };
 
     // Create the cluster using the service
-    let response = kafka_service.create_cluster(&create_request, &claims.sub).await?;
+    let response = kafka_service
+        .create_cluster(&create_request, &claims.sub)
+        .await?;
 
     Ok(HttpResponse::Created().json(response))
 }

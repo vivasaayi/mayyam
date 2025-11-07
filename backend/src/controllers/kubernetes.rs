@@ -334,6 +334,83 @@ pub async fn get_pod_events_controller(
 }
 
 #[derive(Deserialize)]
+pub struct PodLogsQuery {
+    pub container: Option<String>,
+    #[serde(default)]
+    pub previous: bool,
+    pub tail_lines: Option<i64>,
+}
+
+pub async fn get_pod_logs_controller(
+    claims: web::ReqData<Claims>,
+    db: web::Data<Arc<DatabaseConnection>>,
+    path: web::Path<(String, String, String)>, // (cluster_id, namespace_name, pod_name)
+    query: web::Query<PodLogsQuery>,
+    pod_service: web::Data<Arc<PodService>>,
+) -> Result<impl Responder, AppError> {
+    let (cluster_id, namespace_name, pod_name) = path.into_inner();
+    let query = query.into_inner();
+    debug!(
+        target: "mayyam::controllers::kubernetes",
+        user_id = %claims.username,
+        %cluster_id,
+        %namespace_name,
+        %pod_name,
+        container = ?query.container,
+        previous = query.previous,
+        tail_lines = ?query.tail_lines,
+        "Fetching pod logs"
+    );
+
+    let cluster_config = get_cluster_config_by_id(db.get_ref().as_ref(), &cluster_id).await?;
+    let tail_lines = query.tail_lines.map(|v| v.clamp(1, 5000));
+    let logs = pod_service
+        .get_pod_logs(
+            &cluster_config,
+            &namespace_name,
+            &pod_name,
+            query.container.as_deref(),
+            query.previous,
+            tail_lines,
+        )
+        .await?;
+
+    Ok(HttpResponse::Ok()
+        .content_type("text/plain; charset=utf-8")
+        .body(logs))
+}
+
+#[derive(Deserialize)]
+pub struct MetricsQuery {
+    pub namespace: Option<String>,
+}
+
+pub async fn get_cluster_metrics_controller(
+    claims: web::ReqData<Claims>,
+    db: web::Data<Arc<DatabaseConnection>>,
+    path: web::Path<String>,
+    query: web::Query<MetricsQuery>,
+    metrics_service: web::Data<Arc<MetricsService>>,
+) -> Result<impl Responder, AppError> {
+    let cluster_id = path.into_inner();
+    let query = query.into_inner();
+    let namespace_ref = query.namespace.as_deref();
+    debug!(
+        target: "mayyam::controllers::kubernetes",
+        user_id = %claims.username,
+        %cluster_id,
+        namespace = ?namespace_ref,
+        "Collecting cluster metrics"
+    );
+
+    let cluster_config = get_cluster_config_by_id(db.get_ref().as_ref(), &cluster_id).await?;
+    let overview = metrics_service
+        .get_cluster_metrics(&cluster_config, namespace_ref)
+        .await?;
+    Ok(HttpResponse::Ok().json(overview))
+}
+
+#[derive(Deserialize)]
 pub struct ExecQuery {
     pub command: String,
     pub container: Option<String>,

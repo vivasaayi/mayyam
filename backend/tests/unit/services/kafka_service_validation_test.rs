@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use mayyam::config::Config;
-use mayyam::models::cluster::KafkaClusterConfig;
 use mayyam::errors::AppError;
+use mayyam::models::cluster::KafkaClusterConfig;
 use mayyam::repositories::cluster::ClusterRepository;
 use mayyam::services::kafka::KafkaService;
 use sea_orm::Database;

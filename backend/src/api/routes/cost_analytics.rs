@@ -41,16 +41,34 @@ pub fn configure_routes(
                 web::post().to(cost_analytics::compute_monthly_aggregates),
             )
             .route("/summary", web::get().to(cost_analytics::get_cost_summary))
-            .route("/resources", web::get().to(cost_analytics::get_resource_costs))
-            .route("/new-resources", web::get().to(cost_analytics::get_new_resources))
-            .route("/resource-trends", web::get().to(cost_analytics::get_resource_count_trends))
-            .route("/cost-increases", web::get().to(cost_analytics::detect_cost_increases))
-            .route("/resource-cost-history", web::get().to(cost_analytics::get_resource_cost_history))
+            .route(
+                "/resources",
+                web::get().to(cost_analytics::get_resource_costs),
+            )
+            .route(
+                "/new-resources",
+                web::get().to(cost_analytics::get_new_resources),
+            )
+            .route(
+                "/resource-trends",
+                web::get().to(cost_analytics::get_resource_count_trends),
+            )
+            .route(
+                "/cost-increases",
+                web::get().to(cost_analytics::detect_cost_increases),
+            )
+            .route(
+                "/resource-cost-history",
+                web::get().to(cost_analytics::get_resource_cost_history),
+            )
             .route(
                 "/analyze/{anomaly_id}",
                 web::post().to(cost_analytics::analyze_cost_with_llm),
             )
-            .route("/{account_id}/forecast", web::get().to(cost_analytics::get_cost_forecast))
+            .route(
+                "/{account_id}/forecast",
+                web::get().to(cost_analytics::get_cost_forecast),
+            )
             .route("/health", web::get().to(health_check)),
     );
 }

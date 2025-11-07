@@ -303,9 +303,10 @@ impl CostAnalyticsRepository {
         // Apply optional filters
         if let Some(resource) = resource_id {
             // Filter by resource_id in tags JSON
-            query = query.filter(
-                Expr::cust_with_values("tags->>'resource_id' = ?", vec![resource.to_string()])
-            );
+            query = query.filter(Expr::cust_with_values(
+                "tags->>'resource_id' = ?",
+                vec![resource.to_string()],
+            ));
         }
 
         if let Some(service) = service_name {
@@ -318,16 +319,18 @@ impl CostAnalyticsRepository {
 
         if let Some(az) = availability_zone {
             // Filter by availability zone in tags JSON
-            query = query.filter(
-                Expr::cust_with_values("tags->>'availability_zone' = ?", vec![az.to_string()])
-            );
+            query = query.filter(Expr::cust_with_values(
+                "tags->>'availability_zone' = ?",
+                vec![az.to_string()],
+            ));
         }
 
         if let Some(instance) = instance_type {
             // Filter by instance type in tags JSON
-            query = query.filter(
-                Expr::cust_with_values("tags->>'instance_type' = ?", vec![instance.to_string()])
-            );
+            query = query.filter(Expr::cust_with_values(
+                "tags->>'instance_type' = ?",
+                vec![instance.to_string()],
+            ));
         }
 
         let results = query

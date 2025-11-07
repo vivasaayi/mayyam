@@ -228,9 +228,12 @@ pub async fn ensure_llm_providers_table(db: &DatabaseConnection) -> Result<(), D
     .await?;
 
     // Create indexes if they don't exist
-    let create_idx_name = r#"CREATE INDEX IF NOT EXISTS idx_llm_providers_name ON llm_providers(name)"#;
-    let create_idx_type = r#"CREATE INDEX IF NOT EXISTS idx_llm_providers_type ON llm_providers(provider_type)"#;
-    let create_idx_enabled = r#"CREATE INDEX IF NOT EXISTS idx_llm_providers_enabled ON llm_providers(enabled)"#;
+    let create_idx_name =
+        r#"CREATE INDEX IF NOT EXISTS idx_llm_providers_name ON llm_providers(name)"#;
+    let create_idx_type =
+        r#"CREATE INDEX IF NOT EXISTS idx_llm_providers_type ON llm_providers(provider_type)"#;
+    let create_idx_enabled =
+        r#"CREATE INDEX IF NOT EXISTS idx_llm_providers_enabled ON llm_providers(enabled)"#;
 
     db.execute(Statement::from_string(
         DbBackend::Postgres,

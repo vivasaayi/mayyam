@@ -161,6 +161,293 @@ pub async fn list_dynamodb_tables(
     Ok(HttpResponse::Ok().json(resources))
 }
 
+// AWS VPC specific endpoints
+pub async fn list_vpcs(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to VPCs
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::Vpc.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_subnets(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to Subnets
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::Subnet.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_security_groups(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to Security Groups
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::SecurityGroup.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_internet_gateways(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to Internet Gateways
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::InternetGateway.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_nat_gateways(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to NAT Gateways
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::NatGateway.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_route_tables(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to Route Tables
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::RouteTable.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_network_acls(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to Network ACLs
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::NetworkAcl.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+// AWS Load Balancing specific endpoints
+pub async fn list_albs(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to ALBs
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::Alb.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_nlbs(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to NLBs
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::Nlb.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_elbs(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to ELBs
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::Elb.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_cloudfront_distributions(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to CloudFront Distributions
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::CloudFrontDistribution.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_api_gateway_rest_apis(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to API Gateway REST APIs
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::ApiGatewayRestApi.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_api_gateway_stages(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to API Gateway Stages
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::ApiGatewayStage.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_api_gateway_resources(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to API Gateway Resources
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::ApiGatewayResource.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_api_gateway_methods(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to API Gateway Methods
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::ApiGatewayMethod.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
 // Generic AWS resource search endpoint
 pub async fn search_aws_resources(
     query: web::Query<AwsResourceQuery>,

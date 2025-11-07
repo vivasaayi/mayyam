@@ -1,6 +1,6 @@
-use crate::models::cluster::KafkaClusterConfig;
 use crate::errors::AppError;
 use crate::models::cluster::CreateKafkaClusterRequest;
+use crate::models::cluster::KafkaClusterConfig;
 use crate::repositories::cluster::ClusterRepository;
 use rdkafka::admin::{AdminClient, NewTopic, TopicReplication};
 use rdkafka::config::ClientConfig;
@@ -789,7 +789,10 @@ impl KafkaService {
         user_id: &str,
     ) -> Result<serde_json::Value, AppError> {
         // Create the cluster in the database
-        let cluster = self.cluster_repository.create_kafka_cluster(request, user_id).await?;
+        let cluster = self
+            .cluster_repository
+            .create_kafka_cluster(request, user_id)
+            .await?;
 
         Ok(serde_json::json!({
             "id": cluster.id,
@@ -808,9 +811,15 @@ impl KafkaService {
             .map(|cluster| {
                 // Parse the config to extract bootstrap servers
                 let bootstrap_servers = if let Some(config) = cluster.config.as_object() {
-                    config.get("bootstrap_servers")
+                    config
+                        .get("bootstrap_servers")
                         .and_then(|v| v.as_array())
-                        .map(|arr| arr.iter().filter_map(|v| v.as_str()).map(|s| s.to_string()).collect::<Vec<_>>())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|v| v.as_str())
+                                .map(|s| s.to_string())
+                                .collect::<Vec<_>>()
+                        })
                         .unwrap_or_default()
                 } else {
                     vec![]

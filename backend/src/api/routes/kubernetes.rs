@@ -34,6 +34,10 @@ pub fn configure(cfg: &mut web::ServiceConfig, db: Arc<DatabaseConnection>) {
             web::delete().to(kube_controller::delete_cluster_controller),
         )
         .route(
+            "/clusters/{cluster_id}/metrics",
+            web::get().to(kube_controller::get_cluster_metrics_controller),
+        )
+        .route(
             "/clusters/{cluster_id}/namespaces",
             web::get().to(kube_controller::list_namespaces_controller),
         )
@@ -156,12 +160,20 @@ pub fn configure(cfg: &mut web::ServiceConfig, db: Arc<DatabaseConnection>) {
             web::get().to(kube_controller::get_pv_details_controller),
         )
         .route(
+            "/clusters/{cluster_id}/namespaces/{namespace_name}/pods",
+            web::get().to(kube_controller::list_pods_controller),
+        )
+        .route(
             "/clusters/{cluster_id}/namespaces/{namespace_name}/pods/{pod_name}",
             web::get().to(kube_controller::get_pod_details_controller),
         )
         .route(
             "/clusters/{cluster_id}/namespaces/{namespace_name}/pods/{pod_name}/events",
             web::get().to(kube_controller::get_pod_events_controller),
+        )
+        .route(
+            "/clusters/{cluster_id}/namespaces/{namespace_name}/pods/{pod_name}/logs",
+            web::get().to(kube_controller::get_pod_logs_controller),
         )
         .route(
             "/clusters/{cluster_id}/namespaces/{namespace_name}/pods/{pod_name}/exec",

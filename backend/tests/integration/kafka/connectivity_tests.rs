@@ -15,10 +15,7 @@ fn cluster_id() -> String {
 async fn create_topic(harness: &TestHarness, topic_name: &str) {
     let response = harness
         .client()
-        .post(&harness.build_url(&format!(
-            "/api/kafka/clusters/{}/topics",
-            cluster_id()
-        )))
+        .post(&harness.build_url(&format!("/api/kafka/clusters/{}/topics", cluster_id())))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .json(&json!({
             "name": topic_name,
@@ -42,7 +39,8 @@ async fn delete_topic(harness: &TestHarness, topic_name: &str) {
         .client()
         .delete(&harness.build_url(&format!(
             "/api/kafka/clusters/{}/topics/{}",
-            cluster_id(), topic_name
+            cluster_id(),
+            topic_name
         )))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .send()
@@ -67,10 +65,7 @@ async fn test_kafka_connectivity() {
 
     let response = harness
         .client()
-        .get(&harness.build_url(&format!(
-            "/api/kafka/clusters/{}/health",
-            cluster_id()
-        )))
+        .get(&harness.build_url(&format!("/api/kafka/clusters/{}/health", cluster_id())))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .send()
         .await
@@ -95,10 +90,7 @@ async fn test_topic_creation_and_deletion() {
 
     let topics_response = harness
         .client()
-        .get(&harness.build_url(&format!(
-            "/api/kafka/clusters/{}/topics",
-            cluster_id()
-        )))
+        .get(&harness.build_url(&format!("/api/kafka/clusters/{}/topics", cluster_id())))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .send()
         .await
@@ -141,7 +133,8 @@ async fn test_message_produce_and_consume() {
         .client()
         .post(&harness.build_url(&format!(
             "/api/kafka/clusters/{}/topics/{}/produce",
-            cluster_id(), topic_name
+            cluster_id(),
+            topic_name
         )))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .json(&produce_payload)
@@ -162,7 +155,8 @@ async fn test_message_produce_and_consume() {
         .client()
         .post(&harness.build_url(&format!(
             "/api/kafka/clusters/{}/topics/{}/consume",
-            cluster_id(), topic_name
+            cluster_id(),
+            topic_name
         )))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .json(&consume_payload)

@@ -11,14 +11,18 @@ use tracing::{debug, error, info};
 use uuid::Uuid;
 
 // Import control planes from their respective modules
+use crate::services::aws::aws_control_plane::api_gateway_control_plane::ApiGatewayControlPlane;
+use crate::services::aws::aws_control_plane::cloudfront_control_plane::CloudFrontControlPlane;
 use crate::services::aws::aws_control_plane::dynamodb_control_plane::DynamoDbControlPlane;
 use crate::services::aws::aws_control_plane::ec2_control_plane::Ec2ControlPlane;
 use crate::services::aws::aws_control_plane::elasticache_control_plane::ElasticacheControlPlane;
 use crate::services::aws::aws_control_plane::kinesis_control_plane::KinesisControlPlane;
 use crate::services::aws::aws_control_plane::lambda_control_plane::LambdaControlPlane;
+use crate::services::aws::aws_control_plane::load_balancer_control_plane::LoadBalancerControlPlane;
 use crate::services::aws::aws_control_plane::rds_control_plane::RdsControlPlane;
 use crate::services::aws::aws_control_plane::s3_control_plane::S3ControlPlane;
 use crate::services::aws::aws_control_plane::sqs_control_plane::SqsControlPlane;
+use crate::services::aws::aws_control_plane::vpc_control_plane::VpcControlPlane;
 use crate::services::aws::aws_types::resource_sync::{
     ResourceSyncRequest, ResourceSyncResponse, ResourceTypeSyncSummary,
 };
@@ -45,8 +49,14 @@ fn stream_description_to_json(stream_desc: &StreamDescription) -> Value {
 // Base control plane for AWS resources
 #[async_trait::async_trait]
 pub trait AwsControlPlaneTrait: Send + Sync {
-    async fn list_all_regions(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<String>, AppError>;
-    async fn sync_resources(&self, request: &ResourceSyncRequest) -> Result<ResourceSyncResponse, AppError>;
+    async fn list_all_regions(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<Vec<String>, AppError>;
+    async fn sync_resources(
+        &self,
+        request: &ResourceSyncRequest,
+    ) -> Result<ResourceSyncResponse, AppError>;
 }
 
 pub struct AwsControlPlane {
@@ -55,11 +65,17 @@ pub struct AwsControlPlane {
 
 #[async_trait::async_trait]
 impl AwsControlPlaneTrait for AwsControlPlane {
-    async fn list_all_regions(&self, aws_account_dto: &AwsAccountDto) -> Result<Vec<String>, AppError> {
+    async fn list_all_regions(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<Vec<String>, AppError> {
         self.aws_service.list_all_regions(aws_account_dto).await
     }
 
-    async fn sync_resources(&self, request: &ResourceSyncRequest) -> Result<ResourceSyncResponse, AppError> {
+    async fn sync_resources(
+        &self,
+        request: &ResourceSyncRequest,
+    ) -> Result<ResourceSyncResponse, AppError> {
         self.sync_resources(request).await
     }
 }
@@ -166,6 +182,151 @@ impl AwsControlPlane {
         );
         let elasticache = ElasticacheControlPlane::new(self.aws_service.clone());
         elasticache.sync_clusters(&aws_account_dto, sync_id).await
+    }
+
+    async fn sync_vpc_resources(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        sync_id: Uuid,
+    ) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!(
+            "Syncing VPC resources for account: {} with sync_id: {}",
+            &aws_account_dto.account_id, sync_id
+        );
+        let vpc = VpcControlPlane::new(self.aws_service.clone());
+
+        let mut all_resources = Vec::new();
+
+        // Sync VPCs
+        match vpc.sync_vpcs(aws_account_dto, sync_id).await {
+            Ok(resources) => all_resources.extend(resources),
+            Err(e) => error!("Failed to sync VPCs: {}", e),
+        }
+
+        // Sync Subnets
+        match vpc.sync_subnets(aws_account_dto, sync_id).await {
+            Ok(resources) => all_resources.extend(resources),
+            Err(e) => error!("Failed to sync Subnets: {}", e),
+        }
+
+        // Sync Security Groups
+        match vpc.sync_security_groups(aws_account_dto, sync_id).await {
+            Ok(resources) => all_resources.extend(resources),
+            Err(e) => error!("Failed to sync Security Groups: {}", e),
+        }
+
+        // Sync Internet Gateways
+        match vpc.sync_internet_gateways(aws_account_dto, sync_id).await {
+            Ok(resources) => all_resources.extend(resources),
+            Err(e) => error!("Failed to sync Internet Gateways: {}", e),
+        }
+
+        // Sync NAT Gateways
+        match vpc.sync_nat_gateways(aws_account_dto, sync_id).await {
+            Ok(resources) => all_resources.extend(resources),
+            Err(e) => error!("Failed to sync NAT Gateways: {}", e),
+        }
+
+        // Sync Route Tables
+        match vpc.sync_route_tables(aws_account_dto, sync_id).await {
+            Ok(resources) => all_resources.extend(resources),
+            Err(e) => error!("Failed to sync Route Tables: {}", e),
+        }
+
+        // Sync Network ACLs
+        match vpc.sync_network_acls(aws_account_dto, sync_id).await {
+            Ok(resources) => all_resources.extend(resources),
+            Err(e) => error!("Failed to sync Network ACLs: {}", e),
+        }
+
+        Ok(all_resources)
+    }
+
+    async fn sync_load_balancer_resources(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        sync_id: Uuid,
+    ) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!(
+            "Syncing Load Balancer resources for account: {} with sync_id: {}",
+            &aws_account_dto.account_id, sync_id
+        );
+        let load_balancer = LoadBalancerControlPlane::new(self.aws_service.clone());
+
+        let mut all_resources = Vec::new();
+
+        // Sync ALBs
+        match load_balancer.sync_albs(aws_account_dto, sync_id).await {
+            Ok(resources) => all_resources.extend(resources),
+            Err(e) => error!("Failed to sync ALBs: {}", e),
+        }
+
+        // Sync NLBs
+        match load_balancer.sync_nlbs(aws_account_dto, sync_id).await {
+            Ok(resources) => all_resources.extend(resources),
+            Err(e) => error!("Failed to sync NLBs: {}", e),
+        }
+
+        // Sync ELBs
+        match load_balancer.sync_elbs(aws_account_dto, sync_id).await {
+            Ok(resources) => all_resources.extend(resources),
+            Err(e) => error!("Failed to sync ELBs: {}", e),
+        }
+
+        Ok(all_resources)
+    }
+
+    async fn sync_cloudfront_resources(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        sync_id: Uuid,
+    ) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!(
+            "Syncing CloudFront resources for account: {} with sync_id: {}",
+            &aws_account_dto.account_id, sync_id
+        );
+        let cloudfront = CloudFrontControlPlane::new(self.aws_service.clone());
+        cloudfront.sync_distributions(aws_account_dto, sync_id).await
+    }
+
+    async fn sync_api_gateway_resources(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        sync_id: Uuid,
+    ) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!(
+            "Syncing API Gateway resources for account: {} with sync_id: {}",
+            &aws_account_dto.account_id, sync_id
+        );
+        let api_gateway = ApiGatewayControlPlane::new(self.aws_service.clone());
+
+        let mut all_resources = Vec::new();
+
+        // Sync REST APIs
+        match api_gateway.sync_rest_apis(aws_account_dto, sync_id).await {
+            Ok(resources) => all_resources.extend(resources),
+            Err(e) => error!("Failed to sync REST APIs: {}", e),
+        }
+
+        // Sync Stages
+        match api_gateway.sync_stages(aws_account_dto, sync_id).await {
+            Ok(resources) => all_resources.extend(resources),
+            Err(e) => error!("Failed to sync Stages: {}", e),
+        }
+
+        // Sync Resources
+        match api_gateway.sync_resources(aws_account_dto, sync_id).await {
+            Ok(resources) => all_resources.extend(resources),
+            Err(e) => error!("Failed to sync Resources: {}", e),
+        }
+
+        // Sync Methods
+        match api_gateway.sync_methods(aws_account_dto, sync_id).await {
+            Ok(resources) => all_resources.extend(resources),
+            Err(e) => error!("Failed to sync Methods: {}", e),
+        }
+
+        Ok(all_resources)
     }
 
     // Kinesis control plane operations
@@ -354,6 +515,21 @@ impl AwsControlPlane {
                 AwsResourceType::KinesisStream.to_string(),
                 AwsResourceType::SqsQueue.to_string(),
                 AwsResourceType::ElasticacheCluster.to_string(),
+                AwsResourceType::Vpc.to_string(),
+                AwsResourceType::Subnet.to_string(),
+                AwsResourceType::SecurityGroup.to_string(),
+                AwsResourceType::InternetGateway.to_string(),
+                AwsResourceType::NatGateway.to_string(),
+                AwsResourceType::RouteTable.to_string(),
+                AwsResourceType::NetworkAcl.to_string(),
+                AwsResourceType::Alb.to_string(),
+                AwsResourceType::Nlb.to_string(),
+                AwsResourceType::Elb.to_string(),
+                AwsResourceType::CloudFrontDistribution.to_string(),
+                AwsResourceType::ApiGatewayRestApi.to_string(),
+                AwsResourceType::ApiGatewayStage.to_string(),
+                AwsResourceType::ApiGatewayResource.to_string(),
+                AwsResourceType::ApiGatewayMethod.to_string(),
             ],
         };
 
@@ -389,10 +565,26 @@ impl AwsControlPlane {
                     self.sync_elasticache_resources(aws_account_dto, request.sync_id)
                         .await
                 }
+                "Vpc" | "Subnet" | "SecurityGroup" | "InternetGateway" | "NatGateway" | "RouteTable" | "NetworkAcl" => {
+                    self.sync_vpc_resources(aws_account_dto, request.sync_id)
+                        .await
+                }
                 "LambdaFunction" => {
                     let lambda = LambdaControlPlane::new(self.aws_service.clone());
                     lambda
                         .sync_functions(aws_account_dto, request.sync_id)
+                        .await
+                }
+                "Alb" | "Nlb" | "Elb" => {
+                    self.sync_load_balancer_resources(aws_account_dto, request.sync_id)
+                        .await
+                }
+                "CloudFrontDistribution" => {
+                    self.sync_cloudfront_resources(aws_account_dto, request.sync_id)
+                        .await
+                }
+                "ApiGatewayRestApi" | "ApiGatewayStage" | "ApiGatewayResource" | "ApiGatewayMethod" => {
+                    self.sync_api_gateway_resources(aws_account_dto, request.sync_id)
                         .await
                 }
                 _ => Ok(vec![]),

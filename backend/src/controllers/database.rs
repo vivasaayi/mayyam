@@ -10,6 +10,7 @@ use crate::repositories::database::DatabaseRepository;
 use crate::services::analytics::mysql_analytics::mysql_analytics_service::MySqlAnalyticsService;
 use crate::services::analytics::postgres_analytics::postgres_analytics_service::PostgresAnalyticsService;
 use crate::services::database::DatabaseService;
+use crate::utils::database::connect_to_dynamic_database;
 
 pub async fn execute_query(
     query_req: web::Json<DatabaseQueryRequest>,
@@ -17,14 +18,12 @@ pub async fn execute_query(
     config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    // TODO: Update this method to handle postgresql and mysql
-    let db_service = MySqlAnalyticsService::new(config.get_ref().clone());
     let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
 
     // Get the database connection details
     let conn_id = uuid::Uuid::parse_str(&query_req.connection_id)
         .map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
-    let conn = db_repo.find_by_id(conn_id).await?.ok_or_else(|| {
+    let conn_model = db_repo.find_by_id(conn_id).await?.ok_or_else(|| {
         AppError::NotFound(format!(
             "Database connection not found: {}",
             query_req.connection_id
@@ -32,13 +31,14 @@ pub async fn execute_query(
     })?;
 
     // Execute the query with analysis if requested
+    let analytics = MySqlAnalyticsService::new(config.get_ref().clone());
     let result = if query_req.explain.unwrap_or(false) {
-        db_service
-            .execute_query_with_explain(&conn, &query_req.query, query_req.params.as_ref())
+        analytics
+            .execute_query_with_explain(&conn_model, &query_req.query, query_req.params.as_ref())
             .await?
     } else {
-        db_service
-            .execute_query(&conn, &query_req.query, query_req.params.as_ref())
+        analytics
+            .execute_query(&conn_model, &query_req.query, query_req.params.as_ref())
             .await?
     };
 
@@ -51,8 +51,6 @@ pub async fn analyze_database(
     config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    // ToDo: Update this method to handle postgresql and mysql
-    let db_service = PostgresAnalyticsService::new(config.get_ref().clone());
     let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
 
     // Get the database connection details to check if it exists
@@ -66,8 +64,23 @@ pub async fn analyze_database(
     // Log that we're analyzing the connection for debugging purposes
     tracing::info!("Analyzing database connection: {}", conn_model.name);
 
-    // Use the new analyze_connection method
-    let analysis = db_service.analyze_connection(&conn_model).await?;
+    let connection_type = conn_model.connection_type.to_lowercase();
+    let analysis = match connection_type.as_str() {
+        "mysql" => {
+            let analytics = MySqlAnalyticsService::new(config.get_ref().clone());
+            let dynamic_conn = connect_to_dynamic_database(&conn_model, config.get_ref()).await?;
+            analytics.analyze_database(&dynamic_conn).await
+        }
+        "postgres" => {
+            let analytics = PostgresAnalyticsService::new(config.get_ref().clone());
+            let dynamic_conn = connect_to_dynamic_database(&conn_model, config.get_ref()).await?;
+            analytics.analyze_database(&dynamic_conn).await
+        }
+        other => Err(AppError::BadRequest(format!(
+            "Unsupported database type for analysis: {}",
+            other
+        ))),
+    }?;
 
     Ok(HttpResponse::Ok().json(analysis))
 }
