@@ -107,6 +107,20 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             "/accounts/{account_id}/regions/{region}/api-gateway/methods",
             web::get().to(cloud::list_api_gateway_methods),
         )
+        // EBS Storage resources
+        .route(
+            "/accounts/{account_id}/regions/{region}/ebs-volumes",
+            web::get().to(cloud::list_ebs_volumes),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/ebs-snapshots",
+            web::get().to(cloud::list_ebs_snapshots),
+        )
+        // EFS Storage resources
+        .route(
+            "/accounts/{account_id}/regions/{region}/efs-file-systems",
+            web::get().to(cloud::list_efs_file_systems),
+        )
         // CloudWatch metrics
         .route(
             "/profiles/{profile}/regions/{region}/metrics/{resource_type}/{resource_id}",

@@ -1,7 +1,9 @@
 pub mod api_gateway_control_plane;
 pub mod cloudfront_control_plane;
 pub mod dynamodb_control_plane;
+pub mod ebs_control_plane;
 pub mod ec2_control_plane;
+pub mod efs_control_plane;
 pub mod elasticache_control_plane;
 pub mod kinesis_control_plane;
 pub mod lambda_control_plane;

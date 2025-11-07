@@ -448,6 +448,66 @@ pub async fn list_api_gateway_methods(
     Ok(HttpResponse::Ok().json(resources))
 }
 
+// EBS Volumes endpoint
+pub async fn list_ebs_volumes(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to EBS Volumes
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::EbsVolume.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+// EBS Snapshots endpoint
+pub async fn list_ebs_snapshots(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to EBS Snapshots
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::EbsSnapshot.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+// EFS File Systems endpoint
+pub async fn list_efs_file_systems(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to EFS File Systems
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::EfsFileSystem.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
 // Generic AWS resource search endpoint
 pub async fn search_aws_resources(
     query: web::Query<AwsResourceQuery>,

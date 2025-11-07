@@ -1,16 +1,20 @@
 use async_trait::async_trait;
 use aws_sdk_apigateway::Client as ApiGatewayClient;
 use aws_sdk_cloudfront::Client as CloudFrontClient;
-use aws_sdk_elb::Client as ElbClient;
-use aws_sdk_elbv2::Client as Elbv2Client;
+use aws_sdk_elasticloadbalancing::Client as ElbClient;
+use aws_sdk_elasticloadbalancingv2::Client as Elbv2Client;
 use aws_sdk_dynamodb::Client as DynamoDbClient;
 use aws_sdk_ec2::Client as Ec2Client;
+use aws_sdk_efs::Client as EfsClient;
 use aws_sdk_elasticache::Client as ElasticacheClient;
 use aws_sdk_kinesis::Client as KinesisClient;
 use aws_sdk_lambda::Client as LambdaClient;
 use aws_sdk_opensearch::Client as OpenSearchClient;
 use aws_sdk_rds::Client as RdsClient;
 use aws_sdk_s3::Client as S3Client;
+use aws_sdk_cloudwatch::Client as CloudWatchClient;
+use aws_sdk_cloudwatchlogs::Client as CloudWatchLogsClient;
+use aws_sdk_costexplorer::Client as CostExplorerClient;
 use aws_sdk_sns::Client as SnsClient;
 use aws_sdk_sqs::Client as SqsClient;
 use aws_sdk_sts::Client as StsClient;
@@ -92,4 +96,8 @@ pub trait AwsClientFactory {
         &self,
         aws_account_dto: &AwsAccountDto,
     ) -> Result<ApiGatewayClient, AppError>;
+    async fn create_efs_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<EfsClient, AppError>;
 }

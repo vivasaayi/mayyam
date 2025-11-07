@@ -15,6 +15,8 @@ use crate::services::aws::aws_control_plane::api_gateway_control_plane::ApiGatew
 use crate::services::aws::aws_control_plane::cloudfront_control_plane::CloudFrontControlPlane;
 use crate::services::aws::aws_control_plane::dynamodb_control_plane::DynamoDbControlPlane;
 use crate::services::aws::aws_control_plane::ec2_control_plane::Ec2ControlPlane;
+use crate::services::aws::aws_control_plane::ebs_control_plane::EbsControlPlane;
+use crate::services::aws::aws_control_plane::efs_control_plane::EfsControlPlane;
 use crate::services::aws::aws_control_plane::elasticache_control_plane::ElasticacheControlPlane;
 use crate::services::aws::aws_control_plane::kinesis_control_plane::KinesisControlPlane;
 use crate::services::aws::aws_control_plane::lambda_control_plane::LambdaControlPlane;
@@ -276,6 +278,49 @@ impl AwsControlPlane {
         Ok(all_resources)
     }
 
+    async fn sync_ebs_resources(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        sync_id: Uuid,
+    ) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!(
+            "Syncing EBS resources for account: {} with sync_id: {}",
+            &aws_account_dto.account_id, sync_id
+        );
+        let ebs = EbsControlPlane::new(self.aws_service.clone());
+
+        let mut all_resources = Vec::new();
+
+        // Sync EBS Volumes
+        match ebs.sync_volumes(aws_account_dto, sync_id).await {
+            Ok(resources) => all_resources.extend(resources),
+            Err(e) => error!("Failed to sync EBS volumes: {}", e),
+        }
+
+        // Sync EBS Snapshots
+        match ebs.sync_snapshots(aws_account_dto, sync_id).await {
+            Ok(resources) => all_resources.extend(resources),
+            Err(e) => error!("Failed to sync EBS snapshots: {}", e),
+        }
+
+        Ok(all_resources)
+    }
+
+    async fn sync_efs_resources(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        sync_id: Uuid,
+    ) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!(
+            "Syncing EFS resources for account: {} with sync_id: {}",
+            &aws_account_dto.account_id, sync_id
+        );
+        let efs = EfsControlPlane::new(self.aws_service.clone());
+
+        // Sync EFS File Systems
+        efs.sync_file_systems(aws_account_dto, sync_id).await
+    }
+
     async fn sync_cloudfront_resources(
         &self,
         aws_account_dto: &AwsAccountDto,
@@ -530,6 +575,9 @@ impl AwsControlPlane {
                 AwsResourceType::ApiGatewayStage.to_string(),
                 AwsResourceType::ApiGatewayResource.to_string(),
                 AwsResourceType::ApiGatewayMethod.to_string(),
+                AwsResourceType::EbsVolume.to_string(),
+                AwsResourceType::EbsSnapshot.to_string(),
+                AwsResourceType::EfsFileSystem.to_string(),
             ],
         };
 
@@ -577,6 +625,14 @@ impl AwsControlPlane {
                 }
                 "Alb" | "Nlb" | "Elb" => {
                     self.sync_load_balancer_resources(aws_account_dto, request.sync_id)
+                        .await
+                }
+                "EbsVolume" | "EbsSnapshot" => {
+                    self.sync_ebs_resources(aws_account_dto, request.sync_id)
+                        .await
+                }
+                "EfsFileSystem" => {
+                    self.sync_efs_resources(aws_account_dto, request.sync_id)
                         .await
                 }
                 "CloudFrontDistribution" => {

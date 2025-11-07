@@ -1,11 +1,10 @@
 use crate::errors::AppError;
 use crate::models::aws_account::AwsAccountDto;
-use crate::models::aws_resource::{AwsResourceDto, AwsResourceModel, AwsResourceType};
+use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel, AwsResourceType};
 use crate::repositories::aws_resource::AwsResourceRepository;
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::aws::service::AwsService;
-use aws_sdk_ec2::types::LoadBalancer;
-use aws_sdk_elasticloadbalancing::types::LoadBalancer as ClassicLoadBalancer;
+use aws_sdk_elasticloadbalancingv2::types::LoadBalancer as ClassicLoadBalancer;
 use aws_sdk_elasticloadbalancingv2::types::LoadBalancer as AlbLoadBalancer;
 use chrono::Utc;
 use std::sync::Arc;

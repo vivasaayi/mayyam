@@ -63,6 +63,10 @@ pub enum AwsResourceType {
     ApiGatewayStage,
     ApiGatewayResource,
     ApiGatewayMethod,
+    // Storage & Content Delivery Resources
+    EbsVolume,
+    EbsSnapshot,
+    EfsFileSystem,
 }
 
 impl ToString for AwsResourceType {
@@ -95,6 +99,10 @@ impl ToString for AwsResourceType {
             AwsResourceType::ApiGatewayStage => "ApiGatewayStage".to_string(),
             AwsResourceType::ApiGatewayResource => "ApiGatewayResource".to_string(),
             AwsResourceType::ApiGatewayMethod => "ApiGatewayMethod".to_string(),
+            // Storage & Content Delivery Resources
+            AwsResourceType::EbsVolume => "EbsVolume".to_string(),
+            AwsResourceType::EbsSnapshot => "EbsSnapshot".to_string(),
+            AwsResourceType::EfsFileSystem => "EfsFileSystem".to_string(),
         }
     }
 }
@@ -129,6 +137,10 @@ impl From<&str> for AwsResourceType {
             "ApiGatewayStage" => AwsResourceType::ApiGatewayStage,
             "ApiGatewayResource" => AwsResourceType::ApiGatewayResource,
             "ApiGatewayMethod" => AwsResourceType::ApiGatewayMethod,
+            // Storage & Content Delivery Resources
+            "EbsVolume" => AwsResourceType::EbsVolume,
+            "EbsSnapshot" => AwsResourceType::EbsSnapshot,
+            "EfsFileSystem" => AwsResourceType::EfsFileSystem,
             _ => panic!("Unknown resource type: {}", s),
         }
     }
