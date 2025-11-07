@@ -3,6 +3,7 @@ pub mod aws_resource;
 pub mod cloud_resource;
 pub mod cluster;
 pub mod cost_analytics;
+pub mod cost_budget_repository;
 pub mod data_source;
 pub mod database;
 pub mod llm_model;

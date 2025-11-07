@@ -129,6 +129,29 @@ impl AwsResourceRepository {
         Ok(resources)
     }
 
+    // Get resources by multiple resource IDs
+    pub async fn get_resources_by_ids(
+        &self,
+        account_id: &str,
+        resource_ids: &[String],
+    ) -> Result<Vec<Model>, AppError> {
+        if resource_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let resources = AwsResource::find()
+            .filter(
+                Condition::all()
+                    .add(aws_resource::Column::AccountId.eq(account_id))
+                    .add(aws_resource::Column::ResourceId.is_in(resource_ids.iter().cloned())),
+            )
+            .all(&*self.db)
+            .await
+            .map_err(|e| AppError::Database(e))?;
+
+        Ok(resources)
+    }
+
     // Search resources with pagination
     pub async fn search(&self, query: &AwsResourceQuery) -> Result<AwsResourcePage, AppError> {
         let page = query.page.unwrap_or(0);

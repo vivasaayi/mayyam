@@ -3,8 +3,7 @@ use aws_sdk_costexplorer::{
     operation::get_cost_and_usage::GetCostAndUsageInput, types::*, Client as CostExplorerClient,
 };
 use chrono::{Datelike, Duration, NaiveDate, Utc};
-use sea_orm::prelude::Decimal;
-use sea_orm::ActiveValue;
+use sea_orm::{DatabaseConnection, prelude::Decimal, ActiveValue};
 use serde::Serialize;
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
@@ -19,10 +18,13 @@ use crate::models::{
     aws_monthly_cost_aggregates::ActiveModel as MonthlyCostAggregateActiveModel,
 };
 use crate::repositories::aws_account::AwsAccountRepository;
+use crate::repositories::aws_resource::AwsResourceRepository;
 use crate::repositories::cost_analytics::CostAnalyticsRepository;
 use crate::repositories::llm_provider::LlmProviderRepository;
 use crate::services::aws::AwsService;
 use crate::services::llm::LlmIntegrationService;
+use crate::services::resource_cost_enrichment::ResourceCostEnrichmentService;
+use crate::services::cost_categories::CostCategoriesService;
 
 #[derive(Debug, Clone)]
 pub struct CostMetrics {
@@ -379,25 +381,44 @@ impl AdvancedAnomalyMetrics {
 pub struct AwsCostAnalyticsService {
     repository: Arc<CostAnalyticsRepository>,
     aws_account_repo: Arc<AwsAccountRepository>,
+    aws_resource_repo: Arc<AwsResourceRepository>,
     aws_service: Arc<AwsService>,
     llm_service: Arc<LlmIntegrationService>,
     llm_provider_repo: Arc<LlmProviderRepository>,
+    resource_cost_enrichment: ResourceCostEnrichmentService,
+    cost_categories: CostCategoriesService,
 }
 
 impl AwsCostAnalyticsService {
     pub fn new(
         repository: Arc<CostAnalyticsRepository>,
         aws_account_repo: Arc<AwsAccountRepository>,
+        aws_resource_repo: Arc<AwsResourceRepository>,
         aws_service: Arc<AwsService>,
         llm_service: Arc<LlmIntegrationService>,
         llm_provider_repo: Arc<LlmProviderRepository>,
+        db: Arc<DatabaseConnection>,
     ) -> Self {
+        let resource_cost_enrichment = ResourceCostEnrichmentService::new(
+            db.clone(),
+            repository.clone(),
+            aws_resource_repo.clone(),
+        );
+
+        let cost_categories = CostCategoriesService::new(
+            db,
+            repository.clone(),
+        );
+
         Self {
             repository,
             aws_account_repo,
+            aws_resource_repo,
             aws_service,
             llm_service,
             llm_provider_repo,
+            resource_cost_enrichment,
+            cost_categories,
         }
     }
 
@@ -473,6 +494,27 @@ impl AwsCostAnalyticsService {
                     .r#type(GroupDefinitionType::Dimension)
                     .key("USAGE_TYPE")
                     .build(),
+                // Cost Allocation Tags for detailed resource attribution
+                GroupDefinition::builder()
+                    .r#type(GroupDefinitionType::Tag)
+                    .key("Environment")
+                    .build(),
+                GroupDefinition::builder()
+                    .r#type(GroupDefinitionType::Tag)
+                    .key("Project")
+                    .build(),
+                GroupDefinition::builder()
+                    .r#type(GroupDefinitionType::Tag)
+                    .key("Team")
+                    .build(),
+                GroupDefinition::builder()
+                    .r#type(GroupDefinitionType::Tag)
+                    .key("CostCenter")
+                    .build(),
+                GroupDefinition::builder()
+                    .r#type(GroupDefinitionType::Tag)
+                    .key("Application")
+                    .build(),
             ]))
             .send()
             .await
@@ -497,12 +539,17 @@ impl AwsCostAnalyticsService {
                     for group in groups {
                         let keys = group.keys.unwrap_or_default();
 
-                        // Extract dimensions: SERVICE, AZ, INSTANCE_TYPE, RESOURCE_ID, USAGE_TYPE
+                        // Extract dimensions: SERVICE, AZ, INSTANCE_TYPE, RESOURCE_ID, USAGE_TYPE, Environment, Project, Team, CostCenter, Application
                         let service_name = keys.get(0).cloned().unwrap_or_default();
                         let availability_zone = keys.get(1).cloned();
                         let instance_type = keys.get(2).cloned();
                         let resource_id = keys.get(3).cloned();
                         let usage_type = keys.get(4).cloned();
+                        let environment_tag = keys.get(5).cloned();
+                        let project_tag = keys.get(6).cloned();
+                        let team_tag = keys.get(7).cloned();
+                        let cost_center_tag = keys.get(8).cloned();
+                        let application_tag = keys.get(9).cloned();
 
                         if let Some(metrics) = group.metrics {
                             let unblended_cost = metrics
@@ -535,9 +582,9 @@ impl AwsCostAnalyticsService {
                                 id: ActiveValue::Set(Uuid::new_v4()),
                                 account_id: ActiveValue::Set(request.account_id.clone()),
                                 service_name: ActiveValue::Set(service_name),
-                                usage_type: ActiveValue::Set(usage_type),
-                                operation: ActiveValue::Set(instance_type), // Store instance type in operation field
-                                region: ActiveValue::Set(availability_zone), // Store AZ in region field
+                                usage_type: ActiveValue::Set(usage_type.clone()),
+                                operation: ActiveValue::Set(instance_type.clone()), // Store instance type in operation field
+                                region: ActiveValue::Set(availability_zone.clone()), // Store AZ in region field
                                 usage_start: ActiveValue::Set(start_date),
                                 usage_end: ActiveValue::Set(end_date),
                                 unblended_cost: ActiveValue::Set(
@@ -552,10 +599,33 @@ impl AwsCostAnalyticsService {
                                 ),
                                 usage_unit: ActiveValue::Set(usage_unit),
                                 currency: ActiveValue::Set("USD".to_string()),
-                                tags: ActiveValue::Set(
-                                    resource_id
-                                        .map(|rid| serde_json::json!({ "resource_id": rid })),
-                                ), // Store resource_id in tags
+                                tags: ActiveValue::Set(Some({
+                                    let mut tags_json = serde_json::json!({
+                                        "resource_id": resource_id,
+                                        "availability_zone": availability_zone,
+                                        "instance_type": instance_type,
+                                        "usage_type": usage_type
+                                    });
+
+                                    // Add cost allocation tags if they exist
+                                    if let Some(env) = &environment_tag {
+                                        tags_json["Environment"] = serde_json::Value::String(env.clone());
+                                    }
+                                    if let Some(proj) = &project_tag {
+                                        tags_json["Project"] = serde_json::Value::String(proj.clone());
+                                    }
+                                    if let Some(team) = &team_tag {
+                                        tags_json["Team"] = serde_json::Value::String(team.clone());
+                                    }
+                                    if let Some(cc) = &cost_center_tag {
+                                        tags_json["CostCenter"] = serde_json::Value::String(cc.clone());
+                                    }
+                                    if let Some(app) = &application_tag {
+                                        tags_json["Application"] = serde_json::Value::String(app.clone());
+                                    }
+
+                                    tags_json
+                                })),
                                 created_at: ActiveValue::Set(Utc::now().into()),
                                 updated_at: ActiveValue::Set(Utc::now().into()),
                             };
@@ -1274,5 +1344,71 @@ Respond in JSON format with the following structure:
                 trend_direction, trend_strength, percentage_change, total_periods as u32
             )
         }))
+    }
+
+    /// Get enriched cost data with resource metadata
+    pub async fn get_enriched_cost_data(
+        &self,
+        account_id: &str,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+        resource_id_filter: Option<&str>,
+    ) -> Result<Vec<crate::services::resource_cost_enrichment::EnrichedCostData>, AppError> {
+        self.resource_cost_enrichment
+            .enrich_cost_data(account_id, start_date, end_date, resource_id_filter)
+            .await
+    }
+
+    /// Get cost breakdown by cost allocation tags
+    pub async fn get_cost_by_allocation_tag(
+        &self,
+        account_id: &str,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+        tag_key: &str,
+    ) -> Result<HashMap<String, f64>, AppError> {
+        self.resource_cost_enrichment
+            .get_cost_by_allocation_tags(account_id, start_date, end_date, tag_key)
+            .await
+    }
+
+    /// Get top cost resources with full metadata
+    pub async fn get_top_cost_resources_with_metadata(
+        &self,
+        account_id: &str,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+        limit: usize,
+    ) -> Result<Vec<crate::services::resource_cost_enrichment::EnrichedCostData>, AppError> {
+        self.resource_cost_enrichment
+            .get_top_cost_resources(account_id, start_date, end_date, limit)
+            .await
+    }
+
+    /// Get cost breakdown by categories
+    pub async fn get_cost_by_categories(
+        &self,
+        account_id: &str,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+    ) -> Result<Vec<crate::services::cost_categories::CostCategoryResult>, AppError> {
+        let categories = CostCategoriesService::create_default_categories();
+        self.cost_categories
+            .categorize_costs(account_id, start_date, end_date, &categories)
+            .await
+    }
+
+    /// Get cost category trends over time
+    pub async fn get_category_trends(
+        &self,
+        account_id: &str,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+        granularity_days: i64,
+    ) -> Result<HashMap<String, Vec<(NaiveDate, f64)>>, AppError> {
+        let categories = CostCategoriesService::create_default_categories();
+        self.cost_categories
+            .get_category_trends(account_id, start_date, end_date, &categories, granularity_days)
+            .await
     }
 }

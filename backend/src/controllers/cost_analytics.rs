@@ -301,6 +301,44 @@ pub struct ForecastQuery {
     pub confidence_level: Option<f64>, // Confidence level for prediction intervals, default 0.95
 }
 
+#[derive(Debug, Deserialize)]
+pub struct EnrichedCostQuery {
+    pub account_id: String,
+    pub start_date: String, // YYYY-MM-DD format
+    pub end_date: String,   // YYYY-MM-DD format
+    pub resource_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CostByTagQuery {
+    pub account_id: String,
+    pub start_date: String, // YYYY-MM-DD format
+    pub end_date: String,   // YYYY-MM-DD format
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TopResourcesQuery {
+    pub account_id: String,
+    pub start_date: String, // YYYY-MM-DD format
+    pub end_date: String,   // YYYY-MM-DD format
+    pub limit: Option<u32>, // Number of top resources to return, default 10
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CostCategoriesQuery {
+    pub account_id: String,
+    pub start_date: String, // YYYY-MM-DD format
+    pub end_date: String,   // YYYY-MM-DD format
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CategoryTrendsQuery {
+    pub account_id: String,
+    pub start_date: String, // YYYY-MM-DD format
+    pub end_date: String,   // YYYY-MM-DD format
+    pub granularity_days: Option<i64>, // Granularity in days, default 30
+}
+
 #[derive(Debug, Serialize)]
 pub struct CostAnalysisResponse {
     pub success: bool,
@@ -991,5 +1029,288 @@ pub async fn get_resource_cost_history(
             "data": cost_history,
             "total_periods": cost_history.len()
         })))
+    }
+}
+
+/// Get enriched cost data with resource metadata
+pub async fn get_enriched_cost_data(
+    cost_service: web::Data<Arc<AwsCostAnalyticsService>>,
+    query: web::Query<EnrichedCostQuery>,
+    _claims: web::ReqData<Claims>,
+) -> ActixResult<HttpResponse> {
+    tracing::info!("Getting enriched cost data for account {}", query.account_id);
+
+    // Parse dates
+    let start_date = NaiveDate::parse_from_str(&query.start_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid start_date format: {}", e))
+    })?;
+
+    let end_date = NaiveDate::parse_from_str(&query.end_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid end_date format: {}", e))
+    })?;
+
+    match cost_service
+        .get_enriched_cost_data(
+            &query.account_id,
+            start_date,
+            end_date,
+            query.resource_id.as_deref(),
+        )
+        .await
+    {
+        Ok(enriched_data) => {
+            let response = CostAnalysisResponse {
+                success: true,
+                data: serde_json::json!({
+                    "enriched_cost_data": enriched_data.into_iter().map(|item| serde_json::json!({
+                        "cost_data": {
+                            "id": item.cost_data.id,
+                            "account_id": item.cost_data.account_id,
+                            "service_name": item.cost_data.service_name,
+                            "usage_type": item.cost_data.usage_type,
+                            "operation": item.cost_data.operation,
+                            "region": item.cost_data.region,
+                            "usage_start": item.cost_data.usage_start,
+                            "usage_end": item.cost_data.usage_end,
+                            "unblended_cost": item.cost_data.unblended_cost,
+                            "blended_cost": item.cost_data.blended_cost,
+                            "usage_amount": item.cost_data.usage_amount,
+                            "usage_unit": item.cost_data.usage_unit,
+                            "currency": item.cost_data.currency
+                        },
+                        "resource_metadata": item.resource_metadata.map(|meta| serde_json::json!({
+                            "resource_id": meta.resource_id,
+                            "name": meta.name,
+                            "resource_type": meta.resource_type,
+                            "region": meta.region,
+                            "arn": meta.arn,
+                            "tags": meta.tags,
+                            "resource_data": meta.resource_data,
+                            "cost_allocation_tags": meta.cost_allocation_tags
+                        }))
+                    })).collect::<Vec<_>>()
+                }),
+                message: "Enriched cost data retrieved successfully".to_string(),
+            };
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            tracing::error!("Failed to get enriched cost data: {}", e);
+            let error_response = ErrorResponse::from(e);
+            Ok(HttpResponse::InternalServerError().json(error_response))
+        }
+    }
+}
+
+/// Get cost breakdown by cost allocation tag
+pub async fn get_cost_by_allocation_tag(
+    cost_service: web::Data<Arc<AwsCostAnalyticsService>>,
+    path: web::Path<String>,
+    query: web::Query<CostByTagQuery>,
+    _claims: web::ReqData<Claims>,
+) -> ActixResult<HttpResponse> {
+    let tag_key = path.into_inner();
+    tracing::info!("Getting cost breakdown by tag '{}' for account {}", tag_key, query.account_id);
+
+    // Parse dates
+    let start_date = NaiveDate::parse_from_str(&query.start_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid start_date format: {}", e))
+    })?;
+
+    let end_date = NaiveDate::parse_from_str(&query.end_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid end_date format: {}", e))
+    })?;
+
+    match cost_service
+        .get_cost_by_allocation_tag(&query.account_id, start_date, end_date, &tag_key)
+        .await
+    {
+        Ok(cost_breakdown) => {
+            let response = CostAnalysisResponse {
+                success: true,
+                data: serde_json::json!({
+                    "tag_key": tag_key,
+                    "cost_breakdown": cost_breakdown,
+                    "total_cost": cost_breakdown.values().sum::<f64>(),
+                    "tag_values_count": cost_breakdown.len()
+                }),
+                message: "Cost breakdown by allocation tag retrieved successfully".to_string(),
+            };
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            tracing::error!("Failed to get cost by allocation tag: {}", e);
+            let error_response = ErrorResponse::from(e);
+            Ok(HttpResponse::InternalServerError().json(error_response))
+        }
+    }
+}
+
+/// Get top cost resources with metadata
+pub async fn get_top_cost_resources_with_metadata(
+    cost_service: web::Data<Arc<AwsCostAnalyticsService>>,
+    query: web::Query<TopResourcesQuery>,
+    _claims: web::ReqData<Claims>,
+) -> ActixResult<HttpResponse> {
+    tracing::info!("Getting top {} cost resources with metadata for account {}", query.limit.unwrap_or(10), query.account_id);
+
+    // Parse dates
+    let start_date = NaiveDate::parse_from_str(&query.start_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid start_date format: {}", e))
+    })?;
+
+    let end_date = NaiveDate::parse_from_str(&query.end_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid end_date format: {}", e))
+    })?;
+
+    match cost_service
+        .get_top_cost_resources_with_metadata(
+            &query.account_id,
+            start_date,
+            end_date,
+            query.limit.unwrap_or(10) as usize,
+        )
+        .await
+    {
+        Ok(top_resources) => {
+            let response = CostAnalysisResponse {
+                success: true,
+                data: serde_json::json!({
+                    "top_resources": top_resources.into_iter().map(|item| serde_json::json!({
+                        "cost_data": {
+                            "id": item.cost_data.id,
+                            "account_id": item.cost_data.account_id,
+                            "service_name": item.cost_data.service_name,
+                            "usage_type": item.cost_data.usage_type,
+                            "operation": item.cost_data.operation,
+                            "region": item.cost_data.region,
+                            "usage_start": item.cost_data.usage_start,
+                            "usage_end": item.cost_data.usage_end,
+                            "unblended_cost": item.cost_data.unblended_cost,
+                            "blended_cost": item.cost_data.blended_cost,
+                            "usage_amount": item.cost_data.usage_amount,
+                            "usage_unit": item.cost_data.usage_unit,
+                            "currency": item.cost_data.currency
+                        },
+                        "resource_metadata": item.resource_metadata.map(|meta| serde_json::json!({
+                            "resource_id": meta.resource_id,
+                            "name": meta.name,
+                            "resource_type": meta.resource_type,
+                            "region": meta.region,
+                            "arn": meta.arn,
+                            "tags": meta.tags,
+                            "resource_data": meta.resource_data,
+                            "cost_allocation_tags": meta.cost_allocation_tags
+                        }))
+                    })).collect::<Vec<_>>()
+                }),
+                message: "Top cost resources with metadata retrieved successfully".to_string(),
+            };
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            tracing::error!("Failed to get top cost resources with metadata: {}", e);
+            let error_response = ErrorResponse::from(e);
+            Ok(HttpResponse::InternalServerError().json(error_response))
+        }
+    }
+}
+
+/// Get cost breakdown by categories
+pub async fn get_cost_categories(
+    cost_service: web::Data<Arc<AwsCostAnalyticsService>>,
+    query: web::Query<CostCategoriesQuery>,
+    _claims: web::ReqData<Claims>,
+) -> ActixResult<HttpResponse> {
+    tracing::info!("Getting cost categories for account {}", query.account_id);
+
+    // Parse dates
+    let start_date = NaiveDate::parse_from_str(&query.start_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid start_date format: {}", e))
+    })?;
+
+    let end_date = NaiveDate::parse_from_str(&query.end_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid end_date format: {}", e))
+    })?;
+
+    match cost_service
+        .get_cost_by_categories(&query.account_id, start_date, end_date)
+        .await
+    {
+        Ok(categories) => {
+            let response = CostAnalysisResponse {
+                success: true,
+                data: serde_json::json!({
+                    "categories": categories.into_iter().map(|cat| serde_json::json!({
+                        "category_id": cat.category_id,
+                        "category_name": cat.category_name,
+                        "total_cost": cat.total_cost,
+                        "resource_count": cat.resource_count,
+                        "cost_breakdown": cat.cost_breakdown
+                    })).collect::<Vec<_>>()
+                }),
+                message: "Cost categories retrieved successfully".to_string(),
+            };
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            tracing::error!("Failed to get cost categories: {}", e);
+            let error_response = ErrorResponse::from(e);
+            Ok(HttpResponse::InternalServerError().json(error_response))
+        }
+    }
+}
+
+/// Get cost category trends over time
+pub async fn get_category_trends(
+    cost_service: web::Data<Arc<AwsCostAnalyticsService>>,
+    query: web::Query<CategoryTrendsQuery>,
+    _claims: web::ReqData<Claims>,
+) -> ActixResult<HttpResponse> {
+    tracing::info!("Getting category trends for account {}", query.account_id);
+
+    // Parse dates
+    let start_date = NaiveDate::parse_from_str(&query.start_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid start_date format: {}", e))
+    })?;
+
+    let end_date = NaiveDate::parse_from_str(&query.end_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid end_date format: {}", e))
+    })?;
+
+    match cost_service
+        .get_category_trends(
+            &query.account_id,
+            start_date,
+            end_date,
+            query.granularity_days.unwrap_or(30),
+        )
+        .await
+    {
+        Ok(trends) => {
+            let response = CostAnalysisResponse {
+                success: true,
+                data: serde_json::json!({
+                    "category_trends": trends.into_iter().map(|(category, data_points)| {
+                        serde_json::json!({
+                            "category": category,
+                            "data_points": data_points.into_iter().map(|(date, cost)| {
+                                serde_json::json!({
+                                    "date": date.to_string(),
+                                    "cost": cost
+                                })
+                            }).collect::<Vec<_>>()
+                        })
+                    }).collect::<Vec<_>>()
+                }),
+                message: "Category trends retrieved successfully".to_string(),
+            };
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            tracing::error!("Failed to get category trends: {}", e);
+            let error_response = ErrorResponse::from(e);
+            Ok(HttpResponse::InternalServerError().json(error_response))
+        }
     }
 }

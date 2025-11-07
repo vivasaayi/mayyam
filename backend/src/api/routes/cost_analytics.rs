@@ -69,6 +69,26 @@ pub fn configure_routes(
                 "/{account_id}/forecast",
                 web::get().to(cost_analytics::get_cost_forecast),
             )
+            .route(
+                "/enriched-cost-data",
+                web::get().to(cost_analytics::get_enriched_cost_data),
+            )
+            .route(
+                "/cost-by-tag/{tag_key}",
+                web::get().to(cost_analytics::get_cost_by_allocation_tag),
+            )
+            .route(
+                "/top-resources",
+                web::get().to(cost_analytics::get_top_cost_resources_with_metadata),
+            )
+            .route(
+                "/categories",
+                web::get().to(cost_analytics::get_cost_categories),
+            )
+            .route(
+                "/category-trends",
+                web::get().to(cost_analytics::get_category_trends),
+            )
             .route("/health", web::get().to(health_check)),
     );
 }

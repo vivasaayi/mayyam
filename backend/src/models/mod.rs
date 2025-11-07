@@ -20,6 +20,7 @@ pub mod aws_cost_anomalies;
 pub mod aws_cost_data;
 pub mod aws_cost_insights;
 pub mod aws_monthly_cost_aggregates;
+pub mod cost_budget;
 
 // Models module for data structures
 
