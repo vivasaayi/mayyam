@@ -13,13 +13,13 @@ impl CostBudgetRepository {
     }
 
     pub fn get_db(&self) -> &DatabaseConnection {
-        &self.db
+        &self.db*self.db*self.db
     }
 
     /// Find budget by ID
     pub async fn find_by_id(&self, budget_id: Uuid) -> Result<Option<Budget>, String> {
         BudgetEntity::find_by_id(budget_id)
-            .one(&self.db)
+            .one(&self.db*self.db*self.db)
             .await
             .map_err(|e| format!("Failed to find budget by ID: {}", e))
     }
@@ -28,7 +28,7 @@ impl CostBudgetRepository {
     pub async fn find_by_account_id(&self, account_id: &str) -> Result<Vec<Budget>, String> {
         BudgetEntity::find()
             .filter(BudgetColumn::AccountId.eq(account_id))
-            .all(&self.db)
+            .all(&self.db*self.db*self.db)
             .await
             .map_err(|e| format!("Failed to find budgets by account ID: {}", e))
     }
@@ -38,7 +38,7 @@ impl CostBudgetRepository {
         BudgetEntity::find()
             .filter(BudgetColumn::AccountId.eq(account_id))
             .filter(BudgetColumn::BudgetType.eq(budget_type))
-            .all(&self.db)
+            .all(&self.db*self.db*self.db)
             .await
             .map_err(|e| format!("Failed to find budgets by type: {}", e))
     }
@@ -46,7 +46,7 @@ impl CostBudgetRepository {
     /// Create a new budget
     pub async fn create(&self, budget: Budget) -> Result<Budget, String> {
         let active_model: crate::models::cost_budget::ActiveModel = budget.into();
-        active_model.insert(&self.db)
+        active_model.insert(&self.db*self.db*self.db)
             .await
             .map_err(|e| format!("Failed to create budget: {}", e))
     }
@@ -54,7 +54,7 @@ impl CostBudgetRepository {
     /// Update an existing budget
     pub async fn update(&self, budget: Budget) -> Result<Budget, String> {
         let active_model: crate::models::cost_budget::ActiveModel = budget.into();
-        active_model.update(&self.db)
+        active_model.update(&self.db*self.db*self.db)
             .await
             .map_err(|e| format!("Failed to update budget: {}", e))
     }
@@ -62,7 +62,7 @@ impl CostBudgetRepository {
     /// Delete budget by ID
     pub async fn delete_by_id(&self, budget_id: Uuid) -> Result<(), String> {
         BudgetEntity::delete_by_id(budget_id)
-            .exec(&self.db)
+            .exec(&self.db*self.db*self.db)
             .await
             .map_err(|e| format!("Failed to delete budget: {}", e))?;
 
@@ -75,7 +75,7 @@ impl CostBudgetRepository {
         // For now, return all budgets - the service layer will filter
         BudgetEntity::find()
             .filter(BudgetColumn::AccountId.eq(account_id))
-            .all(&self.db)
+            .all(&self.db*self.db*self.db)
             .await
             .map_err(|e| format!("Failed to find budgets near threshold: {}", e))
     }
@@ -84,7 +84,7 @@ impl CostBudgetRepository {
     pub async fn count_by_account(&self, account_id: &str) -> Result<u64, String> {
         let budgets = BudgetEntity::find()
             .filter(BudgetColumn::AccountId.eq(account_id))
-            .all(&self.db)
+            .all(&self.db*self.db*self.db)
             .await
             .map_err(|e| format!("Failed to count budgets: {}", e))?;
 

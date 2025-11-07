@@ -22,6 +22,14 @@ pub mod aws_cost_insights;
 pub mod aws_monthly_cost_aggregates;
 pub mod cost_budget;
 
+// MySQL Performance Analysis models
+pub mod aurora_cluster;
+pub mod slow_query_event;
+pub mod query_fingerprint;
+pub mod explain_plan;
+pub mod ai_analysis;
+pub mod mysql_performance_snapshot;
+
 // Models module for data structures
 
 pub use analytics::{Insight, InsightSeverity, Recommendation, RecommendationPriority};
