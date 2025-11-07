@@ -90,3 +90,7 @@ ai:
 logging:
   level: "info"
   format: "json"
+
+sync:
+  # Max number of regions to scan in parallel per account sync
+  region_concurrency: 4

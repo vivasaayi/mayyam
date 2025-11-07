@@ -1,7 +1,7 @@
+use crate::integration::helpers::{get_aws_credentials, get_test_account_id, TestHarness};
+use base64::{engine::general_purpose, Engine as _};
 use reqwest::Client;
 use serde_json::json;
-use base64::{Engine as _, engine::general_purpose};
-use crate::integration::helpers::{TestHarness, get_aws_credentials, get_test_account_id};
 
 /// Integration tests for AWS Account API endpoints
 /// These tests assume the server is already running on localhost:8080
@@ -21,9 +21,6 @@ mod aws_account_integration_tests {
 
         harness.test_delay().await; // Small delay to prevent overwhelming server
 
-        println!("Auth token: {}", harness.auth_token());
-        println!("Token length: {}", harness.auth_token().len());
-
         let (access_key, secret_key, region, _) = get_aws_credentials();
         let test_account_id = get_test_account_id();
 
@@ -37,7 +34,8 @@ mod aws_account_integration_tests {
             "secret_access_key": secret_key
         });
 
-        let response = harness.client()
+        let response = harness
+            .client()
             .post(&harness.build_url("/api/aws/accounts"))
             .header("Authorization", &format!("Bearer {}", harness.auth_token()))
             .json(&account_data)
@@ -45,12 +43,24 @@ mod aws_account_integration_tests {
             .await
             .expect("Failed to create account");
 
-        println!("Response status: {}", response.status());
-        let response_text = response.text().await.expect("Failed to get response text");
-        println!("Response body: {}", response_text);
+        assert_eq!(response.status().as_u16(), 201);
 
-        // For now, just assert we get a response (we'll fix the 201 vs 400 later)
-        // assert_eq!(response.status(), 201);
+        let created: serde_json::Value = response
+            .json()
+            .await
+            .expect("Failed to parse created account JSON");
+
+        let created_id = created["id"].as_str().expect("missing id");
+
+        let cleanup = harness
+            .client()
+            .delete(&harness.build_url(&format!("/api/aws/accounts/{}", created_id)))
+            .header("Authorization", format!("Bearer {}", harness.auth_token()))
+            .send()
+            .await
+            .expect("Failed to cleanup created account");
+
+        assert_eq!(cleanup.status().as_u16(), 204);
     }
 
     /// Test getting all AWS accounts via API
@@ -60,7 +70,8 @@ mod aws_account_integration_tests {
 
         harness.test_delay().await; // Small delay to prevent overwhelming server
 
-        let response = harness.client()
+        let response = harness
+            .client()
             .get(&harness.build_url("/api/aws/accounts"))
             .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .send()
@@ -100,7 +111,8 @@ mod aws_account_integration_tests {
             "secret_access_key": secret_key
         });
 
-        let create_response = harness.client()
+        let create_response = harness
+            .client()
             .post(&harness.build_url("/api/aws/accounts"))
             .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .json(&account_data)
@@ -118,7 +130,8 @@ mod aws_account_integration_tests {
         let account_id = created_account["id"].as_str().unwrap();
 
         // Now get the account by ID
-        let get_response = harness.client()
+        let get_response = harness
+            .client()
             .get(&harness.build_url(&format!("/api/aws/accounts/{}", account_id)))
             .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .send()
@@ -134,6 +147,16 @@ mod aws_account_integration_tests {
 
         assert_eq!(retrieved_account["id"], account_id);
         assert_eq!(retrieved_account["account_id"], test_account_id);
+
+        let cleanup = harness
+            .client()
+            .delete(&harness.build_url(&format!("/api/aws/accounts/{}", account_id)))
+            .header("Authorization", format!("Bearer {}", harness.auth_token()))
+            .send()
+            .await
+            .expect("Failed to cleanup created account");
+
+        assert_eq!(cleanup.status().as_u16(), 204);
     }
 
     /// Test updating AWS account via API
@@ -162,7 +185,8 @@ mod aws_account_integration_tests {
             "secret_access_key": secret_key
         });
 
-        let create_response = harness.client()
+        let create_response = harness
+            .client()
             .post(&harness.build_url("/api/aws/accounts"))
             .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .json(&account_data)
@@ -185,7 +209,8 @@ mod aws_account_integration_tests {
             "default_region": "us-west-2"
         });
 
-        let update_response = harness.client()
+        let update_response = harness
+            .client()
             .put(&harness.build_url(&format!("/api/aws/accounts/{}", account_id)))
             .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .json(&update_data)
@@ -202,6 +227,16 @@ mod aws_account_integration_tests {
 
         assert_eq!(updated_account["account_name"], "Updated Test Account");
         assert_eq!(updated_account["default_region"], "us-west-2");
+
+        let cleanup = harness
+            .client()
+            .delete(&harness.build_url(&format!("/api/aws/accounts/{}", account_id)))
+            .header("Authorization", format!("Bearer {}", harness.auth_token()))
+            .send()
+            .await
+            .expect("Failed to cleanup updated account");
+
+        assert_eq!(cleanup.status().as_u16(), 204);
     }
 
     /// Test deleting AWS account via API
@@ -230,7 +265,8 @@ mod aws_account_integration_tests {
             "secret_access_key": secret_key
         });
 
-        let create_response = harness.client()
+        let create_response = harness
+            .client()
             .post(&harness.build_url("/api/aws/accounts"))
             .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .json(&account_data)
@@ -248,7 +284,8 @@ mod aws_account_integration_tests {
         let account_id = created_account["id"].as_str().unwrap();
 
         // Delete the account
-        let delete_response = harness.client()
+        let delete_response = harness
+            .client()
             .delete(&harness.build_url(&format!("/api/aws/accounts/{}", account_id)))
             .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .send()
@@ -258,7 +295,8 @@ mod aws_account_integration_tests {
         assert_eq!(delete_response.status(), 204);
 
         // Verify account is deleted
-        let get_response = harness.client()
+        let get_response = harness
+            .client()
             .get(&harness.build_url(&format!("/api/aws/accounts/{}", account_id)))
             .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .send()
@@ -275,7 +313,8 @@ mod aws_account_integration_tests {
 
         harness.test_delay().await; // Small delay to prevent overwhelming server
 
-        let response = harness.client()
+        let response = harness
+            .client()
             .get(&harness.build_url("/api/aws/accounts/550e8400-e29b-41d4-a716-446655440000"))
             .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .send()
@@ -305,7 +344,8 @@ mod aws_account_integration_tests {
             "default_region": "invalid-region"
         });
 
-        let response = harness.client()
+        let response = harness
+            .client()
             .post(&harness.build_url("/api/aws/accounts"))
             .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .json(&invalid_data)
@@ -332,7 +372,8 @@ mod aws_resource_integration_tests {
 
         harness.test_delay().await; // Small delay to prevent overwhelming server
 
-        let response = harness.client()
+        let response = harness
+            .client()
             .get(&harness.build_url("/api/aws/resources/account/123456789012"))
             .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .send()
@@ -344,8 +385,8 @@ mod aws_resource_integration_tests {
         // Only try to parse JSON if there's a response body
         if let Ok(body) = response.text().await {
             if !body.trim().is_empty() {
-                let _: Vec<serde_json::Value> = serde_json::from_str(&body)
-                    .expect("Failed to parse resources response JSON");
+                let _: Vec<serde_json::Value> =
+                    serde_json::from_str(&body).expect("Failed to parse resources response JSON");
             }
         }
     }
@@ -372,9 +413,9 @@ mod kinesis_integration_tests {
 
         // Test data for different usage patterns
         let test_streams = vec![
-            ("test-kinesis-low-usage", 5),      // Low usage stream
-            ("test-kinesis-medium-usage", 50),  // Medium usage stream
-            ("test-kinesis-high-usage", 200),   // High usage stream
+            ("test-kinesis-low-usage", 5),     // Low usage stream
+            ("test-kinesis-medium-usage", 50), // Medium usage stream
+            ("test-kinesis-high-usage", 200),  // High usage stream
         ];
 
         // Step 0: Create the test streams first
@@ -382,8 +423,12 @@ mod kinesis_integration_tests {
         for (stream_name, _) in &test_streams {
             println!("Creating stream: {}", stream_name);
 
-            let create_response = harness.client()
-                .post(&harness.build_url(&format!("/api/aws-data/profiles/default/regions/{}/kinesis/streams", region)))
+            let create_response = harness
+                .client()
+                .post(&harness.build_url(&format!(
+                    "/api/aws-data/profiles/default/regions/{}/kinesis/streams",
+                    region
+                )))
                 .header("Authorization", format!("Bearer {}", harness.auth_token()))
                 .header("Content-Type", "application/json")
                 .json(&json!({
@@ -398,7 +443,11 @@ mod kinesis_integration_tests {
                     if resp.status().is_success() {
                         println!("✅ Stream {} created successfully", stream_name);
                     } else {
-                        println!("⚠️  Failed to create stream {}: Status {}", stream_name, resp.status());
+                        println!(
+                            "⚠️  Failed to create stream {}: Status {}",
+                            stream_name,
+                            resp.status()
+                        );
                         // Continue anyway - stream might already exist
                     }
                 }
@@ -414,7 +463,10 @@ mod kinesis_integration_tests {
 
         // Step 1: Insert sample records into each stream with different loads
         for (stream_name, record_count) in &test_streams {
-            println!("Inserting {} records into stream: {}", record_count, stream_name);
+            println!(
+                "Inserting {} records into stream: {}",
+                record_count, stream_name
+            );
 
             for i in 0..*record_count {
                 let record_data = json!({
@@ -423,8 +475,12 @@ mod kinesis_integration_tests {
                     "partition_key": format!("partition-{}", i % 10)
                 });
 
-                let response = harness.client()
-                    .post(&harness.build_url(&format!("/api/aws-data/profiles/default/regions/{}/kinesis", region)))
+                let response = harness
+                    .client()
+                    .post(&harness.build_url(&format!(
+                        "/api/aws-data/profiles/default/regions/{}/kinesis",
+                        region
+                    )))
                     .header("Authorization", format!("Bearer {}", harness.auth_token()))
                     .header("Content-Type", "application/json")
                     .json(&record_data)
@@ -434,11 +490,18 @@ mod kinesis_integration_tests {
                 match response {
                     Ok(resp) => {
                         if !resp.status().is_success() {
-                            println!("Warning: Failed to insert record into {}: Status {}", stream_name, resp.status());
+                            println!(
+                                "Warning: Failed to insert record into {}: Status {}",
+                                stream_name,
+                                resp.status()
+                            );
                         }
                     }
                     Err(e) => {
-                        println!("Warning: Failed to insert record into {}: {}", stream_name, e);
+                        println!(
+                            "Warning: Failed to insert record into {}: {}",
+                            stream_name, e
+                        );
                     }
                 }
 
@@ -464,7 +527,8 @@ mod kinesis_integration_tests {
                     "workflow": workflow
                 });
 
-                let response = harness.client()
+                let response = harness
+                    .client()
                     .post(&harness.build_url("/api/aws/analytics/analyze"))
                     .header("Authorization", format!("Bearer {}", harness.auth_token()))
                     .header("Content-Type", "application/json")
@@ -475,24 +539,39 @@ mod kinesis_integration_tests {
                 match response {
                     Ok(resp) => {
                         if resp.status().is_success() {
-                            let analysis_result: serde_json::Value = resp.json().await
+                            let analysis_result: serde_json::Value = resp
+                                .json()
+                                .await
                                 .expect("Failed to parse analysis response");
 
                             println!("✅ {} analysis successful for {}", workflow, stream_name);
                             println!("Analysis result: {}", analysis_result);
 
                             // Basic validation of analysis response
-                            assert!(analysis_result.get("analysis").is_some(), "Analysis should contain analysis field");
-                            assert!(analysis_result.get("related_questions").is_some(), "Analysis should contain related_questions field");
-
+                            assert!(
+                                analysis_result.get("analysis").is_some(),
+                                "Analysis should contain analysis field"
+                            );
+                            assert!(
+                                analysis_result.get("related_questions").is_some(),
+                                "Analysis should contain related_questions field"
+                            );
                         } else {
-                            println!("❌ {} analysis failed for {}: Status {}", workflow, stream_name, resp.status());
+                            println!(
+                                "❌ {} analysis failed for {}: Status {}",
+                                workflow,
+                                stream_name,
+                                resp.status()
+                            );
                             let error_text = resp.text().await.unwrap_or_default();
                             println!("Error: {}", error_text);
                         }
                     }
                     Err(e) => {
-                        println!("❌ {} analysis request failed for {}: {}", workflow, stream_name, e);
+                        println!(
+                            "❌ {} analysis request failed for {}: {}",
+                            workflow, stream_name, e
+                        );
                     }
                 }
 
@@ -503,12 +582,16 @@ mod kinesis_integration_tests {
 
         // Step 4: Clean up - Delete test streams
         println!("Cleaning up test streams...");
-        
+
         for (stream_name, _) in &test_streams {
             println!("Deleting stream: {}", stream_name);
 
-            let delete_response = harness.client()
-                .delete(&harness.build_url(&format!("/api/aws-data/profiles/default/regions/{}/kinesis/streams", region)))
+            let delete_response = harness
+                .client()
+                .delete(&harness.build_url(&format!(
+                    "/api/aws-data/profiles/default/regions/{}/kinesis/streams",
+                    region
+                )))
                 .header("Authorization", format!("Bearer {}", harness.auth_token()))
                 .header("Content-Type", "application/json")
                 .json(&json!({
@@ -523,7 +606,11 @@ mod kinesis_integration_tests {
                     if resp.status().is_success() {
                         println!("✅ Stream {} deleted successfully", stream_name);
                     } else {
-                        println!("⚠️  Failed to delete stream {}: Status {}", stream_name, resp.status());
+                        println!(
+                            "⚠️  Failed to delete stream {}: Status {}",
+                            stream_name,
+                            resp.status()
+                        );
                         let error_text = resp.text().await.unwrap_or_default();
                         println!("Error: {}", error_text);
                     }
@@ -557,8 +644,12 @@ mod kinesis_integration_tests {
 
         // Step 1: Create the stream
         println!("Step 1: Creating stream...");
-        let create_response = harness.client()
-            .post(&harness.build_url("/api/aws-data/profiles/default/regions/us-east-1/kinesis/streams"))
+        let create_response = harness
+            .client()
+            .post(
+                &harness
+                    .build_url("/api/aws-data/profiles/default/regions/us-east-1/kinesis/streams"),
+            )
             .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .header("Content-Type", "application/json")
             .json(&json!({
@@ -569,13 +660,20 @@ mod kinesis_integration_tests {
             .await
             .expect("Failed to create stream");
 
-        assert!(create_response.status().is_success(), "Stream creation failed: {}", create_response.status());
+        assert!(
+            create_response.status().is_success(),
+            "Stream creation failed: {}",
+            create_response.status()
+        );
         println!("✓ Stream created successfully");
 
         // Step 2: Verify stream exists by describing it
         println!("Step 2: Verifying stream exists...");
-        let describe_response = harness.client()
-            .post(&harness.build_url("/api/aws-data/profiles/default/regions/us-east-1/kinesis/streams/describe"))
+        let describe_response = harness
+            .client()
+            .post(&harness.build_url(
+                "/api/aws-data/profiles/default/regions/us-east-1/kinesis/streams/describe",
+            ))
             .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .header("Content-Type", "application/json")
             .json(&json!({
@@ -585,19 +683,27 @@ mod kinesis_integration_tests {
             .await
             .expect("Failed to describe stream");
 
-        assert!(describe_response.status().is_success(), "Stream description failed: {}", describe_response.status());
+        assert!(
+            describe_response.status().is_success(),
+            "Stream description failed: {}",
+            describe_response.status()
+        );
 
         let describe_body: serde_json::Value = describe_response
             .json()
             .await
             .expect("Failed to parse describe response");
 
-        assert_eq!(describe_body["stream_name"], stream_name, "Stream name mismatch in describe response");
+        assert_eq!(
+            describe_body["stream_name"], stream_name,
+            "Stream name mismatch in describe response"
+        );
         println!("✓ Stream verified successfully");
 
         // Step 3: Put a record to the stream (test the existing functionality)
         println!("Step 3: Testing record insertion...");
-        let put_record_response = harness.client()
+        let put_record_response = harness
+            .client()
             .post(&harness.build_url("/api/aws-data/profiles/default/regions/us-east-1/kinesis"))
             .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .header("Content-Type", "application/json")
@@ -610,14 +716,22 @@ mod kinesis_integration_tests {
             .await
             .expect("Failed to put record");
 
-        assert!(put_record_response.status().is_success(), "Put record failed: {}", put_record_response.status());
+        assert!(
+            put_record_response.status().is_success(),
+            "Put record failed: {}",
+            put_record_response.status()
+        );
         println!("✓ Record inserted successfully");
 
         // Step 4: Delete the stream
         println!("Step 4: Deleting stream...");
-        
-        let delete_response = harness.client()
-            .delete(&harness.build_url("/api/aws-data/profiles/default/regions/us-east-1/kinesis/streams"))
+
+        let delete_response = harness
+            .client()
+            .delete(
+                &harness
+                    .build_url("/api/aws-data/profiles/default/regions/us-east-1/kinesis/streams"),
+            )
             .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .header("Content-Type", "application/json")
             .json(&json!({
@@ -631,7 +745,10 @@ mod kinesis_integration_tests {
         if delete_response.status().is_success() {
             println!("✓ Stream deleted successfully");
         } else {
-            println!("⚠️  Stream deletion failed: Status {}", delete_response.status());
+            println!(
+                "⚠️  Stream deletion failed: Status {}",
+                delete_response.status()
+            );
             let error_text = delete_response.text().await.unwrap_or_default();
             println!("Error: {}", error_text);
         }
@@ -640,9 +757,12 @@ mod kinesis_integration_tests {
         println!("Step 5: Verifying stream deletion...");
         // Wait a moment for deletion to complete (deletion is asynchronous)
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-        
-        let verify_delete_response = harness.client()
-            .post(&harness.build_url("/api/aws-data/profiles/default/regions/us-east-1/kinesis/streams/describe"))
+
+        let verify_delete_response = harness
+            .client()
+            .post(&harness.build_url(
+                "/api/aws-data/profiles/default/regions/us-east-1/kinesis/streams/describe",
+            ))
             .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .header("Content-Type", "application/json")
             .json(&json!({
@@ -658,12 +778,16 @@ mod kinesis_integration_tests {
                 .json()
                 .await
                 .expect("Failed to parse describe response after deletion");
-            
-            if let Some(stream_status) = describe_body.get("stream_status").and_then(|s| s.as_str()) {
+
+            if let Some(stream_status) = describe_body.get("stream_status").and_then(|s| s.as_str())
+            {
                 if stream_status == "DELETING" {
                     println!("✓ Stream is in DELETING state - deletion initiated successfully");
                 } else {
-                    println!("⚠️ Stream still exists with status: {} (may be test environment behavior)", stream_status);
+                    println!(
+                        "⚠️ Stream still exists with status: {} (may be test environment behavior)",
+                        stream_status
+                    );
                 }
             } else {
                 println!("⚠️ Could not determine stream status after deletion attempt");
@@ -699,7 +823,8 @@ mod kinesis_integration_tests {
                 "time_range": time_range
             });
 
-            let response = harness.client()
+            let response = harness
+                .client()
                 .post(&harness.build_url("/api/aws/analytics/analyze"))
                 .header("Authorization", format!("Bearer {}", harness.auth_token()))
                 .header("Content-Type", "application/json")
@@ -712,11 +837,18 @@ mod kinesis_integration_tests {
                     if resp.status().is_success() {
                         println!("✅ Analysis successful for time range: {}", time_range);
                     } else {
-                        println!("⚠️ Analysis failed for time range {}: Status {}", time_range, resp.status());
+                        println!(
+                            "⚠️ Analysis failed for time range {}: Status {}",
+                            time_range,
+                            resp.status()
+                        );
                     }
                 }
                 Err(e) => {
-                    println!("⚠️ Analysis request failed for time range {}: {}", time_range, e);
+                    println!(
+                        "⚠️ Analysis request failed for time range {}: {}",
+                        time_range, e
+                    );
                 }
             }
 
@@ -742,7 +874,8 @@ mod kinesis_integration_tests {
             "workflow": "performance"
         });
 
-        let response = harness.client()
+        let response = harness
+            .client()
             .post(&harness.build_url("/api/aws/analytics/analyze"))
             .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .header("Content-Type", "application/json")
@@ -755,7 +888,10 @@ mod kinesis_integration_tests {
                 if resp.status().is_client_error() {
                     println!("✅ Error handling works correctly for non-existent stream");
                 } else {
-                    println!("⚠️ Expected error for non-existent stream, got status: {}", resp.status());
+                    println!(
+                        "⚠️ Expected error for non-existent stream, got status: {}",
+                        resp.status()
+                    );
                 }
             }
             Err(e) => {
@@ -769,7 +905,8 @@ mod kinesis_integration_tests {
             "workflow": "invalid-workflow"
         });
 
-        let response = harness.client()
+        let response = harness
+            .client()
             .post(&harness.build_url("/api/aws/analytics/analyze"))
             .header("Authorization", format!("Bearer {}", harness.auth_token()))
             .header("Content-Type", "application/json")
@@ -782,7 +919,10 @@ mod kinesis_integration_tests {
                 if resp.status().is_client_error() {
                     println!("✅ Error handling works correctly for invalid workflow");
                 } else {
-                    println!("⚠️ Expected error for invalid workflow, got status: {}", resp.status());
+                    println!(
+                        "⚠️ Expected error for invalid workflow, got status: {}",
+                        resp.status()
+                    );
                 }
             }
             Err(e) => {

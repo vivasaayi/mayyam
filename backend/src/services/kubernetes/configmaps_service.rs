@@ -2,7 +2,10 @@ use crate::errors::AppError;
 use crate::models::cluster::KubernetesClusterConfig;
 use crate::services::kubernetes::client::ClientFactory;
 use k8s_openapi::api::core::v1::ConfigMap;
-use kube::{api::{Api, ListParams, PatchParams, Patch, DeleteParams}, ResourceExt};
+use kube::{
+    api::{Api, DeleteParams, ListParams, Patch, PatchParams},
+    ResourceExt,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -18,7 +21,9 @@ pub struct ConfigMapInfo {
 pub struct ConfigMapsService;
 
 impl ConfigMapsService {
-    pub fn new() -> Self { Self }
+    pub fn new() -> Self {
+        Self
+    }
 
     async fn api(
         cluster_config: &KubernetesClusterConfig,
@@ -44,10 +49,18 @@ impl ConfigMapsService {
     ) -> Result<Vec<ConfigMapInfo>, AppError> {
         let api = Self::api(cluster_config, namespace).await?;
         let mut lp = ListParams::default();
-        if let Some(ls) = label_selector { lp = lp.labels(&ls); }
-        if let Some(fs) = field_selector { lp = lp.fields(&fs); }
-        if let Some(l) = limit { lp = lp.limit(l); }
-        if let Some(ct) = continue_token { lp = lp.continue_token(&ct); }
+        if let Some(ls) = label_selector {
+            lp = lp.labels(&ls);
+        }
+        if let Some(fs) = field_selector {
+            lp = lp.fields(&fs);
+        }
+        if let Some(l) = limit {
+            lp = lp.limit(l);
+        }
+        if let Some(ct) = continue_token {
+            lp = lp.continue_token(&ct);
+        }
         let cms = api
             .list(&lp)
             .await
@@ -56,7 +69,13 @@ impl ConfigMapsService {
         for cm in cms {
             out.push(ConfigMapInfo {
                 name: cm.name_any(),
-                namespace: cm.namespace().unwrap_or_else(|| if namespace == "all" { String::new() } else { namespace.to_string() }),
+                namespace: cm.namespace().unwrap_or_else(|| {
+                    if namespace == "all" {
+                        String::new()
+                    } else {
+                        namespace.to_string()
+                    }
+                }),
                 data_keys: cm.data.unwrap_or_default().keys().cloned().collect(),
                 labels: cm.metadata.labels.clone(),
                 annotations: cm.metadata.annotations.clone(),
@@ -110,8 +129,7 @@ impl ConfigMapsService {
         name: &str,
     ) -> Result<(), AppError> {
         let api = Self::api(cluster_config, namespace).await?;
-        api
-            .delete(name, &DeleteParams::default())
+        api.delete(name, &DeleteParams::default())
             .await
             .map_err(|e| AppError::Kubernetes(e.to_string()))?;
         Ok(())

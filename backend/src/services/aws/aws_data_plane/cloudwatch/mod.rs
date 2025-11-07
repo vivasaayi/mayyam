@@ -1,21 +1,16 @@
-mod base;
-mod metrics;
-mod logs;
 mod alarms;
+mod base;
+mod logs;
+mod metrics;
 mod types;
 
-pub use base::CloudWatchService;
-pub use metrics::CloudWatchMetrics;
-pub use logs::CloudWatchLogs;
 pub use alarms::CloudWatchAlarms;
+pub use base::CloudWatchService;
+pub use logs::CloudWatchLogs;
+pub use metrics::CloudWatchMetrics;
 pub use types::*;
 
 // Re-export common types
 pub use aws_sdk_cloudwatch::types::{
-    Dimension,
-    Metric,
-    MetricDataQuery,
-    MetricStat,
-    Statistic,
-    ComparisonOperator,
+    ComparisonOperator, Dimension, Metric, MetricDataQuery, MetricStat, Statistic,
 };

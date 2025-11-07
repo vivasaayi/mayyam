@@ -1,21 +1,240 @@
-use std::sync::Arc;
 use actix_web::{web, HttpResponse, Result as ActixResult};
-use serde::{Deserialize, Serialize};
 use chrono::NaiveDate;
+use csv::Writer;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::services::aws_cost_analytics::{AwsCostAnalyticsService, CostAnalysisRequest};
-use crate::repositories::cost_analytics::CostAnalyticsRepository;
 use crate::errors::AppError;
 use crate::middleware::auth::Claims;
+use crate::repositories::aws_account::AwsAccountRepository;
+use crate::repositories::aws_resource::AwsResourceRepository;
+use crate::repositories::cost_analytics::CostAnalyticsRepository;
+use crate::services::aws_cost_analytics::{AwsCostAnalyticsService, CostAnalysisRequest};
+
+// CSV export helper functions
+fn export_new_resources_csv(resources: &[serde_json::Value]) -> Result<String, AppError> {
+    let mut wtr = Writer::from_writer(vec![]);
+
+    // Write header
+    wtr.write_record(&[
+        "Resource ID",
+        "Account ID",
+        "Resource Type",
+        "Name",
+        "Region",
+        "ARN",
+        "Created At",
+        "Tags",
+        "Current Cost",
+    ])
+    .map_err(|e| AppError::Internal(format!("CSV write error: {}", e)))?;
+
+    // Write data
+    for resource in resources {
+        let resource_id = resource
+            .get("resource_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let account_id = resource
+            .get("account_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let resource_type = resource
+            .get("resource_type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let name = resource.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        let region = resource
+            .get("region")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let arn = resource.get("arn").and_then(|v| v.as_str()).unwrap_or("");
+        let created_at = resource
+            .get("created_at")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let tags = resource
+            .get("tags")
+            .and_then(|v| v.as_str())
+            .unwrap_or("{}");
+        let current_cost = resource
+            .get("current_cost")
+            .and_then(|v| v.as_f64())
+            .map(|v| format!("{:.2}", v))
+            .unwrap_or("0.00".to_string());
+
+        wtr.write_record(&[
+            resource_id,
+            account_id,
+            resource_type,
+            name,
+            region,
+            arn,
+            created_at,
+            tags,
+            &current_cost,
+        ])
+        .map_err(|e| AppError::Internal(format!("CSV write error: {}", e)))?;
+    }
+
+    wtr.flush()
+        .map_err(|e| AppError::Internal(format!("CSV flush error: {}", e)))?;
+    let csv_bytes = wtr
+        .into_inner()
+        .map_err(|e| AppError::Internal(format!("CSV writer error: {}", e)))?;
+    let csv_data = String::from_utf8(csv_bytes)
+        .map_err(|e| AppError::Internal(format!("CSV encoding error: {}", e)))?;
+    Ok(csv_data)
+}
+
+fn export_cost_increases_csv(cost_increases: &[serde_json::Value]) -> Result<String, AppError> {
+    let mut wtr = Writer::from_writer(vec![]);
+
+    // Write header
+    wtr.write_record(&[
+        "Resource ID",
+        "Account ID",
+        "Service",
+        "Region",
+        "Current Cost",
+        "Previous Cost",
+        "Cost Increase",
+        "Percentage Increase",
+        "Period Days",
+    ])
+    .map_err(|e| AppError::Internal(format!("CSV write error: {}", e)))?;
+
+    // Write data
+    for increase in cost_increases {
+        let resource_id = increase
+            .get("resource_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let account_id = increase
+            .get("account_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let service = increase
+            .get("service")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let region = increase
+            .get("region")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let current_cost = increase
+            .get("current_cost")
+            .and_then(|v| v.as_f64())
+            .map(|v| format!("{:.2}", v))
+            .unwrap_or("0.00".to_string());
+        let previous_cost = increase
+            .get("previous_cost")
+            .and_then(|v| v.as_f64())
+            .map(|v| format!("{:.2}", v))
+            .unwrap_or("0.00".to_string());
+        let cost_increase = increase
+            .get("cost_increase")
+            .and_then(|v| v.as_f64())
+            .map(|v| format!("{:.2}", v))
+            .unwrap_or("0.00".to_string());
+        let percentage_increase = increase
+            .get("percentage_increase")
+            .and_then(|v| v.as_f64())
+            .map(|v| format!("{:.2}", v))
+            .unwrap_or("0.00".to_string());
+        let period_days = increase
+            .get("period_days")
+            .and_then(|v| v.as_i64())
+            .map(|v| v.to_string())
+            .unwrap_or("0".to_string());
+
+        wtr.write_record(&[
+            resource_id,
+            account_id,
+            service,
+            region,
+            &current_cost,
+            &previous_cost,
+            &cost_increase,
+            &percentage_increase,
+            &period_days,
+        ])
+        .map_err(|e| AppError::Internal(format!("CSV write error: {}", e)))?;
+    }
+
+    wtr.flush()
+        .map_err(|e| AppError::Internal(format!("CSV flush error: {}", e)))?;
+    let csv_bytes = wtr
+        .into_inner()
+        .map_err(|e| AppError::Internal(format!("CSV writer error: {}", e)))?;
+    let csv_data = String::from_utf8(csv_bytes)
+        .map_err(|e| AppError::Internal(format!("CSV encoding error: {}", e)))?;
+    Ok(csv_data)
+}
+
+fn export_cost_history_csv(
+    cost_history: &[serde_json::Value],
+    resource_id: &str,
+) -> Result<String, AppError> {
+    let mut wtr = Writer::from_writer(vec![]);
+
+    // Write header
+    wtr.write_record(&[
+        "Resource ID",
+        "Period",
+        "Total Cost",
+        "Average Daily Cost",
+        "Data Points",
+    ])
+    .map_err(|e| AppError::Internal(format!("CSV write error: {}", e)))?;
+
+    // Write data
+    for record in cost_history {
+        let period = record.get("period").and_then(|v| v.as_str()).unwrap_or("");
+        let total_cost = record
+            .get("total_cost")
+            .and_then(|v| v.as_f64())
+            .map(|v| format!("{:.2}", v))
+            .unwrap_or("0.00".to_string());
+        let avg_daily_cost = record
+            .get("avg_daily_cost")
+            .and_then(|v| v.as_f64())
+            .map(|v| format!("{:.2}", v))
+            .unwrap_or("0.00".to_string());
+        let data_points = record
+            .get("data_points")
+            .and_then(|v| v.as_i64())
+            .map(|v| v.to_string())
+            .unwrap_or("0".to_string());
+
+        wtr.write_record(&[
+            resource_id,
+            period,
+            &total_cost,
+            &avg_daily_cost,
+            &data_points,
+        ])
+        .map_err(|e| AppError::Internal(format!("CSV write error: {}", e)))?;
+    }
+
+    wtr.flush()
+        .map_err(|e| AppError::Internal(format!("CSV flush error: {}", e)))?;
+    let csv_bytes = wtr
+        .into_inner()
+        .map_err(|e| AppError::Internal(format!("CSV writer error: {}", e)))?;
+    let csv_data = String::from_utf8(csv_bytes)
+        .map_err(|e| AppError::Internal(format!("CSV encoding error: {}", e)))?;
+    Ok(csv_data)
+}
 
 #[derive(Debug, Deserialize)]
 pub struct CostAnalysisQuery {
     pub account_id: String,
-    pub start_date: String, // YYYY-MM-DD format
-    pub end_date: String,   // YYYY-MM-DD format
+    pub start_date: String,             // YYYY-MM-DD format
+    pub end_date: String,               // YYYY-MM-DD format
     pub service_filter: Option<String>, // Comma-separated service names
-    pub granularity: Option<String>, // "DAILY" or "MONTHLY", default "MONTHLY"
+    pub granularity: Option<String>,    // "DAILY" or "MONTHLY", default "MONTHLY"
 }
 
 #[derive(Debug, Deserialize)]
@@ -39,10 +258,85 @@ pub struct AnomaliesQuery {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct ResourceCostQuery {
+    pub account_id: String,
+    pub resource_id: Option<String>,
+    pub service_name: Option<String>,
+    pub region: Option<String>,
+    pub availability_zone: Option<String>,
+    pub instance_type: Option<String>,
+    pub start_date: String,
+    pub end_date: String,
+    pub limit: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct InsightsQuery {
     pub account_id: String,
     pub insight_type: Option<String>,
     pub limit: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct NewResourcesQuery {
+    pub account_id: Option<String>,
+    pub days_back: Option<i64>,
+    pub limit: Option<u64>,
+    pub format: Option<String>, // "json" or "csv", default "json"
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CostIncreaseQuery {
+    pub account_id: Option<String>,
+    pub days_back: Option<i64>,
+    pub threshold_percentage: Option<f64>,
+    pub min_cost_threshold: Option<f64>,
+    pub format: Option<String>, // "json" or "csv", default "json"
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ForecastQuery {
+    pub account_id: String,
+    pub days_ahead: Option<i32>, // Number of days to forecast ahead, default 30
+    pub confidence_level: Option<f64>, // Confidence level for prediction intervals, default 0.95
+}
+
+#[derive(Debug, Deserialize)]
+pub struct EnrichedCostQuery {
+    pub account_id: String,
+    pub start_date: String, // YYYY-MM-DD format
+    pub end_date: String,   // YYYY-MM-DD format
+    pub resource_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CostByTagQuery {
+    pub account_id: String,
+    pub start_date: String, // YYYY-MM-DD format
+    pub end_date: String,   // YYYY-MM-DD format
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TopResourcesQuery {
+    pub account_id: String,
+    pub start_date: String, // YYYY-MM-DD format
+    pub end_date: String,   // YYYY-MM-DD format
+    pub limit: Option<u32>, // Number of top resources to return, default 10
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CostCategoriesQuery {
+    pub account_id: String,
+    pub start_date: String, // YYYY-MM-DD format
+    pub end_date: String,   // YYYY-MM-DD format
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CategoryTrendsQuery {
+    pub account_id: String,
+    pub start_date: String, // YYYY-MM-DD format
+    pub end_date: String,   // YYYY-MM-DD format
+    pub granularity_days: Option<i64>, // Granularity in days, default 30
 }
 
 #[derive(Debug, Serialize)]
@@ -72,29 +366,36 @@ impl From<AppError> for ErrorResponse {
 /// Fetch real-time cost data from AWS Cost Explorer
 pub async fn fetch_cost_data(
     cost_service: web::Data<Arc<AwsCostAnalyticsService>>,
+    aws_account_repo: web::Data<Arc<AwsAccountRepository>>,
     query: web::Query<CostAnalysisQuery>,
     _claims: web::ReqData<Claims>,
 ) -> ActixResult<HttpResponse> {
     tracing::info!("Fetching cost data for account {}", query.account_id);
 
     // Parse dates
-    let start_date = NaiveDate::parse_from_str(&query.start_date, "%Y-%m-%d")
-        .map_err(|e| actix_web::error::ErrorBadRequest(format!("Invalid start_date format: {}", e)))?;
-    
-    let end_date = NaiveDate::parse_from_str(&query.end_date, "%Y-%m-%d")
-        .map_err(|e| actix_web::error::ErrorBadRequest(format!("Invalid end_date format: {}", e)))?;
+    let start_date = NaiveDate::parse_from_str(&query.start_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid start_date format: {}", e))
+    })?;
+
+    let end_date = NaiveDate::parse_from_str(&query.end_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid end_date format: {}", e))
+    })?;
 
     // Parse service filter
-    let service_filter = query.service_filter.as_ref().map(|s| {
-        s.split(',').map(|s| s.trim().to_string()).collect()
-    });
+    let service_filter = query
+        .service_filter
+        .as_ref()
+        .map(|s| s.split(',').map(|s| s.trim().to_string()).collect());
 
     let request = CostAnalysisRequest {
         account_id: query.account_id.clone(),
         start_date,
         end_date,
         service_filter,
-        granularity: query.granularity.clone().unwrap_or_else(|| "MONTHLY".to_string()),
+        granularity: query
+            .granularity
+            .clone()
+            .unwrap_or_else(|| "MONTHLY".to_string()),
     };
 
     match cost_service.fetch_cost_data(&request).await {
@@ -126,9 +427,15 @@ pub async fn get_monthly_aggregates(
     query: web::Query<MonthlyAggregatesQuery>,
     _claims: web::ReqData<Claims>,
 ) -> ActixResult<HttpResponse> {
-    tracing::info!("Getting monthly aggregates for account {}", query.account_id);
+    tracing::info!(
+        "Getting monthly aggregates for account {}",
+        query.account_id
+    );
 
-    match repository.get_monthly_aggregates_by_account(&query.account_id, query.months).await {
+    match repository
+        .get_monthly_aggregates_by_account(&query.account_id, query.months)
+        .await
+    {
         Ok(aggregates) => {
             let response = CostAnalysisResponse {
                 success: true,
@@ -162,13 +469,22 @@ pub async fn get_top_services(
     query: web::Query<TopServicesQuery>,
     _claims: web::ReqData<Claims>,
 ) -> ActixResult<HttpResponse> {
-    tracing::info!("Getting top services for account {} and month {}", query.account_id, query.month_year);
+    tracing::info!(
+        "Getting top services for account {} and month {}",
+        query.account_id,
+        query.month_year
+    );
 
     // Parse month_year
     let month_date = NaiveDate::parse_from_str(&format!("{}-01", query.month_year), "%Y-%m-%d")
-        .map_err(|e| actix_web::error::ErrorBadRequest(format!("Invalid month_year format: {}", e)))?;
+        .map_err(|e| {
+            actix_web::error::ErrorBadRequest(format!("Invalid month_year format: {}", e))
+        })?;
 
-    match repository.get_top_services_by_cost(&query.account_id, month_date, query.limit).await {
+    match repository
+        .get_top_services_by_cost(&query.account_id, month_date, query.limit)
+        .await
+    {
         Ok(services) => {
             let response = CostAnalysisResponse {
                 success: true,
@@ -202,7 +518,14 @@ pub async fn get_cost_anomalies(
 ) -> ActixResult<HttpResponse> {
     tracing::info!("Getting cost anomalies for account {}", query.account_id);
 
-    match repository.get_cost_anomalies_by_account(&query.account_id, query.severity.clone(), query.status.clone()).await {
+    match repository
+        .get_cost_anomalies_by_account(
+            &query.account_id,
+            query.severity.clone(),
+            query.status.clone(),
+        )
+        .await
+    {
         Ok(anomalies) => {
             let response = CostAnalysisResponse {
                 success: true,
@@ -242,7 +565,10 @@ pub async fn get_cost_insights(
 ) -> ActixResult<HttpResponse> {
     tracing::info!("Getting cost insights for account {}", query.account_id);
 
-    match repository.get_recent_insights(&query.account_id, query.insight_type.clone(), query.limit).await {
+    match repository
+        .get_recent_insights(&query.account_id, query.insight_type.clone(), query.limit)
+        .await
+    {
         Ok(insights) => {
             let response = CostAnalysisResponse {
                 success: true,
@@ -276,9 +602,15 @@ pub async fn compute_monthly_aggregates(
     query: web::Query<MonthlyAggregatesQuery>,
     _claims: web::ReqData<Claims>,
 ) -> ActixResult<HttpResponse> {
-    tracing::info!("Computing monthly aggregates for account {}", query.account_id);
+    tracing::info!(
+        "Computing monthly aggregates for account {}",
+        query.account_id
+    );
 
-    match cost_service.compute_monthly_aggregates(&query.account_id).await {
+    match cost_service
+        .compute_monthly_aggregates(&query.account_id)
+        .await
+    {
         Ok(()) => {
             let response = CostAnalysisResponse {
                 success: true,
@@ -320,6 +652,109 @@ pub async fn get_cost_summary(
     }
 }
 
+/// Get cost forecasting for an account
+pub async fn get_cost_forecast(
+    cost_service: web::Data<Arc<AwsCostAnalyticsService>>,
+    query: web::Query<ForecastQuery>,
+    _claims: web::ReqData<Claims>,
+) -> ActixResult<HttpResponse> {
+    let days_ahead = query.days_ahead.unwrap_or(30);
+    let months_ahead = (days_ahead / 30).max(1) as u32; // Convert days to months, minimum 1
+
+    tracing::info!(
+        "Getting cost forecast for account {} ({} days / {} months ahead)",
+        query.account_id,
+        days_ahead,
+        months_ahead
+    );
+
+    match cost_service
+        .forecast_costs(&query.account_id, months_ahead, None)
+        .await
+    {
+        Ok(forecast) => {
+            let response = CostAnalysisResponse {
+                success: true,
+                data: forecast,
+                message: format!(
+                    "Cost forecast generated successfully for {} months ahead",
+                    months_ahead
+                ),
+            };
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            tracing::error!("Failed to generate cost forecast: {}", e);
+            let error_response = ErrorResponse::from(e);
+            Ok(HttpResponse::InternalServerError().json(error_response))
+        }
+    }
+}
+
+/// Get costs by specific resources
+pub async fn get_resource_costs(
+    repository: web::Data<Arc<CostAnalyticsRepository>>,
+    query: web::Query<ResourceCostQuery>,
+    _claims: web::ReqData<Claims>,
+) -> ActixResult<HttpResponse> {
+    tracing::info!("Getting resource costs for account {}", query.account_id);
+
+    // Parse dates
+    let start_date = NaiveDate::parse_from_str(&query.start_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid start_date format: {}", e))
+    })?;
+
+    let end_date = NaiveDate::parse_from_str(&query.end_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid end_date format: {}", e))
+    })?;
+
+    match repository
+        .get_resource_costs(
+            &query.account_id,
+            start_date,
+            end_date,
+            query.resource_id.as_deref(),
+            query.service_name.as_deref(),
+            query.region.as_deref(),
+            query.availability_zone.as_deref(),
+            query.instance_type.as_deref(),
+            query.limit,
+        )
+        .await
+    {
+        Ok(resources) => {
+            let response = CostAnalysisResponse {
+                success: true,
+                data: serde_json::json!({
+                    "resources": resources.into_iter().map(|r| serde_json::json!({
+                        "id": r.id,
+                        "account_id": r.account_id,
+                        "service_name": r.service_name,
+                        "usage_type": r.usage_type,
+                        "operation": r.operation,
+                        "region": r.region,
+                        "resource_id": r.tags.as_ref().and_then(|t| t.get("resource_id")),
+                        "usage_start": r.usage_start,
+                        "usage_end": r.usage_end,
+                        "unblended_cost": r.unblended_cost,
+                        "blended_cost": r.blended_cost,
+                        "usage_amount": r.usage_amount,
+                        "usage_unit": r.usage_unit,
+                        "currency": r.currency
+                    })).collect::<Vec<_>>()
+                }),
+                message: "Resource costs retrieved successfully".to_string(),
+            };
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            tracing::error!("Failed to get resource costs: {}", e);
+            let error_response = ErrorResponse::from(e);
+            Ok(HttpResponse::InternalServerError().json(error_response))
+        }
+    }
+}
+
 /// Generate LLM analysis for a specific cost trend or anomaly
 pub async fn analyze_cost_with_llm(
     cost_service: web::Data<Arc<AwsCostAnalyticsService>>,
@@ -341,4 +776,541 @@ pub async fn analyze_cost_with_llm(
     };
 
     Ok(HttpResponse::Ok().json(response))
+}
+
+/// Get newly added resources across accounts
+pub async fn get_new_resources(
+    aws_resource_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    query: web::Query<NewResourcesQuery>,
+    _claims: web::ReqData<Claims>,
+) -> ActixResult<HttpResponse> {
+    tracing::info!("Getting newly added resources");
+
+    let days_back = query.days_back.unwrap_or(7); // Default to last 7 days
+    let limit = query.limit.unwrap_or(100); // Default limit
+    let format = query.format.as_deref().unwrap_or("json");
+
+    match aws_resource_repo
+        .find_newly_added_resources(query.account_id.clone(), days_back, Some(limit))
+        .await
+    {
+        Ok(resources) => {
+            let total_count = resources.len();
+
+            // Convert resources to JSON values for CSV export
+            let resources_json: Vec<serde_json::Value> = resources
+                .into_iter()
+                .map(|r| {
+                    serde_json::json!({
+                        "id": r.id,
+                        "account_id": r.account_id,
+                        "resource_type": r.resource_type,
+                        "resource_id": r.resource_id,
+                        "arn": r.arn,
+                        "name": r.name,
+                        "region": r.region,
+                        "created_at": r.created_at,
+                        "tags": r.tags,
+                        "current_cost": 0.0 // Placeholder, would need to be calculated
+                    })
+                })
+                .collect();
+
+            if format == "csv" {
+                match export_new_resources_csv(&resources_json) {
+                    Ok(csv_data) => Ok(HttpResponse::Ok()
+                        .content_type("text/csv")
+                        .append_header((
+                            "Content-Disposition",
+                            "attachment; filename=\"new_resources.csv\"",
+                        ))
+                        .body(csv_data)),
+                    Err(e) => {
+                        tracing::error!("Failed to export CSV: {}", e);
+                        let error_response = ErrorResponse::from(e);
+                        Ok(HttpResponse::InternalServerError().json(error_response))
+                    }
+                }
+            } else {
+                let response = CostAnalysisResponse {
+                    success: true,
+                    data: serde_json::json!({
+                        "new_resources": resources_json,
+                        "days_back": days_back,
+                        "total_count": total_count
+                    }),
+                    message: format!(
+                        "Found {} newly added resources in the last {} days",
+                        total_count, days_back
+                    ),
+                };
+                Ok(HttpResponse::Ok().json(response))
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to get new resources: {}", e);
+            let error_response = ErrorResponse::from(e);
+            Ok(HttpResponse::InternalServerError().json(error_response))
+        }
+    }
+}
+
+/// Get resource count changes over time
+pub async fn get_resource_count_trends(
+    aws_resource_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    query: web::Query<NewResourcesQuery>,
+    _claims: web::ReqData<Claims>,
+) -> ActixResult<HttpResponse> {
+    tracing::info!("Getting resource count trends");
+
+    let days_back = query.days_back.unwrap_or(30); // Default to last 30 days
+
+    match aws_resource_repo
+        .get_resource_count_changes(query.account_id.clone(), days_back)
+        .await
+    {
+        Ok(trends) => {
+            let response = CostAnalysisResponse {
+                success: true,
+                data: serde_json::json!({
+                    "trends": trends.into_iter().map(|(date, count)| serde_json::json!({
+                        "date": date,
+                        "new_resources_count": count
+                    })).collect::<Vec<_>>(),
+                    "days_back": days_back
+                }),
+                message: "Resource count trends retrieved successfully".to_string(),
+            };
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            tracing::error!("Failed to get resource count trends: {}", e);
+            let error_response = ErrorResponse::from(e);
+            Ok(HttpResponse::InternalServerError().json(error_response))
+        }
+    }
+}
+
+#[tracing::instrument(skip(aws_resource_repo))]
+pub async fn detect_cost_increases(
+    query: web::Query<CostIncreaseQuery>,
+    aws_resource_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> ActixResult<HttpResponse> {
+    let account_id = query.account_id.clone();
+    let days_back = query.days_back.unwrap_or(30);
+    let threshold_percentage = query.threshold_percentage.unwrap_or(20.0);
+    let min_cost_threshold = query.min_cost_threshold.unwrap_or(10.0);
+    let format = query.format.as_deref().unwrap_or("json");
+
+    match aws_resource_repo
+        .detect_cost_increases(
+            account_id,
+            days_back,
+            threshold_percentage,
+            min_cost_threshold,
+        )
+        .await
+    {
+        Ok(cost_increases) => {
+            let total_count = cost_increases.len();
+
+            if format == "csv" {
+                match export_cost_increases_csv(&cost_increases) {
+                    Ok(csv_data) => Ok(HttpResponse::Ok()
+                        .content_type("text/csv")
+                        .append_header((
+                            "Content-Disposition",
+                            "attachment; filename=\"cost_increases.csv\"",
+                        ))
+                        .body(csv_data)),
+                    Err(e) => {
+                        tracing::error!("Failed to export CSV: {}", e);
+                        let error_response = ErrorResponse::from(e);
+                        Ok(HttpResponse::InternalServerError().json(error_response))
+                    }
+                }
+            } else {
+                let response = CostAnalysisResponse {
+                    success: true,
+                    data: serde_json::json!({
+                        "cost_increases": cost_increases,
+                        "days_back": days_back,
+                        "threshold_percentage": threshold_percentage,
+                        "min_cost_threshold": min_cost_threshold,
+                        "total_count": total_count
+                    }),
+                    message: format!(
+                        "Found {} resources with cost increases of {}% or more in the last {} days",
+                        total_count, threshold_percentage, days_back
+                    ),
+                };
+                Ok(HttpResponse::Ok().json(response))
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to detect cost increases: {}", e);
+            let error_response = ErrorResponse::from(e);
+            Ok(HttpResponse::InternalServerError().json(error_response))
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct ResourceCostHistoryQuery {
+    pub resource_id: String,
+    pub account_id: Option<String>,
+    pub days_back: Option<i64>,
+    pub granularity: Option<String>, // "daily" or "weekly"
+    pub format: Option<String>,      // "json" or "csv", default "json"
+}
+
+pub async fn get_resource_cost_history(
+    query: web::Query<ResourceCostHistoryQuery>,
+    claims: web::ReqData<Claims>,
+    aws_resource_repo: web::Data<AwsResourceRepository>,
+) -> Result<HttpResponse, AppError> {
+    let days_back = query.days_back.unwrap_or(30);
+    let granularity = query
+        .granularity
+        .clone()
+        .unwrap_or_else(|| "daily".to_string());
+    let format = query.format.as_deref().unwrap_or("json");
+
+    if days_back > 365 {
+        return Err(AppError::Validation(
+            "days_back cannot exceed 365 days".to_string(),
+        ));
+    }
+
+    if !["daily", "weekly"].contains(&granularity.as_str()) {
+        return Err(AppError::Validation(
+            "granularity must be 'daily' or 'weekly'".to_string(),
+        ));
+    }
+
+    let granularity_clone = granularity.clone();
+    let cost_history = aws_resource_repo
+        .get_resource_cost_history(
+            &query.resource_id,
+            query.account_id.clone(),
+            days_back,
+            granularity,
+        )
+        .await?;
+
+    if format == "csv" {
+        match export_cost_history_csv(&cost_history, &query.resource_id) {
+            Ok(csv_data) => Ok(HttpResponse::Ok()
+                .content_type("text/csv")
+                .append_header((
+                    "Content-Disposition",
+                    format!(
+                        "attachment; filename=\"{}_cost_history.csv\"",
+                        query.resource_id
+                    ),
+                ))
+                .body(csv_data)),
+            Err(e) => {
+                tracing::error!("Failed to export CSV: {}", e);
+                Ok(HttpResponse::InternalServerError().json(serde_json::json!({
+                    "success": false,
+                    "error": "CSV export failed",
+                    "message": e.to_string()
+                })))
+            }
+        }
+    } else {
+        Ok(HttpResponse::Ok().json(serde_json::json!({
+            "resource_id": query.resource_id,
+            "account_id": query.account_id,
+            "days_back": days_back,
+            "granularity": granularity_clone,
+            "data": cost_history,
+            "total_periods": cost_history.len()
+        })))
+    }
+}
+
+/// Get enriched cost data with resource metadata
+pub async fn get_enriched_cost_data(
+    cost_service: web::Data<Arc<AwsCostAnalyticsService>>,
+    query: web::Query<EnrichedCostQuery>,
+    _claims: web::ReqData<Claims>,
+) -> ActixResult<HttpResponse> {
+    tracing::info!("Getting enriched cost data for account {}", query.account_id);
+
+    // Parse dates
+    let start_date = NaiveDate::parse_from_str(&query.start_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid start_date format: {}", e))
+    })?;
+
+    let end_date = NaiveDate::parse_from_str(&query.end_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid end_date format: {}", e))
+    })?;
+
+    match cost_service
+        .get_enriched_cost_data(
+            &query.account_id,
+            start_date,
+            end_date,
+            query.resource_id.as_deref(),
+        )
+        .await
+    {
+        Ok(enriched_data) => {
+            let response = CostAnalysisResponse {
+                success: true,
+                data: serde_json::json!({
+                    "enriched_cost_data": enriched_data.into_iter().map(|item| serde_json::json!({
+                        "cost_data": {
+                            "id": item.cost_data.id,
+                            "account_id": item.cost_data.account_id,
+                            "service_name": item.cost_data.service_name,
+                            "usage_type": item.cost_data.usage_type,
+                            "operation": item.cost_data.operation,
+                            "region": item.cost_data.region,
+                            "usage_start": item.cost_data.usage_start,
+                            "usage_end": item.cost_data.usage_end,
+                            "unblended_cost": item.cost_data.unblended_cost,
+                            "blended_cost": item.cost_data.blended_cost,
+                            "usage_amount": item.cost_data.usage_amount,
+                            "usage_unit": item.cost_data.usage_unit,
+                            "currency": item.cost_data.currency
+                        },
+                        "resource_metadata": item.resource_metadata.map(|meta| serde_json::json!({
+                            "resource_id": meta.resource_id,
+                            "name": meta.name,
+                            "resource_type": meta.resource_type,
+                            "region": meta.region,
+                            "arn": meta.arn,
+                            "tags": meta.tags,
+                            "resource_data": meta.resource_data,
+                            "cost_allocation_tags": meta.cost_allocation_tags
+                        }))
+                    })).collect::<Vec<_>>()
+                }),
+                message: "Enriched cost data retrieved successfully".to_string(),
+            };
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            tracing::error!("Failed to get enriched cost data: {}", e);
+            let error_response = ErrorResponse::from(e);
+            Ok(HttpResponse::InternalServerError().json(error_response))
+        }
+    }
+}
+
+/// Get cost breakdown by cost allocation tag
+pub async fn get_cost_by_allocation_tag(
+    cost_service: web::Data<Arc<AwsCostAnalyticsService>>,
+    path: web::Path<String>,
+    query: web::Query<CostByTagQuery>,
+    _claims: web::ReqData<Claims>,
+) -> ActixResult<HttpResponse> {
+    let tag_key = path.into_inner();
+    tracing::info!("Getting cost breakdown by tag '{}' for account {}", tag_key, query.account_id);
+
+    // Parse dates
+    let start_date = NaiveDate::parse_from_str(&query.start_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid start_date format: {}", e))
+    })?;
+
+    let end_date = NaiveDate::parse_from_str(&query.end_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid end_date format: {}", e))
+    })?;
+
+    match cost_service
+        .get_cost_by_allocation_tag(&query.account_id, start_date, end_date, &tag_key)
+        .await
+    {
+        Ok(cost_breakdown) => {
+            let response = CostAnalysisResponse {
+                success: true,
+                data: serde_json::json!({
+                    "tag_key": tag_key,
+                    "cost_breakdown": cost_breakdown,
+                    "total_cost": cost_breakdown.values().sum::<f64>(),
+                    "tag_values_count": cost_breakdown.len()
+                }),
+                message: "Cost breakdown by allocation tag retrieved successfully".to_string(),
+            };
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            tracing::error!("Failed to get cost by allocation tag: {}", e);
+            let error_response = ErrorResponse::from(e);
+            Ok(HttpResponse::InternalServerError().json(error_response))
+        }
+    }
+}
+
+/// Get top cost resources with metadata
+pub async fn get_top_cost_resources_with_metadata(
+    cost_service: web::Data<Arc<AwsCostAnalyticsService>>,
+    query: web::Query<TopResourcesQuery>,
+    _claims: web::ReqData<Claims>,
+) -> ActixResult<HttpResponse> {
+    tracing::info!("Getting top {} cost resources with metadata for account {}", query.limit.unwrap_or(10), query.account_id);
+
+    // Parse dates
+    let start_date = NaiveDate::parse_from_str(&query.start_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid start_date format: {}", e))
+    })?;
+
+    let end_date = NaiveDate::parse_from_str(&query.end_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid end_date format: {}", e))
+    })?;
+
+    match cost_service
+        .get_top_cost_resources_with_metadata(
+            &query.account_id,
+            start_date,
+            end_date,
+            query.limit.unwrap_or(10) as usize,
+        )
+        .await
+    {
+        Ok(top_resources) => {
+            let response = CostAnalysisResponse {
+                success: true,
+                data: serde_json::json!({
+                    "top_resources": top_resources.into_iter().map(|item| serde_json::json!({
+                        "cost_data": {
+                            "id": item.cost_data.id,
+                            "account_id": item.cost_data.account_id,
+                            "service_name": item.cost_data.service_name,
+                            "usage_type": item.cost_data.usage_type,
+                            "operation": item.cost_data.operation,
+                            "region": item.cost_data.region,
+                            "usage_start": item.cost_data.usage_start,
+                            "usage_end": item.cost_data.usage_end,
+                            "unblended_cost": item.cost_data.unblended_cost,
+                            "blended_cost": item.cost_data.blended_cost,
+                            "usage_amount": item.cost_data.usage_amount,
+                            "usage_unit": item.cost_data.usage_unit,
+                            "currency": item.cost_data.currency
+                        },
+                        "resource_metadata": item.resource_metadata.map(|meta| serde_json::json!({
+                            "resource_id": meta.resource_id,
+                            "name": meta.name,
+                            "resource_type": meta.resource_type,
+                            "region": meta.region,
+                            "arn": meta.arn,
+                            "tags": meta.tags,
+                            "resource_data": meta.resource_data,
+                            "cost_allocation_tags": meta.cost_allocation_tags
+                        }))
+                    })).collect::<Vec<_>>()
+                }),
+                message: "Top cost resources with metadata retrieved successfully".to_string(),
+            };
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            tracing::error!("Failed to get top cost resources with metadata: {}", e);
+            let error_response = ErrorResponse::from(e);
+            Ok(HttpResponse::InternalServerError().json(error_response))
+        }
+    }
+}
+
+/// Get cost breakdown by categories
+pub async fn get_cost_categories(
+    cost_service: web::Data<Arc<AwsCostAnalyticsService>>,
+    query: web::Query<CostCategoriesQuery>,
+    _claims: web::ReqData<Claims>,
+) -> ActixResult<HttpResponse> {
+    tracing::info!("Getting cost categories for account {}", query.account_id);
+
+    // Parse dates
+    let start_date = NaiveDate::parse_from_str(&query.start_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid start_date format: {}", e))
+    })?;
+
+    let end_date = NaiveDate::parse_from_str(&query.end_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid end_date format: {}", e))
+    })?;
+
+    match cost_service
+        .get_cost_by_categories(&query.account_id, start_date, end_date)
+        .await
+    {
+        Ok(categories) => {
+            let response = CostAnalysisResponse {
+                success: true,
+                data: serde_json::json!({
+                    "categories": categories.into_iter().map(|cat| serde_json::json!({
+                        "category_id": cat.category_id,
+                        "category_name": cat.category_name,
+                        "total_cost": cat.total_cost,
+                        "resource_count": cat.resource_count,
+                        "cost_breakdown": cat.cost_breakdown
+                    })).collect::<Vec<_>>()
+                }),
+                message: "Cost categories retrieved successfully".to_string(),
+            };
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            tracing::error!("Failed to get cost categories: {}", e);
+            let error_response = ErrorResponse::from(e);
+            Ok(HttpResponse::InternalServerError().json(error_response))
+        }
+    }
+}
+
+/// Get cost category trends over time
+pub async fn get_category_trends(
+    cost_service: web::Data<Arc<AwsCostAnalyticsService>>,
+    query: web::Query<CategoryTrendsQuery>,
+    _claims: web::ReqData<Claims>,
+) -> ActixResult<HttpResponse> {
+    tracing::info!("Getting category trends for account {}", query.account_id);
+
+    // Parse dates
+    let start_date = NaiveDate::parse_from_str(&query.start_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid start_date format: {}", e))
+    })?;
+
+    let end_date = NaiveDate::parse_from_str(&query.end_date, "%Y-%m-%d").map_err(|e| {
+        actix_web::error::ErrorBadRequest(format!("Invalid end_date format: {}", e))
+    })?;
+
+    match cost_service
+        .get_category_trends(
+            &query.account_id,
+            start_date,
+            end_date,
+            query.granularity_days.unwrap_or(30),
+        )
+        .await
+    {
+        Ok(trends) => {
+            let response = CostAnalysisResponse {
+                success: true,
+                data: serde_json::json!({
+                    "category_trends": trends.into_iter().map(|(category, data_points)| {
+                        serde_json::json!({
+                            "category": category,
+                            "data_points": data_points.into_iter().map(|(date, cost)| {
+                                serde_json::json!({
+                                    "date": date.to_string(),
+                                    "cost": cost
+                                })
+                            }).collect::<Vec<_>>()
+                        })
+                    }).collect::<Vec<_>>()
+                }),
+                message: "Category trends retrieved successfully".to_string(),
+            };
+            Ok(HttpResponse::Ok().json(response))
+        }
+        Err(e) => {
+            tracing::error!("Failed to get category trends: {}", e);
+            let error_response = ErrorResponse::from(e);
+            Ok(HttpResponse::InternalServerError().json(error_response))
+        }
+    }
 }

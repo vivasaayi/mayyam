@@ -111,13 +111,16 @@ impl QuestionGenerator {
                 "Are there any cost optimization opportunities?".to_string(),
                 "How does the cost compare to similar resources?".to_string(),
             ]),
-            _ => {},
+            _ => {}
         }
 
         questions
     }
 
-    pub fn generate_followup_questions(resource_type: &str, original_question: &str) -> Vec<String> {
+    pub fn generate_followup_questions(
+        resource_type: &str,
+        original_question: &str,
+    ) -> Vec<String> {
         let mut questions = Vec::new();
         let question = original_question.to_lowercase();
 
@@ -127,46 +130,81 @@ impl QuestionGenerator {
             match resource_type {
                 "EC2Instance" => {
                     if question.contains("cpu") {
-                        questions.push("Why are specific processes consuming high CPU?".to_string());
+                        questions
+                            .push("Why are specific processes consuming high CPU?".to_string());
                         questions.push("Why is the CPU scheduling inefficient?".to_string());
-                        questions.push("Why hasn't auto-scaling triggered to handle the load?".to_string());
+                        questions.push(
+                            "Why hasn't auto-scaling triggered to handle the load?".to_string(),
+                        );
                     } else if question.contains("memory") {
                         questions.push("Why is memory not being released properly?".to_string());
-                        questions.push("Why are there memory leaks in the application?".to_string());
+                        questions
+                            .push("Why are there memory leaks in the application?".to_string());
                         questions.push("Why is the memory allocation inefficient?".to_string());
                     } else if question.contains("disk") || question.contains("i/o") {
                         questions.push("Why is the disk I/O pattern suboptimal?".to_string());
-                        questions.push("Why is the storage configuration not meeting requirements?".to_string());
-                        questions.push("Why are there too many small read/write operations?".to_string());
+                        questions.push(
+                            "Why is the storage configuration not meeting requirements?"
+                                .to_string(),
+                        );
+                        questions.push(
+                            "Why are there too many small read/write operations?".to_string(),
+                        );
                     } else {
                         // Generic follow-up why questions for EC2
-                        questions.push("Why is the instance size not appropriate for the workload?".to_string());
-                        questions.push("Why is the application architecture causing performance issues?".to_string());
-                        questions.push("Why are the resource allocation decisions suboptimal?".to_string());
+                        questions.push(
+                            "Why is the instance size not appropriate for the workload?"
+                                .to_string(),
+                        );
+                        questions.push(
+                            "Why is the application architecture causing performance issues?"
+                                .to_string(),
+                        );
+                        questions.push(
+                            "Why are the resource allocation decisions suboptimal?".to_string(),
+                        );
                     }
-                },
+                }
                 "RdsInstance" => {
                     if question.contains("slow") || question.contains("response") {
                         questions.push("Why are the database queries not optimized?".to_string());
                         questions.push("Why is the database schema inefficient?".to_string());
                         questions.push("Why are indexes not properly utilized?".to_string());
                     } else if question.contains("connection") {
-                        questions.push("Why is the connection pool configuration inadequate?".to_string());
-                        questions.push("Why are connections not being released properly?".to_string());
-                        questions.push("Why is the network path to the database experiencing issues?".to_string());
+                        questions.push(
+                            "Why is the connection pool configuration inadequate?".to_string(),
+                        );
+                        questions
+                            .push("Why are connections not being released properly?".to_string());
+                        questions.push(
+                            "Why is the network path to the database experiencing issues?"
+                                .to_string(),
+                        );
                     } else {
                         // Generic follow-up why questions for RDS
-                        questions.push("Why is the database instance undersized for the workload?".to_string());
-                        questions.push("Why is the database configuration not optimized?".to_string());
-                        questions.push("Why is the database maintenance not scheduled appropriately?".to_string());
+                        questions.push(
+                            "Why is the database instance undersized for the workload?".to_string(),
+                        );
+                        questions
+                            .push("Why is the database configuration not optimized?".to_string());
+                        questions.push(
+                            "Why is the database maintenance not scheduled appropriately?"
+                                .to_string(),
+                        );
                     }
-                },
+                }
                 _ => {
                     // Generic deeper why questions for any resource
-                    questions.push("Why is the underlying infrastructure causing this issue?".to_string());
-                    questions.push("Why is the configuration not aligned with best practices?".to_string());
+                    questions.push(
+                        "Why is the underlying infrastructure causing this issue?".to_string(),
+                    );
+                    questions.push(
+                        "Why is the configuration not aligned with best practices?".to_string(),
+                    );
                     questions.push("Why is the resource not scaling to meet demand?".to_string());
-                    questions.push("Why are operational procedures not addressing this issue?".to_string());
+                    questions.push(
+                        "Why are operational procedures not addressing this issue?".to_string(),
+                    );
                 }
             }
 

@@ -1,7 +1,7 @@
+use crate::integration::helpers::auth::get_auth_token;
+use crate::integration::helpers::server::{ensure_server, try_ensure_server};
 use reqwest::Client;
 use std::sync::OnceLock;
-use crate::integration::helpers::server::ensure_server;
-use crate::integration::helpers::auth::get_auth_token;
 
 /// Global HTTP client shared across all integration tests
 static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
@@ -44,18 +44,17 @@ pub struct TestHarness {
 impl TestHarness {
     /// Create a new test harness with all necessary setup
     pub async fn new() -> Self {
-        // Ensure server is running
         ensure_server().await;
+        Self::initialise().await
+    }
 
-        let config = TestConfig::from_env();
-        let client = get_shared_client();
-        let auth_token = get_auth_token().await;
-
-        Self {
-            client,
-            config,
-            auth_token,
+    /// Try to create a new test harness without panicking when the backend is unavailable
+    pub async fn try_new() -> Option<Self> {
+        if try_ensure_server().await.is_none() {
+            return None;
         }
+
+        Some(Self::initialise().await)
     }
 
     /// Get the shared HTTP client
@@ -99,6 +98,20 @@ impl TestHarness {
     }
 }
 
+impl TestHarness {
+    async fn initialise() -> Self {
+        let config = TestConfig::from_env();
+        let client = get_shared_client();
+        let auth_token = get_auth_token().await;
+
+        Self {
+            client,
+            config,
+            auth_token,
+        }
+    }
+}
+
 /// Get the shared HTTP client (used by TestHarness)
 fn get_shared_client() -> &'static Client {
     HTTP_CLIENT.get_or_init(|| {
@@ -120,8 +133,7 @@ pub fn get_aws_credentials() -> (String, String, String, String) {
         .expect("AWS_ACCESS_KEY_ID environment variable must be set for integration tests. Set it to run tests against real AWS.");
     let secret_key = std::env::var("AWS_SECRET_ACCESS_KEY")
         .expect("AWS_SECRET_ACCESS_KEY environment variable must be set for integration tests. Set it to run tests against real AWS.");
-    let region = std::env::var("AWS_DEFAULT_REGION")
-        .unwrap_or_else(|_| "us-east-1".to_string());
+    let region = std::env::var("AWS_DEFAULT_REGION").unwrap_or_else(|_| "us-east-1".to_string());
     let account_id = std::env::var("AWS_ACCOUNT_ID")
         .expect("AWS_ACCOUNT_ID environment variable must be set for integration tests. Set it to run tests against real AWS.");
 
@@ -130,6 +142,5 @@ pub fn get_aws_credentials() -> (String, String, String, String) {
 
 /// Get test account ID (different from real account to avoid conflicts)
 pub fn get_test_account_id() -> String {
-    std::env::var("TEST_AWS_ACCOUNT_ID")
-        .unwrap_or_else(|_| "123456789012".to_string())
+    std::env::var("TEST_AWS_ACCOUNT_ID").unwrap_or_else(|_| "123456789012".to_string())
 }

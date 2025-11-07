@@ -9,7 +9,7 @@ const expSec = nowSec + 60 * 60 * 24; // 24 hours
 // Payload must match backend Claims struct in backend/src/middleware/auth.rs
 // Claims { sub: String, username: String, email: Option<String>, roles: Vec<String>, exp: i64, iat: i64 }
 const userPayload = {
-  sub: "admin", // can be any string identifier; in prod this is usually the user UUID
+  sub: "00000000-0000-0000-0000-000000000001", // admin user UUID from database
   username: "admin",
   email: "admin@mayyam.local",
   roles: ["admin", "user"],

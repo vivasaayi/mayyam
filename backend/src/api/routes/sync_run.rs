@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use actix_web::{web, Scope};
+use std::sync::Arc;
 
 use crate::controllers::sync_run::{self, SyncRunController};
 

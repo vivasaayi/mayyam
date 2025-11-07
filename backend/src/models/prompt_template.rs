@@ -1,9 +1,9 @@
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use sea_orm::entity::prelude::*;
 use sea_orm::ActiveValue::Set;
+use serde::{Deserialize, Serialize};
 use std::fmt;
+use uuid::Uuid;
 
 /// Prompt template entity for managing external prompts
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
@@ -15,8 +15,8 @@ pub struct Model {
     pub category: String, // e.g., "aws_analysis", "database_optimization", "troubleshooting"
     pub resource_type: Option<String>, // e.g., "DynamoDB", "RDS", "Kubernetes" - null for generic prompts
     pub workflow_type: Option<String>, // e.g., "Performance", "Cost", "5-Why" - null for generic prompts
-    pub prompt_template: String, // The actual prompt template with variables
-    pub variables: Json, // Available variables and their descriptions
+    pub prompt_template: String,       // The actual prompt template with variables
+    pub variables: Json,               // Available variables and their descriptions
     pub version: String,
     pub is_active: bool,
     pub is_system: bool, // System prompts vs user-created prompts
@@ -346,11 +346,10 @@ pub struct PromptTemplateResponseDto {
 // Conversions
 impl From<Model> for PromptTemplateDomain {
     fn from(entity: Model) -> Self {
-        let variables: Vec<PromptVariable> = serde_json::from_value(entity.variables)
-            .unwrap_or_default();
-            
-        let tags: Vec<String> = serde_json::from_value(entity.tags)
-            .unwrap_or_default();
+        let variables: Vec<PromptVariable> =
+            serde_json::from_value(entity.variables).unwrap_or_default();
+
+        let tags: Vec<String> = serde_json::from_value(entity.tags).unwrap_or_default();
 
         Self {
             id: entity.id,
@@ -397,10 +396,9 @@ impl From<PromptTemplateDomain> for PromptTemplateDto {
 impl From<PromptTemplateCreateDto> for ActiveModel {
     fn from(dto: PromptTemplateCreateDto) -> Self {
         let now = Utc::now();
-        let variables_json = serde_json::to_value(dto.variables)
-            .unwrap_or(serde_json::Value::Array(vec![]));
-        let tags_json = serde_json::to_value(dto.tags)
-            .unwrap_or(serde_json::Value::Array(vec![]));
+        let variables_json =
+            serde_json::to_value(dto.variables).unwrap_or(serde_json::Value::Array(vec![]));
+        let tags_json = serde_json::to_value(dto.tags).unwrap_or(serde_json::Value::Array(vec![]));
 
         Self {
             id: Set(Uuid::new_v4()),
@@ -425,11 +423,10 @@ impl From<PromptTemplateCreateDto> for ActiveModel {
 // Implement From<Model> for PromptTemplateResponseDto
 impl From<Model> for PromptTemplateResponseDto {
     fn from(entity: Model) -> Self {
-        let variables: Vec<PromptVariable> = serde_json::from_value(entity.variables.clone())
-            .unwrap_or_default();
-            
-        let tags: Vec<String> = serde_json::from_value(entity.tags.clone())
-            .unwrap_or_default();
+        let variables: Vec<PromptVariable> =
+            serde_json::from_value(entity.variables.clone()).unwrap_or_default();
+
+        let tags: Vec<String> = serde_json::from_value(entity.tags.clone()).unwrap_or_default();
 
         // Parse category from string
         let category = PromptCategory::from(entity.category);
@@ -447,13 +444,13 @@ impl From<Model> for PromptTemplateResponseDto {
             is_system: entity.is_system,
             description: entity.description,
             tags,
-            prompt_type: None, // Not in base model
-            template_content: None, // Not in base model
+            prompt_type: None,                        // Not in base model
+            template_content: None,                   // Not in base model
             is_system_prompt: Some(entity.is_system), // Map is_system to is_system_prompt
-            parent_id: None, // Not in base model
-            status: PromptStatus::Active, // Default status
-            usage_count: None, // Not in base model
-            last_used_at: None, // Not in base model
+            parent_id: None,                          // Not in base model
+            status: PromptStatus::Active,             // Default status
+            usage_count: None,                        // Not in base model
+            last_used_at: None,                       // Not in base model
             created_at: entity.created_at,
             updated_at: entity.updated_at,
             created_by: entity.created_by,

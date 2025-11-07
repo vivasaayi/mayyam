@@ -1,10 +1,13 @@
-use std::sync::Arc;
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, Set, ActiveModelTrait};
-use uuid::Uuid;
 use chrono::Utc;
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
+use std::sync::Arc;
+use uuid::Uuid;
 
-use crate::models::llm_model::{self, Entity as LlmProviderModelEntity, Model as LlmProviderModel, ActiveModel as LlmProviderModelActiveModel};
 use crate::errors::AppError;
+use crate::models::llm_model::{
+    self, ActiveModel as LlmProviderModelActiveModel, Entity as LlmProviderModelEntity,
+    Model as LlmProviderModel,
+};
 
 #[derive(Debug)]
 pub struct LlmProviderModelRepository {
@@ -12,9 +15,14 @@ pub struct LlmProviderModelRepository {
 }
 
 impl LlmProviderModelRepository {
-    pub fn new(db: Arc<DatabaseConnection>) -> Self { Self { db } }
+    pub fn new(db: Arc<DatabaseConnection>) -> Self {
+        Self { db }
+    }
 
-    pub async fn list_by_provider(&self, provider_id: Uuid) -> Result<Vec<LlmProviderModel>, AppError> {
+    pub async fn list_by_provider(
+        &self,
+        provider_id: Uuid,
+    ) -> Result<Vec<LlmProviderModel>, AppError> {
         let models = LlmProviderModelEntity::find()
             .filter(llm_model::Column::ProviderId.eq(provider_id))
             .all(&*self.db)
@@ -23,7 +31,13 @@ impl LlmProviderModelRepository {
         Ok(models)
     }
 
-    pub async fn create(&self, provider_id: Uuid, model_name: String, model_config: serde_json::Value, enabled: bool) -> Result<LlmProviderModel, AppError> {
+    pub async fn create(
+        &self,
+        provider_id: Uuid,
+        model_name: String,
+        model_config: serde_json::Value,
+        enabled: bool,
+    ) -> Result<LlmProviderModel, AppError> {
         let model = LlmProviderModelActiveModel {
             id: Set(Uuid::new_v4()),
             provider_id: Set(provider_id),
@@ -37,20 +51,38 @@ impl LlmProviderModelRepository {
         Ok(result)
     }
 
-    pub async fn update(&self, id: Uuid, model_name: Option<String>, model_config: Option<serde_json::Value>, enabled: Option<bool>) -> Result<LlmProviderModel, AppError> {
-        let existing = LlmProviderModelEntity::find_by_id(id).one(&*self.db).await.map_err(AppError::from)?
+    pub async fn update(
+        &self,
+        id: Uuid,
+        model_name: Option<String>,
+        model_config: Option<serde_json::Value>,
+        enabled: Option<bool>,
+    ) -> Result<LlmProviderModel, AppError> {
+        let existing = LlmProviderModelEntity::find_by_id(id)
+            .one(&*self.db)
+            .await
+            .map_err(AppError::from)?
             .ok_or_else(|| AppError::NotFound("Model not found".to_string()))?;
         let mut active: LlmProviderModelActiveModel = existing.into();
-        if let Some(n) = model_name { active.model_name = Set(n); }
-        if let Some(c) = model_config { active.model_config = Set(c); }
-        if let Some(e) = enabled { active.enabled = Set(e); }
+        if let Some(n) = model_name {
+            active.model_name = Set(n);
+        }
+        if let Some(c) = model_config {
+            active.model_config = Set(c);
+        }
+        if let Some(e) = enabled {
+            active.enabled = Set(e);
+        }
         active.updated_at = Set(Utc::now());
         let result = active.update(&*self.db).await.map_err(AppError::from)?;
         Ok(result)
     }
 
     pub async fn delete(&self, id: Uuid) -> Result<(), AppError> {
-        LlmProviderModelEntity::delete_by_id(id).exec(&*self.db).await.map_err(AppError::from)?;
+        LlmProviderModelEntity::delete_by_id(id)
+            .exec(&*self.db)
+            .await
+            .map_err(AppError::from)?;
         Ok(())
     }
 

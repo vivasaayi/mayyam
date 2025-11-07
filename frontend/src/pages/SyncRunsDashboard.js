@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Card, CardHeader, CardBody, Table, Badge, Spinner, Alert, Button } from "reactstrap";
+import { Card, CardHeader, CardBody, Table, Badge, Spinner, Alert, Button, Row, Col, Form, FormGroup, Label, Input } from "reactstrap";
 import { useNavigate } from "react-router-dom";
 import { getSyncRuns } from "../services/api";
 
@@ -8,31 +8,60 @@ const SyncRunsDashboard = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [status, setStatus] = useState("");
+
+  const load = async (statusFilter = "") => {
+    try {
+      setLoading(true);
+      const data = await getSyncRuns(statusFilter || null);
+      setRuns(data);
+    } catch (e) {
+      console.error("Failed to load sync runs", e);
+      setError("Failed to load sync runs");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        setLoading(true);
-        const data = await getSyncRuns();
-        setRuns(data);
-      } catch (e) {
-        console.error("Failed to load sync runs", e);
-        setError("Failed to load sync runs");
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, []);
+    load(status);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
 
   return (
     <div>
       {error && <Alert color="danger">{error}</Alert>}
       <Card>
         <CardHeader>
-          <h5 className="mb-0"><i className="fas fa-list me-2"></i>Sync Runs</h5>
+          <div className="d-flex justify-content-between align-items-center w-100">
+            <h5 className="mb-0"><i className="fas fa-list me-2"></i>Sync Runs</h5>
+          </div>
         </CardHeader>
         <CardBody>
+          <Form className="mb-3" onSubmit={(e) => { e.preventDefault(); load(status); }}>
+            <Row className="g-2 align-items-end">
+              <Col md="3">
+                <FormGroup>
+                  <Label for="statusFilter">Status</Label>
+                  <Input
+                    id="statusFilter"
+                    type="select"
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value)}
+                  >
+                    <option value="">All</option>
+                    <option value="created">Created</option>
+                    <option value="running">Running</option>
+                    <option value="completed">Completed</option>
+                    <option value="failed">Failed</option>
+                  </Input>
+                </FormGroup>
+              </Col>
+              <Col md="2">
+                <Button color="primary" type="submit" className="mt-2">Apply</Button>
+              </Col>
+            </Row>
+          </Form>
           {loading ? (
             <div className="text-center p-4">
               <Spinner />
@@ -43,6 +72,8 @@ const SyncRunsDashboard = () => {
                 <tr>
                   <th>ID</th>
                   <th>Name</th>
+                  <th>Region Scope</th>
+                  <th>Regions</th>
                   <th>Status</th>
                   <th>Total</th>
                   <th>Success</th>
@@ -57,6 +88,12 @@ const SyncRunsDashboard = () => {
                   <tr key={run.id}>
                     <td style={{maxWidth: 220}}>{run.id}</td>
                     <td>{run.name}</td>
+                    <td>{run.region_scope || (run.metadata?.all_regions ? 'all' : (run.metadata?.regions?.length > 0 ? 'custom' : ''))}</td>
+                    <td style={{maxWidth: 280, whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden'}}>
+                      {Array.isArray(run.regions) && run.regions.length > 0
+                        ? run.regions.join(', ')
+                        : (Array.isArray(run.metadata?.regions) && run.metadata.regions.length > 0 ? run.metadata.regions.join(', ') : '-')}
+                    </td>
                     <td>
                       <Badge color={run.status === 'completed' ? 'success' : run.status === 'failed' ? 'danger' : run.status === 'running' ? 'primary' : 'secondary'}>
                         {run.status}

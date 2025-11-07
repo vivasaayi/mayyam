@@ -3,10 +3,10 @@ use actix_web::{
     error::Error,
     HttpMessage,
 };
-use futures_util::future::{ready, Ready, LocalBoxFuture};
-use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm, EncodingKey, encode, Header};
+use chrono::{Duration, Utc};
+use futures_util::future::{ready, LocalBoxFuture, Ready};
+use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
-use chrono::{Utc, Duration};
 use tracing::error;
 
 use crate::config::Config;
@@ -82,7 +82,7 @@ where
     fn call(&self, req: ServiceRequest) -> Self::Future {
         let path = req.path().to_string();
         let method = req.method().clone();
-        
+
         // Skip auth for public paths
         if self.public_paths.iter().any(|p| path.starts_with(p)) {
             let fut = self.service.call(req);
@@ -91,7 +91,7 @@ where
                 Ok(res)
             });
         }
-        
+
         // Skip auth for OPTIONS requests (CORS preflight)
         if method == actix_web::http::Method::OPTIONS {
             let fut = self.service.call(req);
@@ -102,12 +102,12 @@ where
         }
 
         let auth_header = req.headers().get("Authorization");
-        
+
         if let Some(auth_value) = auth_header {
             if let Ok(auth_str) = auth_value.to_str() {
                 if auth_str.starts_with("Bearer ") {
                     let token = auth_str[7..].to_string(); // Remove "Bearer " prefix
-                    
+
                     // Validate JWT token
                     let token_data = match decode::<Claims>(
                         &token,
@@ -126,7 +126,10 @@ where
                     // Check token expiration
                     let now = Utc::now().timestamp();
                     if token_data.claims.exp < now {
-                        error!("Token expired for path {}: exp={}, now={}", path, token_data.claims.exp, now);
+                        error!(
+                            "Token expired for path {}: exp={}, now={}",
+                            path, token_data.claims.exp, now
+                        );
                         return Box::pin(async move {
                             Err(AppError::Auth("Token expired".to_string()).into())
                         });
@@ -145,26 +148,24 @@ where
         }
 
         // No valid token found
-        Box::pin(async move {
-            Err(AppError::Auth("Authorization required".to_string()).into())
-        })
+        Box::pin(async move { Err(AppError::Auth("Authorization required".to_string()).into()) })
     }
 }
 
 // Helper functions for generating and validating JWTs
 pub fn generate_token(
-    user_id: &str, 
-    username: &str, 
-    email: Option<&str>, 
+    user_id: &str,
+    username: &str,
+    email: Option<&str>,
     roles: Vec<String>,
-    config: &Config
+    config: &Config,
 ) -> Result<String, AppError> {
     let jwt_secret = &config.auth.jwt_secret;
     let expiration = config.auth.jwt_expiration;
-    
+
     let now = Utc::now();
     let exp = now + Duration::seconds(expiration as i64);
-    
+
     let claims = Claims {
         sub: user_id.to_string(),
         username: username.to_string(),
@@ -173,7 +174,7 @@ pub fn generate_token(
         exp: exp.timestamp(),
         iat: now.timestamp(),
     };
-    
+
     encode(
         &Header::default(),
         &claims,
@@ -188,7 +189,7 @@ pub fn generate_token(
 pub fn validate_token(token: &str, config: &Config) -> Result<Claims, AppError> {
     let jwt_secret = &config.auth.jwt_secret;
     let validation = Validation::new(Algorithm::HS256);
-    
+
     let token_data = decode::<Claims>(
         token,
         &DecodingKey::from_secret(jwt_secret.as_bytes()),
@@ -198,6 +199,6 @@ pub fn validate_token(token: &str, config: &Config) -> Result<Claims, AppError> 
         error!("JWT validation error: {}", e);
         AppError::Auth("Invalid token".to_string())
     })?;
-    
+
     Ok(token_data.claims)
 }

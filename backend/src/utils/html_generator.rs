@@ -1,5 +1,5 @@
-use serde_json::Value;
 use chrono::{DateTime, Utc};
+use serde_json::Value;
 
 pub struct HtmlGenerator;
 
@@ -142,7 +142,9 @@ impl HtmlGenerator {
             <div class="timestamp">Generated on: {}</div>
         </div>
 "#,
-            title, title, timestamp.format("%Y-%m-%d %H:%M:%S UTC")
+            title,
+            title,
+            timestamp.format("%Y-%m-%d %H:%M:%S UTC")
         );
 
         // Add analysis content
@@ -181,13 +183,22 @@ impl HtmlGenerator {
 
         // Unused analysis
         if let Some(unused) = data.get("unused_analysis") {
-            content.push_str(r#"<div class="section">
-    <h2 class="section-title">Unused Resource Analysis</h2>"#);
+            content.push_str(
+                r#"<div class="section">
+    <h2 class="section-title">Unused Resource Analysis</h2>"#,
+            );
 
             if let Some(periods) = unused.as_object() {
                 for (period, analysis) in periods {
-                    let is_unused = analysis.get("unused").and_then(|v| v.as_bool()).unwrap_or(false);
-                    let status_class = if is_unused { "status-unused" } else { "status-used" };
+                    let is_unused = analysis
+                        .get("unused")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    let status_class = if is_unused {
+                        "status-unused"
+                    } else {
+                        "status-used"
+                    };
                     let status_text = if is_unused { "Unused" } else { "In Use" };
 
                     content.push_str(&format!(
@@ -229,9 +240,11 @@ impl HtmlGenerator {
 
         // Insights
         if let Some(insights) = data.get("insights").and_then(|v| v.as_array()) {
-            content.push_str(r#"<div class="section">
+            content.push_str(
+                r#"<div class="section">
     <h2 class="section-title">Key Insights</h2>
-    <ul class="insights-list">"#);
+    <ul class="insights-list">"#,
+            );
 
             for insight in insights {
                 if let Some(text) = insight.as_str() {
@@ -244,8 +257,10 @@ impl HtmlGenerator {
 
         // Recommendations
         if let Some(recommendations) = data.get("recommendations").and_then(|v| v.as_array()) {
-            content.push_str(r#"<div class="section">
-    <h2 class="section-title">Recommendations</h2>"#);
+            content.push_str(
+                r#"<div class="section">
+    <h2 class="section-title">Recommendations</h2>"#,
+            );
 
             for recommendation in recommendations {
                 if let Some(text) = recommendation.as_str() {

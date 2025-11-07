@@ -20,10 +20,10 @@ clap = { version = "4.4", features = ["derive"] }
 env_logger = "0.10"
 
 # Database ORM
-sea-orm = { version = "0.12", features = ["sqlx-postgres", "sqlx-mysql", "runtime-tokio-rustls", "macros"] }
+sea-orm = { version = "0.12", features = ["sqlx-postgres", "sqlx-mysql", "sqlx-sqlite", "runtime-tokio-rustls", "macros"] }
 sea-orm-migration = "0.12"
 sea-query = "0.30"
-sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "mysql", "json", "chrono", "uuid"] }
+sqlx = { version = "=0.7.0", features = ["runtime-tokio-rustls", "postgres", "mysql", "sqlite", "json", "chrono", "uuid"] }
 redis = { version = "0.23", features = ["tokio-comp"] }
 opensearch = "2.2"
 
@@ -34,6 +34,8 @@ async-graphql-actix-web = "5.0"
 # Serialization & Deserialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+bigdecimal = "0.4"
+csv = "1.3"
 
 # Error handling
 thiserror = "1.0"
@@ -74,6 +76,11 @@ aws-sdk-elasticache = "1.89.0"
 aws-sdk-opensearch = "1.97.0"
 aws-sdk-costexplorer = "1.92.0"
 aws-sdk-sts = "1.85.0"
+aws-sdk-apigateway = "1.91.0"
+aws-sdk-cloudfront = "1.89.0"
+aws-sdk-elasticloadbalancing = "1.87.0"
+aws-sdk-elasticloadbalancingv2 = "1.90.0"
+aws-sdk-efs = "1.88.0"
 aws-types = "1.3.8"
 aws-credential-types = "1.2.6"
 
@@ -99,8 +106,15 @@ futures-util = "0.3"  # Added to support auth middleware
 reqwest = { version = "0.11", features = ["json"] }
 async-openai = "0.14"
 
+# Parquet for data processing
+parquet = { version = "50.0", default-features = false, features = ["arrow", "async", "brotli", "flate2", "lz4", "snap"] }
+arrow = { version = "50.0", default-features = false, features = ["prettyprint"] }
+
+# Scheduling utilities
+cron = "0.12"
+
 # Utility
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { version = "=0.4.31", features = ["serde"] }
 uuid = { version = "1.3", features = ["v4", "serde"] }
 rand = "0.8"
 async-trait = "0.1"
@@ -113,6 +127,7 @@ shlex = "1.3"
 secrecy = "0.8"
 regex = "1.10"
 aws-smithy-runtime-api = "1.9.0"
+bytes = "1.0"  # Added bytes crate dependency for Parquet reader
 
 [dev-dependencies]
 mockall = "0.11"

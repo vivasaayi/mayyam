@@ -1,11 +1,11 @@
+use crate::errors::AppError;
+use crate::models::aws_account::AwsAccountDto;
+use crate::services::aws::aws_types::lambda::LambdaInvokeRequest;
+use crate::services::aws::client_factory::AwsClientFactory;
+use crate::services::AwsService;
+use serde_json::json;
 use std::sync::Arc;
 use tracing::info;
-use serde_json::json;
-use crate::errors::AppError;
-use crate::services::aws::client_factory::AwsClientFactory;
-use crate::services::aws::aws_types::lambda::LambdaInvokeRequest;
-use crate::services::AwsService;
-use crate::models::aws_account::AwsAccountDto;
 use uuid;
 
 pub struct LambdaDataPlane {
@@ -17,11 +17,18 @@ impl LambdaDataPlane {
         Self { aws_service }
     }
 
-    pub async fn invoke_function(&self, aws_account_dto: &AwsAccountDto, request: &LambdaInvokeRequest) -> Result<serde_json::Value, AppError> {
-        let client = self.aws_service.create_lambda_client(aws_account_dto).await?;
+    pub async fn invoke_function(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        request: &LambdaInvokeRequest,
+    ) -> Result<serde_json::Value, AppError> {
+        let client = self
+            .aws_service
+            .create_lambda_client(aws_account_dto)
+            .await?;
 
         info!("Invoking Lambda function {}", request.function_name);
-        
+
         // Mock implementation
         let response = json!({
             "status_code": 200,
@@ -34,7 +41,7 @@ impl LambdaDataPlane {
                 "timestamp": "2023-07-01T12:00:00Z"
             }
         });
-        
+
         Ok(response)
     }
 }

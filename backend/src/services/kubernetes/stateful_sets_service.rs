@@ -1,14 +1,14 @@
 // filepath: /Users/rajanpanneerselvam/work/mayyam/backend/src/services/kubernetes/stateful_sets_service.rs
-use kube::{Client, Api, ResourceExt};
-use kube::api::{ListParams, Patch, PatchParams, DeleteParams};
-use kube::config::{Kubeconfig, KubeConfigOptions, Config as KubeConfig};
+use chrono::Utc;
 use k8s_openapi::api::apps::v1::StatefulSet;
 use k8s_openapi::api::core::v1::Pod;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
-use serde::{Serialize, Deserialize};
+use kube::api::{DeleteParams, ListParams, Patch, PatchParams};
+use kube::config::{Config as KubeConfig, KubeConfigOptions, Kubeconfig};
+use kube::{Api, Client, ResourceExt};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::BTreeMap;
-use chrono::Utc;
 
 use crate::errors::AppError;
 use crate::models::cluster::KubernetesClusterConfig;
@@ -53,9 +53,12 @@ fn label_selector_to_string(selector: &LabelSelector) -> Option<String> {
             }
         }
     }
-    if parts.is_empty() { None } else { Some(parts.join(",")) }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(","))
+    }
 }
-
 
 pub struct StatefulSetsService;
 
@@ -66,20 +69,38 @@ impl StatefulSetsService {
 
     async fn get_kube_client(cluster_config: &KubernetesClusterConfig) -> Result<Client, AppError> {
         let kubeconfig = if let Some(path) = &cluster_config.kube_config_path {
-            Kubeconfig::read_from(path).map_err(|e| AppError::ExternalService(format!("Failed to read kubeconfig from path: {}", e)))?
+            Kubeconfig::read_from(path).map_err(|e| {
+                AppError::ExternalService(format!("Failed to read kubeconfig from path: {}", e))
+            })?
         } else {
             // Fallback to in-cluster or default context if path is not provided
-            let infer_config = kube::Config::infer().await.map_err(|e| AppError::ExternalService(format!("Failed to infer Kubernetes config: {}", e)))?;
-            return Client::try_from(infer_config).map_err(|e| AppError::ExternalService(format!("Failed to create Kubernetes client from inferred config: {}", e)));
+            let infer_config = kube::Config::infer().await.map_err(|e| {
+                AppError::ExternalService(format!("Failed to infer Kubernetes config: {}", e))
+            })?;
+            return Client::try_from(infer_config).map_err(|e| {
+                AppError::ExternalService(format!(
+                    "Failed to create Kubernetes client from inferred config: {}",
+                    e
+                ))
+            });
         };
-        
-        let client_config = KubeConfig::from_custom_kubeconfig(kubeconfig, &KubeConfigOptions {
-            context: cluster_config.kube_context.clone(),
-            cluster: None, // Use context's cluster
-            user: None,    // Use context's user
-        }).await.map_err(|e| AppError::ExternalService(format!("Failed to create Kubernetes client config: {}", e)))?;
 
-        Client::try_from(client_config).map_err(|e| AppError::ExternalService(format!("Failed to create Kubernetes client: {}", e)))
+        let client_config = KubeConfig::from_custom_kubeconfig(
+            kubeconfig,
+            &KubeConfigOptions {
+                context: cluster_config.kube_context.clone(),
+                cluster: None, // Use context's cluster
+                user: None,    // Use context's user
+            },
+        )
+        .await
+        .map_err(|e| {
+            AppError::ExternalService(format!("Failed to create Kubernetes client config: {}", e))
+        })?;
+
+        Client::try_from(client_config).map_err(|e| {
+            AppError::ExternalService(format!("Failed to create Kubernetes client: {}", e))
+        })
     }
 
     pub async fn list_stateful_sets(
@@ -91,7 +112,10 @@ impl StatefulSetsService {
         let api: Api<StatefulSet> = Api::namespaced(client, namespace);
         let lp = ListParams::default();
         let sts_list = api.list(&lp).await.map_err(|e| {
-            AppError::ExternalService(format!("Failed to list stateful sets in namespace '{}': {}", namespace, e))
+            AppError::ExternalService(format!(
+                "Failed to list stateful sets in namespace '{}': {}",
+                namespace, e
+            ))
         })?;
 
         let mut infos = Vec::new();
@@ -105,17 +129,24 @@ impl StatefulSetsService {
                 |ts| {
                     let creation_time = ts.0;
                     let duration = Utc::now().signed_duration_since(creation_time);
-                    if duration.num_days() > 0 { format!("{}d", duration.num_days()) }
-                    else if duration.num_hours() > 0 { format!("{}h", duration.num_hours()) }
-                    else if duration.num_minutes() > 0 { format!("{}m", duration.num_minutes()) }
-                    else { format!("{}s", duration.num_seconds()) }
-                }
+                    if duration.num_days() > 0 {
+                        format!("{}d", duration.num_days())
+                    } else if duration.num_hours() > 0 {
+                        format!("{}h", duration.num_hours())
+                    } else if duration.num_minutes() > 0 {
+                        format!("{}m", duration.num_minutes())
+                    } else {
+                        format!("{}s", duration.num_seconds())
+                    }
+                },
             );
 
             let images = spec
                 .and_then(|s| s.template.spec.as_ref())
                 .map(|pod_spec| {
-                    pod_spec.containers.iter()
+                    pod_spec
+                        .containers
+                        .iter()
                         .filter_map(|c| c.image.clone())
                         .collect::<Vec<String>>()
                 })
@@ -144,10 +175,13 @@ impl StatefulSetsService {
         let client = Self::get_kube_client(cluster_config).await?;
         let api: Api<StatefulSet> = Api::namespaced(client, namespace);
         api.get(name).await.map_err(|e| {
-            AppError::ExternalService(format!("Failed to get stateful set '{}' in namespace '{}': {}", name, namespace, e))
+            AppError::ExternalService(format!(
+                "Failed to get stateful set '{}' in namespace '{}': {}",
+                name, namespace, e
+            ))
         })
     }
-    
+
     pub async fn delete_stateful_set(
         &self,
         cluster_config: &KubernetesClusterConfig,
@@ -156,9 +190,14 @@ impl StatefulSetsService {
     ) -> Result<(), AppError> {
         let client = Self::get_kube_client(cluster_config).await?;
         let api: Api<StatefulSet> = Api::namespaced(client, namespace);
-        api.delete(name, &DeleteParams::default()).await.map_err(|e| {
-            AppError::ExternalService(format!("Failed to delete stateful set '{}' in namespace '{}': {}", name, namespace, e))
-        })?;
+        api.delete(name, &DeleteParams::default())
+            .await
+            .map_err(|e| {
+                AppError::ExternalService(format!(
+                    "Failed to delete stateful set '{}' in namespace '{}': {}",
+                    name, namespace, e
+                ))
+            })?;
         Ok(())
     }
 
@@ -174,9 +213,14 @@ impl StatefulSetsService {
         let patch = json!({
             "spec": { "replicas": replicas }
         });
-        api.patch_scale(name, &PatchParams::default(), &Patch::Merge(&patch)).await.map_err(|e| {
-            AppError::ExternalService(format!("Failed to scale stateful set '{}' in namespace '{}': {}", name, namespace, e))
-        })?;
+        api.patch_scale(name, &PatchParams::default(), &Patch::Merge(&patch))
+            .await
+            .map_err(|e| {
+                AppError::ExternalService(format!(
+                    "Failed to scale stateful set '{}' in namespace '{}': {}",
+                    name, namespace, e
+                ))
+            })?;
         Ok(())
     }
 
@@ -188,7 +232,7 @@ impl StatefulSetsService {
     ) -> Result<(), AppError> {
         let client = Self::get_kube_client(cluster_config).await?;
         let api: Api<StatefulSet> = Api::namespaced(client, namespace);
-        
+
         let mut annotations = BTreeMap::new();
         annotations.insert(
             "kubectl.kubernetes.io/restartedAt".to_string(),
@@ -205,9 +249,14 @@ impl StatefulSetsService {
             }
         });
 
-        api.patch(name, &PatchParams::default(), &Patch::Merge(&patch)).await.map_err(|e| {
-            AppError::ExternalService(format!("Failed to restart stateful set '{}' in namespace '{}': {}", name, namespace, e))
-        })?;
+        api.patch(name, &PatchParams::default(), &Patch::Merge(&patch))
+            .await
+            .map_err(|e| {
+                AppError::ExternalService(format!(
+                    "Failed to restart stateful set '{}' in namespace '{}': {}",
+                    name, namespace, e
+                ))
+            })?;
         Ok(())
     }
 
@@ -235,9 +284,9 @@ impl StatefulSetsService {
                 stateful_set_name, namespace
             )));
         }
-        
-        let label_selector_str = label_selector_to_string(&selector_opt.unwrap())
-            .unwrap_or_default();
+
+        let label_selector_str =
+            label_selector_to_string(&selector_opt.unwrap()).unwrap_or_default();
 
         if label_selector_str.is_empty() {
             return Err(AppError::ExternalService(format!(

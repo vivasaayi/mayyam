@@ -1,29 +1,30 @@
-use std::sync::Arc;
-use std::time::{Duration, Instant};
-use std::io::{Read, Write};
+use crate::errors::AppError;
+use crate::models::cluster::CreateKafkaClusterRequest;
+use crate::models::cluster::KafkaClusterConfig;
+use crate::repositories::cluster::ClusterRepository;
 use rdkafka::admin::{AdminClient, NewTopic, TopicReplication};
 use rdkafka::config::ClientConfig;
 use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
-use rdkafka::topic_partition_list::Offset;
-use rdkafka::message::{Header, OwnedHeaders, Message, Headers};
+use rdkafka::message::{Header, Headers, Message, OwnedHeaders};
 use rdkafka::producer::{FutureProducer, FutureRecord, Producer};
+use rdkafka::topic_partition_list::Offset;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-use tracing::{error, info, warn};
+use std::io::{Read, Write};
+use std::sync::Arc;
 use std::sync::Mutex;
-use crate::errors::AppError;
-use crate::repositories::cluster::ClusterRepository;
-use crate::config::KafkaClusterConfig;
+use std::time::{Duration, Instant};
+use tracing::{error, info, warn};
+use uuid::Uuid;
 
 // Compression and filesystem imports
-use flate2::{write::GzEncoder, read::GzDecoder, Compression};
-use snap::write::FrameEncoder as SnapEncoder;
-use snap::read::FrameDecoder as SnapDecoder;
 use crc32fast::Hasher as Crc32Hasher;
+use flate2::{read::GzDecoder, write::GzEncoder, Compression};
+use snap::read::FrameDecoder as SnapDecoder;
+use snap::write::FrameEncoder as SnapEncoder;
+use std::path::PathBuf;
 use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use walkdir::WalkDir;
-use std::path::PathBuf;
 
 // ===== FILESYSTEM STORAGE STRUCTURES =====
 
@@ -67,7 +68,11 @@ pub enum CompressionType {
 
 #[async_trait::async_trait]
 pub trait BackupStorage {
-    async fn store_backup(&self, backup_data: &BackupData, compression: &CompressionType) -> Result<(), AppError>;
+    async fn store_backup(
+        &self,
+        backup_data: &BackupData,
+        compression: &CompressionType,
+    ) -> Result<(), AppError>;
     async fn load_backup(&self, backup_id: &str, partition: i32) -> Result<BackupData, AppError>;
     async fn list_backups(&self, topic: Option<&str>) -> Result<Vec<BackupMetadata>, AppError>;
     async fn delete_backup(&self, backup_id: &str) -> Result<(), AppError>;
@@ -83,7 +88,12 @@ impl FileSystemStorage {
         Self { base_path }
     }
 
-    fn get_backup_path(&self, backup_id: &str, partition: i32, compression: &CompressionType) -> PathBuf {
+    fn get_backup_path(
+        &self,
+        backup_id: &str,
+        partition: i32,
+        compression: &CompressionType,
+    ) -> PathBuf {
         let extension = match compression {
             CompressionType::Gzip => "json.gz",
             CompressionType::Snappy => "json.sz",
@@ -99,18 +109,30 @@ impl FileSystemStorage {
         self.base_path.join(backup_id).join("metadata.json")
     }
 
-    async fn compress_data(&self, data: &[u8], compression: &CompressionType) -> Result<Vec<u8>, AppError> {
+    async fn compress_data(
+        &self,
+        data: &[u8],
+        compression: &CompressionType,
+    ) -> Result<Vec<u8>, AppError> {
         match compression {
             CompressionType::None => Ok(data.to_vec()),
             CompressionType::Gzip => {
                 let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-                encoder.write_all(data).map_err(|e| AppError::Internal(format!("Gzip compression failed: {}", e)))?;
-                encoder.finish().map_err(|e| AppError::Internal(format!("Gzip compression finish failed: {}", e)))
+                encoder
+                    .write_all(data)
+                    .map_err(|e| AppError::Internal(format!("Gzip compression failed: {}", e)))?;
+                encoder.finish().map_err(|e| {
+                    AppError::Internal(format!("Gzip compression finish failed: {}", e))
+                })
             }
             CompressionType::Snappy => {
                 let mut encoder = SnapEncoder::new(Vec::new());
-                encoder.write_all(data).map_err(|e| AppError::Internal(format!("Snappy compression failed: {}", e)))?;
-                encoder.into_inner().map_err(|e| AppError::Internal(format!("Snappy compression finish failed: {}", e)))
+                encoder
+                    .write_all(data)
+                    .map_err(|e| AppError::Internal(format!("Snappy compression failed: {}", e)))?;
+                encoder.into_inner().map_err(|e| {
+                    AppError::Internal(format!("Snappy compression finish failed: {}", e))
+                })
             }
             CompressionType::Lz4 => {
                 use lz4::block::{compress, CompressionMode};
@@ -120,19 +142,27 @@ impl FileSystemStorage {
         }
     }
 
-    async fn decompress_data(&self, data: &[u8], compression: &CompressionType) -> Result<Vec<u8>, AppError> {
+    async fn decompress_data(
+        &self,
+        data: &[u8],
+        compression: &CompressionType,
+    ) -> Result<Vec<u8>, AppError> {
         match compression {
             CompressionType::None => Ok(data.to_vec()),
             CompressionType::Gzip => {
                 let mut decoder = GzDecoder::new(data);
                 let mut decompressed = Vec::new();
-                decoder.read_to_end(&mut decompressed).map_err(|e| AppError::Internal(format!("Gzip decompression failed: {}", e)))?;
+                decoder
+                    .read_to_end(&mut decompressed)
+                    .map_err(|e| AppError::Internal(format!("Gzip decompression failed: {}", e)))?;
                 Ok(decompressed)
             }
             CompressionType::Snappy => {
                 let mut decoder = SnapDecoder::new(data);
                 let mut decompressed = Vec::new();
-                decoder.read_to_end(&mut decompressed).map_err(|e| AppError::Internal(format!("Snappy decompression failed: {}", e)))?;
+                decoder.read_to_end(&mut decompressed).map_err(|e| {
+                    AppError::Internal(format!("Snappy decompression failed: {}", e))
+                })?;
                 Ok(decompressed)
             }
             CompressionType::Lz4 => {
@@ -152,10 +182,15 @@ impl FileSystemStorage {
 
 #[async_trait::async_trait]
 impl BackupStorage for FileSystemStorage {
-    async fn store_backup(&self, backup_data: &BackupData, compression: &CompressionType) -> Result<(), AppError> {
+    async fn store_backup(
+        &self,
+        backup_data: &BackupData,
+        compression: &CompressionType,
+    ) -> Result<(), AppError> {
         // Create backup directory
         let backup_dir = self.base_path.join(&backup_data.backup_id);
-        fs::create_dir_all(&backup_dir).await
+        fs::create_dir_all(&backup_dir)
+            .await
             .map_err(|e| AppError::Internal(format!("Failed to create backup directory: {}", e)))?;
 
         // Serialize backup data
@@ -166,8 +201,10 @@ impl BackupStorage for FileSystemStorage {
         let compressed_data = self.compress_data(&json_data, compression).await?;
 
         // Write to file
-        let file_path = self.get_backup_path(&backup_data.backup_id, backup_data.partition, compression);
-        fs::write(&file_path, &compressed_data).await
+        let file_path =
+            self.get_backup_path(&backup_data.backup_id, backup_data.partition, compression);
+        fs::write(&file_path, &compressed_data)
+            .await
             .map_err(|e| AppError::Internal(format!("Failed to write backup file: {}", e)))?;
 
         // Create and store metadata
@@ -184,7 +221,8 @@ impl BackupStorage for FileSystemStorage {
         let metadata_path = self.get_metadata_path(&backup_data.backup_id);
         let metadata_json = serde_json::to_vec(&metadata)
             .map_err(|e| AppError::Internal(format!("Failed to serialize metadata: {}", e)))?;
-        fs::write(&metadata_path, &metadata_json).await
+        fs::write(&metadata_path, &metadata_json)
+            .await
             .map_err(|e| AppError::Internal(format!("Failed to write metadata file: {}", e)))?;
 
         Ok(())
@@ -193,23 +231,29 @@ impl BackupStorage for FileSystemStorage {
     async fn load_backup(&self, backup_id: &str, partition: i32) -> Result<BackupData, AppError> {
         // First read metadata to determine compression type
         let metadata_path = self.get_metadata_path(backup_id);
-        let metadata_json = fs::read(&metadata_path).await
+        let metadata_json = fs::read(&metadata_path)
+            .await
             .map_err(|e| AppError::Internal(format!("Failed to read metadata file: {}", e)))?;
         let metadata: BackupMetadata = serde_json::from_slice(&metadata_json)
             .map_err(|e| AppError::Internal(format!("Failed to deserialize metadata: {}", e)))?;
 
         // Read backup data
         let file_path = self.get_backup_path(backup_id, partition, &metadata.compression_type);
-        let compressed_data = fs::read(&file_path).await
+        let compressed_data = fs::read(&file_path)
+            .await
             .map_err(|e| AppError::Internal(format!("Failed to read backup file: {}", e)))?;
 
         // Decompress data
-        let json_data = self.decompress_data(&compressed_data, &metadata.compression_type).await?;
+        let json_data = self
+            .decompress_data(&compressed_data, &metadata.compression_type)
+            .await?;
 
         // Verify checksum
         let calculated_checksum = self.calculate_checksum(&json_data);
         if calculated_checksum != metadata.checksum {
-            return Err(AppError::Internal("Backup data checksum verification failed".to_string()));
+            return Err(AppError::Internal(
+                "Backup data checksum verification failed".to_string(),
+            ));
         }
 
         // Deserialize backup data
@@ -224,17 +268,28 @@ impl BackupStorage for FileSystemStorage {
 
         // Walk through backup directories
         for entry in WalkDir::new(&self.base_path).min_depth(1).max_depth(1) {
-            let entry = entry.map_err(|e| AppError::Internal(format!("Failed to read directory entry: {}", e)))?;
+            let entry = entry.map_err(|e| {
+                AppError::Internal(format!("Failed to read directory entry: {}", e))
+            })?;
 
             if entry.file_type().is_dir() {
                 let backup_id = entry.file_name().to_string_lossy().to_string();
                 let metadata_path = entry.path().join("metadata.json");
 
                 if metadata_path.exists() {
-                    let metadata_json = fs::read(&metadata_path).await
-                        .map_err(|e| AppError::Internal(format!("Failed to read metadata for backup {}: {}", backup_id, e)))?;
-                    let metadata: BackupMetadata = serde_json::from_slice(&metadata_json)
-                        .map_err(|e| AppError::Internal(format!("Failed to deserialize metadata for backup {}: {}", backup_id, e)))?;
+                    let metadata_json = fs::read(&metadata_path).await.map_err(|e| {
+                        AppError::Internal(format!(
+                            "Failed to read metadata for backup {}: {}",
+                            backup_id, e
+                        ))
+                    })?;
+                    let metadata: BackupMetadata =
+                        serde_json::from_slice(&metadata_json).map_err(|e| {
+                            AppError::Internal(format!(
+                                "Failed to deserialize metadata for backup {}: {}",
+                                backup_id, e
+                            ))
+                        })?;
 
                     // Filter by topic if specified
                     if topic.is_none() || topic == Some(&metadata.topic) {
@@ -249,7 +304,8 @@ impl BackupStorage for FileSystemStorage {
 
     async fn delete_backup(&self, backup_id: &str) -> Result<(), AppError> {
         let backup_dir = self.base_path.join(backup_id);
-        fs::remove_dir_all(&backup_dir).await
+        fs::remove_dir_all(&backup_dir)
+            .await
             .map_err(|e| AppError::Internal(format!("Failed to delete backup directory: {}", e)))?;
         Ok(())
     }
@@ -262,7 +318,8 @@ impl BackupStorage for FileSystemStorage {
         }
 
         // Read and validate metadata
-        let metadata_json = fs::read(&metadata_path).await
+        let metadata_json = fs::read(&metadata_path)
+            .await
             .map_err(|e| AppError::Internal(format!("Failed to read metadata: {}", e)))?;
         let metadata: BackupMetadata = serde_json::from_slice(&metadata_json)
             .map_err(|e| AppError::Internal(format!("Failed to deserialize metadata: {}", e)))?;
@@ -275,9 +332,12 @@ impl BackupStorage for FileSystemStorage {
             }
 
             // Read and validate data
-            let compressed_data = fs::read(&file_path).await
+            let compressed_data = fs::read(&file_path)
+                .await
                 .map_err(|e| AppError::Internal(format!("Failed to read backup file: {}", e)))?;
-            let json_data = self.decompress_data(&compressed_data, &metadata.compression_type).await?;
+            let json_data = self
+                .decompress_data(&compressed_data, &metadata.compression_type)
+                .await?;
             let calculated_checksum = self.calculate_checksum(&json_data);
 
             if calculated_checksum != metadata.checksum {
@@ -371,10 +431,10 @@ pub struct PartitionOffset {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MessageBackupRequest {
     pub topic: String,
-    pub partitions: Option<Vec<i32>>, // None means all partitions
-    pub start_offset: Option<i64>,    // None means earliest
-    pub end_offset: Option<i64>,      // None means latest
-    pub max_messages: Option<u64>,    // Limit number of messages
+    pub partitions: Option<Vec<i32>>,  // None means all partitions
+    pub start_offset: Option<i64>,     // None means earliest
+    pub end_offset: Option<i64>,       // None means latest
+    pub max_messages: Option<u64>,     // Limit number of messages
     pub include_headers: Option<bool>, // Default true
     pub include_timestamps: Option<bool>, // Default true
 }
@@ -395,8 +455,8 @@ pub struct MessageRestoreRequest {
     pub backup_id: String,
     pub partitions: Option<Vec<i32>>, // Which partitions to restore
     pub preserve_timestamps: Option<bool>, // Default true
-    pub preserve_keys: Option<bool>,       // Default true
-    pub preserve_headers: Option<bool>,    // Default true
+    pub preserve_keys: Option<bool>,  // Default true
+    pub preserve_headers: Option<bool>, // Default true
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -414,9 +474,9 @@ pub struct MessageMigrationRequest {
     pub target_topic: String,
     pub source_cluster_id: String,
     pub target_cluster_id: String,
-    pub partitions: Option<Vec<i32>>,     // None means all partitions
-    pub start_offset: Option<i64>,        // None means earliest
-    pub end_offset: Option<i64>,          // None means latest
+    pub partitions: Option<Vec<i32>>, // None means all partitions
+    pub start_offset: Option<i64>,    // None means earliest
+    pub end_offset: Option<i64>,      // None means latest
     pub preserve_partitioning: Option<bool>, // Keep same partition assignment
     pub transform_messages: Option<MessageTransformation>,
 }
@@ -450,9 +510,9 @@ pub enum MigrationStatus {
 pub struct QueueDrainRequest {
     pub topics: Vec<String>,
     pub consumer_group: String,
-    pub timeout_seconds: Option<u64>,     // How long to wait
-    pub check_interval_ms: Option<u64>,   // How often to check lag
-    pub max_lag_threshold: Option<i64>,   // Acceptable lag before considering drained
+    pub timeout_seconds: Option<u64>,   // How long to wait
+    pub check_interval_ms: Option<u64>, // How often to check lag
+    pub max_lag_threshold: Option<i64>, // Acceptable lag before considering drained
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -530,7 +590,7 @@ pub struct KafkaService {
 
 impl KafkaService {
     pub fn new(cluster_repository: Arc<ClusterRepository>) -> Self {
-        Self { 
+        Self {
             cluster_repository,
             metrics: Arc::new(Mutex::new(KafkaMetrics {
                 messages_produced: 0,
@@ -567,7 +627,10 @@ impl KafkaService {
 
     // Get current metrics
     pub fn get_metrics(&self) -> Result<KafkaMetrics, AppError> {
-        let metrics = self.metrics.lock().map_err(|e| AppError::Internal(format!("Failed to lock metrics: {}", e)))?;
+        let metrics = self
+            .metrics
+            .lock()
+            .map_err(|e| AppError::Internal(format!("Failed to lock metrics: {}", e)))?;
         Ok(KafkaMetrics {
             messages_produced: metrics.messages_produced,
             messages_consumed: metrics.messages_consumed,
@@ -607,7 +670,8 @@ impl KafkaService {
                 "backup" => {
                     if success {
                         metrics.backups_created += 1;
-                        metrics.avg_backup_duration_ms = (metrics.avg_backup_duration_ms + duration_ms) / 2.0;
+                        metrics.avg_backup_duration_ms =
+                            (metrics.avg_backup_duration_ms + duration_ms) / 2.0;
                     } else {
                         metrics.backup_errors += 1;
                     }
@@ -615,7 +679,8 @@ impl KafkaService {
                 "restore" => {
                     if success {
                         metrics.backups_restored += 1;
-                        metrics.avg_restore_duration_ms = (metrics.avg_restore_duration_ms + duration_ms) / 2.0;
+                        metrics.avg_restore_duration_ms =
+                            (metrics.avg_restore_duration_ms + duration_ms) / 2.0;
                     } else {
                         metrics.restore_errors += 1;
                     }
@@ -623,7 +688,8 @@ impl KafkaService {
                 "migrate" => {
                     if success {
                         metrics.migrations_completed += 1;
-                        metrics.avg_migration_duration_ms = (metrics.avg_migration_duration_ms + duration_ms) / 2.0;
+                        metrics.avg_migration_duration_ms =
+                            (metrics.avg_migration_duration_ms + duration_ms) / 2.0;
                     } else {
                         metrics.migration_errors += 1;
                     }
@@ -632,7 +698,8 @@ impl KafkaService {
                     metrics.drain_operations += 1;
                     if success {
                         metrics.drain_success_rate = (metrics.drain_success_rate + 1.0) / 2.0;
-                        metrics.avg_drain_duration_ms = (metrics.avg_drain_duration_ms + duration_ms) / 2.0;
+                        metrics.avg_drain_duration_ms =
+                            (metrics.avg_drain_duration_ms + duration_ms) / 2.0;
                     } else {
                         metrics.drain_success_rate = (metrics.drain_success_rate + 0.0) / 2.0;
                     }
@@ -649,7 +716,10 @@ impl KafkaService {
             }
         }
 
-        info!("Kafka operation '{}' completed in {:.2}ms, success: {}", operation, duration_ms, success);
+        info!(
+            "Kafka operation '{}' completed in {:.2}ms, success: {}",
+            operation, duration_ms, success
+        );
     }
 
     // Update backup-specific metrics
@@ -678,81 +748,162 @@ impl KafkaService {
     }
 
     // Get a Kafka cluster configuration by ID or name
-    pub async fn get_cluster(&self, id: &str, config: &crate::config::Config) -> Result<KafkaClusterConfig, AppError> {
+    pub async fn get_cluster(
+        &self,
+        id: &str,
+        config: &crate::config::Config,
+    ) -> Result<KafkaClusterConfig, AppError> {
         // First try to find as a stored cluster in the database
-        let cluster_id = Uuid::parse_str(id).map_err(|e| AppError::Internal(format!("Invalid UUID: {}", e)))?;
+        let cluster_id =
+            Uuid::parse_str(id).map_err(|e| AppError::Internal(format!("Invalid UUID: {}", e)))?;
         let stored_cluster = self.cluster_repository.find_by_id(cluster_id).await?;
         if let Some(cluster) = stored_cluster {
             // Convert from stored cluster to KafkaClusterConfig
-            let kafka_config: KafkaClusterConfig = serde_json::from_value(cluster.config)
-                .map_err(|e| AppError::Validation(format!("Invalid cluster configuration: {}", e)))?;
+            let kafka_config: KafkaClusterConfig =
+                serde_json::from_value(cluster.config).map_err(|e| {
+                    AppError::Validation(format!("Invalid cluster configuration: {}", e))
+                })?;
             return Ok(kafka_config);
         }
 
         // If not found in database, look in configuration
-        config.kafka.clusters.iter()
+        config
+            .kafka
+            .clusters
+            .iter()
             .find(|c| c.name == id)
-            .cloned()
+            .map(|c| KafkaClusterConfig {
+                bootstrap_servers: c.bootstrap_servers.clone(),
+                sasl_username: c.sasl_username.clone(),
+                sasl_password: c.sasl_password.clone(),
+                sasl_mechanism: c.sasl_mechanism.clone(),
+                security_protocol: c.security_protocol.clone(),
+            })
             .ok_or_else(|| AppError::NotFound(format!("Kafka cluster with ID {} not found", id)))
+    }
+
+    // Create a new Kafka cluster
+    pub async fn create_cluster(
+        &self,
+        request: &CreateKafkaClusterRequest,
+        user_id: &str,
+    ) -> Result<serde_json::Value, AppError> {
+        // Create the cluster in the database
+        let cluster = self
+            .cluster_repository
+            .create_kafka_cluster(request, user_id)
+            .await?;
+
+        Ok(serde_json::json!({
+            "id": cluster.id,
+            "name": cluster.name,
+            "cluster_type": cluster.cluster_type,
+            "message": "Kafka cluster created successfully"
+        }))
+    }
+
+    // List all Kafka clusters
+    pub async fn list_clusters(&self) -> Result<Vec<serde_json::Value>, AppError> {
+        let stored_clusters = self.cluster_repository.find_by_type("kafka").await?;
+
+        let clusters: Vec<serde_json::Value> = stored_clusters
+            .iter()
+            .map(|cluster| {
+                // Parse the config to extract bootstrap servers
+                let bootstrap_servers = if let Some(config) = cluster.config.as_object() {
+                    config
+                        .get("bootstrap_servers")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|v| v.as_str())
+                                .map(|s| s.to_string())
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default()
+                } else {
+                    vec![]
+                };
+
+                serde_json::json!({
+                    "id": cluster.id,
+                    "name": cluster.name,
+                    "bootstrap_servers": bootstrap_servers,
+                    "status": cluster.status,
+                    "created_at": cluster.created_at,
+                    "last_connected_at": cluster.last_connected_at
+                })
+            })
+            .collect();
+
+        Ok(clusters)
     }
 
     // Build Kafka client configuration
     fn build_client_config(&self, cluster: &KafkaClusterConfig) -> ClientConfig {
         let mut client_config = ClientConfig::new();
-        
+
         // Set bootstrap servers
         client_config.set("bootstrap.servers", &cluster.bootstrap_servers.join(","));
-        
+
         // Set security settings if present
         if let (Some(username), Some(password)) = (&cluster.sasl_username, &cluster.sasl_password) {
             client_config.set("sasl.username", username);
             client_config.set("sasl.password", password);
-            
+
             if let Some(mechanism) = &cluster.sasl_mechanism {
                 client_config.set("sasl.mechanism", mechanism);
             }
-            
+
             client_config.set("security.protocol", &cluster.security_protocol);
         } else {
             client_config.set("security.protocol", &cluster.security_protocol);
         }
-        
+
         // Common settings for reliability
         client_config.set("request.timeout.ms", "30000");
         client_config.set("message.timeout.ms", "300000");
         client_config.set("socket.timeout.ms", "60000");
-        
+
         client_config
     }
 
     // Health check for Kafka cluster connectivity
-    pub async fn health_check(&self, cluster_id: &str, config: &crate::config::Config) -> Result<serde_json::Value, AppError> {
+    pub async fn health_check(
+        &self,
+        cluster_id: &str,
+        config: &crate::config::Config,
+    ) -> Result<serde_json::Value, AppError> {
         let cluster = self.get_cluster(cluster_id, config).await?;
         let mut client_config = self.build_client_config(&cluster);
         client_config.set("client.id", "mayyam-health-check");
-        
+
         // Try to create a producer to test connectivity
-        let producer: FutureProducer = client_config
-            .create()
-            .map_err(|e| AppError::ExternalService(format!("Failed to connect to Kafka cluster: {}", e)))?;
-        
+        let producer: FutureProducer = client_config.create().map_err(|e| {
+            AppError::ExternalService(format!("Failed to connect to Kafka cluster: {}", e))
+        })?;
+
         // Get cluster metadata to verify connection
         let timeout = Duration::from_secs(10);
         let metadata = producer
             .client()
             .fetch_metadata(None, timeout)
-            .map_err(|e| AppError::ExternalService(format!("Failed to fetch cluster metadata: {:?}", e)))?;
-        
+            .map_err(|e| {
+                AppError::ExternalService(format!("Failed to fetch cluster metadata: {:?}", e))
+            })?;
+
         let brokers = metadata
             .brokers()
             .iter()
-            .map(|broker| serde_json::json!({
-                "id": broker.id(),
-                "host": broker.host(),
-                "port": broker.port()
-            }))
+            .map(|broker| {
+                serde_json::json!({
+                    "id": broker.id(),
+                    "host": broker.host(),
+                    "port": broker.port()
+                })
+            })
             .collect::<Vec<_>>();
-        
+
         Ok(serde_json::json!({
             "status": "healthy",
             "cluster_id": cluster_id,
@@ -763,23 +914,26 @@ impl KafkaService {
     }
 
     // List topics in a cluster
-    pub async fn list_topics(&self, cluster_id: &str, config: &crate::config::Config) -> Result<Vec<serde_json::Value>, AppError> {
+    pub async fn list_topics(
+        &self,
+        cluster_id: &str,
+        config: &crate::config::Config,
+    ) -> Result<Vec<serde_json::Value>, AppError> {
         let cluster = self.get_cluster(cluster_id, config).await?;
         let mut client_config = self.build_client_config(&cluster);
         client_config.set("client.id", "mayyam-admin");
-        
+
         // Create an AdminClient to get topic metadata
-        let admin: AdminClient<_> = client_config
-            .create()
-            .map_err(|e| AppError::ExternalService(format!("Failed to create Kafka admin client: {}", e)))?;
-        
+        let admin: AdminClient<_> = client_config.create().map_err(|e| {
+            AppError::ExternalService(format!("Failed to create Kafka admin client: {}", e))
+        })?;
+
         // Get topic metadata with timeout
         let timeout = Duration::from_secs(30);
-        let metadata = admin
-            .inner()
-            .fetch_metadata(None, timeout)
-            .map_err(|e| AppError::ExternalService(format!("Failed to fetch topic metadata: {}", e)))?;
-        
+        let metadata = admin.inner().fetch_metadata(None, timeout).map_err(|e| {
+            AppError::ExternalService(format!("Failed to fetch topic metadata: {}", e))
+        })?;
+
         let topics = metadata
             .topics()
             .iter()
@@ -792,32 +946,32 @@ impl KafkaService {
                 })
             })
             .collect::<Vec<_>>();
-        
+
         Ok(topics)
     }
 
     // Create a topic
     pub async fn create_topic(
         &self,
-        cluster_id: &str, 
+        cluster_id: &str,
         topic: &KafkaTopic,
-        config: &crate::config::Config
+        config: &crate::config::Config,
     ) -> Result<serde_json::Value, AppError> {
         let cluster = self.get_cluster(cluster_id, config).await?;
         let client_config = self.build_client_config(&cluster);
-        
+
         // Create an AdminClient
-        let admin: AdminClient<_> = client_config
-            .create()
-            .map_err(|e| AppError::ExternalService(format!("Failed to create Kafka admin client: {}", e)))?;
-        
+        let admin: AdminClient<_> = client_config.create().map_err(|e| {
+            AppError::ExternalService(format!("Failed to create Kafka admin client: {}", e))
+        })?;
+
         // Create a NewTopic specification
         let new_topic = NewTopic::new(
             &topic.name,
             topic.partitions,
             TopicReplication::Fixed(topic.replication_factor as i32),
         );
-        
+
         // Apply any topic configurations
         let new_topic = if let Some(configs) = &topic.configs {
             let mut nt = new_topic;
@@ -828,7 +982,7 @@ impl KafkaService {
         } else {
             new_topic
         };
-        
+
         // In a real implementation, create the topic with a timeout
         // For now, return a success response
         let response = serde_json::json!({
@@ -837,7 +991,7 @@ impl KafkaService {
             "replication_factor": topic.replication_factor,
             "message": "Topic created successfully"
         });
-        
+
         Ok(response)
     }
 
@@ -846,11 +1000,11 @@ impl KafkaService {
         &self,
         cluster_id: &str,
         topic_name: &str,
-        config: &crate::config::Config
+        config: &crate::config::Config,
     ) -> Result<serde_json::Value, AppError> {
         let cluster = self.get_cluster(cluster_id, config).await?;
         let client_config = self.build_client_config(&cluster);
-        
+
         // In a real implementation, use the admin client to get topic details
         // This is a placeholder implementation
         let topic_details = serde_json::json!({
@@ -882,7 +1036,7 @@ impl KafkaService {
                 "retention.ms": "604800000"
             }
         });
-        
+
         Ok(topic_details)
     }
 
@@ -891,22 +1045,22 @@ impl KafkaService {
         &self,
         cluster_id: &str,
         topic_name: &str,
-        config: &crate::config::Config
+        config: &crate::config::Config,
     ) -> Result<serde_json::Value, AppError> {
         let cluster = self.get_cluster(cluster_id, config).await?;
         let client_config = self.build_client_config(&cluster);
-        
+
         // Create an AdminClient
-        let admin: AdminClient<_> = client_config
-            .create()
-            .map_err(|e| AppError::ExternalService(format!("Failed to create Kafka admin client: {}", e)))?;
-        
+        let admin: AdminClient<_> = client_config.create().map_err(|e| {
+            AppError::ExternalService(format!("Failed to create Kafka admin client: {}", e))
+        })?;
+
         // In a real implementation, delete the topic
         // This is a placeholder implementation
         let response = serde_json::json!({
             "message": format!("Topic {} deleted successfully", topic_name)
         });
-        
+
         Ok(response)
     }
 
@@ -916,17 +1070,17 @@ impl KafkaService {
         cluster_id: &str,
         topic_name: &str,
         message: &KafkaMessage,
-        config: &crate::config::Config
+        config: &crate::config::Config,
     ) -> Result<serde_json::Value, AppError> {
         let cluster = self.get_cluster(cluster_id, config).await?;
         let mut client_config = self.build_client_config(&cluster);
         client_config.set("client.id", "mayyam-producer");
-        
+
         // Create a producer
-        let producer: FutureProducer = client_config
-            .create()
-            .map_err(|e| AppError::ExternalService(format!("Failed to create Kafka producer: {}", e)))?;
-        
+        let producer: FutureProducer = client_config.create().map_err(|e| {
+            AppError::ExternalService(format!("Failed to create Kafka producer: {}", e))
+        })?;
+
         // Build headers if present
         let headers = if let Some(hdrs) = &message.headers {
             let mut owned_headers = OwnedHeaders::new();
@@ -940,32 +1094,31 @@ impl KafkaService {
         } else {
             None
         };
-        
+
         // Create the record
-        let mut record = FutureRecord::to(topic_name)
-            .payload(&message.value);
-            
+        let mut record = FutureRecord::to(topic_name).payload(&message.value);
+
         if let Some(ref key) = message.key {
             record = record.key(key.as_bytes());
         }
-            
+
         if let Some(h) = headers {
             record = record.headers(h);
         }
-        
+
         // Send the message with timeout
         let delivery_status = producer
             .send(record, Duration::from_secs(10))
             .await
             .map_err(|e| AppError::ExternalService(format!("Failed to send message: {:?}", e)))?;
-        
+
         let response = serde_json::json!({
             "message": "Message produced successfully",
             "offset": delivery_status.0,
             "partition": delivery_status.1,
             "timestamp": chrono::Utc::now().timestamp_millis()
         });
-        
+
         Ok(response)
     }
 
@@ -975,60 +1128,69 @@ impl KafkaService {
         cluster_id: &str,
         topic_name: &str,
         options: &ConsumeOptions,
-        config: &crate::config::Config
+        config: &crate::config::Config,
     ) -> Result<Vec<serde_json::Value>, AppError> {
         let cluster = self.get_cluster(cluster_id, config).await?;
         let mut client_config = self.build_client_config(&cluster);
         client_config.set("group.id", &options.group_id);
         client_config.set("client.id", "mayyam-consumer");
         client_config.set("enable.auto.commit", "false"); // Manual commit for better control
-        
+
         // Set auto offset reset
         if options.from_beginning.unwrap_or(false) {
             client_config.set("auto.offset.reset", "earliest");
         } else {
             client_config.set("auto.offset.reset", "latest");
         }
-        
+
         // Create a consumer
-        let consumer: StreamConsumer = client_config
-            .create()
-            .map_err(|e| AppError::ExternalService(format!("Failed to create Kafka consumer: {}", e)))?;
-        
+        let consumer: StreamConsumer = client_config.create().map_err(|e| {
+            AppError::ExternalService(format!("Failed to create Kafka consumer: {}", e))
+        })?;
+
         // Subscribe to the topic
-        consumer
-            .subscribe(&[topic_name])
-            .map_err(|e| AppError::ExternalService(format!("Failed to subscribe to topic: {}", e)))?;
-        
+        consumer.subscribe(&[topic_name]).map_err(|e| {
+            AppError::ExternalService(format!("Failed to subscribe to topic: {}", e))
+        })?;
+
         let max_messages = options.max_messages.unwrap_or(10);
         let timeout_ms = options.timeout_ms.unwrap_or(5000);
         let mut messages = Vec::new();
-        
+
         // Consume messages with timeout
         let timeout_duration = Duration::from_millis(timeout_ms);
         let start_time = std::time::Instant::now();
-        
+
         while messages.len() < max_messages as usize && start_time.elapsed() < timeout_duration {
             match consumer.recv().await {
                 Ok(message) => {
-                    let payload = message.payload()
+                    let payload = message
+                        .payload()
                         .map(|p| String::from_utf8_lossy(p).to_string())
                         .unwrap_or_else(|| "".to_string());
-                    
-                    let key = message.key()
+
+                    let key = message
+                        .key()
                         .map(|k| String::from_utf8_lossy(k).to_string());
-                    
+
                     // Extract headers
-                    let headers = message.headers()
+                    let headers = message
+                        .headers()
                         .map(|hdrs| {
                             (0..hdrs.count())
                                 .filter_map(|i| Some(hdrs.get(i)))
-                                .map(|h| (h.key.to_string(), 
-                                         h.value.map(|v| String::from_utf8_lossy(v).to_string()).unwrap_or_default()))
+                                .map(|h| {
+                                    (
+                                        h.key.to_string(),
+                                        h.value
+                                            .map(|v| String::from_utf8_lossy(v).to_string())
+                                            .unwrap_or_default(),
+                                    )
+                                })
                                 .collect::<Vec<_>>()
                         })
                         .unwrap_or_default();
-                    
+
                     let msg_json = serde_json::json!({
                         "partition": message.partition(),
                         "offset": message.offset(),
@@ -1037,9 +1199,9 @@ impl KafkaService {
                         "value": payload,
                         "headers": headers
                     });
-                    
+
                     messages.push(msg_json);
-                    
+
                     // Manually commit the offset
                     if let Err(e) = consumer.commit_message(&message, CommitMode::Async) {
                         error!("Failed to commit message offset: {:?}", e);
@@ -1050,13 +1212,13 @@ impl KafkaService {
                     break;
                 }
             }
-            
+
             // Check timeout
             if start_time.elapsed() >= timeout_duration {
                 break;
             }
         }
-        
+
         Ok(messages)
     }
 
@@ -1064,11 +1226,11 @@ impl KafkaService {
     pub async fn list_consumer_groups(
         &self,
         cluster_id: &str,
-        config: &crate::config::Config
+        config: &crate::config::Config,
     ) -> Result<Vec<serde_json::Value>, AppError> {
         let cluster = self.get_cluster(cluster_id, config).await?;
         let client_config = self.build_client_config(&cluster);
-        
+
         // In a real implementation, use the admin client to list consumer groups
         // This is a placeholder implementation
         let consumer_groups = vec![
@@ -1087,7 +1249,7 @@ impl KafkaService {
                 "coordinator_id": 2
             }),
         ];
-        
+
         Ok(consumer_groups)
     }
 
@@ -1096,11 +1258,11 @@ impl KafkaService {
         &self,
         cluster_id: &str,
         group_id: &str,
-        config: &crate::config::Config
+        config: &crate::config::Config,
     ) -> Result<serde_json::Value, AppError> {
         let cluster = self.get_cluster(cluster_id, config).await?;
         let client_config = self.build_client_config(&cluster);
-        
+
         // In a real implementation, use the admin client to get consumer group details
         // This is a placeholder implementation
         let group_details = serde_json::json!({
@@ -1133,7 +1295,7 @@ impl KafkaService {
                 }
             ]
         });
-        
+
         Ok(group_details)
     }
 
@@ -1143,17 +1305,17 @@ impl KafkaService {
         cluster_id: &str,
         group_id: &str,
         offset_req: &OffsetReset,
-        config: &crate::config::Config
+        config: &crate::config::Config,
     ) -> Result<serde_json::Value, AppError> {
         let cluster = self.get_cluster(cluster_id, config).await?;
         let client_config = self.build_client_config(&cluster);
-        
+
         // In a real implementation, use the admin client to reset consumer group offsets
         // This is a placeholder implementation
         let response = serde_json::json!({
             "message": format!("Consumer group {} offsets reset successfully", group_id)
         });
-        
+
         Ok(response)
     }
 
@@ -1163,42 +1325,41 @@ impl KafkaService {
         cluster_id: &str,
         topic_name: &str,
         messages: Vec<KafkaMessage>,
-        config: &crate::config::Config
+        config: &crate::config::Config,
     ) -> Result<serde_json::Value, AppError> {
         let start_time = Instant::now();
         let cluster = self.get_cluster(cluster_id, config).await?;
         let mut client_config = self.build_client_config(&cluster);
         client_config.set("client.id", "mayyam-batch-producer");
-        
-        let producer: FutureProducer = client_config
-            .create()
-            .map_err(|e| AppError::ExternalService(format!("Failed to create Kafka producer: {}", e)))?;
-        
+
+        let producer: FutureProducer = client_config.create().map_err(|e| {
+            AppError::ExternalService(format!("Failed to create Kafka producer: {}", e))
+        })?;
+
         let mut send_futures = Vec::new();
         let mut total_size = 0;
-        
+
         for message in messages {
             total_size += message.value.len();
-            
+
             // Prepare data for this individual message
             let topic_name = topic_name.to_string();
             let value_data = message.value.into_bytes();
             let key_data = message.key.map(|k| k.into_bytes());
             let headers_data = message.headers;
-            
+
             // Clone the producer for this message
             let producer_clone = producer.clone();
-            
+
             // Create an async future that owns all the data it needs
             let send_future = async move {
                 // Create the record inside the async block with owned data
-                let mut record = FutureRecord::to(&topic_name)
-                    .payload(&value_data);
-                
+                let mut record = FutureRecord::to(&topic_name).payload(&value_data);
+
                 if let Some(ref key_bytes) = key_data {
                     record = record.key(key_bytes);
                 }
-                
+
                 if let Some(headers) = headers_data {
                     let mut owned_headers = OwnedHeaders::new();
                     for (header_key, header_value) in headers {
@@ -1209,16 +1370,16 @@ impl KafkaService {
                     }
                     record = record.headers(owned_headers);
                 }
-                
+
                 producer_clone.send(record, Duration::from_secs(10)).await
             };
-            
+
             send_futures.push(send_future);
         }
-        
+
         // Rename to match the rest of the function
         let futures = send_futures;
-        
+
         // Wait for all messages to be sent
         let mut results = Vec::new();
         for future in futures {
@@ -1239,15 +1400,15 @@ impl KafkaService {
                 }
             }
         }
-        
+
         let duration = start_time.elapsed().as_millis() as f64;
         self.update_metrics("batch_produce", duration, true);
-        
+
         // Update message count
         if let Ok(mut metrics) = self.metrics.lock() {
             metrics.messages_produced += results.len() as u64;
         }
-        
+
         Ok(serde_json::json!({
             "message": "Batch production completed",
             "total_messages": results.len(),
@@ -1264,14 +1425,17 @@ impl KafkaService {
         topic_name: &str,
         message: &KafkaMessage,
         config: &crate::config::Config,
-        max_retries: u32
+        max_retries: u32,
     ) -> Result<serde_json::Value, AppError> {
         let mut last_error = None;
-        
+
         for attempt in 0..=max_retries {
             let start_time = Instant::now();
-            
-            match self.produce_message(cluster_id, topic_name, message, config).await {
+
+            match self
+                .produce_message(cluster_id, topic_name, message, config)
+                .await
+            {
                 Ok(result) => {
                     let duration = start_time.elapsed().as_millis() as f64;
                     self.update_metrics("produce_with_retry", duration, true);
@@ -1287,7 +1451,7 @@ impl KafkaService {
                 }
             }
         }
-        
+
         let error = last_error.unwrap_or_else(|| AppError::Internal("Unknown error".to_string()));
         self.update_metrics("produce_with_retry", 0.0, false);
         Err(error)
@@ -1297,21 +1461,21 @@ impl KafkaService {
     pub async fn health_check_with_metrics(
         &self,
         cluster_id: &str,
-        config: &crate::config::Config
+        config: &crate::config::Config,
     ) -> Result<serde_json::Value, AppError> {
         let start_time = Instant::now();
-        
+
         let result = self.health_check(cluster_id, config).await;
         let duration = start_time.elapsed().as_millis() as f64;
-        
+
         let success = result.is_ok();
         self.update_metrics("health_check", duration, success);
-        
+
         // Update last health check timestamp
         if let Ok(mut metrics) = self.metrics.lock() {
             metrics.last_health_check = chrono::Utc::now().timestamp_millis();
         }
-        
+
         result
     }
 
@@ -1319,41 +1483,48 @@ impl KafkaService {
     pub fn validate_cluster_config(&self, config: &KafkaClusterConfig) -> Result<(), AppError> {
         // Validate bootstrap servers
         if config.bootstrap_servers.is_empty() {
-            return Err(AppError::Validation("Bootstrap servers cannot be empty".to_string()));
+            return Err(AppError::Validation(
+                "Bootstrap servers cannot be empty".to_string(),
+            ));
         }
-        
+
         for server in &config.bootstrap_servers {
             if !server.contains(':') {
-                return Err(AppError::Validation(format!("Invalid bootstrap server format: {}. Expected host:port", server)));
+                return Err(AppError::Validation(format!(
+                    "Invalid bootstrap server format: {}. Expected host:port",
+                    server
+                )));
             }
         }
-        
+
         // Validate security protocol
         let valid_protocols = ["PLAINTEXT", "SSL", "SASL_PLAINTEXT", "SASL_SSL"];
         if !valid_protocols.contains(&config.security_protocol.as_str()) {
             return Err(AppError::Validation(format!(
-                "Invalid security protocol: {}. Valid options: {:?}", 
+                "Invalid security protocol: {}. Valid options: {:?}",
                 config.security_protocol, valid_protocols
             )));
         }
-        
+
         // Validate SASL configuration
         if config.security_protocol.starts_with("SASL_") {
             if config.sasl_username.is_none() || config.sasl_password.is_none() {
-                return Err(AppError::Validation("SASL username and password are required for SASL authentication".to_string()));
+                return Err(AppError::Validation(
+                    "SASL username and password are required for SASL authentication".to_string(),
+                ));
             }
-            
+
             if let Some(mechanism) = &config.sasl_mechanism {
                 let valid_mechanisms = ["PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512", "GSSAPI"];
                 if !valid_mechanisms.contains(&mechanism.as_str()) {
                     return Err(AppError::Validation(format!(
-                        "Invalid SASL mechanism: {}. Valid options: {:?}", 
+                        "Invalid SASL mechanism: {}. Valid options: {:?}",
                         mechanism, valid_mechanisms
                     )));
                 }
             }
         }
-        
+
         Ok(())
     }
 
@@ -1364,25 +1535,30 @@ impl KafkaService {
         topic_name: &str,
         configs: Vec<(String, String)>,
         validate_only: bool,
-        config: &crate::config::Config
+        config: &crate::config::Config,
     ) -> Result<serde_json::Value, AppError> {
         let cluster = self.get_cluster(cluster_id, config).await?;
         let client_config = self.build_client_config(&cluster);
 
         // Create an AdminClient
-        let admin: AdminClient<_> = client_config
-            .create()
-            .map_err(|e| AppError::ExternalService(format!("Failed to create Kafka admin client: {}", e)))?;
+        let admin: AdminClient<_> = client_config.create().map_err(|e| {
+            AppError::ExternalService(format!("Failed to create Kafka admin client: {}", e))
+        })?;
 
         if validate_only {
             // Validate configurations without applying
             for (key, value) in &configs {
                 // Basic validation - you might want to add more sophisticated validation
                 if key.is_empty() {
-                    return Err(AppError::Validation("Configuration key cannot be empty".to_string()));
+                    return Err(AppError::Validation(
+                        "Configuration key cannot be empty".to_string(),
+                    ));
                 }
                 if value.is_empty() {
-                    return Err(AppError::Validation(format!("Configuration value for key '{}' cannot be empty", key)));
+                    return Err(AppError::Validation(format!(
+                        "Configuration value for key '{}' cannot be empty",
+                        key
+                    )));
                 }
             }
             return Ok(serde_json::json!({
@@ -1407,7 +1583,7 @@ impl KafkaService {
         &self,
         cluster_id: &str,
         update_req: &ClusterUpdateRequest,
-        config: &crate::config::Config
+        config: &crate::config::Config,
     ) -> Result<serde_json::Value, AppError> {
         // Validate the update request
         self.validate_cluster_update(update_req)?;
@@ -1429,20 +1605,22 @@ impl KafkaService {
         topic_name: &str,
         partition_count: i32,
         validate_only: bool,
-        config: &crate::config::Config
+        config: &crate::config::Config,
     ) -> Result<serde_json::Value, AppError> {
         let cluster = self.get_cluster(cluster_id, config).await?;
         let client_config = self.build_client_config(&cluster);
 
         // Create an AdminClient
-        let admin: AdminClient<_> = client_config
-            .create()
-            .map_err(|e| AppError::ExternalService(format!("Failed to create Kafka admin client: {}", e)))?;
+        let admin: AdminClient<_> = client_config.create().map_err(|e| {
+            AppError::ExternalService(format!("Failed to create Kafka admin client: {}", e))
+        })?;
 
         if validate_only {
             // Validate partition addition
             if partition_count <= 0 {
-                return Err(AppError::Validation("Partition count must be greater than 0".to_string()));
+                return Err(AppError::Validation(
+                    "Partition count must be greater than 0".to_string(),
+                ));
             }
             return Ok(serde_json::json!({
                 "message": "Partition addition validation successful",
@@ -1465,23 +1643,25 @@ impl KafkaService {
     pub async fn get_broker_status(
         &self,
         cluster_id: &str,
-        config: &crate::config::Config
+        config: &crate::config::Config,
     ) -> Result<Vec<serde_json::Value>, AppError> {
         let cluster = self.get_cluster(cluster_id, config).await?;
         let mut client_config = self.build_client_config(&cluster);
         client_config.set("client.id", "mayyam-broker-status");
 
         // Create a producer to get cluster metadata
-        let producer: FutureProducer = client_config
-            .create()
-            .map_err(|e| AppError::ExternalService(format!("Failed to connect to Kafka cluster: {}", e)))?;
+        let producer: FutureProducer = client_config.create().map_err(|e| {
+            AppError::ExternalService(format!("Failed to connect to Kafka cluster: {}", e))
+        })?;
 
         // Get cluster metadata
         let timeout = Duration::from_secs(10);
         let metadata = producer
             .client()
             .fetch_metadata(None, timeout)
-            .map_err(|e| AppError::ExternalService(format!("Failed to fetch cluster metadata: {:?}", e)))?;
+            .map_err(|e| {
+                AppError::ExternalService(format!("Failed to fetch cluster metadata: {:?}", e))
+            })?;
 
         let brokers = metadata
             .brokers()
@@ -1504,11 +1684,16 @@ impl KafkaService {
     fn validate_cluster_update(&self, update_req: &ClusterUpdateRequest) -> Result<(), AppError> {
         if let Some(bootstrap_servers) = &update_req.bootstrap_servers {
             if bootstrap_servers.is_empty() {
-                return Err(AppError::Validation("Bootstrap servers cannot be empty".to_string()));
+                return Err(AppError::Validation(
+                    "Bootstrap servers cannot be empty".to_string(),
+                ));
             }
             for server in bootstrap_servers {
                 if !server.contains(':') {
-                    return Err(AppError::Validation(format!("Invalid bootstrap server format: {}. Expected host:port", server)));
+                    return Err(AppError::Validation(format!(
+                        "Invalid bootstrap server format: {}. Expected host:port",
+                        server
+                    )));
                 }
             }
         }
@@ -1517,7 +1702,7 @@ impl KafkaService {
             let valid_protocols = ["PLAINTEXT", "SSL", "SASL_PLAINTEXT", "SASL_SSL"];
             if !valid_protocols.contains(&security_protocol.as_str()) {
                 return Err(AppError::Validation(format!(
-                    "Invalid security protocol: {}. Valid options: {:?}", 
+                    "Invalid security protocol: {}. Valid options: {:?}",
                     security_protocol, valid_protocols
                 )));
             }
@@ -1538,10 +1723,15 @@ impl KafkaService {
         let cluster_config = self.get_cluster(cluster_id, config).await?;
 
         let client_config = self.build_client_config(&cluster_config);
-        let consumer: StreamConsumer = client_config.create()
+        let consumer: StreamConsumer = client_config
+            .create()
             .map_err(|e| AppError::Kafka(format!("Failed to create consumer: {}", e)))?;
 
-        let backup_id = format!("backup_{}_{}", request.topic, chrono::Utc::now().timestamp());
+        let backup_id = format!(
+            "backup_{}_{}",
+            request.topic,
+            chrono::Utc::now().timestamp()
+        );
         let mut total_messages = 0u64;
         let start_time = chrono::Utc::now();
         let start_time_str = start_time.to_rfc3339();
@@ -1552,18 +1742,24 @@ impl KafkaService {
         let compression = CompressionType::Gzip; // TODO: Make configurable
 
         // Get topic metadata to determine partitions
-        let metadata = consumer.fetch_metadata(Some(&request.topic), Duration::from_secs(30))
+        let metadata = consumer
+            .fetch_metadata(Some(&request.topic), Duration::from_secs(30))
             .map_err(|e| AppError::Kafka(format!("Failed to fetch topic metadata: {}", e)))?;
 
-        let topic_metadata = metadata.topics().iter()
+        let topic_metadata = metadata
+            .topics()
+            .iter()
             .find(|t| t.name() == request.topic)
             .ok_or_else(|| AppError::NotFound(format!("Topic {} not found", request.topic)))?;
 
-        let partitions_to_backup = request.partitions.clone()
+        let partitions_to_backup = request
+            .partitions
+            .clone()
             .unwrap_or_else(|| (0..topic_metadata.partitions().len() as i32).collect::<Vec<_>>());
 
         // Subscribe to the topic
-        consumer.subscribe(&[&request.topic])
+        consumer
+            .subscribe(&[&request.topic])
             .map_err(|e| AppError::Kafka(format!("Failed to subscribe to topic: {}", e)))?;
 
         // Process messages from each partition
@@ -1584,7 +1780,9 @@ impl KafkaService {
             // Consume messages from this partition
             let max_messages = request.max_messages.unwrap_or(u64::MAX);
 
-            while let Ok(message) = tokio::time::timeout(Duration::from_secs(5), consumer.recv()).await {
+            while let Ok(message) =
+                tokio::time::timeout(Duration::from_secs(5), consumer.recv()).await
+            {
                 match message {
                     Ok(msg) => {
                         if msg.partition() != *partition {
@@ -1604,20 +1802,25 @@ impl KafkaService {
                         }
 
                         // Extract message data
-                        let key = msg.key()
-                            .map(|k| String::from_utf8_lossy(k).to_string());
-                        let value = String::from_utf8_lossy(msg.payload().unwrap_or(&[])).to_string();
+                        let key = msg.key().map(|k| String::from_utf8_lossy(k).to_string());
+                        let value =
+                            String::from_utf8_lossy(msg.payload().unwrap_or(&[])).to_string();
 
                         // Extract headers if requested
                         let headers = if request.include_headers.unwrap_or(true) {
-                            msg.headers()
-                                .map(|hdrs| {
-                                    (0..hdrs.count())
-                                        .filter_map(|i| Some(hdrs.get(i)))
-                                        .map(|h| (h.key.to_string(),
-                                                 h.value.map(|v| String::from_utf8_lossy(v).to_string()).unwrap_or_default()))
-                                        .collect::<Vec<_>>()
-                                })
+                            msg.headers().map(|hdrs| {
+                                (0..hdrs.count())
+                                    .filter_map(|i| Some(hdrs.get(i)))
+                                    .map(|h| {
+                                        (
+                                            h.key.to_string(),
+                                            h.value
+                                                .map(|v| String::from_utf8_lossy(v).to_string())
+                                                .unwrap_or_default(),
+                                        )
+                                    })
+                                    .collect::<Vec<_>>()
+                            })
                         } else {
                             None
                         };
@@ -1651,8 +1854,15 @@ impl KafkaService {
                     created_at: start_time_str.clone(),
                 };
 
-                storage.store_backup(&backup_data, &compression).await
-                    .map_err(|e| AppError::Internal(format!("Failed to store backup for partition {}: {}", partition, e)))?;
+                storage
+                    .store_backup(&backup_data, &compression)
+                    .await
+                    .map_err(|e| {
+                        AppError::Internal(format!(
+                            "Failed to store backup for partition {}: {}",
+                            partition, e
+                        ))
+                    })?;
             }
         }
 
@@ -1684,7 +1894,8 @@ impl KafkaService {
         let cluster_config = self.get_cluster(cluster_id, config).await?;
 
         let client_config = self.build_client_config(&cluster_config);
-        let producer: FutureProducer = client_config.create()
+        let producer: FutureProducer = client_config
+            .create()
             .map_err(|e| AppError::Kafka(format!("Failed to create producer: {}", e)))?;
 
         let start_time = chrono::Utc::now();
@@ -1698,32 +1909,48 @@ impl KafkaService {
         // Get backup metadata to determine partitions
         let metadata_path = storage.get_metadata_path(&request.backup_id);
         if !metadata_path.exists() {
-            return Err(AppError::NotFound(format!("Backup {} not found", request.backup_id)));
+            return Err(AppError::NotFound(format!(
+                "Backup {} not found",
+                request.backup_id
+            )));
         }
 
-        let metadata_json = fs::read(&metadata_path).await
+        let metadata_json = fs::read(&metadata_path)
+            .await
             .map_err(|e| AppError::Internal(format!("Failed to read backup metadata: {}", e)))?;
-        let metadata: BackupMetadata = serde_json::from_slice(&metadata_json)
-            .map_err(|e| AppError::Internal(format!("Failed to deserialize backup metadata: {}", e)))?;
+        let metadata: BackupMetadata = serde_json::from_slice(&metadata_json).map_err(|e| {
+            AppError::Internal(format!("Failed to deserialize backup metadata: {}", e))
+        })?;
 
-        let partitions_to_restore = request.partitions.clone()
+        let partitions_to_restore = request
+            .partitions
+            .clone()
             .unwrap_or_else(|| metadata.partitions.clone());
 
         // Restore messages from each partition
         for &partition in &partitions_to_restore {
             if !metadata.partitions.contains(&partition) {
-                warn!("Partition {} not found in backup {}, skipping", partition, request.backup_id);
+                warn!(
+                    "Partition {} not found in backup {}, skipping",
+                    partition, request.backup_id
+                );
                 continue;
             }
 
             // Load backup data for this partition
-            let backup_data = storage.load_backup(&request.backup_id, partition).await
-                .map_err(|e| AppError::Internal(format!("Failed to load backup data for partition {}: {}", partition, e)))?;
+            let backup_data = storage
+                .load_backup(&request.backup_id, partition)
+                .await
+                .map_err(|e| {
+                    AppError::Internal(format!(
+                        "Failed to load backup data for partition {}: {}",
+                        partition, e
+                    ))
+                })?;
 
             // Restore messages to target topic
             for message in &backup_data.messages {
-                let mut record = FutureRecord::to(&request.target_topic)
-                    .payload(&message.value);
+                let mut record = FutureRecord::to(&request.target_topic).payload(&message.value);
 
                 // Add key if present and requested
                 if request.preserve_keys.unwrap_or(true) {
@@ -1786,29 +2013,41 @@ impl KafkaService {
         let target_cluster_config = self.get_cluster(&request.target_cluster_id, config).await?;
 
         let source_client_config = self.build_client_config(&source_cluster_config);
-        let source_consumer: StreamConsumer = source_client_config.create()
+        let source_consumer: StreamConsumer = source_client_config
+            .create()
             .map_err(|e| AppError::Kafka(format!("Failed to create source consumer: {}", e)))?;
 
         let target_client_config = self.build_client_config(&target_cluster_config);
-        let target_producer: FutureProducer = target_client_config.create()
+        let target_producer: FutureProducer = target_client_config
+            .create()
             .map_err(|e| AppError::Kafka(format!("Failed to create target producer: {}", e)))?;
 
         let start_time = chrono::Utc::now().to_rfc3339();
         let mut messages_migrated = 0u64;
 
         // Subscribe to source topic
-        source_consumer.subscribe(&[&request.source_topic])
+        source_consumer
+            .subscribe(&[&request.source_topic])
             .map_err(|e| AppError::Kafka(format!("Failed to subscribe to source topic: {}", e)))?;
 
         // Get topic metadata to determine partitions
-        let metadata = source_consumer.fetch_metadata(Some(&request.source_topic), Duration::from_secs(30))
-            .map_err(|e| AppError::Kafka(format!("Failed to fetch source topic metadata: {}", e)))?;
+        let metadata = source_consumer
+            .fetch_metadata(Some(&request.source_topic), Duration::from_secs(30))
+            .map_err(|e| {
+                AppError::Kafka(format!("Failed to fetch source topic metadata: {}", e))
+            })?;
 
-        let topic_metadata = metadata.topics().iter()
+        let topic_metadata = metadata
+            .topics()
+            .iter()
             .find(|t| t.name() == request.source_topic)
-            .ok_or_else(|| AppError::NotFound(format!("Source topic {} not found", request.source_topic)))?;
+            .ok_or_else(|| {
+                AppError::NotFound(format!("Source topic {} not found", request.source_topic))
+            })?;
 
-        let partitions_to_migrate = request.partitions.clone()
+        let partitions_to_migrate = request
+            .partitions
+            .clone()
             .unwrap_or_else(|| (0..topic_metadata.partitions().len() as i32).collect::<Vec<_>>());
 
         // Process messages from each partition
@@ -1818,13 +2057,20 @@ impl KafkaService {
                 Some(offset) => Offset::Offset(offset),
                 None => Offset::Beginning,
             };
-            if let Err(e) = source_consumer.seek(&request.source_topic, *partition, seek_offset, timeout) {
-                warn!("Failed to seek source partition {} to offset: {}", partition, e);
+            if let Err(e) =
+                source_consumer.seek(&request.source_topic, *partition, seek_offset, timeout)
+            {
+                warn!(
+                    "Failed to seek source partition {} to offset: {}",
+                    partition, e
+                );
                 continue;
             }
 
             // Consume and forward messages
-            while let Ok(message) = tokio::time::timeout(Duration::from_secs(5), source_consumer.recv()).await {
+            while let Ok(message) =
+                tokio::time::timeout(Duration::from_secs(5), source_consumer.recv()).await
+            {
                 match message {
                     Ok(msg) => {
                         if msg.partition() != *partition {
@@ -1839,17 +2085,27 @@ impl KafkaService {
                         }
 
                         // Transform message if needed
-                        let target_key = if request.transform_messages.as_ref()
-                            .and_then(|t| t.key_prefix.as_ref()).is_some() {
-                            let prefix = request.transform_messages.as_ref().unwrap().key_prefix.as_ref().unwrap();
-                            msg.key().map(|k| format!("{}{}", prefix, String::from_utf8_lossy(k)))
+                        let target_key = if request
+                            .transform_messages
+                            .as_ref()
+                            .and_then(|t| t.key_prefix.as_ref())
+                            .is_some()
+                        {
+                            let prefix = request
+                                .transform_messages
+                                .as_ref()
+                                .unwrap()
+                                .key_prefix
+                                .as_ref()
+                                .unwrap();
+                            msg.key()
+                                .map(|k| format!("{}{}", prefix, String::from_utf8_lossy(k)))
                         } else {
                             msg.key().map(|k| String::from_utf8_lossy(k).to_string())
                         };
 
                         let payload = msg.payload().unwrap_or(&[]);
-                        let mut record = FutureRecord::to(&request.target_topic)
-                            .payload(payload);
+                        let mut record = FutureRecord::to(&request.target_topic).payload(payload);
 
                         if let Some(key) = &target_key {
                             record = record.key(key.as_bytes());
@@ -1906,7 +2162,8 @@ impl KafkaService {
         let cluster_config = self.get_cluster(cluster_id, config).await?;
 
         let client_config = self.build_client_config(&cluster_config);
-        let admin: AdminClient<_> = client_config.create()
+        let admin: AdminClient<_> = client_config
+            .create()
             .map_err(|e| AppError::Kafka(format!("Failed to create admin client: {}", e)))?;
 
         let start_time = Instant::now();
@@ -1915,7 +2172,9 @@ impl KafkaService {
         let max_lag_threshold = request.max_lag_threshold.unwrap_or(0);
 
         // Get initial lag
-        let initial_offsets = self.get_consumer_group_offsets(&admin, &request.consumer_group, &request.topics).await?;
+        let initial_offsets = self
+            .get_consumer_group_offsets(&admin, &request.consumer_group, &request.topics)
+            .await?;
         let mut total_initial_lag = 0i64;
         let mut partition_statuses = Vec::new();
 
@@ -1935,7 +2194,9 @@ impl KafkaService {
         while start_time.elapsed() < timeout {
             tokio::time::sleep(check_interval).await;
 
-            let current_offsets = self.get_consumer_group_offsets(&admin, &request.consumer_group, &request.topics).await?;
+            let current_offsets = self
+                .get_consumer_group_offsets(&admin, &request.consumer_group, &request.topics)
+                .await?;
             let mut total_current_lag = 0i64;
             let mut all_drained = true;
 
@@ -2017,9 +2278,9 @@ pub struct BrokerStatus {
 mod tests {
     use super::*;
     use crate::config::Config;
-    use std::sync::Arc;
     use crate::repositories::cluster::ClusterRepository;
     use sea_orm::DatabaseConnection;
+    use std::sync::Arc;
 
     #[tokio::test]
     async fn test_cluster_update_validation() {

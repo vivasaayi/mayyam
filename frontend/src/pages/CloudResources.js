@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { Card, CardHeader, CardBody, Row, Col, Form, FormGroup, Label, Input, Button } from "reactstrap";
-import AwsResourceBrowser from "../components/cloud/AwsResourceBrowser";
+import { Card, CardHeader, CardBody, Row, Col } from "reactstrap";
+import CloudResourceBrowser from "../components/cloud/CloudResourceBrowser";
 
 function useQuery() {
   const { search } = useLocation();
@@ -29,8 +29,8 @@ const CloudResources = () => {
         <CardBody>
           <Row>
             <Col>
-              {/* We reuse AwsResourceBrowser which supports query params; ensure it forwards sync_id */}
-              <AwsResourceBrowser />
+              {/* Unified browser hitting /api/cloud/resources with provider/type/sync_id filters */}
+              <CloudResourceBrowser />
             </Col>
           </Row>
         </CardBody>

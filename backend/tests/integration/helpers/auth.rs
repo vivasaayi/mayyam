@@ -11,8 +11,8 @@ pub async fn get_auth_token() -> String {
         .build()
         .expect("failed to build reqwest client");
 
-    let base_url = std::env::var("TEST_API_BASE_URL")
-        .unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
+    let base_url =
+        std::env::var("TEST_API_BASE_URL").unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());
 
     let payload = serde_json::json!({
         "username": "admin",
@@ -26,7 +26,11 @@ pub async fn get_auth_token() -> String {
         .await
         .expect("login request failed");
 
-    assert!(resp.status().is_success(), "login failed: {}", resp.status());
+    assert!(
+        resp.status().is_success(),
+        "login failed: {}",
+        resp.status()
+    );
 
     let body: serde_json::Value = resp.json().await.expect("invalid login response");
     body["token"].as_str().expect("missing token").to_string()

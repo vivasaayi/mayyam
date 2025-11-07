@@ -2,15 +2,17 @@ use std::sync::Arc;
 
 use crate::errors::AppError;
 use crate::models::aws_account::AwsAccountDto;
+use crate::services::aws::aws_data_plane::dynamodb_data_plane::DynamoDBDataPlane;
+use crate::services::aws::aws_data_plane::kinesis_data_plane::KinesisDataPlane;
+use crate::services::aws::aws_data_plane::s3_data_plane::S3DataPlane;
 use crate::services::aws::aws_data_plane::sqs_data_plane::SqsDataPlane;
-use crate::services::aws::aws_types::dynamodb::{DynamoDBGetItemRequest, DynamoDBPutItemRequest, DynamoDBQueryRequest};
+use crate::services::aws::aws_types::dynamodb::{
+    DynamoDBGetItemRequest, DynamoDBPutItemRequest, DynamoDBQueryRequest,
+};
+use crate::services::aws::aws_types::kinesis::KinesisPutRecordRequest;
+use crate::services::aws::aws_types::s3::{S3GetObjectRequest, S3PutObjectRequest};
 use crate::services::aws::aws_types::sqs::{SqsReceiveMessageRequest, SqsSendMessageRequest};
 use crate::services::aws::AwsService;
-use crate::services::aws::aws_data_plane::s3_data_plane::S3DataPlane;
-use crate::services::aws::aws_data_plane::dynamodb_data_plane::DynamoDBDataPlane;
-use crate::services::aws::aws_types::kinesis::KinesisPutRecordRequest;
-use crate::services::aws::aws_data_plane::kinesis_data_plane::KinesisDataPlane;
-use crate::services::aws::aws_types::s3::{S3GetObjectRequest, S3PutObjectRequest};
 
 // Helper struct for AWS data plane operations
 pub struct AwsDataPlane {
@@ -31,38 +33,70 @@ impl AwsDataPlane {
     }
 
     // S3 operations
-    pub async fn s3_get_object(&self, aws_account_dto: &AwsAccountDto, request: &S3GetObjectRequest) -> Result<serde_json::Value, AppError> {
+    pub async fn s3_get_object(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        request: &S3GetObjectRequest,
+    ) -> Result<serde_json::Value, AppError> {
         self.s3.get_object(aws_account_dto, request).await
     }
 
-    pub async fn s3_put_object(&self, aws_account_dto: &AwsAccountDto, request: &S3PutObjectRequest) -> Result<serde_json::Value, AppError> {
+    pub async fn s3_put_object(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        request: &S3PutObjectRequest,
+    ) -> Result<serde_json::Value, AppError> {
         self.s3.put_object(aws_account_dto, request).await
     }
 
     // DynamoDB operations
-    pub async fn dynamodb_get_item(&self, aws_account_dto: &AwsAccountDto, request: &DynamoDBGetItemRequest) -> Result<serde_json::Value, AppError> {
+    pub async fn dynamodb_get_item(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        request: &DynamoDBGetItemRequest,
+    ) -> Result<serde_json::Value, AppError> {
         self.dynamodb.get_item(aws_account_dto, request).await
     }
 
-    pub async fn dynamodb_put_item(&self, aws_account_dto: &AwsAccountDto, request: &DynamoDBPutItemRequest) -> Result<serde_json::Value, AppError> {
+    pub async fn dynamodb_put_item(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        request: &DynamoDBPutItemRequest,
+    ) -> Result<serde_json::Value, AppError> {
         self.dynamodb.put_item(aws_account_dto, request).await
     }
 
-    pub async fn dynamodb_query(&self, aws_account_dto: &AwsAccountDto, request: &DynamoDBQueryRequest) -> Result<serde_json::Value, AppError> {
+    pub async fn dynamodb_query(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        request: &DynamoDBQueryRequest,
+    ) -> Result<serde_json::Value, AppError> {
         self.dynamodb.query(aws_account_dto, request).await
     }
 
     // SQS operations
-    pub async fn sqs_send_message(&self, aws_account_dto: &AwsAccountDto, request: &SqsSendMessageRequest) -> Result<serde_json::Value, AppError> {
+    pub async fn sqs_send_message(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        request: &SqsSendMessageRequest,
+    ) -> Result<serde_json::Value, AppError> {
         self.sqs.send_message(aws_account_dto, request).await
     }
 
-    pub async fn sqs_receive_messages(&self, aws_account_dto: &AwsAccountDto, request: &SqsReceiveMessageRequest) -> Result<serde_json::Value, AppError> {
+    pub async fn sqs_receive_messages(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        request: &SqsReceiveMessageRequest,
+    ) -> Result<serde_json::Value, AppError> {
         self.sqs.receive_messages(aws_account_dto, request).await
     }
 
     // Kinesis operations
-    pub async fn kinesis_put_record(&self, aws_account_dto: &AwsAccountDto, request: &KinesisPutRecordRequest) -> Result<serde_json::Value, AppError> {
+    pub async fn kinesis_put_record(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        request: &KinesisPutRecordRequest,
+    ) -> Result<serde_json::Value, AppError> {
         self.kinesis.put_record(aws_account_dto, request).await
     }
 }

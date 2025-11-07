@@ -1,6 +1,6 @@
+use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
@@ -46,6 +46,27 @@ pub enum AwsResourceType {
     LambdaFunction,
     ElasticacheCluster,
     OpenSearchDomain,
+    // VPC & Networking Resources
+    Vpc,
+    Subnet,
+    SecurityGroup,
+    InternetGateway,
+    NatGateway,
+    RouteTable,
+    NetworkAcl,
+    // Load Balancing & CDN Resources
+    Alb,
+    Nlb,
+    Elb,
+    CloudFrontDistribution,
+    ApiGatewayRestApi,
+    ApiGatewayStage,
+    ApiGatewayResource,
+    ApiGatewayMethod,
+    // Storage & Content Delivery Resources
+    EbsVolume,
+    EbsSnapshot,
+    EfsFileSystem,
 }
 
 impl ToString for AwsResourceType {
@@ -61,6 +82,27 @@ impl ToString for AwsResourceType {
             AwsResourceType::LambdaFunction => "LambdaFunction".to_string(),
             AwsResourceType::ElasticacheCluster => "ElasticacheCluster".to_string(),
             AwsResourceType::OpenSearchDomain => "OpenSearchDomain".to_string(),
+            // VPC & Networking Resources
+            AwsResourceType::Vpc => "Vpc".to_string(),
+            AwsResourceType::Subnet => "Subnet".to_string(),
+            AwsResourceType::SecurityGroup => "SecurityGroup".to_string(),
+            AwsResourceType::InternetGateway => "InternetGateway".to_string(),
+            AwsResourceType::NatGateway => "NatGateway".to_string(),
+            AwsResourceType::RouteTable => "RouteTable".to_string(),
+            AwsResourceType::NetworkAcl => "NetworkAcl".to_string(),
+            // Load Balancing & CDN Resources
+            AwsResourceType::Alb => "Alb".to_string(),
+            AwsResourceType::Nlb => "Nlb".to_string(),
+            AwsResourceType::Elb => "Elb".to_string(),
+            AwsResourceType::CloudFrontDistribution => "CloudFrontDistribution".to_string(),
+            AwsResourceType::ApiGatewayRestApi => "ApiGatewayRestApi".to_string(),
+            AwsResourceType::ApiGatewayStage => "ApiGatewayStage".to_string(),
+            AwsResourceType::ApiGatewayResource => "ApiGatewayResource".to_string(),
+            AwsResourceType::ApiGatewayMethod => "ApiGatewayMethod".to_string(),
+            // Storage & Content Delivery Resources
+            AwsResourceType::EbsVolume => "EbsVolume".to_string(),
+            AwsResourceType::EbsSnapshot => "EbsSnapshot".to_string(),
+            AwsResourceType::EfsFileSystem => "EfsFileSystem".to_string(),
         }
     }
 }
@@ -78,6 +120,27 @@ impl From<&str> for AwsResourceType {
             "LambdaFunction" => AwsResourceType::LambdaFunction,
             "ElasticacheCluster" => AwsResourceType::ElasticacheCluster,
             "OpenSearchDomain" => AwsResourceType::OpenSearchDomain,
+            // VPC & Networking Resources
+            "Vpc" => AwsResourceType::Vpc,
+            "Subnet" => AwsResourceType::Subnet,
+            "SecurityGroup" => AwsResourceType::SecurityGroup,
+            "InternetGateway" => AwsResourceType::InternetGateway,
+            "NatGateway" => AwsResourceType::NatGateway,
+            "RouteTable" => AwsResourceType::RouteTable,
+            "NetworkAcl" => AwsResourceType::NetworkAcl,
+            // Load Balancing & CDN Resources
+            "Alb" => AwsResourceType::Alb,
+            "Nlb" => AwsResourceType::Nlb,
+            "Elb" => AwsResourceType::Elb,
+            "CloudFrontDistribution" => AwsResourceType::CloudFrontDistribution,
+            "ApiGatewayRestApi" => AwsResourceType::ApiGatewayRestApi,
+            "ApiGatewayStage" => AwsResourceType::ApiGatewayStage,
+            "ApiGatewayResource" => AwsResourceType::ApiGatewayResource,
+            "ApiGatewayMethod" => AwsResourceType::ApiGatewayMethod,
+            // Storage & Content Delivery Resources
+            "EbsVolume" => AwsResourceType::EbsVolume,
+            "EbsSnapshot" => AwsResourceType::EbsSnapshot,
+            "EfsFileSystem" => AwsResourceType::EfsFileSystem,
             _ => panic!("Unknown resource type: {}", s),
         }
     }

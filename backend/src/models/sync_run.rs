@@ -18,7 +18,7 @@ pub struct Model {
     pub success_count: i32,
     pub failure_count: i32,
     pub error_summary: Option<String>,
-    #[sea_orm(column_type = "JsonBinary")] 
+    #[sea_orm(column_type = "JsonBinary")]
     pub metadata: serde_json::Value,
     pub started_at: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,
@@ -38,6 +38,11 @@ pub struct SyncRunCreateDto {
     pub account_id: Option<String>,
     pub profile: Option<String>,
     pub region: Option<String>,
+    // Optional region controls; stored into metadata by repository
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub regions: Option<Vec<String>>, // explicit regions
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub all_regions: Option<bool>, // if true, scan all regions
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -55,6 +60,9 @@ pub struct SyncRunDto {
     pub failure_count: i32,
     pub error_summary: Option<String>,
     pub metadata: serde_json::Value,
+    // Convenience fields parsed from metadata for UI
+    pub region_scope: Option<String>, // "all" | "custom" | "enabled" (if we later encode)
+    pub regions: Option<Vec<String>>,
     pub started_at: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
@@ -63,6 +71,28 @@ pub struct SyncRunDto {
 
 impl From<Model> for SyncRunDto {
     fn from(m: Model) -> Self {
+        // Derive convenience fields
+        let (region_scope, regions) = {
+            let mut scope: Option<String> = None;
+            let mut regions_vec: Option<Vec<String>> = None;
+            if let Some(true) = m.metadata.get("all_regions").and_then(|v| v.as_bool()) {
+                scope = Some("all".to_string());
+            }
+            if let Some(arr) = m.metadata.get("regions").and_then(|v| v.as_array()) {
+                let r = arr
+                    .iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect::<Vec<_>>();
+                if !r.is_empty() {
+                    regions_vec = Some(r);
+                    if scope.is_none() {
+                        scope = Some("custom".to_string());
+                    }
+                }
+            }
+            (scope, regions_vec)
+        };
+
         Self {
             id: m.id,
             name: m.name,
@@ -76,6 +106,8 @@ impl From<Model> for SyncRunDto {
             failure_count: m.failure_count,
             error_summary: m.error_summary,
             metadata: m.metadata,
+            region_scope,
+            regions,
             started_at: m.started_at,
             completed_at: m.completed_at,
             created_at: m.created_at,

@@ -1,6 +1,6 @@
+use crate::controllers::database;
 use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
-use crate::controllers::database;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ConnectionRequest {
@@ -22,25 +22,28 @@ pub struct QueryRequest {
 pub fn configure(cfg: &mut web::ServiceConfig) {
     cfg.service(
         web::scope("/api/databases")
-            .service(web::resource("")
-                .route(web::get().to(database::list_connections))
-                .route(web::post().to(database::create_connection)))
-            .service(web::resource("/{id}")
-                .route(web::get().to(database::get_connection))
-                .route(web::put().to(database::update_connection))
-                .route(web::delete().to(database::delete_connection)))
-            .service(web::resource("/{id}/test")
-                .route(web::post().to(database::test_connection)))
-            .service(web::resource("/{id}/query")
-                .route(web::post().to(database::execute_query)))
-            .service(web::resource("/{id}/schema")
-                .route(web::get().to(database::get_schema)))
-            .service(web::resource("/{id}/analyze")
-                .route(web::get().to(database::analyze_database)))
-            .service(web::resource("/{id}/table/{table_name}/details")
-                .route(web::get().to(get_table_details)))
-            .service(web::resource("/{id}/monitoring")
-                .route(web::get().to(get_monitoring_data)))
+            .service(
+                web::resource("")
+                    .route(web::get().to(database::list_connections))
+                    .route(web::post().to(database::create_connection)),
+            )
+            .service(
+                web::resource("/{id}")
+                    .route(web::get().to(database::get_connection))
+                    .route(web::put().to(database::update_connection))
+                    .route(web::delete().to(database::delete_connection)),
+            )
+            .service(web::resource("/{id}/test").route(web::post().to(database::test_connection)))
+            .service(web::resource("/{id}/query").route(web::post().to(database::execute_query)))
+            .service(web::resource("/{id}/schema").route(web::get().to(database::get_schema)))
+            .service(
+                web::resource("/{id}/analyze").route(web::get().to(database::analyze_database)),
+            )
+            .service(
+                web::resource("/{id}/table/{table_name}/details")
+                    .route(web::get().to(get_table_details)),
+            )
+            .service(web::resource("/{id}/monitoring").route(web::get().to(get_monitoring_data))),
     );
 }
 
@@ -128,11 +131,11 @@ async fn get_table_details(path: web::Path<(String, String)>) -> HttpResponse {
 
 async fn get_monitoring_data(
     path: web::Path<String>,
-    query: web::Query<std::collections::HashMap<String, String>>
+    query: web::Query<std::collections::HashMap<String, String>>,
 ) -> HttpResponse {
     let id = path.into_inner();
     let time_range = query.get("time_range").unwrap_or(&"1h".to_string()).clone();
-    
+
     HttpResponse::Ok().json(serde_json::json!({
         "connection_id": id,
         "time_range": time_range,

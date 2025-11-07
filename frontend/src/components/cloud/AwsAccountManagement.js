@@ -32,6 +32,7 @@ import {
   syncAllAwsAccountResources,
   createSyncRun
 } from "../../services/api";
+import { listAwsRegions } from "../../services/api";
 
 const AwsAccountManagement = () => {
   const [loading, setLoading] = useState(false);
@@ -39,6 +40,9 @@ const AwsAccountManagement = () => {
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [syncTargetAccountId, setSyncTargetAccountId] = useState(null);
   const [syncName, setSyncName] = useState("");
+  const [syncRegionMode, setSyncRegionMode] = useState("all"); // all | enabled | custom
+  const [syncCustomRegions, setSyncCustomRegions] = useState([]);
+  const [availableRegions, setAvailableRegions] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
@@ -49,11 +53,18 @@ const AwsAccountManagement = () => {
     account_name: "",
     profile: "",
     default_region: "",
+    regions: [],
     access_key_id: "",
     secret_access_key: "",
     role_arn: "",
     external_id: "",
-    use_role: false
+    use_role: false,
+    // New auth fields
+    auth_type: "auto", // auto | profile | sso | assume_role | web_identity | instance_role | access_keys
+    source_profile: "",
+    sso_profile: "",
+    web_identity_token_file: "",
+    session_name: "",
   });
   
   // Fetch all accounts on component mount
@@ -87,24 +98,49 @@ const AwsAccountManagement = () => {
       return;
     }
     
-    // Additional validation for auth method
-    if (currentAccount.use_role && !currentAccount.role_arn) {
-      setError("IAM Role ARN is required when using role authentication.");
-      return;
-    }
-    
-    // When using access key authentication
-    if (!currentAccount.use_role) {
-      // New account - always require access key ID and secret
-      if (!editMode && (!currentAccount.access_key_id || !currentAccount.secret_access_key)) {
-        setError("Both Access Key ID and Secret Access Key are required for new accounts.");
+    // Validation based on auth_type
+    const auth = (currentAccount.auth_type || 'auto').toLowerCase();
+    if (auth === 'access_keys') {
+      if (!currentAccount.access_key_id || (!editMode && !currentAccount.secret_access_key)) {
+        setError("Access Keys auth requires Access Key ID and Secret (secret can be left blank on edit to keep existing).");
         return;
       }
-      
-      // Existing account - always require access key ID
-      if (editMode && !currentAccount.access_key_id) {
-        setError("Access Key ID is required when using access key authentication.");
+    } else if (auth === 'assume_role') {
+      if (!currentAccount.role_arn) {
+        setError("Assume Role auth requires a Role ARN.");
         return;
+      }
+    } else if (auth === 'web_identity') {
+      if (!currentAccount.role_arn) {
+        setError("Web Identity auth requires a Role ARN.");
+        return;
+      }
+      // token file optional; session name optional
+    } else if (auth === 'profile') {
+      if (!currentAccount.profile) {
+        setError("Profile auth requires a profile name.");
+        return;
+      }
+    } else if (auth === 'sso') {
+      if (!currentAccount.sso_profile && !currentAccount.profile) {
+        setError("SSO auth requires sso_profile or profile.");
+        return;
+      }
+    } else if (auth === 'auto') {
+      // Back-compat: use legacy flags
+      if (currentAccount.use_role && !currentAccount.role_arn) {
+        setError("IAM Role ARN is required when using role authentication.");
+        return;
+      }
+      if (!currentAccount.use_role) {
+        if (!editMode && (!currentAccount.access_key_id || !currentAccount.secret_access_key)) {
+          setError("Both Access Key ID and Secret Access Key are required for new accounts.");
+          return;
+        }
+        if (editMode && !currentAccount.access_key_id) {
+          setError("Access Key ID is required when using access key authentication.");
+          return;
+        }
       }
     }
     
@@ -117,10 +153,13 @@ const AwsAccountManagement = () => {
         const accountData = { ...currentAccount };
         
         // Perform some client-side validation for editing
-        if (!accountData.use_role && !accountData.access_key_id) {
-          setError("Access Key ID is required when using access key authentication.");
-          setLoading(false);
-          return;
+        // Additional guard for legacy auto path
+        if ((accountData.auth_type || 'auto') === 'auto') {
+          if (!accountData.use_role && !accountData.access_key_id) {
+            setError("Access Key ID is required when using access key authentication.");
+            setLoading(false);
+            return;
+          }
         }
         
         // If the secret key is empty in edit mode, remove it from the request
@@ -182,7 +221,14 @@ const AwsAccountManagement = () => {
   const openSyncModal = (accountId) => {
     setSyncTargetAccountId(accountId);
     setSyncName("");
+    setSyncRegionMode("all");
+    setSyncCustomRegions([]);
     setSyncModalOpen(true);
+    // Preload regions for better UX
+    const acct = accounts.find(a => a.id === accountId);
+    listAwsRegions({ accountId, profile: acct?.profile || null, region: acct?.default_region || null })
+      .then(setAvailableRegions)
+      .catch(() => setAvailableRegions([]));
   };
 
   const closeSyncModal = () => {
@@ -203,7 +249,27 @@ const AwsAccountManagement = () => {
       setError(null);
 
       // 1) Create a sync run (server will generate UUID)
-      const run = await createSyncRun({ name: syncName, aws_account_id: syncTargetAccountId });
+      // Build metadata for region selection
+      const metadata = {};
+      if (syncRegionMode === "all") {
+        metadata.all_regions = true;
+      } else if (syncRegionMode === "enabled") {
+        // Resolve enabled regions for this account
+        const acct = accounts.find(a => a.id === syncTargetAccountId);
+        if (acct?.regions && acct.regions.length > 0) {
+          metadata.regions = acct.regions;
+        } else {
+          metadata.all_regions = true; // fallback to all if none configured
+        }
+      } else if (syncRegionMode === "custom") {
+        if (syncCustomRegions.length > 0) {
+          metadata.regions = syncCustomRegions;
+        } else {
+          metadata.all_regions = true;
+        }
+      }
+
+      const run = await createSyncRun({ name: syncName, aws_account_id: syncTargetAccountId, metadata });
       const syncId = run.id;
 
       // 2) Trigger account sync with the sync_id
@@ -262,11 +328,17 @@ const AwsAccountManagement = () => {
         account_name: "",
         profile: "",
         default_region: "",
+        regions: [],
         access_key_id: "",
         secret_access_key: "",
         role_arn: "",
         external_id: "",
-        use_role: false
+        use_role: false,
+        auth_type: "auto",
+        source_profile: "",
+        sso_profile: "",
+        web_identity_token_file: "",
+        session_name: "",
       });
     }
   };
@@ -288,7 +360,13 @@ const AwsAccountManagement = () => {
         access_key_id: fullAccount.access_key_id || "",
         // Clear the secret key since we don't want to show it in the form
         // The backend will keep the existing one if it's left blank
-        secret_access_key: ""
+        secret_access_key: "",
+        // Normalize new fields for controlled inputs
+        auth_type: fullAccount.auth_type || 'auto',
+        source_profile: fullAccount.source_profile || "",
+        sso_profile: fullAccount.sso_profile || "",
+        web_identity_token_file: fullAccount.web_identity_token_file || "",
+        session_name: fullAccount.session_name || "",
       };
       
       setEditMode(true);
@@ -393,6 +471,7 @@ const AwsAccountManagement = () => {
                   <th>Name</th>
                   <th>Profile</th>
                   <th>Default Region</th>
+                  <th>Regions</th>
                   <th>Auth Method</th>
                   <th>Last Sync</th>
                   <th>Actions</th>
@@ -420,18 +499,27 @@ const AwsAccountManagement = () => {
                     <td>{account.account_name}</td>
                     <td>{account.profile || "N/A"}</td>
                     <td>{account.default_region}</td>
+                    <td>{account.regions && account.regions.length > 0 ? account.regions.join(", ") : "All"}</td>
                     <td>
-                      {account.use_role ? (
-                        <Badge color="info" pill>
-                          <i className="fas fa-user-tag me-1"></i>
-                          IAM Role
-                        </Badge>
-                      ) : (
-                        <Badge color="warning" pill>
-                          <i className="fas fa-key me-1"></i>
-                          Access Key
-                        </Badge>
-                      )}
+                      {(() => {
+                        const t = (account.auth_type || (account.use_role ? 'assume_role' : 'access_keys')).toLowerCase();
+                        const map = {
+                          access_keys: { color: 'warning', icon: 'fa-key', label: 'Access Keys' },
+                          assume_role: { color: 'info', icon: 'fa-user-tag', label: 'Assume Role' },
+                          web_identity: { color: 'info', icon: 'fa-id-badge', label: 'Web Identity' },
+                          sso: { color: 'primary', icon: 'fa-sitemap', label: 'SSO' },
+                          profile: { color: 'secondary', icon: 'fa-user-cog', label: 'Profile' },
+                          instance_role: { color: 'success', icon: 'fa-server', label: 'Instance/Task Role' },
+                          auto: { color: 'dark', icon: 'fa-magic', label: 'Auto' },
+                        };
+                        const m = map[t] || map['auto'];
+                        return (
+                          <Badge color={m.color} pill>
+                            <i className={`fas ${m.icon} me-1`}></i>
+                            {m.label}
+                          </Badge>
+                        );
+                      })()}
                     </td>
                     <td>
                       {account.last_synced_at ? (
@@ -582,28 +670,64 @@ const AwsAccountManagement = () => {
                   </small>
                 </FormGroup>
               </Col>
+              
+              <Col md={6}>
+                <FormGroup>
+                  <Label for="regions">Enabled Regions</Label>
+                  <Input
+                    type="select"
+                    name="regions"
+                    id="regions"
+                    multiple
+                    value={currentAccount.regions}
+                    onChange={(e) => {
+                      const selected = Array.from(e.target.selectedOptions, option => option.value);
+                      setCurrentAccount(prev => ({ ...prev, regions: selected }));
+                    }}
+                  >
+                    <option value="us-east-1">US East (N. Virginia)</option>
+                    <option value="us-east-2">US East (Ohio)</option>
+                    <option value="us-west-1">US West (N. California)</option>
+                    <option value="us-west-2">US West (Oregon)</option>
+                    <option value="eu-west-1">EU (Ireland)</option>
+                    <option value="eu-central-1">EU (Frankfurt)</option>
+                    <option value="ap-southeast-1">Asia Pacific (Singapore)</option>
+                    <option value="ap-northeast-1">Asia Pacific (Tokyo)</option>
+                    <option value="ap-south-1">Asia Pacific (Mumbai)</option>
+                    <option value="ca-central-1">Canada (Central)</option>
+                    <option value="sa-east-1">South America (São Paulo)</option>
+                  </Input>
+                  <small className="text-muted">
+                    Select regions to monitor for this account (leave empty for all)
+                  </small>
+                </FormGroup>
+              </Col>
             </Row>
             
             <FormGroup className="mb-4">
-              <div className="form-check">
-                <Input
-                  type="checkbox"
-                  className="form-check-input"
-                  id="use_role"
-                  name="use_role"
-                  checked={currentAccount.use_role}
-                  onChange={handleInputChange}
-                />
-                <Label className="form-check-label" for="use_role">
-                  Use IAM Role for authentication (recommended)
-                </Label>
-              </div>
+              <Label for="auth_type">Authentication Method</Label>
+              <Input
+                type="select"
+                name="auth_type"
+                id="auth_type"
+                value={currentAccount.auth_type}
+                onChange={handleInputChange}
+              >
+                <option value="auto">Auto (recommended)</option>
+                <option value="profile">Profile</option>
+                <option value="sso">SSO (via profile)</option>
+                <option value="assume_role">Assume Role</option>
+                <option value="web_identity">Web Identity (OIDC)</option>
+                <option value="instance_role">Instance/Task/Pod Role</option>
+                <option value="access_keys">Access Keys</option>
+              </Input>
               <small className="text-muted">
-                When enabled, uses IAM Role assumption instead of access keys
+                Choose how Mayyam authenticates to this AWS account. "Auto" preserves the legacy behavior using the fields below.
               </small>
             </FormGroup>
             
-            {currentAccount.use_role ? (
+            {/* Conditional inputs based on auth_type */}
+            {currentAccount.auth_type === 'assume_role' ? (
               <div className="role-auth-section">
                 <Row>
                   <Col md={6}>
@@ -616,7 +740,7 @@ const AwsAccountManagement = () => {
                         placeholder="e.g., arn:aws:iam::123456789012:role/MayyamRole"
                         value={currentAccount.role_arn}
                         onChange={handleInputChange}
-                        required={currentAccount.use_role}
+                        required={true}
                       />
                       <small className="text-muted">
                         ARN of the IAM role to assume
@@ -624,6 +748,21 @@ const AwsAccountManagement = () => {
                     </FormGroup>
                   </Col>
                   
+                  <Col md={6}>
+                    <FormGroup>
+                      <Label for="source_profile">Source Profile</Label>
+                      <Input
+                        type="text"
+                        name="source_profile"
+                        id="source_profile"
+                        placeholder="Profile to source base credentials"
+                        value={currentAccount.source_profile}
+                        onChange={handleInputChange}
+                      />
+                      <small className="text-muted">Optional profile that provides the credentials to call STS AssumeRole.</small>
+                    </FormGroup>
+                  </Col>
+
                   <Col md={6}>
                     <FormGroup>
                       <Label for="external_id">External ID</Label>
@@ -640,9 +779,127 @@ const AwsAccountManagement = () => {
                       </small>
                     </FormGroup>
                   </Col>
+
+                  <Col md={6}>
+                    <FormGroup>
+                      <Label for="session_name">Session Name</Label>
+                      <Input
+                        type="text"
+                        name="session_name"
+                        id="session_name"
+                        placeholder="Session name for the assumed role"
+                        value={currentAccount.session_name}
+                        onChange={handleInputChange}
+                      />
+                      <small className="text-muted">Optional STS session name.</small>
+                    </FormGroup>
+                  </Col>
                 </Row>
               </div>
-            ) : (
+            ) : currentAccount.auth_type === 'web_identity' ? (
+              <div className="role-auth-section">
+                <Row>
+                  <Col md={6}>
+                    <FormGroup>
+                      <Label for="role_arn">IAM Role ARN*</Label>
+                      <Input
+                        type="text"
+                        name="role_arn"
+                        id="role_arn"
+                        placeholder="e.g., arn:aws:iam::123456789012:role/MayyamWebIdentityRole"
+                        value={currentAccount.role_arn}
+                        onChange={handleInputChange}
+                        required={true}
+                      />
+                      <small className="text-muted">Role to assume via web identity.</small>
+                    </FormGroup>
+                  </Col>
+                  <Col md={6}>
+                    <FormGroup>
+                      <Label for="web_identity_token_file">Token File</Label>
+                      <Input
+                        type="text"
+                        name="web_identity_token_file"
+                        id="web_identity_token_file"
+                        placeholder="Path to OIDC token file (optional)"
+                        value={currentAccount.web_identity_token_file}
+                        onChange={handleInputChange}
+                      />
+                      <small className="text-muted">Optional. If omitted, SDK may read from environment.</small>
+                    </FormGroup>
+                  </Col>
+                  <Col md={6}>
+                    <FormGroup>
+                      <Label for="session_name">Session Name</Label>
+                      <Input
+                        type="text"
+                        name="session_name"
+                        id="session_name"
+                        placeholder="Session name for the assumed role"
+                        value={currentAccount.session_name}
+                        onChange={handleInputChange}
+                      />
+                    </FormGroup>
+                  </Col>
+                </Row>
+              </div>
+            ) : currentAccount.auth_type === 'sso' ? (
+              <div className="profile-auth-section">
+                <Row>
+                  <Col md={6}>
+                    <FormGroup>
+                      <Label for="sso_profile">SSO Profile</Label>
+                      <Input
+                        type="text"
+                        name="sso_profile"
+                        id="sso_profile"
+                        placeholder="Profile configured for SSO"
+                        value={currentAccount.sso_profile}
+                        onChange={handleInputChange}
+                      />
+                      <small className="text-muted">Use an AWS profile that is configured for SSO (in ~/.aws/config).</small>
+                    </FormGroup>
+                  </Col>
+                  <Col md={6}>
+                    <FormGroup>
+                      <Label for="profile">Profile (alternate)</Label>
+                      <Input
+                        type="text"
+                        name="profile"
+                        id="profile"
+                        placeholder="e.g., default"
+                        value={currentAccount.profile}
+                        onChange={handleInputChange}
+                      />
+                    </FormGroup>
+                  </Col>
+                </Row>
+              </div>
+            ) : currentAccount.auth_type === 'profile' ? (
+              <div className="profile-auth-section">
+                <Row>
+                  <Col md={6}>
+                    <FormGroup>
+                      <Label for="profile">AWS Profile*</Label>
+                      <Input
+                        type="text"
+                        name="profile"
+                        id="profile"
+                        placeholder="e.g., default"
+                        value={currentAccount.profile}
+                        onChange={handleInputChange}
+                        required
+                      />
+                      <small className="text-muted">Profile name from ~/.aws/credentials or ~/.aws/config.</small>
+                    </FormGroup>
+                  </Col>
+                </Row>
+              </div>
+            ) : currentAccount.auth_type === 'instance_role' ? (
+              <Alert color="info">
+                Using the default credential provider chain. On AWS, this resolves to the instance/task/IRSA role.
+              </Alert>
+            ) : currentAccount.auth_type === 'access_keys' ? (
               <div className="key-auth-section">
                 <Row>
                   <Col md={6}>
@@ -655,7 +912,7 @@ const AwsAccountManagement = () => {
                         placeholder="e.g., AKIAIOSFODNN7EXAMPLE"
                         value={currentAccount.access_key_id}
                         onChange={handleInputChange}
-                        required={!currentAccount.use_role}
+                        required={currentAccount.auth_type === 'access_keys'}
                       />
                     </FormGroup>
                   </Col>
@@ -670,7 +927,7 @@ const AwsAccountManagement = () => {
                         placeholder={editMode ? "••••••••••••••••" : "Enter secret access key"}
                         value={currentAccount.secret_access_key}
                         onChange={handleInputChange}
-                        required={!currentAccount.use_role && !editMode}
+                        required={currentAccount.auth_type === 'access_keys' && !editMode}
                       />
                       {editMode && (
                         <small className="text-muted">
@@ -685,6 +942,102 @@ const AwsAccountManagement = () => {
                   Access keys are stored securely, but using IAM roles is recommended for better security.
                 </Alert>
               </div>
+            ) : (
+              // Auto (legacy): offer the legacy toggle/fields for back-compat
+              <>
+                <FormGroup className="mb-4">
+                  <div className="form-check">
+                    <Input
+                      type="checkbox"
+                      className="form-check-input"
+                      id="use_role"
+                      name="use_role"
+                      checked={currentAccount.use_role}
+                      onChange={handleInputChange}
+                    />
+                    <Label className="form-check-label" for="use_role">
+                      Use IAM Role for authentication (recommended)
+                    </Label>
+                  </div>
+                  <small className="text-muted">
+                    When enabled, uses IAM Role assumption instead of access keys
+                  </small>
+                </FormGroup>
+                {currentAccount.use_role ? (
+                  <div className="role-auth-section">
+                    <Row>
+                      <Col md={6}>
+                        <FormGroup>
+                          <Label for="role_arn">IAM Role ARN*</Label>
+                          <Input
+                            type="text"
+                            name="role_arn"
+                            id="role_arn"
+                            placeholder="e.g., arn:aws:iam::123456789012:role/MayyamRole"
+                            value={currentAccount.role_arn}
+                            onChange={handleInputChange}
+                            required={currentAccount.use_role}
+                          />
+                          <small className="text-muted">ARN of the IAM role to assume</small>
+                        </FormGroup>
+                      </Col>
+                      <Col md={6}>
+                        <FormGroup>
+                          <Label for="external_id">External ID</Label>
+                          <Input
+                            type="text"
+                            name="external_id"
+                            id="external_id"
+                            placeholder="External ID for role assumption"
+                            value={currentAccount.external_id}
+                            onChange={handleInputChange}
+                          />
+                        </FormGroup>
+                      </Col>
+                    </Row>
+                  </div>
+                ) : (
+                  <div className="key-auth-section">
+                    <Row>
+                      <Col md={6}>
+                        <FormGroup>
+                          <Label for="access_key_id">Access Key ID*</Label>
+                          <Input
+                            type="text"
+                            name="access_key_id"
+                            id="access_key_id"
+                            placeholder="e.g., AKIAIOSFODNN7EXAMPLE"
+                            value={currentAccount.access_key_id}
+                            onChange={handleInputChange}
+                            required={!currentAccount.use_role}
+                          />
+                        </FormGroup>
+                      </Col>
+                      <Col md={6}>
+                        <FormGroup>
+                          <Label for="secret_access_key">Secret Access Key*</Label>
+                          <Input
+                            type="password"
+                            name="secret_access_key"
+                            id="secret_access_key"
+                            placeholder={editMode ? "••••••••••••••••" : "Enter secret access key"}
+                            value={currentAccount.secret_access_key}
+                            onChange={handleInputChange}
+                            required={!currentAccount.use_role && !editMode}
+                          />
+                          {editMode && (
+                            <small className="text-muted">Leave blank to keep the existing secret key</small>
+                          )}
+                        </FormGroup>
+                      </Col>
+                    </Row>
+                    <Alert color="warning">
+                      <i className="fas fa-exclamation-triangle me-2"></i>
+                      Access keys are stored securely, but using IAM roles is recommended for better security.
+                    </Alert>
+                  </div>
+                )}
+              </>
             )}
           </Form>
         </ModalBody>
@@ -731,6 +1084,66 @@ const AwsAccountManagement = () => {
               />
               <small className="text-muted">Give this sync a name to track it later.</small>
             </FormGroup>
+
+            {/* Region selection */}
+            <FormGroup>
+              <Label>Regions to Scan</Label>
+              <div className="d-flex gap-3 align-items-center flex-wrap">
+                <div className="form-check">
+                  <input className="form-check-input" type="radio" name="syncRegionMode" id="regionAll" value="all"
+                    checked={syncRegionMode === 'all'} onChange={() => setSyncRegionMode('all')} />
+                  <Label className="form-check-label" htmlFor="regionAll">All regions (default)</Label>
+                </div>
+                <div className="form-check">
+                  <input className="form-check-input" type="radio" name="syncRegionMode" id="regionEnabled" value="enabled"
+                    checked={syncRegionMode === 'enabled'} onChange={() => setSyncRegionMode('enabled')} />
+                  <Label className="form-check-label" htmlFor="regionEnabled">Account Enabled regions</Label>
+                </div>
+                <div className="form-check">
+                  <input className="form-check-input" type="radio" name="syncRegionMode" id="regionCustom" value="custom"
+                    checked={syncRegionMode === 'custom'} onChange={() => setSyncRegionMode('custom')} />
+                  <Label className="form-check-label" htmlFor="regionCustom">Custom selection</Label>
+                </div>
+              </div>
+            </FormGroup>
+
+            {syncRegionMode === 'enabled' && (() => {
+              const acct = accounts.find(a => a.id === syncTargetAccountId);
+              if (!acct) return null;
+              if (!acct.regions || acct.regions.length === 0) {
+                return (
+                  <Alert color="info">
+                    This account has no enabled regions configured. Using this option will fall back to All regions.
+                    Go to Edit Account to set "Enabled Regions".
+                  </Alert>
+                );
+              }
+              return null;
+            })()}
+
+            {syncRegionMode === 'custom' && (
+              <FormGroup>
+                <Label>Select Regions</Label>
+                <Input
+                  type="select"
+                  multiple
+                  value={syncCustomRegions}
+                  onChange={(e) => {
+                    const opts = Array.from(e.target.selectedOptions).map(o => o.value);
+                    setSyncCustomRegions(opts);
+                  }}
+                >
+                  {availableRegions.length > 0 ? (
+                    availableRegions.map(r => (
+                      <option key={r} value={r}>{r}</option>
+                    ))
+                  ) : (
+                    <option value="">Loading regions...</option>
+                  )}
+                </Input>
+                <small className="text-muted">Hold Cmd/Ctrl to select multiple regions.</small>
+              </FormGroup>
+            )}
           </Form>
         </ModalBody>
         <ModalFooter>

@@ -78,3 +78,5 @@ logs/
 .eslintcache
 .stylelintcache
 .cache/
+frontend/test-results
+frontend/playwright-report

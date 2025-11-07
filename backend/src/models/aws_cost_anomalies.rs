@@ -55,10 +55,16 @@ impl From<Model> for CostAnomalyModel {
             severity: model.severity,
             detected_date: model.detected_date.to_string(),
             anomaly_score: model.anomaly_score.to_string().parse().unwrap_or(0.0),
-            baseline_cost: model.baseline_cost.map(|d| d.to_string().parse().unwrap_or(0.0)),
+            baseline_cost: model
+                .baseline_cost
+                .map(|d| d.to_string().parse().unwrap_or(0.0)),
             actual_cost: model.actual_cost.to_string().parse().unwrap_or(0.0),
-            cost_difference: model.cost_difference.map(|d| d.to_string().parse().unwrap_or(0.0)),
-            percentage_change: model.percentage_change.map(|d| d.to_string().parse().unwrap_or(0.0)),
+            cost_difference: model
+                .cost_difference
+                .map(|d| d.to_string().parse().unwrap_or(0.0)),
+            percentage_change: model
+                .percentage_change
+                .map(|d| d.to_string().parse().unwrap_or(0.0)),
             description: model.description,
             status: model.status,
         }

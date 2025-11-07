@@ -8,6 +8,11 @@ import PersistentVolumesGrid from '../components/kubernetes/PersistentVolumesGri
 import NodesGrid from '../components/kubernetes/NodesGrid';
 import NamespacesGrid from '../components/kubernetes/NamespacesGrid';
 import PodsModal from '../components/kubernetes/PodsModal';
+import PodsGrid from '../components/kubernetes/PodsGrid';
+import PodLogsViewer from '../components/kubernetes/PodLogsViewer';
+import ClusterMetricsPanel from '../components/kubernetes/ClusterMetricsPanel';
+import EventsStream from '../components/kubernetes/EventsStream';
+import ConfigMapsSecretsManager from '../components/kubernetes/ConfigMapsSecretsManager';
 import Tab from '../components/common/Tab';
 import { getNamespaces } from '../services/kubernetesApiService';
 import { getAllClusters } from '../services/clusterManagementService'; // Changed import from getKubernetesClusters to getAllClusters
@@ -16,6 +21,7 @@ const KubernetesDashboardPage = () => {
     const [activeTab, setActiveTab] = useState('Deployments');
     const [showPodsModal, setShowPodsModal] = useState(false);
     const [selectedResourceForPods, setSelectedResourceForPods] = useState(null);
+    const [selectedPod, setSelectedPod] = useState(null);
 
     const [namespaces, setNamespaces] = useState([]);
     const [selectedNamespace, setSelectedNamespace] = useState('');
@@ -83,6 +89,10 @@ const KubernetesDashboardPage = () => {
         fetchNamespacesList();
     }, [selectedClusterId]); // Changed dependency from clusterId to selectedClusterId
 
+    useEffect(() => {
+        setSelectedPod(null);
+    }, [selectedClusterId, selectedNamespace]);
+
     const handleShowPods = (resource) => {
         setSelectedResourceForPods(resource);
         setShowPodsModal(true);
@@ -91,6 +101,18 @@ const KubernetesDashboardPage = () => {
     const handleClosePodsModal = () => {
         setShowPodsModal(false);
         setSelectedResourceForPods(null);
+    };
+
+    const handlePodLogs = (pod) => {
+        if (!pod) return;
+        setSelectedPod(pod);
+        setActiveTab('Logs');
+    };
+
+    const handlePodEvents = (pod) => {
+        if (!pod) return;
+        setSelectedPod(pod);
+        setActiveTab('Events');
     };
 
     const renderTabContent = () => {
@@ -120,12 +142,52 @@ const KubernetesDashboardPage = () => {
                 return <NodesGrid clusterId={selectedClusterId} />; // Changed from clusterId to selectedClusterId
             case 'Namespaces':
                 return <NamespacesGrid clusterId={selectedClusterId} />; // Changed from clusterId to selectedClusterId
+            case 'Pods':
+                return (
+                    <PodsGrid
+                        clusterId={selectedClusterId}
+                        namespace={selectedNamespace}
+                        onSelectPod={handlePodLogs}
+                        onViewEvents={handlePodEvents}
+                    />
+                );
+            case 'Logs':
+                return (
+                    <PodLogsViewer
+                        clusterId={selectedClusterId}
+                        namespace={selectedPod?.namespace || selectedNamespace}
+                        pod={selectedPod}
+                        onClose={() => setSelectedPod(null)}
+                    />
+                );
+            case 'Metrics':
+                return (
+                    <ClusterMetricsPanel
+                        clusterId={selectedClusterId}
+                        namespace={selectedNamespace}
+                    />
+                );
+            case 'Events':
+                return (
+                    <EventsStream
+                        clusterId={selectedClusterId}
+                        pod={selectedPod}
+                        onClose={() => setSelectedPod(null)}
+                    />
+                );
+            case 'Config':
+                return (
+                    <ConfigMapsSecretsManager
+                        clusterId={selectedClusterId}
+                        namespace={selectedNamespace}
+                    />
+                );
             default:
                 return <p>Select a resource type</p>;
         }
     };
 
-    const tabs = ['Deployments', 'Services', 'DaemonSets', 'StatefulSets', 'PVCs', 'PVs', 'Nodes', 'Namespaces'];
+    const tabs = ['Deployments', 'Services', 'DaemonSets', 'StatefulSets', 'PVCs', 'PVs', 'Nodes', 'Namespaces', 'Pods', 'Logs', 'Metrics', 'Events', 'Config'];
 
     return (
         <div style={{ padding: '20px' }}>

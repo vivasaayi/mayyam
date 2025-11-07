@@ -1,11 +1,13 @@
-use std::sync::Arc;
-use serde_json::json;
 use crate::errors::AppError;
+use crate::models::aws_account::AwsAccountDto;
+use crate::services::aws::aws_types::cloud_watch::{
+    CloudWatchMetricsRequest, CloudWatchMetricsResult,
+};
 use crate::services::aws::aws_types::s3::{S3GetObjectRequest, S3PutObjectRequest};
-use crate::services::aws::aws_types::cloud_watch::{CloudWatchMetricsRequest, CloudWatchMetricsResult};
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::AwsService;
-use crate::models::aws_account::AwsAccountDto;
+use serde_json::json;
+use std::sync::Arc;
 use uuid;
 
 // Data plane implementation for S3
@@ -18,7 +20,11 @@ impl S3DataPlane {
         Self { aws_service }
     }
 
-    pub async fn get_object(&self, aws_account_dto: &AwsAccountDto, request: &S3GetObjectRequest) -> Result<serde_json::Value, AppError> {
+    pub async fn get_object(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        request: &S3GetObjectRequest,
+    ) -> Result<serde_json::Value, AppError> {
         let client = self.aws_service.create_s3_client(aws_account_dto).await?;
 
         // In a real implementation, this would call get_object
@@ -32,11 +38,15 @@ impl S3DataPlane {
                 "custom-key": "custom-value"
             }
         });
-        
+
         Ok(response)
     }
 
-    pub async fn put_object(&self, aws_account_dto: &AwsAccountDto, request: &S3PutObjectRequest) -> Result<serde_json::Value, AppError> {
+    pub async fn put_object(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        request: &S3PutObjectRequest,
+    ) -> Result<serde_json::Value, AppError> {
         let client = self.aws_service.create_s3_client(aws_account_dto).await?;
 
         // In a real implementation, this would call put_object
@@ -46,12 +56,19 @@ impl S3DataPlane {
             "content_length": request.body.len(),
             "content_type": request.content_type.clone().unwrap_or_else(|| "application/octet-stream".to_string())
         });
-        
+
         Ok(response)
     }
 
-    pub async fn get_bucket_metrics(&self, aws_account_dto: &AwsAccountDto, request: &CloudWatchMetricsRequest) -> Result<CloudWatchMetricsResult, AppError> {
-        let client = self.aws_service.create_cloudwatch_client(aws_account_dto).await?;
+    pub async fn get_bucket_metrics(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        request: &CloudWatchMetricsRequest,
+    ) -> Result<CloudWatchMetricsResult, AppError> {
+        let client = self
+            .aws_service
+            .create_cloudwatch_client(aws_account_dto)
+            .await?;
 
         // S3-specific metric collection logic would go here
         // For now returning empty result

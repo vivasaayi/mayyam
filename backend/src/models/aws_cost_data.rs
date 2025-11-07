@@ -60,7 +60,9 @@ impl From<Model> for CostDataModel {
             usage_end: model.usage_end.to_string(),
             unblended_cost: model.unblended_cost.to_string().parse().unwrap_or(0.0),
             blended_cost: model.blended_cost.to_string().parse().unwrap_or(0.0),
-            usage_amount: model.usage_amount.map(|d| d.to_string().parse().unwrap_or(0.0)),
+            usage_amount: model
+                .usage_amount
+                .map(|d| d.to_string().parse().unwrap_or(0.0)),
             usage_unit: model.usage_unit,
             currency: model.currency,
             tags: model.tags.map(|j| j.into()),

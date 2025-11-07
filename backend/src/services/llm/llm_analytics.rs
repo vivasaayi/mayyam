@@ -1,17 +1,17 @@
+use crate::errors::AppError;
+use crate::models::llm_provider::LlmProviderModel;
 use crate::models::{Insight, InsightSeverity, Recommendation, RecommendationPriority};
-use chrono::{DateTime, Utc};
-use serde::{Serialize, Deserialize};
-use serde_json::{Value, json};
-use std::sync::Arc;
-use reqwest::Client;
-use crate::services::data_collection::DataCollectionService;
 use crate::repositories::data_source::DataSourceRepository;
 use crate::repositories::llm_provider::LlmProviderRepository;
 use crate::repositories::prompt_template::PromptTemplateRepository;
-use crate::models::llm_provider::LlmProviderModel;
-use crate::errors::AppError;
-use crate::services::llm::manager::UnifiedLlmManager;
+use crate::services::data_collection::DataCollectionService;
 use crate::services::llm::interface::UnifiedLlmRequest;
+use crate::services::llm::manager::UnifiedLlmManager;
+use chrono::{DateTime, Utc};
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum AnalysisType {
@@ -61,7 +61,13 @@ impl LlmAnalyticsService {
         }
     }
 
-    pub fn process_section(&self, section: &str, content: &[&str], insights: &mut Vec<Insight>, recommendations: &mut Vec<Recommendation>) {
+    pub fn process_section(
+        &self,
+        section: &str,
+        content: &[&str],
+        insights: &mut Vec<Insight>,
+        recommendations: &mut Vec<Recommendation>,
+    ) {
         let text = content.join(" ");
         match section {
             "insights" => {
@@ -73,7 +79,7 @@ impl LlmAnalyticsService {
                     metrics_involved: vec![],
                     supporting_data: json!({}),
                 });
-            },
+            }
             "recommendations" => {
                 recommendations.push(Recommendation {
                     title: "Recommended Action".to_string(),
@@ -83,15 +89,18 @@ impl LlmAnalyticsService {
                     action_items: vec![text],
                     estimated_effort: None,
                 });
-            },
+            }
             _ => {}
         }
     }
 
-    pub async fn analyze(&self, req: ServiceAnalyticsRequest) -> Result<serde_json::Value, crate::errors::AppError> {
+    pub async fn analyze(
+        &self,
+        req: ServiceAnalyticsRequest,
+    ) -> Result<serde_json::Value, crate::errors::AppError> {
         // Get data from data sources
         let mut all_metrics = Vec::new();
-        
+
         for data_source_id in &req.data_source_ids {
             let data_request = crate::services::data_collection::DataCollectionRequest {
                 data_source_id: *data_source_id,
@@ -101,32 +110,40 @@ impl LlmAnalyticsService {
                 end_time: req.time_range.end_time,
                 period: Some(300), // 5 minutes
             };
-            
-            match self.data_collection_service.collect_data(data_request).await {
+
+            match self
+                .data_collection_service
+                .collect_data(data_request)
+                .await
+            {
                 Ok(response) => {
                     all_metrics.extend(response.metrics);
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to collect data from source {}: {}", data_source_id, e);
+                    tracing::warn!(
+                        "Failed to collect data from source {}: {}",
+                        data_source_id,
+                        e
+                    );
                 }
             }
         }
-        
+
         if all_metrics.is_empty() {
             return Ok(serde_json::json!({
                 "error": "No metrics data available for analysis"
             }));
         }
-        
+
         // Generate prompt based on analysis type and resource type
         let prompt = self.generate_analysis_prompt(&req, &all_metrics)?;
-        
+
         // Get LLM provider (use default if not specified)
         let provider_id = req.llm_provider_id.unwrap_or_else(|| {
             // TODO: Get default provider from config
             uuid::Uuid::new_v4() // Placeholder
         });
-        
+
         // Call LLM using unified interface
         let llm_request = UnifiedLlmRequest {
             prompt,
@@ -143,14 +160,12 @@ impl LlmAnalyticsService {
             extra_params: None,
             context: None,
         };
-        
-        let llm_response = self.llm_manager
-            .generate_smart(llm_request)
-            .await?;
-        
+
+        let llm_response = self.llm_manager.generate_smart(llm_request).await?;
+
         // Parse LLM response and structure it
         let analysis_result = self.parse_llm_response(&llm_response.response.content)?;
-        
+
         Ok(serde_json::json!({
             "resource_id": req.resource_id,
             "resource_type": format!("{:?}", req.resource_type),
@@ -165,8 +180,11 @@ impl LlmAnalyticsService {
             "raw_response": llm_response.response.content
         }))
     }
-    
-    fn get_metrics_for_resource_type(&self, resource_type: &crate::models::data_source::ResourceType) -> Vec<String> {
+
+    fn get_metrics_for_resource_type(
+        &self,
+        resource_type: &crate::models::data_source::ResourceType,
+    ) -> Vec<String> {
         match resource_type {
             crate::models::data_source::ResourceType::Kinesis => vec![
                 "IncomingBytes".to_string(),
@@ -192,21 +210,32 @@ impl LlmAnalyticsService {
                 "ReadLatency".to_string(),
                 "WriteLatency".to_string(),
             ],
-            _ => vec!["CPUUtilization".to_string(), "MemoryUtilization".to_string()],
+            _ => vec![
+                "CPUUtilization".to_string(),
+                "MemoryUtilization".to_string(),
+            ],
         }
     }
-    
-    fn generate_analysis_prompt(&self, req: &ServiceAnalyticsRequest, metrics: &[crate::services::data_collection::MetricData]) -> Result<String, crate::errors::AppError> {
+
+    fn generate_analysis_prompt(
+        &self,
+        req: &ServiceAnalyticsRequest,
+        metrics: &[crate::services::data_collection::MetricData],
+    ) -> Result<String, crate::errors::AppError> {
         let mut prompt = format!(
             "Analyze the following AWS {} resource metrics and provide insights:\n\n",
             format!("{:?}", req.resource_type).to_lowercase()
         );
-        
+
         prompt.push_str(&format!("Resource ID: {}\n", req.resource_id));
-        prompt.push_str(&format!("Time Range: {} to {}\n\n", req.time_range.start_time, req.time_range.end_time));
-        
+        prompt.push_str(&format!(
+            "Time Range: {} to {}\n\n",
+            req.time_range.start_time, req.time_range.end_time
+        ));
+
         prompt.push_str("Metrics Data:\n");
-        for metric in metrics.iter().take(50) { // Limit to first 50 metrics to avoid token limits
+        for metric in metrics.iter().take(50) {
+            // Limit to first 50 metrics to avoid token limits
             prompt.push_str(&format!(
                 "- {}: {} {} at {}\n",
                 metric.metric_name,
@@ -215,46 +244,53 @@ impl LlmAnalyticsService {
                 metric.timestamp.format("%Y-%m-%d %H:%M:%S UTC")
             ));
         }
-        
+
         if metrics.len() > 50 {
             prompt.push_str(&format!("... and {} more metrics\n", metrics.len() - 50));
         }
-        
+
         prompt.push_str("\nPlease provide:\n");
         prompt.push_str("1. Summary of current performance\n");
         prompt.push_str("2. Key insights and anomalies\n");
         prompt.push_str("3. Recommendations for optimization\n");
         prompt.push_str("4. Potential issues or bottlenecks\n");
-        
+
         match req.analysis_type {
             AnalysisType::Custom(ref custom_type) => {
                 prompt.push_str(&format!("5. Specific analysis for: {}\n", custom_type));
             }
         }
-        
+
         Ok(prompt)
     }
-    
-    fn parse_llm_response(&self, response: &str) -> Result<serde_json::Value, crate::errors::AppError> {
+
+    fn parse_llm_response(
+        &self,
+        response: &str,
+    ) -> Result<serde_json::Value, crate::errors::AppError> {
         // Try to parse as JSON first
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(response) {
             return Ok(json);
         }
-        
+
         // If not JSON, parse as markdown/text and structure it
         let mut insights = Vec::new();
         let mut recommendations = Vec::new();
-        
+
         let sections = response.split("\n## ").collect::<Vec<&str>>();
-        
+
         for section in sections {
-            if section.to_lowercase().contains("insight") || section.to_lowercase().contains("finding") {
+            if section.to_lowercase().contains("insight")
+                || section.to_lowercase().contains("finding")
+            {
                 insights.push(section.to_string());
-            } else if section.to_lowercase().contains("recommendation") || section.to_lowercase().contains("action") {
+            } else if section.to_lowercase().contains("recommendation")
+                || section.to_lowercase().contains("action")
+            {
                 recommendations.push(section.to_string());
             }
         }
-        
+
         Ok(serde_json::json!({
             "insights": insights,
             "recommendations": recommendations,

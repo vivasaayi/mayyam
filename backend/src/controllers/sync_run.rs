@@ -1,8 +1,8 @@
-use std::sync::Arc;
 use actix_web::{web, HttpResponse};
 use serde::Deserialize;
+use std::sync::Arc;
+use tracing::debug;
 use uuid::Uuid;
-use tracing::{debug};
 
 use crate::errors::AppError;
 use crate::models::sync_run::{SyncRunCreateDto, SyncRunQueryParams};
@@ -14,7 +14,9 @@ pub struct SyncRunController {
 }
 
 impl SyncRunController {
-    pub fn new(repo: Arc<SyncRunRepository>) -> Self { Self { repo } }
+    pub fn new(repo: Arc<SyncRunRepository>) -> Self {
+        Self { repo }
+    }
 }
 
 pub async fn create_sync_run(

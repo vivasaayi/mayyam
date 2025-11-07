@@ -1,19 +1,6 @@
 use clap::{Parser, Subcommand};
+use mayyam::{api, cli, config, utils};
 use std::error::Error;
-
-mod api;
-mod cli;
-mod config;
-mod controllers;
-pub mod errors;
-mod integrations;
-mod middleware;
-pub mod models;
-pub mod repositories;
-pub mod services;
-mod utils;
-#[cfg(test)]
-mod tests;
 
 #[derive(Parser)]
 #[command(name = "mayyam")]
@@ -30,36 +17,36 @@ enum Commands {
         /// Port to listen on
         #[arg(short, long, default_value_t = 8085)]
         port: u16,
-        
+
         /// Host to bind to
         #[arg(long, default_value = "0.0.0.0")]
         host: String,
     },
-    
+
     /// Database operations
     Db {
         #[command(subcommand)]
         command: cli::database::DbCommands,
     },
-    
+
     /// Kafka operations
     Kafka {
         #[command(subcommand)]
         command: cli::kafka::KafkaCommands,
     },
-    
+
     /// Cloud provider operations
     Cloud {
         #[command(subcommand)]
         command: cli::cloud::CloudCommands,
     },
-    
+
     /// Kubernetes operations
     K8s {
         #[command(subcommand)]
         command: cli::kubernetes::K8sCommands,
     },
-    
+
     /// Chaos engineering operations
     Chaos {
         #[command(subcommand)]
@@ -71,13 +58,13 @@ enum Commands {
 async fn main() -> Result<(), Box<dyn Error>> {
     // Initialize logging
     utils::logging::init_logger();
-    
+
     // Load configuration
     let config = config::load_config()?;
-    
+
     // Parse command line arguments
     let cli = Cli::parse();
-    
+
     match cli.command {
         Commands::Server { port, host } => {
             // Start web server
@@ -104,6 +91,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
             cli::chaos::handle_command(command, &config).await?;
         }
     }
-    
+
     Ok(())
 }

@@ -1,15 +1,15 @@
-use std::sync::Arc;
-use std::collections::HashMap;
-use serde_json::{Value, json};
+use aws_sdk_cloudwatch::{types::Dimension, Client as CloudWatchClient};
 use chrono::{DateTime, Utc};
-use aws_sdk_cloudwatch::{Client as CloudWatchClient, types::Dimension};
 use reqwest::Client as HttpClient;
+use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::sync::Arc;
 
-use crate::models::data_source::{SourceType, ResourceType, Model as DataSourceModel};
-use crate::repositories::data_source::DataSourceRepository;
-use crate::errors::AppError;
 use crate::config::Config;
-use crate::utils::time_conversion::{to_aws_datetime, from_aws_datetime};
+use crate::errors::AppError;
+use crate::models::data_source::{Model as DataSourceModel, ResourceType, SourceType};
+use crate::repositories::data_source::DataSourceRepository;
+use crate::utils::time_conversion::{from_aws_datetime, to_aws_datetime};
 
 #[derive(Debug, Clone)]
 pub struct MetricData {
@@ -59,13 +59,18 @@ impl DataCollectionService {
         }
     }
 
-    pub async fn collect_data(&self, request: DataCollectionRequest) -> Result<DataCollectionResponse, AppError> {
-        let data_source = self.data_source_repo
+    pub async fn collect_data(
+        &self,
+        request: DataCollectionRequest,
+    ) -> Result<DataCollectionResponse, AppError> {
+        let data_source = self
+            .data_source_repo
             .find_by_id(request.data_source_id)
             .await?
             .ok_or_else(|| AppError::NotFound("Data source not found".to_string()))?;
 
-        let source_type = self.get_source_type_enum(&data_source)
+        let source_type = self
+            .get_source_type_enum(&data_source)
             .ok_or_else(|| AppError::InternalServerError("Invalid source_type".to_string()))?;
 
         match source_type {
@@ -77,55 +82,57 @@ impl DataCollectionService {
         }
     }
 
-    pub async fn get_available_metrics(&self, data_source_id: uuid::Uuid, resource_type: ResourceType) -> Result<Vec<String>, AppError> {
-        let data_source = self.data_source_repo
+    pub async fn get_available_metrics(
+        &self,
+        data_source_id: uuid::Uuid,
+        resource_type: ResourceType,
+    ) -> Result<Vec<String>, AppError> {
+        let data_source = self
+            .data_source_repo
             .find_by_id(data_source_id)
             .await?
             .ok_or_else(|| AppError::NotFound("Data source not found".to_string()))?;
 
-        let source_type = self.get_source_type_enum(&data_source)
+        let source_type = self
+            .get_source_type_enum(&data_source)
             .ok_or_else(|| AppError::InternalServerError("Invalid source_type".to_string()))?;
 
         match (source_type, resource_type) {
-            (SourceType::CloudWatch, ResourceType::DynamoDB) => {
-                Ok(vec![
-                    "ConsumedReadCapacityUnits".to_string(),
-                    "ConsumedWriteCapacityUnits".to_string(),
-                    "ProvisionedReadCapacityUnits".to_string(),
-                    "ProvisionedWriteCapacityUnits".to_string(),
-                    "ReadThrottleEvents".to_string(),
-                    "WriteThrottleEvents".to_string(),
-                    "SystemErrors".to_string(),
-                    "UserErrors".to_string(),
-                    "SuccessfulRequestLatency".to_string(),
-                ])
-            },
-            (SourceType::CloudWatch, ResourceType::RDS) => {
-                Ok(vec![
-                    "CPUUtilization".to_string(),
-                    "DatabaseConnections".to_string(),
-                    "FreeableMemory".to_string(),
-                    "FreeStorageSpace".to_string(),
-                    "ReadIOPS".to_string(),
-                    "WriteIOPS".to_string(),
-                    "ReadLatency".to_string(),
-                    "WriteLatency".to_string(),
-                ])
-            },
-            (SourceType::CloudWatch, ResourceType::Kubernetes) => {
-                Ok(vec![
-                    "cluster_node_count".to_string(),
-                    "cluster_pod_count".to_string(),
-                    "node_cpu_utilization".to_string(),
-                    "node_memory_utilization".to_string(),
-                    "pod_cpu_utilization".to_string(),
-                    "pod_memory_utilization".to_string(),
-                ])
-            },
+            (SourceType::CloudWatch, ResourceType::DynamoDB) => Ok(vec![
+                "ConsumedReadCapacityUnits".to_string(),
+                "ConsumedWriteCapacityUnits".to_string(),
+                "ProvisionedReadCapacityUnits".to_string(),
+                "ProvisionedWriteCapacityUnits".to_string(),
+                "ReadThrottleEvents".to_string(),
+                "WriteThrottleEvents".to_string(),
+                "SystemErrors".to_string(),
+                "UserErrors".to_string(),
+                "SuccessfulRequestLatency".to_string(),
+            ]),
+            (SourceType::CloudWatch, ResourceType::RDS) => Ok(vec![
+                "CPUUtilization".to_string(),
+                "DatabaseConnections".to_string(),
+                "FreeableMemory".to_string(),
+                "FreeStorageSpace".to_string(),
+                "ReadIOPS".to_string(),
+                "WriteIOPS".to_string(),
+                "ReadLatency".to_string(),
+                "WriteLatency".to_string(),
+            ]),
+            (SourceType::CloudWatch, ResourceType::Kubernetes) => Ok(vec![
+                "cluster_node_count".to_string(),
+                "cluster_pod_count".to_string(),
+                "node_cpu_utilization".to_string(),
+                "node_memory_utilization".to_string(),
+                "pod_cpu_utilization".to_string(),
+                "pod_memory_utilization".to_string(),
+            ]),
             _ => {
                 if let Some(metric_config) = &data_source.metric_config {
                     if let serde_json::Value::Object(config) = metric_config {
-                        if let Some(serde_json::Value::Array(metrics)) = config.get("available_metrics") {
+                        if let Some(serde_json::Value::Array(metrics)) =
+                            config.get("available_metrics")
+                        {
                             let metric_names: Vec<String> = metrics
                                 .iter()
                                 .filter_map(|m| m.as_str().map(|s| s.to_string()))
@@ -139,18 +146,25 @@ impl DataCollectionService {
         }
     }
 
-    async fn collect_cloudwatch_data(&self, data_source: &DataSourceModel, request: &DataCollectionRequest) -> Result<DataCollectionResponse, AppError> {
-        let cloudwatch = self.cloudwatch_client.as_ref()
-            .ok_or_else(|| AppError::InternalServerError("CloudWatch client not configured".to_string()))?;
+    async fn collect_cloudwatch_data(
+        &self,
+        data_source: &DataSourceModel,
+        request: &DataCollectionRequest,
+    ) -> Result<DataCollectionResponse, AppError> {
+        let cloudwatch = self.cloudwatch_client.as_ref().ok_or_else(|| {
+            AppError::InternalServerError("CloudWatch client not configured".to_string())
+        })?;
 
         let mut all_metrics = Vec::new();
         let mut metadata = HashMap::new();
 
         let connection_config = &data_source.connection_config;
         // Use enum conversion for resource_type
-        let resource_type_enum = self.get_resource_type_enum(data_source)
+        let resource_type_enum = self
+            .get_resource_type_enum(data_source)
             .ok_or_else(|| AppError::InternalServerError("Invalid resource_type".to_string()))?;
-        let namespace = connection_config.get("namespace")
+        let namespace = connection_config
+            .get("namespace")
             .and_then(|v| v.as_str())
             .unwrap_or(self.get_default_namespace(&resource_type_enum));
 
@@ -172,18 +186,25 @@ impl DataCollectionService {
                     ]))
                     .send()
                     .await
-                    .map_err(|e| AppError::ExternalServiceError(format!("CloudWatch API error: {}", e)))?;
+                    .map_err(|e| {
+                        AppError::ExternalServiceError(format!("CloudWatch API error: {}", e))
+                    })?;
 
                 if let Some(datapoints) = result.datapoints {
                     for datapoint in datapoints {
-                        if let (Some(timestamp), Some(average)) = (datapoint.timestamp, datapoint.average) {
+                        if let (Some(timestamp), Some(average)) =
+                            (datapoint.timestamp, datapoint.average)
+                        {
                             let mut dimensions_map = HashMap::new();
                             dimensions_map.insert("ResourceId".to_string(), resource_id.clone());
                             all_metrics.push(MetricData {
                                 resource_id: resource_id.clone(),
                                 metric_name: metric_name.clone(),
                                 value: average,
-                                unit: datapoint.unit.map(|u| u.as_str().to_string()).unwrap_or_default(),
+                                unit: datapoint
+                                    .unit
+                                    .map(|u| u.as_str().to_string())
+                                    .unwrap_or_default(),
                                 timestamp: from_aws_datetime(&timestamp),
                                 dimensions: dimensions_map,
                             });
@@ -202,13 +223,21 @@ impl DataCollectionService {
         })
     }
 
-    async fn collect_dynatrace_data(&self, data_source: &DataSourceModel, request: &DataCollectionRequest) -> Result<DataCollectionResponse, AppError> {
+    async fn collect_dynatrace_data(
+        &self,
+        data_source: &DataSourceModel,
+        request: &DataCollectionRequest,
+    ) -> Result<DataCollectionResponse, AppError> {
         let connection_config = &data_source.connection_config;
-        let api_token = connection_config.get("api_token")
+        let api_token = connection_config
+            .get("api_token")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| AppError::BadRequest("Dynatrace API token not configured".to_string()))?;
-        
-        let base_url = connection_config.get("base_url")
+            .ok_or_else(|| {
+                AppError::BadRequest("Dynatrace API token not configured".to_string())
+            })?;
+
+        let base_url = connection_config
+            .get("base_url")
             .and_then(|v| v.as_str())
             .ok_or_else(|| AppError::BadRequest("Dynatrace base URL not configured".to_string()))?;
 
@@ -217,10 +246,14 @@ impl DataCollectionService {
 
         // Dynatrace API v2 metrics query
         let metrics_selector = request.metric_names.join(",");
-        let resource_type_enum = self.get_resource_type_enum(data_source)
+        let resource_type_enum = self
+            .get_resource_type_enum(data_source)
             .ok_or_else(|| AppError::InternalServerError("Invalid resource_type".to_string()))?;
-        let entity_selector = format!("type({})", self.get_dynatrace_entity_type(&resource_type_enum));
-        
+        let entity_selector = format!(
+            "type({})",
+            self.get_dynatrace_entity_type(&resource_type_enum)
+        );
+
         let url = format!("{}/api/v2/metrics/query", base_url);
         let params = [
             ("metricSelector", metrics_selector.as_str()),
@@ -229,7 +262,8 @@ impl DataCollectionService {
             ("to", &request.end_time.timestamp_millis().to_string()),
         ];
 
-        let response = self.http_client
+        let response = self
+            .http_client
             .get(&url)
             .header("Authorization", format!("Api-Token {}", api_token))
             .query(&params)
@@ -239,11 +273,15 @@ impl DataCollectionService {
 
         if !response.status().is_success() {
             let error_text = response.text().await.unwrap_or_default();
-            return Err(AppError::ExternalServiceError(format!("Dynatrace API error: {}", error_text)));
+            return Err(AppError::ExternalServiceError(format!(
+                "Dynatrace API error: {}",
+                error_text
+            )));
         }
 
-        let response_data: Value = response.json().await
-            .map_err(|e| AppError::ExternalServiceError(format!("Failed to parse Dynatrace response: {}", e)))?;
+        let response_data: Value = response.json().await.map_err(|e| {
+            AppError::ExternalServiceError(format!("Failed to parse Dynatrace response: {}", e))
+        })?;
 
         // Parse Dynatrace response and convert to MetricData
         if let Some(result) = response_data.get("result") {
@@ -277,15 +315,22 @@ impl DataCollectionService {
         })
     }
 
-    async fn collect_splunk_data(&self, data_source: &DataSourceModel, _request: &DataCollectionRequest) -> Result<DataCollectionResponse, AppError> {
+    async fn collect_splunk_data(
+        &self,
+        data_source: &DataSourceModel,
+        _request: &DataCollectionRequest,
+    ) -> Result<DataCollectionResponse, AppError> {
         let connection_config = &data_source.connection_config;
-        connection_config.get("base_url")
+        connection_config
+            .get("base_url")
             .and_then(|v| v.as_str())
             .ok_or_else(|| AppError::BadRequest("Splunk base URL not configured".to_string()))?;
-        connection_config.get("username")
+        connection_config
+            .get("username")
             .and_then(|v| v.as_str())
             .ok_or_else(|| AppError::BadRequest("Splunk username not configured".to_string()))?;
-        connection_config.get("password")
+        connection_config
+            .get("password")
             .and_then(|v| v.as_str())
             .ok_or_else(|| AppError::BadRequest("Splunk password not configured".to_string()))?;
         // Placeholder implementation for Splunk data collection
@@ -298,11 +343,18 @@ impl DataCollectionService {
         })
     }
 
-    async fn collect_prometheus_data(&self, data_source: &DataSourceModel, request: &DataCollectionRequest) -> Result<DataCollectionResponse, AppError> {
+    async fn collect_prometheus_data(
+        &self,
+        data_source: &DataSourceModel,
+        request: &DataCollectionRequest,
+    ) -> Result<DataCollectionResponse, AppError> {
         let connection_config = &data_source.connection_config;
-        let base_url = connection_config.get("base_url")
+        let base_url = connection_config
+            .get("base_url")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| AppError::BadRequest("Prometheus base URL not configured".to_string()))?;
+            .ok_or_else(|| {
+                AppError::BadRequest("Prometheus base URL not configured".to_string())
+            })?;
 
         let mut all_metrics = Vec::new();
         let mut metadata = HashMap::new();
@@ -316,20 +368,30 @@ impl DataCollectionService {
                 ("step", &request.period.unwrap_or(300).to_string()),
             ];
 
-            let response = self.http_client
+            let response = self
+                .http_client
                 .get(&url)
                 .query(&params)
                 .send()
                 .await
-                .map_err(|e| AppError::ExternalServiceError(format!("Prometheus API error: {}", e)))?;
+                .map_err(|e| {
+                    AppError::ExternalServiceError(format!("Prometheus API error: {}", e))
+                })?;
 
             if !response.status().is_success() {
                 let error_text = response.text().await.unwrap_or_default();
-                return Err(AppError::ExternalServiceError(format!("Prometheus API error: {}", error_text)));
+                return Err(AppError::ExternalServiceError(format!(
+                    "Prometheus API error: {}",
+                    error_text
+                )));
             }
 
-            let response_data: Value = response.json().await
-                .map_err(|e| AppError::ExternalServiceError(format!("Failed to parse Prometheus response: {}", e)))?;
+            let response_data: Value = response.json().await.map_err(|e| {
+                AppError::ExternalServiceError(format!(
+                    "Failed to parse Prometheus response: {}",
+                    e
+                ))
+            })?;
 
             // Parse Prometheus response format
             if let Some(data) = response_data.get("data") {
@@ -341,14 +403,21 @@ impl DataCollectionService {
                                     for value_pair in value_pairs {
                                         if let Value::Array(pair) = value_pair {
                                             if pair.len() >= 2 {
-                                                if let (Some(timestamp), Some(value_str)) = (pair[0].as_f64(), pair[1].as_str()) {
+                                                if let (Some(timestamp), Some(value_str)) =
+                                                    (pair[0].as_f64(), pair[1].as_str())
+                                                {
                                                     if let Ok(value) = value_str.parse::<f64>() {
                                                         all_metrics.push(MetricData {
-                                                            resource_id: "prometheus_metric".to_string(),
+                                                            resource_id: "prometheus_metric"
+                                                                .to_string(),
                                                             metric_name: metric_name.clone(),
                                                             value,
                                                             unit: "count".to_string(),
-                                                            timestamp: DateTime::from_timestamp(timestamp as i64, 0).unwrap_or(Utc::now()),
+                                                            timestamp: DateTime::from_timestamp(
+                                                                timestamp as i64,
+                                                                0,
+                                                            )
+                                                            .unwrap_or(Utc::now()),
                                                             dimensions: HashMap::new(),
                                                         });
                                                     }
@@ -372,7 +441,11 @@ impl DataCollectionService {
         })
     }
 
-    async fn collect_custom_data(&self, _data_source: &DataSourceModel, _request: &DataCollectionRequest) -> Result<DataCollectionResponse, AppError> {
+    async fn collect_custom_data(
+        &self,
+        _data_source: &DataSourceModel,
+        _request: &DataCollectionRequest,
+    ) -> Result<DataCollectionResponse, AppError> {
         // Placeholder for custom data source implementation
         let mut metadata = HashMap::new();
         metadata.insert("source".to_string(), json!("Custom"));
@@ -392,26 +465,30 @@ impl DataCollectionService {
         }
     }
 
-    fn build_cloudwatch_dimensions(&self, resource_type: &ResourceType, resource_id: &str) -> Vec<Dimension> {
+    fn build_cloudwatch_dimensions(
+        &self,
+        resource_type: &ResourceType,
+        resource_id: &str,
+    ) -> Vec<Dimension> {
         match resource_type {
             ResourceType::DynamoDB => {
                 vec![Dimension::builder()
                     .name("TableName")
                     .value(resource_id)
                     .build()]
-            },
+            }
             ResourceType::RDS => {
                 vec![Dimension::builder()
                     .name("DBInstanceIdentifier")
                     .value(resource_id)
                     .build()]
-            },
+            }
             ResourceType::Kubernetes => {
                 vec![Dimension::builder()
                     .name("ClusterName")
                     .value(resource_id)
                     .build()]
-            },
+            }
             _ => vec![],
         }
     }
@@ -425,37 +502,40 @@ impl DataCollectionService {
         }
     }
 
-    pub async fn test_data_source_connection(&self, data_source_id: uuid::Uuid) -> Result<bool, AppError> {
-        let data_source = self.data_source_repo
+    pub async fn test_data_source_connection(
+        &self,
+        data_source_id: uuid::Uuid,
+    ) -> Result<bool, AppError> {
+        let data_source = self
+            .data_source_repo
             .find_by_id(data_source_id)
             .await?
             .ok_or_else(|| AppError::NotFound("Data source not found".to_string()))?;
 
-        let source_type = self.get_source_type_enum(&data_source)
+        let source_type = self
+            .get_source_type_enum(&data_source)
             .ok_or_else(|| AppError::InternalServerError("Invalid source_type".to_string()))?;
 
         match source_type {
             SourceType::CloudWatch => {
                 // Test CloudWatch connection by listing metrics
                 if let Some(cloudwatch) = &self.cloudwatch_client {
-                    let result = cloudwatch
-                        .list_metrics()
-                        .send()
-                        .await;
+                    let result = cloudwatch.list_metrics().send().await;
                     Ok(result.is_ok())
                 } else {
                     Ok(false)
                 }
-            },
+            }
             SourceType::Dynatrace => {
                 // Test Dynatrace API connection
                 let connection_config = &data_source.connection_config;
                 if let (Some(base_url), Some(api_token)) = (
                     connection_config.get("base_url").and_then(|v| v.as_str()),
-                    connection_config.get("api_token").and_then(|v| v.as_str())
+                    connection_config.get("api_token").and_then(|v| v.as_str()),
                 ) {
                     let url = format!("{}/api/v2/metrics", base_url);
-                    let response = self.http_client
+                    let response = self
+                        .http_client
                         .get(&url)
                         .header("Authorization", format!("Api-Token {}", api_token))
                         .send()
@@ -464,7 +544,7 @@ impl DataCollectionService {
                 } else {
                     Ok(false)
                 }
-            },
+            }
             SourceType::Prometheus => {
                 // Test Prometheus connection
                 let connection_config = &data_source.connection_config;
@@ -475,7 +555,7 @@ impl DataCollectionService {
                 } else {
                     Ok(false)
                 }
-            },
+            }
             _ => Ok(true), // Default to true for other types
         }
     }

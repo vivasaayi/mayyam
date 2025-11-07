@@ -1,7 +1,7 @@
-use sea_orm::{entity::prelude::*, ActiveValue};
-use sea_orm::ActiveValue::Set;
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use sea_orm::ActiveValue::Set;
+use sea_orm::{entity::prelude::*, ActiveValue};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
@@ -25,7 +25,7 @@ pub struct Model {
     pub updated_at: DateTime<Utc>,
     #[sea_orm(column_type = "TimestampWithTimeZone", nullable)]
     pub last_login: Option<DateTime<Utc>>,
-    
+
     // Adding permissions as transient field derived from roles
     #[sea_orm(ignore)]
     #[serde(skip_deserializing)]
@@ -38,24 +38,24 @@ pub enum Relation {}
 impl ActiveModelBehavior for ActiveModel {
     // Before save hook - set timestamps
     //fn before_save(mut self) -> Result<Self, DbErr> {
-        // if insert {
-        //     self.id = Set(Uuid::new_v4());
-        //     self.created_at = Set(Utc::now().naive_utc());
-        //     self.updated_at = Set(Utc::now().naive_utc());
-        //     self.is_active = Set(true);
-            
-        //     // Check if permissions field is unchanged and set default if needed
-        //     match &self.permissions {
-        //         ActiveValue::Unchanged(_) | ActiveValue::NotSet => {
-        //             self.permissions = Set(vec!["user".to_string()]);
-        //         }
-        //         _ => {}
-        //     }
-        // } else {
-        //     self.updated_at = Set(Utc::now().naive_utc());
-        // }
-        
-       // Ok(self)
+    // if insert {
+    //     self.id = Set(Uuid::new_v4());
+    //     self.created_at = Set(Utc::now().naive_utc());
+    //     self.updated_at = Set(Utc::now().naive_utc());
+    //     self.is_active = Set(true);
+
+    //     // Check if permissions field is unchanged and set default if needed
+    //     match &self.permissions {
+    //         ActiveValue::Unchanged(_) | ActiveValue::NotSet => {
+    //             self.permissions = Set(vec!["user".to_string()]);
+    //         }
+    //         _ => {}
+    //     }
+    // } else {
+    //     self.updated_at = Set(Utc::now().naive_utc());
+    // }
+
+    // Ok(self)
     //}
 }
 

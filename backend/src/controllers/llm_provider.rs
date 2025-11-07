@@ -4,8 +4,12 @@ use serde_json::Value;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::repositories::llm_provider::LlmProviderRepository;
-use crate::models::llm_provider::{LlmProviderType, LlmProviderStatus, LlmPromptFormat, LlmProviderResponseDto};
+use crate::models::llm_provider::{
+    LlmPromptFormat, LlmProviderResponseDto, LlmProviderStatus, LlmProviderType,
+};
+use crate::services::llm_provider::{
+    CreateLlmProviderInput, ListLlmProvidersFilter, LlmProviderService, UpdateLlmProviderInput,
+};
 
 #[derive(Debug, Deserialize)]
 pub struct CreateLlmProviderRequest {
@@ -61,12 +65,12 @@ pub struct TestLlmProviderRequest {
 }
 
 pub struct LlmProviderController {
-    llm_provider_repo: Arc<LlmProviderRepository>,
+    service: Arc<LlmProviderService>,
 }
 
 impl LlmProviderController {
-    pub fn new(llm_provider_repo: Arc<LlmProviderRepository>) -> Self {
-        Self { llm_provider_repo }
+    pub fn new(service: Arc<LlmProviderService>) -> Self {
+        Self { service }
     }
 
     pub async fn create_llm_provider(
@@ -74,23 +78,23 @@ impl LlmProviderController {
         request: web::Json<CreateLlmProviderRequest>,
     ) -> ActixResult<HttpResponse> {
         let provider = controller
-            .llm_provider_repo
-            .create(
-                request.name.clone(),
-                request.provider_type.clone(),
-                request.model_name.clone(),
-                request.api_endpoint.clone(),
-                request.api_key.clone(),
-                request.model_config.clone(),
-                request.prompt_format.clone(),
-                request.description.clone(),
-                request.enabled,
-                request.is_default,
-            )
+            .service
+            .create_provider(CreateLlmProviderInput {
+                name: request.name.clone(),
+                provider_type: request.provider_type.clone(),
+                model_name: request.model_name.clone(),
+                api_endpoint: request.api_endpoint.clone(),
+                api_key: request.api_key.clone(),
+                model_config: request.model_config.clone(),
+                prompt_format: request.prompt_format.clone(),
+                description: request.description.clone(),
+                enabled: request.enabled,
+                is_default: request.is_default,
+            })
             .await
-            .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+            .map_err(actix_web::Error::from)?;
 
-        Ok(HttpResponse::Ok().json(LlmProviderResponseDto::from(provider)))
+        Ok(HttpResponse::Ok().json(provider))
     }
 
     pub async fn get_llm_provider(
@@ -98,38 +102,31 @@ impl LlmProviderController {
         path: web::Path<Uuid>,
     ) -> ActixResult<HttpResponse> {
         let provider = controller
-            .llm_provider_repo
-            .find_by_id(*path)
+            .service
+            .get_provider(*path)
             .await
-            .map_err(|e| actix_web::error::ErrorInternalServerError(e))?
-            .ok_or_else(|| actix_web::error::ErrorNotFound("LLM provider not found"))?;
+            .map_err(actix_web::Error::from)?;
 
-        Ok(HttpResponse::Ok().json(LlmProviderResponseDto::from(provider)))
+        Ok(HttpResponse::Ok().json(provider))
     }
 
     pub async fn list_llm_providers(
         controller: web::Data<LlmProviderController>,
         params: web::Query<LlmProviderQueryParams>,
     ) -> ActixResult<HttpResponse> {
-        let providers = if params.active_only.unwrap_or(false) {
-            controller.llm_provider_repo.find_active().await.map_err(|e| actix_web::error::ErrorInternalServerError(e))?
-        } else if let Some(provider_type) = &params.provider_type {
-            controller
-                .llm_provider_repo
-                .find_by_provider_type(provider_type.clone())
-                .await.map_err(|e| actix_web::error::ErrorInternalServerError(e))?
-        } else {
-            controller.llm_provider_repo.find_all().await.map_err(|e| actix_web::error::ErrorInternalServerError(e))?
-        };
-
-        let response_dtos: Vec<LlmProviderResponseDto> = providers
-            .into_iter()
-            .map(LlmProviderResponseDto::from)
-            .collect();
+        let providers = controller
+            .service
+            .list_providers(ListLlmProvidersFilter {
+                provider_type: params.provider_type.clone(),
+                status: params.status.clone(),
+                active_only: params.active_only.unwrap_or(false),
+            })
+            .await
+            .map_err(actix_web::Error::from)?;
 
         Ok(HttpResponse::Ok().json(LlmProviderListResponse {
-            total: response_dtos.len(),
-            providers: response_dtos,
+            total: providers.len(),
+            providers,
         }))
     }
 
@@ -139,31 +136,37 @@ impl LlmProviderController {
         request: web::Json<UpdateLlmProviderRequest>,
     ) -> ActixResult<HttpResponse> {
         let provider = controller
-            .llm_provider_repo
-            .update(
+            .service
+            .update_provider(
                 *path,
-                request.name.clone(),
-                request.model_name.clone(),
-                request.api_endpoint.clone(),
-                request.api_key.clone(),
-                request.model_config.clone(),
-                request.prompt_format.clone(),
-                request.description.clone(),
-                request.status.clone(),
-                request.enabled,
-                request.is_default,
+                UpdateLlmProviderInput {
+                    name: request.name.clone(),
+                    model_name: request.model_name.clone(),
+                    api_endpoint: request.api_endpoint.clone(),
+                    api_key: request.api_key.clone(),
+                    model_config: request.model_config.clone(),
+                    prompt_format: request.prompt_format.clone(),
+                    description: request.description.clone(),
+                    status: request.status.clone(),
+                    enabled: request.enabled,
+                    is_default: request.is_default,
+                },
             )
             .await
-            .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+            .map_err(actix_web::Error::from)?;
 
-        Ok(HttpResponse::Ok().json(LlmProviderResponseDto::from(provider)))
+        Ok(HttpResponse::Ok().json(provider))
     }
 
     pub async fn delete_llm_provider(
         controller: web::Data<LlmProviderController>,
         path: web::Path<Uuid>,
     ) -> ActixResult<HttpResponse> {
-        controller.llm_provider_repo.delete(*path).await.map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+        controller
+            .service
+            .delete_provider(*path)
+            .await
+            .map_err(actix_web::Error::from)?;
         Ok(HttpResponse::NoContent().finish())
     }
 
@@ -173,10 +176,10 @@ impl LlmProviderController {
         request: web::Json<TestLlmProviderRequest>,
     ) -> ActixResult<HttpResponse> {
         let success = controller
-            .llm_provider_repo
-            .test_connection(*path)
+            .service
+            .test_provider(*path)
             .await
-            .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+            .map_err(actix_web::Error::from)?;
 
         let message = if success {
             "LLM provider connection successful".to_string()
@@ -205,27 +208,12 @@ impl LlmProviderController {
     pub async fn get_provider_types(
         _controller: web::Data<LlmProviderController>,
     ) -> ActixResult<HttpResponse> {
-        let provider_types = vec![
-            "OpenAI".to_string(),
-            "Ollama".to_string(),
-            "Anthropic".to_string(),
-            "Local".to_string(),
-            "Gemini".to_string(),
-            "Custom".to_string(),
-        ];
-
-        Ok(HttpResponse::Ok().json(provider_types))
+        Ok(HttpResponse::Ok().json(LlmProviderService::list_provider_types()))
     }
 
     pub async fn get_prompt_formats(
         _controller: web::Data<LlmProviderController>,
     ) -> ActixResult<HttpResponse> {
-        let prompt_formats = vec![
-            "OpenAI".to_string(),
-            "Anthropic".to_string(),
-            "Custom".to_string(),
-        ];
-
-        Ok(HttpResponse::Ok().json(prompt_formats))
+        Ok(HttpResponse::Ok().json(LlmProviderService::list_prompt_formats()))
     }
 }

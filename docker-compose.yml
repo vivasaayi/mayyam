@@ -32,7 +32,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile.dev
     ports:
-      - "8080:8080"
+      - "8080:8085"
     environment:
       - RUST_LOG=debug
       - MODE=dev
@@ -57,7 +57,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - REACT_APP_API_URL=http://backend-dev:8080
+      - REACT_APP_API_URL=http://localhost:3000
+      - API_PROXY_TARGET=http://backend-dev:8085
       - NODE_ENV=development
     depends_on:
       - backend-dev

@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::controllers::auth::AuthController;
-use crate::models::user::{LoginUserDto, CreateUserDto};
 use crate::middleware::auth::Claims;
+use crate::models::user::{CreateUserDto, LoginUserDto};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LoginRequest {
@@ -41,7 +41,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .route("/login", web::post().to(login))
         .route("/register", web::post().to(register))
         .route("/profile", web::get().to(get_profile));
-    
+
     cfg.service(scope);
 }
 
@@ -97,14 +97,12 @@ async fn get_profile(
             first_name: None,
             last_name: None,
         };
-        
+
         return HttpResponse::Ok().json(user_info);
     }
-    
+
     HttpResponse::Unauthorized().json(serde_json::json!({
         "status": "401",
         "message": "Not authenticated"
     }))
-    
-
 }

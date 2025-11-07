@@ -1,5 +1,5 @@
-use sea_orm::{DatabaseConnection, Statement, DbErr, ConnectionTrait};
 use async_trait::async_trait;
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr, Statement};
 
 // This is a simplified mock implementation for the purposes of the exercise
 // In a real app, you'd need to implement this properly with the actual SeaORM API
@@ -15,10 +15,10 @@ impl DatabaseConnectionExt for DatabaseConnection {
     async fn query_one(&self, stmt: Statement) -> Result<QueryRow, DbErr> {
         // This is a mock implementation
         // In a real world scenario, you would use the actual SeaORM API to execute the query
-        
+
         // We're ignoring the result since this is a mock
         let _ = self.execute(stmt.clone()).await?;
-        
+
         // Create a mock row - this is just for demonstration
         Ok(QueryRow { is_mock: true })
     }
@@ -27,7 +27,7 @@ impl DatabaseConnectionExt for DatabaseConnection {
         // This is a mock implementation
         // We're ignoring the result since this is a mock
         let _ = self.execute(stmt.clone()).await?;
-        
+
         // Return a vector with a single mock row - in reality you'd extract multiple rows
         Ok(vec![QueryRow { is_mock: true }])
     }
@@ -38,8 +38,8 @@ pub struct QueryRow {
 }
 
 impl QueryRow {
-    pub fn try_get<T, S>(&self, _column: S) -> Result<T, DbErr> 
-    where 
+    pub fn try_get<T, S>(&self, _column: S) -> Result<T, DbErr>
+    where
         T: Default + 'static,
         S: AsRef<str>,
     {
@@ -86,7 +86,9 @@ impl QueryRow {
                 Ok(T::default())
             }
         } else {
-            Err(DbErr::Custom("Not implemented: real database query functionality".to_string()))
+            Err(DbErr::Custom(
+                "Not implemented: real database query functionality".to_string(),
+            ))
         }
     }
 }

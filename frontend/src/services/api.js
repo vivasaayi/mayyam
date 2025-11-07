@@ -66,6 +66,26 @@ export const fetchWithAuth = async (url, options = {}) => {
   return response;
 };
 
+// Generic API call function
+export const apiCall = async (url, method = 'GET', data = null) => {
+  try {
+    const config = {
+      method,
+      url,
+    };
+
+    if (data && (method === 'POST' || method === 'PUT' || method === 'PATCH')) {
+      config.data = data;
+    }
+
+    const response = await api(config);
+    return response;
+  } catch (error) {
+    console.error(`API call error for ${url}:`, error);
+    throw error;
+  }
+};
+
 // Analyze RDS instance with specified workflow
 export const analyzeRdsInstance = async (instanceId, workflow) => {
   try {
@@ -337,6 +357,21 @@ export const getSyncRun = async (id) => {
     return response.data;
   } catch (error) {
     console.error('Error fetching sync run:', error);
+    throw error;
+  }
+};
+
+// AWS Regions (live via DescribeRegions)
+export const listAwsRegions = async ({ accountId = null, profile = null, region = null } = {}) => {
+  try {
+    const params = {};
+    if (accountId) params.account_id = accountId;
+    if (profile) params.profile = profile;
+    if (region) params.region = region;
+    const response = await api.get('/api/aws/regions', { params });
+    return response.data?.regions || [];
+  } catch (error) {
+    console.error('Error listing AWS regions:', error);
     throw error;
   }
 };

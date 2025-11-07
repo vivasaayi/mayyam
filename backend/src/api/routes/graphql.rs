@@ -1,7 +1,7 @@
 use actix_web::{web, HttpResponse};
-use async_graphql::http::{GraphQLPlaygroundConfig, playground_source};
-use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse};
+use async_graphql::http::{playground_source, GraphQLPlaygroundConfig};
 use async_graphql::{EmptySubscription, Schema};
+use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse};
 
 // We'll define our GraphQL schema later
 // For now, let's create a placeholder for the configuration
@@ -10,7 +10,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     let scope = web::scope("/api/graphql")
         .route("", web::post().to(graphql_handler))
         .route("/playground", web::get().to(graphql_playground));
-    
+
     cfg.service(scope);
 }
 

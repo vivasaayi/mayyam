@@ -1,34 +1,38 @@
-use actix_web::{web, HttpResponse, Responder};
 use crate::errors::AppError;
 use crate::middleware::auth::Claims;
 use crate::models::aws_resource::{AwsResourceQuery, AwsResourceType};
-use std::sync::Arc;
-use uuid::Uuid;
-use tracing::info;
+use crate::models::cloud_resource::CloudResourceQuery;
+use actix_web::{web, HttpResponse, Responder};
 use chrono::Utc;
+use std::sync::Arc;
+use tracing::info;
+use uuid::Uuid;
 
-use crate::services::aws::{
-    AwsControlPlane, AwsCostService, AwsDataPlane,
-};
 use crate::models::aws_account::AwsAccountDto;
-use crate::services::aws::aws_data_plane::cloudwatch::{CloudWatchService, CloudWatchMetrics, CloudWatchLogs, CloudWatchLogsRequest, CloudWatchMetricsRequest};
-use crate::services::aws::aws_data_plane::cost_explorer::CostAndUsage;
-use crate::services::aws::aws_data_plane::sqs_data_plane::SqsDataPlane;
-use crate::services::aws::aws_types::dynamodb::{DynamoDBGetItemRequest, DynamoDBPutItemRequest, DynamoDBQueryRequest};
-use crate::services::aws::aws_types::sqs::{SqsReceiveMessageRequest, SqsSendMessageRequest};
-use crate::services::aws::aws_data_plane::dynamodb_data_plane::DynamoDBDataPlane;
-use crate::services::aws::aws_types::kinesis::{
-    KinesisPutRecordRequest, KinesisCreateStreamRequest, KinesisDeleteStreamRequest, 
-    KinesisDescribeStreamRequest, KinesisListStreamsRequest, KinesisUpdateShardCountRequest,
-    KinesisRetentionPeriodRequest, KinesisEnhancedMonitoringRequest, KinesisListShardsRequest,
-    KinesisPutRecordsRequest, KinesisGetRecordsRequest, KinesisGetShardIteratorRequest,
-    KinesisPutRecordsResponse, KinesisGetRecordsResponse, KinesisGetShardIteratorResponse
+use crate::services::aws::aws_data_plane::cloudwatch::{
+    CloudWatchLogs, CloudWatchLogsRequest, CloudWatchMetrics, CloudWatchMetricsRequest,
+    CloudWatchService,
 };
+use crate::services::aws::aws_data_plane::cost_explorer::CostAndUsage;
+use crate::services::aws::aws_data_plane::dynamodb_data_plane::DynamoDBDataPlane;
 use crate::services::aws::aws_data_plane::kinesis_data_plane::KinesisDataPlane;
-use crate::services::aws::aws_control_plane::kinesis_control_plane::KinesisControlPlane;
-use crate::services::aws::aws_types::s3::{S3GetObjectRequest, S3PutObjectRequest};
+use crate::services::aws::aws_data_plane::sqs_data_plane::SqsDataPlane;
+use crate::services::aws::aws_types::dynamodb::{
+    DynamoDBGetItemRequest, DynamoDBPutItemRequest, DynamoDBQueryRequest,
+};
+use crate::services::aws::aws_types::kinesis::{
+    KinesisCreateStreamRequest, KinesisDeleteStreamRequest, KinesisDescribeStreamRequest,
+    KinesisEnhancedMonitoringRequest, KinesisGetRecordsRequest, KinesisGetShardIteratorRequest,
+    KinesisListShardsRequest, KinesisListStreamsRequest, KinesisPutRecordRequest,
+    KinesisPutRecordsRequest, KinesisRetentionPeriodRequest, KinesisUpdateShardCountRequest,
+};
+use crate::services::aws::aws_types::sqs::{SqsReceiveMessageRequest, SqsSendMessageRequest};
+use crate::services::aws::{AwsControlPlane, AwsCostService, AwsDataPlane};
+// use crate::services::aws::aws_control_plane::kinesis_control_plane::KinesisControlPlane;
 use crate::services::aws::aws_data_plane::s3_data_plane::S3DataPlane;
 use crate::services::aws::aws_types::resource_sync::ResourceSyncRequest;
+use crate::services::aws::aws_types::s3::{S3GetObjectRequest, S3PutObjectRequest};
+use serde::Deserialize;
 
 // AWS Control Plane operations
 pub async fn sync_aws_resources(
@@ -37,10 +41,45 @@ pub async fn sync_aws_resources(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     info!("Syncing AWS resources for account {}", req.account_id);
-    
+
     let response = aws_control_plane.sync_resources(&req).await?;
-    
+
     Ok(HttpResponse::Ok().json(response))
+}
+
+#[derive(Deserialize)]
+pub struct RegionsQuery {
+    pub account_id: Option<Uuid>,
+    pub profile: Option<String>,
+    pub region: Option<String>,
+}
+
+// Return available AWS regions for an account/profile using DescribeRegions
+pub async fn list_aws_regions(
+    query: web::Query<RegionsQuery>,
+    aws_control_plane: web::Data<Arc<AwsControlPlane>>,
+    aws_account_repo: web::Data<Arc<crate::repositories::aws_account::AwsAccountRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let q = query.into_inner();
+    // Prefer account context when provided, otherwise use profile+region or fallback to us-east-1
+    let aws_account_dto = if let Some(account_uuid) = q.account_id {
+        if let Some(account) = aws_account_repo.get_by_id(account_uuid).await? {
+            AwsAccountDto::from(account)
+        } else {
+            AwsAccountDto::new_with_profile(
+                q.profile.as_deref().unwrap_or(""),
+                q.region.as_deref().unwrap_or("us-east-1"),
+            )
+        }
+    } else {
+        AwsAccountDto::new_with_profile(
+            q.profile.as_deref().unwrap_or(""),
+            q.region.as_deref().unwrap_or("us-east-1"),
+        )
+    };
+    let regions = aws_control_plane.list_all_regions(&aws_account_dto).await?;
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "regions": regions })))
 }
 
 // AWS EC2 specific endpoints
@@ -52,14 +91,14 @@ pub async fn list_ec2_instances(
 ) -> Result<impl Responder, AppError> {
     let (account_id, region) = path.into_inner();
     let mut query_params = query.into_inner();
-    
+
     // Set the query params specific to EC2 instances
     query_params.account_id = Some(account_id);
     query_params.region = Some(region);
     query_params.resource_type = Some(AwsResourceType::EC2Instance.to_string());
-    
+
     let resources = aws_repo.search(&query_params).await?;
-    
+
     Ok(HttpResponse::Ok().json(resources))
 }
 
@@ -72,13 +111,13 @@ pub async fn list_s3_buckets(
 ) -> Result<impl Responder, AppError> {
     let account_id = path.into_inner();
     let mut query_params = query.into_inner();
-    
+
     // S3 buckets are global, so we don't filter by region
     query_params.account_id = Some(account_id);
     query_params.resource_type = Some(AwsResourceType::S3Bucket.to_string());
-    
+
     let resources = aws_repo.search(&query_params).await?;
-    
+
     Ok(HttpResponse::Ok().json(resources))
 }
 
@@ -91,14 +130,14 @@ pub async fn list_rds_instances(
 ) -> Result<impl Responder, AppError> {
     let (account_id, region) = path.into_inner();
     let mut query_params = query.into_inner();
-    
+
     // Set the query params specific to RDS instances
     query_params.account_id = Some(account_id);
     query_params.region = Some(region);
     query_params.resource_type = Some(AwsResourceType::RdsInstance.to_string());
-    
+
     let resources = aws_repo.search(&query_params).await?;
-    
+
     Ok(HttpResponse::Ok().json(resources))
 }
 
@@ -111,14 +150,361 @@ pub async fn list_dynamodb_tables(
 ) -> Result<impl Responder, AppError> {
     let (account_id, region) = path.into_inner();
     let mut query_params = query.into_inner();
-    
+
     // Set the query params specific to DynamoDB tables
     query_params.account_id = Some(account_id);
     query_params.region = Some(region);
     query_params.resource_type = Some(AwsResourceType::DynamoDbTable.to_string());
-    
+
     let resources = aws_repo.search(&query_params).await?;
-    
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+// AWS VPC specific endpoints
+pub async fn list_vpcs(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to VPCs
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::Vpc.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_subnets(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to Subnets
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::Subnet.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_security_groups(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to Security Groups
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::SecurityGroup.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_internet_gateways(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to Internet Gateways
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::InternetGateway.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_nat_gateways(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to NAT Gateways
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::NatGateway.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_route_tables(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to Route Tables
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::RouteTable.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_network_acls(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to Network ACLs
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::NetworkAcl.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+// AWS Load Balancing specific endpoints
+pub async fn list_albs(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to ALBs
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::Alb.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_nlbs(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to NLBs
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::Nlb.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_elbs(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to ELBs
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::Elb.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_cloudfront_distributions(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to CloudFront Distributions
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::CloudFrontDistribution.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_api_gateway_rest_apis(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to API Gateway REST APIs
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::ApiGatewayRestApi.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_api_gateway_stages(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to API Gateway Stages
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::ApiGatewayStage.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_api_gateway_resources(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to API Gateway Resources
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::ApiGatewayResource.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_api_gateway_methods(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to API Gateway Methods
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::ApiGatewayMethod.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+// EBS Volumes endpoint
+pub async fn list_ebs_volumes(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to EBS Volumes
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::EbsVolume.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+// EBS Snapshots endpoint
+pub async fn list_ebs_snapshots(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to EBS Snapshots
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::EbsSnapshot.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+// EFS File Systems endpoint
+pub async fn list_efs_file_systems(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    // Set the query params specific to EFS File Systems
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::EfsFileSystem.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
     Ok(HttpResponse::Ok().json(resources))
 }
 
@@ -130,7 +516,18 @@ pub async fn search_aws_resources(
 ) -> Result<impl Responder, AppError> {
     let query_params = query.into_inner();
     let resources = aws_repo.search(&query_params).await?;
-    
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+// Generic Cloud resource search endpoint (multi-cloud)
+pub async fn search_cloud_resources(
+    query: web::Query<CloudResourceQuery>,
+    repo: web::Data<Arc<crate::repositories::cloud_resource::CloudResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let params = query.into_inner();
+    let resources = repo.search(&params).await?;
     Ok(HttpResponse::Ok().json(resources))
 }
 
@@ -141,9 +538,10 @@ pub async fn get_aws_resource(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let resource_id = path.into_inner();
-    let resource = aws_repo.find_by_id(resource_id).await?
-        .ok_or_else(|| AppError::NotFound(format!("AWS resource with ID {} not found", resource_id)))?;
-    
+    let resource = aws_repo.find_by_id(resource_id).await?.ok_or_else(|| {
+        AppError::NotFound(format!("AWS resource with ID {} not found", resource_id))
+    })?;
+
     Ok(HttpResponse::Ok().json(resource))
 }
 
@@ -156,22 +554,23 @@ pub async fn get_aws_cost_and_usage(
 ) -> Result<impl Responder, AppError> {
     let (account_id, region) = path.into_inner();
     let query_params = query.into_inner();
-    
+
     // Extract date from query parameters
-    let date = query_params.get("date")
+    let date = query_params
+        .get("date")
         .and_then(|v| v.as_str())
         .ok_or_else(|| AppError::Validation("date parameter is required".to_string()))?;
-    
-    let profile = query_params.get("profile")
-        .and_then(|v| v.as_str());
 
-    let aws_account_dto = &AwsAccountDto::new_with_profile(profile.as_deref().unwrap_or_else(|| ""), &region);
+    let profile = query_params.get("profile").and_then(|v| v.as_str());
+
+    let aws_account_dto =
+        &AwsAccountDto::new_with_profile(profile.as_deref().unwrap_or_else(|| ""), &region);
 
     let group_by = None; // You can add group by options if needed
     let cost_data = aws_cost_service
         .get_cost_for_date(aws_account_dto, date, group_by)
         .await?;
-    
+
     Ok(HttpResponse::Ok().json(cost_data))
 }
 
@@ -184,17 +583,17 @@ pub async fn s3_get_object(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let (profile, bucket, key) = path.into_inner();
-    
+
     // For S3, region doesn't matter as much since buckets are global
     let region = "us-east-1"; // This could be a parameter too
-    
-    let request = S3GetObjectRequest {
-        bucket,
-        key,
-    };
-    
+
+    let request = S3GetObjectRequest { bucket, key };
+
     let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
-    let response = aws_data_plane.as_ref().get_object(&aws_account_dto, &request).await?;
+    let response = aws_data_plane
+        .as_ref()
+        .get_object(&aws_account_dto, &request)
+        .await?;
 
     Ok(HttpResponse::Ok().json(response))
 }
@@ -210,7 +609,7 @@ pub async fn s3_put_object(
     let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
 
     let response = aws_data_plane.put_object(&aws_account_dto, &req).await?;
-    
+
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -222,11 +621,11 @@ pub async fn dynamodb_get_item(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let (profile, region, table) = path.into_inner();
-    
+
     // Override the table name in the path
     let mut request = req.into_inner();
     request.table_name = table;
-    
+
     let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
 
     let response = aws_data_plane.get_item(&aws_account_dto, &request).await?;
@@ -241,7 +640,7 @@ pub async fn dynamodb_put_item(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let (profile, region, table) = path.into_inner();
-    
+
     // Override the table name in the path
     let mut request = req.into_inner();
     request.table_name = table;
@@ -259,7 +658,7 @@ pub async fn dynamodb_query(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let (profile, region, table) = path.into_inner();
-    
+
     // Override the table name in the path
     let mut request = req.into_inner();
     request.table_name = table;
@@ -294,7 +693,9 @@ pub async fn sqs_receive_messages(
     let (profile, region) = path.into_inner();
 
     let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
-    let response = aws_data_plane.receive_messages(&aws_account_dto, &req).await?;
+    let response = aws_data_plane
+        .receive_messages(&aws_account_dto, &req)
+        .await?;
 
     Ok(HttpResponse::Ok().json(response))
 }
@@ -321,9 +722,11 @@ pub async fn kinesis_create_stream(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let (profile, region) = path.into_inner();
-    
+
     let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
-    let response = aws_control_plane.kinesis_create_stream(&aws_account_dto, &req).await?;
+    let response = aws_control_plane
+        .kinesis_create_stream(&aws_account_dto, &req)
+        .await?;
 
     Ok(HttpResponse::Created().json(response))
 }
@@ -336,7 +739,9 @@ pub async fn kinesis_delete_stream(
 ) -> Result<impl Responder, AppError> {
     let (profile, region) = path.into_inner();
     let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
-    let response = aws_control_plane.kinesis_delete_stream(&aws_account_dto, &req).await?;
+    let response = aws_control_plane
+        .kinesis_delete_stream(&aws_account_dto, &req)
+        .await?;
 
     Ok(HttpResponse::Ok().json(response))
 }
@@ -349,7 +754,9 @@ pub async fn kinesis_describe_stream(
 ) -> Result<impl Responder, AppError> {
     let (profile, region) = path.into_inner();
     let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
-    let response = aws_control_plane.kinesis_describe_stream(&aws_account_dto, &req).await?;
+    let response = aws_control_plane
+        .kinesis_describe_stream(&aws_account_dto, &req)
+        .await?;
 
     Ok(HttpResponse::Ok().json(response))
 }
@@ -363,7 +770,9 @@ pub async fn kinesis_list_streams(
 ) -> Result<impl Responder, AppError> {
     let (profile, region) = path.into_inner();
     let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
-    let response = aws_control_plane.kinesis_list_streams(&aws_account_dto, &req).await?;
+    let response = aws_control_plane
+        .kinesis_list_streams(&aws_account_dto, &req)
+        .await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -374,7 +783,9 @@ pub async fn kinesis_describe_limits(
 ) -> Result<impl Responder, AppError> {
     let (profile, region) = path.into_inner();
     let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
-    let response = aws_control_plane.kinesis_describe_limits(&aws_account_dto).await?;
+    let response = aws_control_plane
+        .kinesis_describe_limits(&aws_account_dto)
+        .await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -385,7 +796,9 @@ pub async fn kinesis_describe_stream_summary(
 ) -> Result<impl Responder, AppError> {
     let (profile, region, stream_name) = path.into_inner();
     let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
-    let response = aws_control_plane.kinesis_describe_stream_summary(&aws_account_dto, &stream_name).await?;
+    let response = aws_control_plane
+        .kinesis_describe_stream_summary(&aws_account_dto, &stream_name)
+        .await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -397,7 +810,9 @@ pub async fn kinesis_update_shard_count(
 ) -> Result<impl Responder, AppError> {
     let (profile, region) = path.into_inner();
     let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
-    let response = aws_control_plane.kinesis_update_shard_count(&aws_account_dto, &req).await?;
+    let response = aws_control_plane
+        .kinesis_update_shard_count(&aws_account_dto, &req)
+        .await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -409,7 +824,9 @@ pub async fn kinesis_increase_retention_period(
 ) -> Result<impl Responder, AppError> {
     let (profile, region) = path.into_inner();
     let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
-    let response = aws_control_plane.kinesis_increase_retention_period(&aws_account_dto, &req).await?;
+    let response = aws_control_plane
+        .kinesis_increase_retention_period(&aws_account_dto, &req)
+        .await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -421,7 +838,9 @@ pub async fn kinesis_decrease_retention_period(
 ) -> Result<impl Responder, AppError> {
     let (profile, region) = path.into_inner();
     let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
-    let response = aws_control_plane.kinesis_decrease_retention_period(&aws_account_dto, &req).await?;
+    let response = aws_control_plane
+        .kinesis_decrease_retention_period(&aws_account_dto, &req)
+        .await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -433,7 +852,9 @@ pub async fn kinesis_enable_enhanced_monitoring(
 ) -> Result<impl Responder, AppError> {
     let (profile, region) = path.into_inner();
     let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
-    let response = aws_control_plane.kinesis_enable_enhanced_monitoring(&aws_account_dto, &req).await?;
+    let response = aws_control_plane
+        .kinesis_enable_enhanced_monitoring(&aws_account_dto, &req)
+        .await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -445,7 +866,9 @@ pub async fn kinesis_disable_enhanced_monitoring(
 ) -> Result<impl Responder, AppError> {
     let (profile, region) = path.into_inner();
     let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
-    let response = aws_control_plane.kinesis_disable_enhanced_monitoring(&aws_account_dto, &req).await?;
+    let response = aws_control_plane
+        .kinesis_disable_enhanced_monitoring(&aws_account_dto, &req)
+        .await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -457,7 +880,9 @@ pub async fn kinesis_list_shards(
 ) -> Result<impl Responder, AppError> {
     let (profile, region) = path.into_inner();
     let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
-    let response = aws_control_plane.kinesis_list_shards(&aws_account_dto, &req).await?;
+    let response = aws_control_plane
+        .kinesis_list_shards(&aws_account_dto, &req)
+        .await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -471,7 +896,9 @@ pub async fn kinesis_put_records(
     let (profile, region) = path.into_inner();
     let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
 
-    let response = aws_data_plane.kinesis_put_records(&aws_account_dto, &req).await?;
+    let response = aws_data_plane
+        .kinesis_put_records(&aws_account_dto, &req)
+        .await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -484,7 +911,9 @@ pub async fn kinesis_get_records(
     let (profile, region) = path.into_inner();
     let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
 
-    let response = aws_data_plane.kinesis_get_records(&aws_account_dto, &req).await?;
+    let response = aws_data_plane
+        .kinesis_get_records(&aws_account_dto, &req)
+        .await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -497,7 +926,9 @@ pub async fn kinesis_get_shard_iterator(
     let (profile, region) = path.into_inner();
     let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
 
-    let response = aws_data_plane.kinesis_get_shard_iterator(&aws_account_dto, &req).await?;
+    let response = aws_data_plane
+        .kinesis_get_shard_iterator(&aws_account_dto, &req)
+        .await?;
     Ok(HttpResponse::Ok().json(response))
 }
 
@@ -517,34 +948,36 @@ pub async fn get_cloudwatch_metrics(
 ) -> Result<impl Responder, AppError> {
     let (profile, region, resource_type, resource_id) = path.into_inner();
     let query_params = req.into_inner();
-    
+
     // Get start and end times from query parameters
-    let start_time = query_params.get("start_time")
+    let start_time = query_params
+        .get("start_time")
         .and_then(|v| v.as_str())
         .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
         .map(|dt| dt.with_timezone(&Utc))
         .unwrap_or_else(|| Utc::now() - chrono::Duration::hours(1));
-    
-    let end_time = query_params.get("end_time")
+
+    let end_time = query_params
+        .get("end_time")
         .and_then(|v| v.as_str())
         .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
         .map(|dt| dt.with_timezone(&Utc))
         .unwrap_or_else(|| Utc::now());
-    
+
     // Get period (in seconds)
-    let period = query_params.get("period")
+    let period = query_params
+        .get("period")
         .and_then(|v| v.as_i64())
         .unwrap_or(60) as i32;
-    
+
     // Parse metrics
     let metrics = match query_params.get("metrics") {
-        Some(m) if m.is_array() => {
-            m.as_array()
-                .unwrap()
-                .iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        },
+        Some(m) if m.is_array() => m
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect(),
         _ => {
             // Default metrics based on resource type
             match resource_type.as_str() {
@@ -579,7 +1012,9 @@ pub async fn get_cloudwatch_metrics(
     };
 
     // Access the inner CloudWatchService and use the trait method
-    let result = cloudwatch_service.get_metrics(&aws_account_dto, &request).await?;
+    let result = cloudwatch_service
+        .get_metrics(&aws_account_dto, &request)
+        .await?;
 
     Ok(HttpResponse::Ok().json(result))
 }
@@ -593,25 +1028,28 @@ pub async fn get_cloudwatch_logs(
 ) -> Result<impl Responder, AppError> {
     let (profile, region, log_group) = path.into_inner();
     let query_params = req.into_inner();
-    
+
     // Get start and end times from query parameters
-    let start_time = query_params.get("start_time")
+    let start_time = query_params
+        .get("start_time")
         .and_then(|v| v.as_str())
         .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
         .map(|dt| dt.with_timezone(&Utc))
         .unwrap_or_else(|| Utc::now() - chrono::Duration::hours(1));
-    
-    let end_time = query_params.get("end_time")
+
+    let end_time = query_params
+        .get("end_time")
         .and_then(|v| v.as_str())
         .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
         .map(|dt| dt.with_timezone(&Utc))
         .unwrap_or_else(|| Utc::now());
-    
+
     // Filter pattern
-    let filter_pattern = query_params.get("filter_pattern")
+    let filter_pattern = query_params
+        .get("filter_pattern")
         .and_then(|v| v.as_str())
         .map(String::from);
-    
+
     let request = CloudWatchLogsRequest {
         log_group_name: log_group,
         start_time,
@@ -623,7 +1061,9 @@ pub async fn get_cloudwatch_logs(
     let aws_account_dto = AwsAccountDto::new_with_profile(&profile, &region);
 
     // Access the inner CloudWatchService and use the trait method
-    let result = cloudwatch_service.get_logs(&aws_account_dto, &request.log_group_name).await?;
+    let result = cloudwatch_service
+        .get_logs(&aws_account_dto, &request.log_group_name)
+        .await?;
 
     Ok(HttpResponse::Ok().json(result))
 }
@@ -637,12 +1077,13 @@ pub async fn schedule_metrics_collection(
 ) -> Result<impl Responder, AppError> {
     let (profile, region, resource_type, resource_id) = path.into_inner();
     let body = req.into_inner();
-    
+
     // Get interval in seconds
-    let interval_seconds = body.get("interval_seconds")
+    let interval_seconds = body
+        .get("interval_seconds")
         .and_then(|v| v.as_u64())
         .unwrap_or(300); // Default to 5 minutes
-    
+
     // This functionality is not yet implemented
     // Return a message indicating this
     Ok(HttpResponse::Ok().json(serde_json::json!({
@@ -664,13 +1105,13 @@ pub async fn list_elasticache_clusters(
 ) -> Result<impl Responder, AppError> {
     let (account_id, region) = path.into_inner();
     let mut query_params = query.into_inner();
-    
+
     // Set the query params specific to ElastiCache clusters
     query_params.account_id = Some(account_id);
     query_params.region = Some(region);
     query_params.resource_type = Some(AwsResourceType::ElasticacheCluster.to_string());
-    
+
     let resources = aws_repo.search(&query_params).await?;
-    
+
     Ok(HttpResponse::Ok().json(resources))
 }

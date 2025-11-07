@@ -122,16 +122,8 @@ export const getNamespaces = async (clusterId) => {
 // General pod listing - currently requires a namespace.
 // If "all pods in cluster" is needed, backend changes would be required.
 export const getPods = async (clusterId, namespace) => {
-    if (!namespace || namespace === "") {
-        // Or handle this by throwing an error, or returning empty array,
-        // as there's no current backend endpoint for "all pods in cluster across all namespaces"
-        // without specifying a namespace in the path.
-        console.warn('getPods called without a namespace. This is not currently supported for general pod listing across all namespaces.');
-        // For now, let\'s assume this won\'t be called with empty namespace by UI logic.
-        // If it were, it would need a dedicated backend endpoint like /clusters/{clusterId}/pods
-        return Promise.resolve([]); // Return empty array or throw error
-    }
-    const url = `${API_BASE_URL}/clusters/${clusterId}/namespaces/${encodeURIComponent(namespace)}/pods`;
+    const namespaceSegment = !namespace || namespace === "" ? "all" : encodeURIComponent(namespace);
+    const url = `${API_BASE_URL}/clusters/${clusterId}/namespaces/${namespaceSegment}/pods`;
     const response = await fetchWithAuth(url);
     return handleResponse(response);
 };
@@ -150,11 +142,25 @@ export const getPodEvents = async (clusterId, namespace, podName) => {
     return handleResponse(response);
 };
 
-export const getPodLogs = async (clusterId, namespace, podName, containerName) => {
-    let url = `${API_BASE_URL}/clusters/${clusterId}/namespaces/${encodeURIComponent(namespace)}/pods/${encodeURIComponent(podName)}/logs`;
-    if (containerName) {
-        url += `?container=${encodeURIComponent(containerName)}`;
+export const getPodLogs = async (clusterId, namespace, podName, options = {}) => {
+    const { container, previous = false, tailLines } = options;
+    const namespaceSegment = !namespace || namespace === "" ? "all" : encodeURIComponent(namespace);
+    let url = `${API_BASE_URL}/clusters/${clusterId}/namespaces/${namespaceSegment}/pods/${encodeURIComponent(podName)}/logs`;
+    const params = new URLSearchParams();
+    if (container) {
+        params.append('container', container);
     }
+    if (previous) {
+        params.append('previous', 'true');
+    }
+    if (tailLines) {
+        params.append('tail_lines', tailLines);
+    }
+    const queryString = params.toString();
+    if (queryString) {
+        url += `?${queryString}`;
+    }
+
     const response = await fetchWithAuth(url);
     if (!response.ok) {
         const errorText = await response.text().catch(() => 'Failed to fetch logs and parse error text.');
@@ -162,6 +168,80 @@ export const getPodLogs = async (clusterId, namespace, podName, containerName) =
         throw new Error(errorText || `API request for logs failed with status ${response.status}`);
     }
     return response.text(); 
+};
+
+export const getClusterMetrics = async (clusterId, namespace = null) => {
+    let url = `${API_BASE_URL}/clusters/${clusterId}/metrics`;
+    if (namespace && namespace !== "" && namespace !== "all") {
+        const params = new URLSearchParams({ namespace });
+        url += `?${params.toString()}`;
+    }
+    const response = await fetchWithAuth(url);
+    return handleResponse(response);
+};
+
+export const getConfigMaps = async (clusterId, namespace) => {
+    const namespaceSegment = !namespace || namespace === "" ? "all" : encodeURIComponent(namespace);
+    const url = `${API_BASE_URL}/clusters/${clusterId}/namespaces/${namespaceSegment}/configmaps`;
+    const response = await fetchWithAuth(url);
+    return handleResponse(response);
+};
+
+export const getConfigMap = async (clusterId, namespace, name) => {
+    const namespaceSegment = !namespace || namespace === "" ? "all" : encodeURIComponent(namespace);
+    const url = `${API_BASE_URL}/clusters/${clusterId}/namespaces/${namespaceSegment}/configmaps/${encodeURIComponent(name)}`;
+    const response = await fetchWithAuth(url);
+    return handleResponse(response);
+};
+
+export const upsertConfigMap = async (clusterId, namespace, name, payload) => {
+    const namespaceSegment = !namespace || namespace === "" ? "all" : encodeURIComponent(namespace);
+    const url = `${API_BASE_URL}/clusters/${clusterId}/namespaces/${namespaceSegment}/configmaps/${encodeURIComponent(name)}`;
+    const response = await fetchWithAuth(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    return handleResponse(response);
+};
+
+export const deleteConfigMap = async (clusterId, namespace, name) => {
+    const namespaceSegment = !namespace || namespace === "" ? "all" : encodeURIComponent(namespace);
+    const url = `${API_BASE_URL}/clusters/${clusterId}/namespaces/${namespaceSegment}/configmaps/${encodeURIComponent(name)}`;
+    const response = await fetchWithAuth(url, { method: 'DELETE' });
+    return handleResponse(response);
+};
+
+export const getSecrets = async (clusterId, namespace) => {
+    const namespaceSegment = !namespace || namespace === "" ? "all" : encodeURIComponent(namespace);
+    const url = `${API_BASE_URL}/clusters/${clusterId}/namespaces/${namespaceSegment}/secrets`;
+    const response = await fetchWithAuth(url);
+    return handleResponse(response);
+};
+
+export const getSecret = async (clusterId, namespace, name) => {
+    const namespaceSegment = !namespace || namespace === "" ? "all" : encodeURIComponent(namespace);
+    const url = `${API_BASE_URL}/clusters/${clusterId}/namespaces/${namespaceSegment}/secrets/${encodeURIComponent(name)}`;
+    const response = await fetchWithAuth(url);
+    return handleResponse(response);
+};
+
+export const upsertSecret = async (clusterId, namespace, name, payload) => {
+    const namespaceSegment = !namespace || namespace === "" ? "all" : encodeURIComponent(namespace);
+    const url = `${API_BASE_URL}/clusters/${clusterId}/namespaces/${namespaceSegment}/secrets/${encodeURIComponent(name)}`;
+    const response = await fetchWithAuth(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    return handleResponse(response);
+};
+
+export const deleteSecret = async (clusterId, namespace, name) => {
+    const namespaceSegment = !namespace || namespace === "" ? "all" : encodeURIComponent(namespace);
+    const url = `${API_BASE_URL}/clusters/${clusterId}/namespaces/${namespaceSegment}/secrets/${encodeURIComponent(name)}`;
+    const response = await fetchWithAuth(url, { method: 'DELETE' });
+    return handleResponse(response);
 };
 
 

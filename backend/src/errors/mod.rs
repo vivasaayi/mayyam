@@ -1,9 +1,9 @@
 use actix_web::{HttpResponse, ResponseError};
-use sea_orm::DbErr;
-use thiserror::Error;
-use serde::{Serialize, Deserialize};
-use tracing::error;
 use aws_smithy_types::error::operation::BuildError;
+use sea_orm::DbErr;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+use tracing::error;
 
 #[derive(Error, Debug)]
 pub enum AppError {
@@ -18,13 +18,13 @@ pub enum AppError {
 
     #[error("Not found: {0}")]
     NotFound(String),
-    
+
     #[error("Conflict: {0}")]
     Conflict(String),
-    
+
     #[error("Bad request: {0}")]
     BadRequest(String),
-    
+
     #[error("Configuration error: {0}")]
     Config(String),
 
@@ -36,23 +36,23 @@ pub enum AppError {
 
     #[error("Cloud provider error: {0}")]
     CloudProvider(String),
-    
+
     #[error("Kubernetes error: {0}")]
     Kubernetes(String),
-    
+
     #[error("Kafka error: {0}")]
     Kafka(String),
 
     #[error("AI service error: {0}")]
     AI(String),
-    
+
     #[error("Internal server error: {0}")]
     Internal(String),
-    
+
     // Add aliases for compatibility
     #[error("External service error: {0}")]
     ExternalServiceError(String),
-    
+
     #[error("Internal server error: {0}")]
     InternalServerError(String),
 }
@@ -83,18 +83,12 @@ impl AppError {
 impl ResponseError for AppError {
     fn error_response(&self) -> HttpResponse {
         match self {
-            AppError::Auth(_) => {
-                HttpResponse::Unauthorized().json(ErrorResponse::new(self))
-            }
+            AppError::Auth(_) => HttpResponse::Unauthorized().json(ErrorResponse::new(self)),
             AppError::Validation(_) | AppError::Config(_) | AppError::BadRequest(_) => {
                 HttpResponse::BadRequest().json(ErrorResponse::new(self))
             }
-            AppError::NotFound(_) => {
-                HttpResponse::NotFound().json(ErrorResponse::new(self))
-            }
-            AppError::Conflict(_) => {
-                HttpResponse::Conflict().json(ErrorResponse::new(self))
-            }
+            AppError::NotFound(_) => HttpResponse::NotFound().json(ErrorResponse::new(self)),
+            AppError::Conflict(_) => HttpResponse::Conflict().json(ErrorResponse::new(self)),
             _ => HttpResponse::InternalServerError().json(ErrorResponse::new(self)),
         }
     }

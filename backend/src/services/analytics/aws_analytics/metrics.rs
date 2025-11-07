@@ -5,7 +5,7 @@ pub struct MetricsAnalyzer;
 impl MetricsAnalyzer {
     pub fn find_metric<'a>(
         metrics: &'a cloud_watch::CloudWatchMetricsResult,
-        name: &str
+        name: &str,
     ) -> Option<&'a cloud_watch::CloudWatchMetricData> {
         metrics.metrics.iter().find(|m| m.metric_name == name)
     }
@@ -16,7 +16,10 @@ impl MetricsAnalyzer {
         }
 
         let sum: f64 = datapoints.iter().map(|d| d.value).sum();
-        let max: f64 = datapoints.iter().map(|d| d.value).fold(f64::NEG_INFINITY, f64::max);
+        let max: f64 = datapoints
+            .iter()
+            .map(|d| d.value)
+            .fold(f64::NEG_INFINITY, f64::max);
         let avg = sum / datapoints.len() as f64;
 
         (avg, max)

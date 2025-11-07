@@ -1,5 +1,5 @@
 use actix_web::{web, HttpResponse, Responder};
-use sea_orm::{DatabaseConnection, EntityTrait, ColumnTrait};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait};
 use std::sync::Arc;
 use tracing::debug;
 use uuid::Uuid;
@@ -10,15 +10,21 @@ use crate::models::cluster::KubernetesClusterConfig;
 use crate::services::kubernetes::configmaps_service::ConfigMapsService;
 
 // Helper: fetch cluster config by cluster_id and deserialize to KubernetesClusterConfig
-async fn get_cluster_config_by_id(db: &DatabaseConnection, cluster_id_str: &str) -> Result<KubernetesClusterConfig, AppError> {
-    let cluster_id = Uuid::parse_str(cluster_id_str).map_err(|_| AppError::BadRequest("Invalid cluster ID format".to_string()))?;
+async fn get_cluster_config_by_id(
+    db: &DatabaseConnection,
+    cluster_id_str: &str,
+) -> Result<KubernetesClusterConfig, AppError> {
+    let cluster_id = Uuid::parse_str(cluster_id_str)
+        .map_err(|_| AppError::BadRequest("Invalid cluster ID format".to_string()))?;
     let cluster_model = crate::models::cluster::Entity::find_by_id(cluster_id)
         .one(db)
         .await
         .map_err(AppError::Database)?
         .ok_or_else(|| AppError::NotFound(format!("Cluster with ID {} not found", cluster_id)))?;
     if cluster_model.cluster_type != "kubernetes" {
-        return Err(AppError::BadRequest("Cluster is not a Kubernetes cluster".to_string()));
+        return Err(AppError::BadRequest(
+            "Cluster is not a Kubernetes cluster".to_string(),
+        ));
     }
     let value = cluster_model.config;
     if value.is_null() {
@@ -32,7 +38,8 @@ async fn get_cluster_config_by_id(db: &DatabaseConnection, cluster_id_str: &str)
             client_key_data: None,
         })
     } else {
-        serde_json::from_value(value).map_err(|e| AppError::Internal(format!("Failed to parse cluster config: {}", e)))
+        serde_json::from_value(value)
+            .map_err(|e| AppError::Internal(format!("Failed to parse cluster config: {}", e)))
     }
 }
 
@@ -57,7 +64,16 @@ pub async fn list_configmaps_controller(
     let field_selector = query.get("fieldSelector").cloned();
     let limit = query.get("limit").and_then(|s| s.parse::<u32>().ok());
     let continue_token = query.get("continue").cloned();
-    let list = svc.list(&cfg, &ns, label_selector, field_selector, limit, continue_token).await?;
+    let list = svc
+        .list(
+            &cfg,
+            &ns,
+            label_selector,
+            field_selector,
+            limit,
+            continue_token,
+        )
+        .await?;
     Ok(HttpResponse::Ok().json(list))
 }
 

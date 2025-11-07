@@ -47,22 +47,25 @@ const AppLayout = () => {
             <CNavLink as={Link} to="/">Dashboard</CNavLink>
           </CNavItem>
           <CNavItem>
+            <CNavLink as={Link} to="/sync-runs">Sync Runs</CNavLink>
+          </CNavItem>
+          <CNavItem>
+            <CNavLink as={Link} to="/cloud-resources">Cloud Resources</CNavLink>
+          </CNavItem>
+          <CNavItem>
             <CNavLink as={Link} to="/databases">Databases</CNavLink>
           </CNavItem>
           <CNavItem>
             <CNavLink as={Link} to="/kafka">Kafka</CNavLink>
           </CNavItem>
           <CNavItem>
-            <CNavLink as={Link} to="/cloud">Cloud</CNavLink>
-          </CNavItem>
-          <CNavItem>
             <CNavLink as={Link} to="/kinesis-analysis">Kinesis Analysis</CNavLink>
           </CNavItem>
           <CNavItem>
-            <CNavLink as={Link} to="/sync-runs">Sync Runs</CNavLink>
+            <CNavLink as={Link} to="/kubernetes">Kubernetes</CNavLink>
           </CNavItem>
           <CNavItem>
-            <CNavLink as={Link} to="/kubernetes">Kubernetes</CNavLink>
+            <CNavLink as={Link} to="/cost-analytics">Cost Analytics</CNavLink>
           </CNavItem>
           <CNavItem>
             <CNavLink as={Link} to="/chaos">Chaos Engineering</CNavLink>
@@ -76,13 +79,16 @@ const AppLayout = () => {
 
           <CNavTitle>Settings</CNavTitle>
           <CNavItem>
-            <CNavLink as={Link} to="/query-templates">Query Templates</CNavLink>
+            <CNavLink as={Link} to="/cloud-accounts">Cloud Accounts</CNavLink>
           </CNavItem>
           <CNavItem>
             <CNavLink as={Link} to="/llm-providers">LLM Providers</CNavLink>
           </CNavItem>
           <CNavItem>
-            <CNavLink as={Link} to="/manage-kubernetes-clusters">Manage Clusters</CNavLink>
+            <CNavLink as={Link} to="/manage-kubernetes-clusters">Kubernetes Clusters</CNavLink>
+          </CNavItem>
+          <CNavItem>
+            <CNavLink as={Link} to="/query-templates">Query Templates</CNavLink>
           </CNavItem>
           <CNavItem>
             <CNavLink as={Link} to="/debug">Debug</CNavLink>

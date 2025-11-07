@@ -1,13 +1,16 @@
-use std::sync::Arc;
-use sea_orm::*;
 use chrono::{NaiveDate, Utc};
+use sea_orm::*;
+use sea_query::Expr;
+use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::models::aws_cost_data::{Entity as CostData, Model as CostDataModel};
-use crate::models::aws_monthly_cost_aggregates::{Entity as MonthlyCostAggregates, Model as MonthlyCostAggregateModel};
-use crate::models::aws_cost_anomalies::{Entity as CostAnomalies, Model as CostAnomalyModel};
-use crate::models::aws_cost_insights::{Entity as CostInsights, Model as CostInsightModel};
 use crate::errors::AppError;
+use crate::models::aws_cost_anomalies::{Entity as CostAnomalies, Model as CostAnomalyModel};
+use crate::models::aws_cost_data::{Entity as CostData, Model as CostDataModel};
+use crate::models::aws_cost_insights::{Entity as CostInsights, Model as CostInsightModel};
+use crate::models::aws_monthly_cost_aggregates::{
+    Entity as MonthlyCostAggregates, Model as MonthlyCostAggregateModel,
+};
 
 #[derive(Debug)]
 pub struct CostAnalyticsRepository {
@@ -20,12 +23,15 @@ impl CostAnalyticsRepository {
     }
 
     // Cost Data operations
-    pub async fn insert_cost_data(&self, cost_data: Vec<crate::models::aws_cost_data::ActiveModel>) -> Result<(), AppError> {
+    pub async fn insert_cost_data(
+        &self,
+        cost_data: Vec<crate::models::aws_cost_data::ActiveModel>,
+    ) -> Result<(), AppError> {
         CostData::insert_many(cost_data)
             .exec(&*self.db)
             .await
             .map_err(|e| AppError::Database(e))?;
-        
+
         Ok(())
     }
 
@@ -55,12 +61,15 @@ impl CostAnalyticsRepository {
     }
 
     // Monthly Aggregates operations
-    pub async fn insert_monthly_aggregate(&self, aggregate: crate::models::aws_monthly_cost_aggregates::ActiveModel) -> Result<MonthlyCostAggregateModel, AppError> {
+    pub async fn insert_monthly_aggregate(
+        &self,
+        aggregate: crate::models::aws_monthly_cost_aggregates::ActiveModel,
+    ) -> Result<MonthlyCostAggregateModel, AppError> {
         let result = MonthlyCostAggregates::insert(aggregate)
             .exec_with_returning(&*self.db)
             .await
             .map_err(|e| AppError::Database(e))?;
-        
+
         Ok(result)
     }
 
@@ -73,8 +82,11 @@ impl CostAnalyticsRepository {
             .filter(crate::models::aws_monthly_cost_aggregates::Column::AccountId.eq(account_id));
 
         if let Some(month_limit) = months {
-            let cutoff_date = Utc::now().naive_utc().date() - chrono::Duration::days(month_limit as i64 * 30);
-            query = query.filter(crate::models::aws_monthly_cost_aggregates::Column::MonthYear.gte(cutoff_date));
+            let cutoff_date =
+                Utc::now().naive_utc().date() - chrono::Duration::days(month_limit as i64 * 30);
+            query = query.filter(
+                crate::models::aws_monthly_cost_aggregates::Column::MonthYear.gte(cutoff_date),
+            );
         }
 
         let results = query
@@ -118,12 +130,15 @@ impl CostAnalyticsRepository {
     }
 
     // Cost Anomalies operations
-    pub async fn insert_cost_anomaly(&self, anomaly: crate::models::aws_cost_anomalies::ActiveModel) -> Result<CostAnomalyModel, AppError> {
+    pub async fn insert_cost_anomaly(
+        &self,
+        anomaly: crate::models::aws_cost_anomalies::ActiveModel,
+    ) -> Result<CostAnomalyModel, AppError> {
         let result = CostAnomalies::insert(anomaly)
             .exec_with_returning(&*self.db)
             .await
             .map_err(|e| AppError::Database(e))?;
-        
+
         Ok(result)
     }
 
@@ -154,16 +169,22 @@ impl CostAnalyticsRepository {
     }
 
     // Cost Insights operations
-    pub async fn insert_cost_insight(&self, insight: crate::models::aws_cost_insights::ActiveModel) -> Result<CostInsightModel, AppError> {
+    pub async fn insert_cost_insight(
+        &self,
+        insight: crate::models::aws_cost_insights::ActiveModel,
+    ) -> Result<CostInsightModel, AppError> {
         let result = CostInsights::insert(insight)
             .exec_with_returning(&*self.db)
             .await
             .map_err(|e| AppError::Database(e))?;
-        
+
         Ok(result)
     }
 
-    pub async fn get_cost_insights_by_anomaly(&self, anomaly_id: Uuid) -> Result<Vec<CostInsightModel>, AppError> {
+    pub async fn get_cost_insights_by_anomaly(
+        &self,
+        anomaly_id: Uuid,
+    ) -> Result<Vec<CostInsightModel>, AppError> {
         let results = CostInsights::find()
             .filter(crate::models::aws_cost_insights::Column::AnomalyId.eq(anomaly_id))
             .order_by_desc(crate::models::aws_cost_insights::Column::CreatedAt)
@@ -184,7 +205,8 @@ impl CostAnalyticsRepository {
             .filter(crate::models::aws_cost_insights::Column::AccountId.eq(account_id));
 
         if let Some(insight_t) = insight_type {
-            query = query.filter(crate::models::aws_cost_insights::Column::InsightType.eq(insight_t));
+            query =
+                query.filter(crate::models::aws_cost_insights::Column::InsightType.eq(insight_t));
         }
 
         let results = query
@@ -204,11 +226,14 @@ impl CostAnalyticsRepository {
         service_name: &str,
         months: i32,
     ) -> Result<Vec<MonthlyCostAggregateModel>, AppError> {
-        let cutoff_date = Utc::now().naive_utc().date() - chrono::Duration::days(months as i64 * 30);
-        
+        let cutoff_date =
+            Utc::now().naive_utc().date() - chrono::Duration::days(months as i64 * 30);
+
         let results = MonthlyCostAggregates::find()
             .filter(crate::models::aws_monthly_cost_aggregates::Column::AccountId.eq(account_id))
-            .filter(crate::models::aws_monthly_cost_aggregates::Column::ServiceName.eq(service_name))
+            .filter(
+                crate::models::aws_monthly_cost_aggregates::Column::ServiceName.eq(service_name),
+            )
             .filter(crate::models::aws_monthly_cost_aggregates::Column::MonthYear.gte(cutoff_date))
             .order_by_asc(crate::models::aws_monthly_cost_aggregates::Column::MonthYear)
             .all(&*self.db)
@@ -218,7 +243,10 @@ impl CostAnalyticsRepository {
         Ok(results)
     }
 
-    pub async fn calculate_monthly_totals(&self, account_id: &str) -> Result<Vec<(String, f64)>, AppError> {
+    pub async fn calculate_monthly_totals(
+        &self,
+        account_id: &str,
+    ) -> Result<Vec<(String, f64)>, AppError> {
         let query = format!(
             r#"
             SELECT 
@@ -234,19 +262,97 @@ impl CostAnalyticsRepository {
         );
 
         let statement = Statement::from_string(DatabaseBackend::Postgres, query);
-        let query_result = self.db.query_all(statement).await
+        let query_result = self
+            .db
+            .query_all(statement)
+            .await
             .map_err(|e| AppError::Database(e))?;
 
         let mut results = Vec::new();
         for row in query_result {
-            let month: String = row.try_get("", "month")
+            let month: String = row
+                .try_get("", "month")
                 .map_err(|e| AppError::Database(e))?;
-            let total: sea_orm::prelude::Decimal = row.try_get("", "total")
+            let total: sea_orm::prelude::Decimal = row
+                .try_get("", "total")
                 .map_err(|e| AppError::Database(e))?;
-            
+
             results.push((month, total.to_string().parse().unwrap_or(0.0)));
         }
 
         Ok(results)
+    }
+
+    pub async fn get_resource_costs(
+        &self,
+        account_id: &str,
+        start_date: NaiveDate,
+        end_date: NaiveDate,
+        resource_id: Option<&str>,
+        service_name: Option<&str>,
+        region: Option<&str>,
+        availability_zone: Option<&str>,
+        instance_type: Option<&str>,
+        limit: Option<u64>,
+    ) -> Result<Vec<CostDataModel>, AppError> {
+        let mut query = CostData::find()
+            .filter(crate::models::aws_cost_data::Column::AccountId.eq(account_id))
+            .filter(crate::models::aws_cost_data::Column::UsageStart.gte(start_date))
+            .filter(crate::models::aws_cost_data::Column::UsageEnd.lte(end_date));
+
+        // Apply optional filters
+        if let Some(resource) = resource_id {
+            // Filter by resource_id in tags JSON
+            query = query.filter(Expr::cust_with_values(
+                "tags->>'resource_id' = ?",
+                vec![resource.to_string()],
+            ));
+        }
+
+        if let Some(service) = service_name {
+            query = query.filter(crate::models::aws_cost_data::Column::ServiceName.eq(service));
+        }
+
+        if let Some(reg) = region {
+            query = query.filter(crate::models::aws_cost_data::Column::Region.eq(reg));
+        }
+
+        if let Some(az) = availability_zone {
+            // Filter by availability zone in tags JSON
+            query = query.filter(Expr::cust_with_values(
+                "tags->>'availability_zone' = ?",
+                vec![az.to_string()],
+            ));
+        }
+
+        if let Some(instance) = instance_type {
+            // Filter by instance type in tags JSON
+            query = query.filter(Expr::cust_with_values(
+                "tags->>'instance_type' = ?",
+                vec![instance.to_string()],
+            ));
+        }
+
+        let results = query
+            .order_by_desc(crate::models::aws_cost_data::Column::UnblendedCost)
+            .limit(limit.unwrap_or(100))
+            .all(&*self.db)
+            .await
+            .map_err(|e| AppError::Database(e))?;
+
+        Ok(results)
+    }
+
+    // Cost Insights operations
+    pub async fn create_cost_insight(
+        &self,
+        insight: crate::models::aws_cost_insights::ActiveModel,
+    ) -> Result<CostInsightModel, AppError> {
+        let result = CostInsights::insert(insight)
+            .exec_with_returning(&*self.db)
+            .await
+            .map_err(|e| AppError::Database(e))?;
+
+        Ok(result)
     }
 }

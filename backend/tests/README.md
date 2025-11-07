@@ -142,7 +142,7 @@ export TEST_MODE=true
 Unit tests use SQLite in-memory database for fast, isolated testing:
 
 ```rust
-use crate::tests::test_utils::setup_test_database;
+use crate::common::test_utils::setup_test_database;
 
 #[tokio::test]
 async fn test_my_function() {

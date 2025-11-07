@@ -1,6 +1,6 @@
+use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
-use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Deserialize, Serialize)]
@@ -12,7 +12,7 @@ pub struct Model {
     pub query: String,
     pub description: Option<String>,
     pub connection_type: Option<String>, // e.g., "mysql", "postgresql", or NULL for common templates
-    pub category: Option<String>, // e.g., "Performance", "Schema", "Monitoring"
+    pub category: Option<String>,        // e.g., "Performance", "Schema", "Monitoring"
     pub is_favorite: bool,
     pub display_order: i32,
     pub created_by: Uuid,

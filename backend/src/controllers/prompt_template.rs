@@ -4,7 +4,10 @@ use serde_json::Value;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::models::prompt_template::{PromptTemplateResponseDto, CreatePromptTemplateDto, UpdatePromptTemplateDto, PromptStatus, PromptCategory, PromptType};
+use crate::models::prompt_template::{
+    CreatePromptTemplateDto, PromptCategory, PromptStatus, PromptTemplateResponseDto, PromptType,
+    UpdatePromptTemplateDto,
+};
 use crate::repositories::prompt_template::PromptTemplateRepository;
 
 #[derive(Debug, Deserialize)]
@@ -78,7 +81,9 @@ pub struct PromptTemplateController {
 
 impl PromptTemplateController {
     pub fn new(prompt_template_repo: Arc<PromptTemplateRepository>) -> Self {
-        Self { prompt_template_repo }
+        Self {
+            prompt_template_repo,
+        }
     }
 
     pub async fn create_prompt_template(
@@ -139,11 +144,22 @@ impl PromptTemplateController {
         params: web::Query<PromptTemplateQueryParams>,
     ) -> ActixResult<HttpResponse> {
         let templates = if let Some(search) = &params.search {
-            controller.prompt_template_repo.search(search).await.map_err(|e| actix_web::error::ErrorInternalServerError(e))?
+            controller
+                .prompt_template_repo
+                .search(search)
+                .await
+                .map_err(|e| actix_web::error::ErrorInternalServerError(e))?
         } else if let Some(category) = &params.category {
-            controller.prompt_template_repo.find_by_category(category.as_ref()).await.map_err(|e| actix_web::error::ErrorInternalServerError(e))?
+            controller
+                .prompt_template_repo
+                .find_by_category(category.as_ref())
+                .await
+                .map_err(|e| actix_web::error::ErrorInternalServerError(e))?
         } else if params.system_only.unwrap_or(false) {
-            controller.prompt_template_repo.find_system_prompts().await?
+            controller
+                .prompt_template_repo
+                .find_system_prompts()
+                .await?
         } else {
             controller.prompt_template_repo.find_all().await?
         };
@@ -205,7 +221,11 @@ impl PromptTemplateController {
         controller: web::Data<PromptTemplateController>,
         path: web::Path<Uuid>,
     ) -> ActixResult<HttpResponse> {
-        controller.prompt_template_repo.delete(&*path).await.map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+        controller
+            .prompt_template_repo
+            .delete(&*path)
+            .await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
         Ok(HttpResponse::NoContent().finish())
     }
 
@@ -223,7 +243,7 @@ impl PromptTemplateController {
         // Use prompt_template field from Model for rendering
         let mut rendered_content = template.prompt_template.clone();
         let variables_used = Self::extract_variables(&template.prompt_template);
-        
+
         // Simple variable substitution (in a real implementation, use a proper template engine)
         let variables = request.variables.clone(); // Clone instead of move
         if let Some(variables) = variables {
@@ -281,12 +301,12 @@ impl PromptTemplateController {
         // Simple regex-like extraction of {{variable}} patterns
         let mut variables = Vec::new();
         let mut chars = template_content.chars().peekable();
-        
+
         while let Some(ch) = chars.next() {
             if ch == '{' && chars.peek() == Some(&'{') {
                 chars.next(); // consume second '{'
                 let mut var_name = String::new();
-                
+
                 while let Some(ch) = chars.next() {
                     if ch == '}' && chars.peek() == Some(&'}') {
                         chars.next(); // consume second '}'
@@ -300,7 +320,7 @@ impl PromptTemplateController {
                 }
             }
         }
-        
+
         variables
     }
 }

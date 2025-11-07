@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-use std::time::Duration;
 use rdkafka::admin::{AdminClient, AdminOptions, NewTopic, TopicReplication};
 use rdkafka::client::DefaultClientContext;
 use rdkafka::config::ClientConfig;
@@ -7,6 +5,8 @@ use rdkafka::consumer::{Consumer, StreamConsumer};
 use rdkafka::message::Message;
 use rdkafka::producer::{FutureProducer, FutureRecord};
 use serde_json::Value;
+use std::collections::HashMap;
+use std::time::Duration;
 use tokio::time::timeout;
 use uuid::Uuid;
 
@@ -41,15 +41,24 @@ impl KafkaTestHelper {
         partitions: i32,
         replication_factor: i16,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let new_topic = NewTopic::new(topic_name, partitions, TopicReplication::Fixed(replication_factor as i32));
+        let new_topic = NewTopic::new(
+            topic_name,
+            partitions,
+            TopicReplication::Fixed(replication_factor as i32),
+        );
 
         let options = AdminOptions::new().request_timeout(Some(Duration::from_secs(30)));
-        let results = self.admin_client.create_topics(&[new_topic], &options).await?;
+        let results = self
+            .admin_client
+            .create_topics(&[new_topic], &options)
+            .await?;
 
         for result in results {
             match result {
                 Ok(_) => println!("Topic '{}' created successfully", topic_name),
-                Err((topic, err)) => return Err(format!("Failed to create topic '{}': {:?}", topic, err).into()),
+                Err((topic, err)) => {
+                    return Err(format!("Failed to create topic '{}': {:?}", topic, err).into())
+                }
             }
         }
 
@@ -57,14 +66,22 @@ impl KafkaTestHelper {
     }
 
     /// Delete a test topic
-    pub async fn delete_test_topic(&self, topic_name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn delete_test_topic(
+        &self,
+        topic_name: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let options = AdminOptions::new().request_timeout(Some(Duration::from_secs(30)));
-        let results = self.admin_client.delete_topics(&[topic_name], &options).await?;
+        let results = self
+            .admin_client
+            .delete_topics(&[topic_name], &options)
+            .await?;
 
         for result in results {
             match result {
                 Ok(_) => println!("Topic '{}' deleted successfully", topic_name),
-                Err((topic, err)) => return Err(format!("Failed to delete topic '{}': {:?}", topic, err).into()),
+                Err((topic, err)) => {
+                    return Err(format!("Failed to delete topic '{}': {:?}", topic, err).into())
+                }
             }
         }
 
@@ -128,18 +145,22 @@ impl KafkaTestHelper {
         while messages.len() < max_messages && start_time.elapsed() < timeout_duration {
             match timeout(Duration::from_millis(100), consumer.recv()).await {
                 Ok(Ok(message)) => {
-                    let payload = message.payload()
+                    let payload = message
+                        .payload()
                         .map(|p| String::from_utf8_lossy(p).to_string())
                         .unwrap_or_default();
 
-                    let key = message.key()
+                    let key = message
+                        .key()
                         .map(|k| String::from_utf8_lossy(k).to_string());
 
                     let msg_value: Value = serde_json::from_str(&payload)?;
 
                     messages.push(msg_value);
 
-                    if let Err(e) = consumer.commit_message(&message, rdkafka::consumer::CommitMode::Async) {
+                    if let Err(e) =
+                        consumer.commit_message(&message, rdkafka::consumer::CommitMode::Async)
+                    {
                         eprintln!("Failed to commit message: {:?}", e);
                     }
                 }
@@ -163,12 +184,18 @@ impl KafkaTestHelper {
     }
 
     /// Wait for topic to be created and available
-    pub async fn wait_for_topic(&self, topic_name: &str, timeout_secs: u64) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn wait_for_topic(
+        &self,
+        topic_name: &str,
+        timeout_secs: u64,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let timeout_duration = Duration::from_secs(timeout_secs);
         let start_time = std::time::Instant::now();
 
         while start_time.elapsed() < timeout_duration {
-            let metadata = self.admin_client.inner()
+            let metadata = self
+                .admin_client
+                .inner()
                 .fetch_metadata(None, Duration::from_secs(5))
                 .map_err(|e| format!("Failed to fetch metadata: {:?}", e))?;
 
@@ -179,12 +206,21 @@ impl KafkaTestHelper {
             tokio::time::sleep(Duration::from_millis(500)).await;
         }
 
-        Err(format!("Topic '{}' was not created within {} seconds", topic_name, timeout_secs).into())
+        Err(format!(
+            "Topic '{}' was not created within {} seconds",
+            topic_name, timeout_secs
+        )
+        .into())
     }
 
     /// Clean up all test topics with a specific prefix
-    pub async fn cleanup_test_topics(&self, prefix: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let metadata = self.admin_client.inner()
+    pub async fn cleanup_test_topics(
+        &self,
+        prefix: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let metadata = self
+            .admin_client
+            .inner()
             .fetch_metadata(None, Duration::from_secs(10))
             .map_err(|e| format!("Failed to fetch metadata: {:?}", e))?;
 
@@ -198,7 +234,10 @@ impl KafkaTestHelper {
         if !test_topics.is_empty() {
             let options = AdminOptions::new().request_timeout(Some(Duration::from_secs(30)));
             let topic_refs: Vec<&str> = test_topics.iter().map(|s| s.as_str()).collect();
-            let results = self.admin_client.delete_topics(&topic_refs, &options).await?;
+            let results = self
+                .admin_client
+                .delete_topics(&topic_refs, &options)
+                .await?;
 
             for result in results {
                 match result {
@@ -224,7 +263,10 @@ mod tests {
         // We don't assert success here as Kafka might not be running during unit tests
         match result {
             Ok(_) => println!("Kafka test helper created successfully"),
-            Err(e) => println!("Kafka not available (expected in some environments): {:?}", e),
+            Err(e) => println!(
+                "Kafka not available (expected in some environments): {:?}",
+                e
+            ),
         }
     }
 

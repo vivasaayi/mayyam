@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 // CloudWatch Types
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,7 +74,7 @@ pub struct CloudWatchAnomalyDetectionRequest {
     pub period: i32,
     pub start_time: DateTime<Utc>,
     pub end_time: DateTime<Utc>,
-    pub standard_deviation: Option<f64>,  // Confidence band width in standard deviations
+    pub standard_deviation: Option<f64>, // Confidence band width in standard deviations
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -90,7 +90,7 @@ pub struct CloudWatchAnomaly {
     pub timestamp: DateTime<Utc>,
     pub expected_value: f64,
     pub actual_value: f64,
-    pub deviation: f64,  // How many standard deviations away from expected
+    pub deviation: f64, // How many standard deviations away from expected
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,7 +101,7 @@ pub struct CloudWatchDashboardRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CloudWatchWidget {
-    pub widget_type: String,  // "metric", "text", "alarm", etc.
+    pub widget_type: String, // "metric", "text", "alarm", etc.
     pub title: String,
     pub width: i32,
     pub height: i32,

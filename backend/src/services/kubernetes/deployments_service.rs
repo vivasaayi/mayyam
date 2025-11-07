@@ -1,18 +1,18 @@
 // filepath: /Users/rajanpanneerselvam/work/mayyam/backend/src/services/kubernetes/deployments_service.rs
-use kube::{Client, Api, ResourceExt}; // Added ResourceExt
-use kube::api::{ListParams, Patch, PatchParams, DeleteParams};
+use chrono::Utc;
 use k8s_openapi::api::apps::v1::Deployment;
 use k8s_openapi::api::core::v1::Pod;
-use serde::{Serialize, Deserialize};
+use kube::api::{DeleteParams, ListParams, Patch, PatchParams};
+use kube::{Api, Client, ResourceExt}; // Added ResourceExt
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::BTreeMap;
-use chrono::Utc;
 
 use crate::errors::AppError;
 use crate::models::cluster::KubernetesClusterConfig;
 // Use the PodInfo and convert_kube_pod_to_pod_info from the pod module
-use crate::services::kubernetes::pod::PodInfo;
 use crate::services::kubernetes::client::ClientFactory;
+use crate::services::kubernetes::pod::PodInfo;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DeploymentInfo {
@@ -45,16 +45,27 @@ impl DeploymentsService {
         let api: Api<Deployment> = Api::namespaced(client, namespace);
         let lp = ListParams::default();
         let deployment_list = api.list(&lp).await.map_err(|e| {
-            AppError::ExternalService(format!("Failed to list deployments in namespace '{}': {}", namespace, e))
+            AppError::ExternalService(format!(
+                "Failed to list deployments in namespace '{}': {}",
+                namespace, e
+            ))
         })?;
 
         let mut infos = Vec::new();
         for d in deployment_list {
             let name = d.name_any();
             let replicas = d.spec.as_ref().and_then(|s| s.replicas).unwrap_or(0);
-            let available_replicas = d.status.as_ref().and_then(|s| s.available_replicas).unwrap_or(0);
-            let updated_replicas = d.status.as_ref().and_then(|s| s.updated_replicas).unwrap_or(0);
-            
+            let available_replicas = d
+                .status
+                .as_ref()
+                .and_then(|s| s.available_replicas)
+                .unwrap_or(0);
+            let updated_replicas = d
+                .status
+                .as_ref()
+                .and_then(|s| s.updated_replicas)
+                .unwrap_or(0);
+
             let age = d.metadata.creation_timestamp.as_ref().map_or_else(
                 || "Unknown".to_string(),
                 |ts| {
@@ -69,13 +80,17 @@ impl DeploymentsService {
                     } else {
                         format!("{}s", duration.num_seconds())
                     }
-                }
+                },
             );
 
-            let images = d.spec.as_ref()
+            let images = d
+                .spec
+                .as_ref()
                 .and_then(|s| s.template.spec.as_ref())
                 .map(|pod_spec| {
-                    pod_spec.containers.iter()
+                    pod_spec
+                        .containers
+                        .iter()
                         .filter_map(|c| c.image.clone())
                         .collect::<Vec<String>>()
                 })
@@ -103,7 +118,10 @@ impl DeploymentsService {
         let client = Self::get_kube_client(cluster_config).await?;
         let api: Api<Deployment> = Api::namespaced(client, namespace);
         api.get(name).await.map_err(|e| {
-            AppError::ExternalService(format!("Failed to get deployment '{}' in namespace '{}': {}", name, namespace, e))
+            AppError::ExternalService(format!(
+                "Failed to get deployment '{}' in namespace '{}': {}",
+                name, namespace, e
+            ))
         })
     }
 
@@ -115,9 +133,14 @@ impl DeploymentsService {
     ) -> Result<(), AppError> {
         let client = Self::get_kube_client(cluster_config).await?;
         let api: Api<Deployment> = Api::namespaced(client, namespace);
-        api.delete(name, &DeleteParams::default()).await.map_err(|e| {
-            AppError::ExternalService(format!("Failed to delete deployment '{}' in namespace '{}': {}", name, namespace, e))
-        })?;
+        api.delete(name, &DeleteParams::default())
+            .await
+            .map_err(|e| {
+                AppError::ExternalService(format!(
+                    "Failed to delete deployment '{}' in namespace '{}': {}",
+                    name, namespace, e
+                ))
+            })?;
         Ok(())
     }
 
@@ -133,9 +156,14 @@ impl DeploymentsService {
         let patch = json!({
             "spec": { "replicas": replicas }
         });
-        api.patch_scale(name, &PatchParams::default(), &Patch::Merge(&patch)).await.map_err(|e| {
-            AppError::ExternalService(format!("Failed to scale deployment '{}' in namespace '{}': {}", name, namespace, e))
-        })?;
+        api.patch_scale(name, &PatchParams::default(), &Patch::Merge(&patch))
+            .await
+            .map_err(|e| {
+                AppError::ExternalService(format!(
+                    "Failed to scale deployment '{}' in namespace '{}': {}",
+                    name, namespace, e
+                ))
+            })?;
         Ok(())
     }
 
@@ -147,7 +175,7 @@ impl DeploymentsService {
     ) -> Result<(), AppError> {
         let client = Self::get_kube_client(cluster_config).await?;
         let api: Api<Deployment> = Api::namespaced(client, namespace);
-        
+
         let mut annotations = BTreeMap::new();
         annotations.insert(
             "kubectl.kubernetes.io/restartedAt".to_string(),
@@ -164,9 +192,14 @@ impl DeploymentsService {
             }
         });
 
-        api.patch(name, &PatchParams::default(), &Patch::Merge(&patch)).await.map_err(|e| {
-            AppError::ExternalService(format!("Failed to restart deployment '{}' in namespace '{}': {}", name, namespace, e))
-        })?;
+        api.patch(name, &PatchParams::default(), &Patch::Merge(&patch))
+            .await
+            .map_err(|e| {
+                AppError::ExternalService(format!(
+                    "Failed to restart deployment '{}' in namespace '{}': {}",
+                    name, namespace, e
+                ))
+            })?;
         Ok(())
     }
 
@@ -187,10 +220,13 @@ impl DeploymentsService {
             ))
         })?;
 
-        let label_selector_str = deployment.spec.as_ref()
+        let label_selector_str = deployment
+            .spec
+            .as_ref()
             .and_then(|spec| spec.selector.match_labels.as_ref()) // Ensure selector and match_labels exist
             .map(|labels_map| {
-                labels_map.iter()
+                labels_map
+                    .iter()
                     .map(|(k, v)| format!("{}={}", k, v))
                     .collect::<Vec<String>>()
                     .join(",")
@@ -214,7 +250,8 @@ impl DeploymentsService {
         // Convert each Pod to PodInfo
         let mut pod_infos = Vec::new();
         for pod in pod_list {
-            let info = crate::services::kubernetes::pod::convert_kube_pod_to_pod_info(&pod, namespace);
+            let info =
+                crate::services::kubernetes::pod::convert_kube_pod_to_pod_info(&pod, namespace);
             pod_infos.push(info);
         }
 
@@ -246,14 +283,17 @@ impl DeploymentsService {
                 deployment_name, namespace
             )));
         }
-        let label_selector_str = selector.unwrap().match_labels.map(|labels| {
-            labels
-                .into_iter()
-                .map(|(k, v)| format!("{}={}", k, v))
-                .collect::<Vec<String>>()
-                .join(",")
-        }).unwrap_or_default();
-
+        let label_selector_str = selector
+            .unwrap()
+            .match_labels
+            .map(|labels| {
+                labels
+                    .into_iter()
+                    .map(|(k, v)| format!("{}={}", k, v))
+                    .collect::<Vec<String>>()
+                    .join(",")
+            })
+            .unwrap_or_default();
 
         if label_selector_str.is_empty() {
             return Err(AppError::ExternalService(format!(

@@ -1,7 +1,7 @@
+use config::{Config as ConfigFile, Environment, File};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::error::Error;
-use config::{Config as ConfigFile, File, Environment};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -12,6 +12,8 @@ pub struct Config {
     pub ai: AIConfig,
     pub security: SecurityConfig,
     pub kubernetes: KubernetesConfig,
+    #[serde(default)]
+    pub sync: SyncConfig,
 }
 
 impl Default for Config {
@@ -24,6 +26,7 @@ impl Default for Config {
             ai: AIConfig::default(),
             security: SecurityConfig::default(),
             kubernetes: KubernetesConfig::default(),
+            sync: SyncConfig::default(),
         }
     }
 }
@@ -92,9 +95,7 @@ pub struct KafkaConfig {
 
 impl Default for KafkaConfig {
     fn default() -> Self {
-        Self {
-            clusters: vec![],
-        }
+        Self { clusters: vec![] }
     }
 }
 
@@ -207,8 +208,24 @@ pub struct KubernetesConfig {
 
 impl Default for KubernetesConfig {
     fn default() -> Self {
+        Self { clusters: vec![] }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncConfig {
+    #[serde(default = "default_region_concurrency")]
+    pub region_concurrency: usize,
+}
+
+fn default_region_concurrency() -> usize {
+    4
+}
+
+impl Default for SyncConfig {
+    fn default() -> Self {
         Self {
-            clusters: vec![],
+            region_concurrency: default_region_concurrency(),
         }
     }
 }
@@ -226,9 +243,9 @@ pub struct KubernetesClusterConfig {
 pub fn load_config() -> Result<Config, Box<dyn Error>> {
     // Load .env file if it exists
     dotenv::dotenv().ok();
-    
+
     let config_path = env::var("CONFIG_FILE").unwrap_or_else(|_| "config".to_string());
-    
+
     let config = ConfigFile::builder()
         // Start with default settings
         .add_source(File::with_name(&format!("{}.default", config_path)).required(false))
@@ -237,13 +254,13 @@ pub fn load_config() -> Result<Config, Box<dyn Error>> {
         // Add environment variables (with prefix MAYYAM_)
         .add_source(Environment::with_prefix("MAYYAM").separator("__"))
         .build()?;
-        
+
     let mut config: Config = config.try_deserialize()?;
-    
+
     // Ensure kubernetes configuration exists even if not in config file
     if config.kubernetes.clusters.is_empty() {
         println!("Warning: No Kubernetes clusters configured. Add them to your config file.");
     }
-    
+
     Ok(config)
 }

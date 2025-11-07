@@ -1,27 +1,23 @@
-use std::sync::Arc;
-use uuid::Uuid;
-use sea_orm::{
-    DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, Set, ActiveModelTrait,
-    IntoActiveModel, QueryOrder, Order
-};
 use chrono::Utc;
-use tracing::{info, error};
-
-use crate::models::aws_account::{
-    Entity as AwsAccountEntity, 
-    Model, 
-    DomainModel, 
-    ActiveModel, 
-    AwsAccountCreateDto, 
-    AwsAccountUpdateDto,
-    Column as AwsAccountColumn
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel, Order,
+    QueryFilter, QueryOrder, Set,
 };
+use std::sync::Arc;
+use tracing::{error, info};
+use uuid::Uuid;
+
 use crate::errors::AppError;
+use crate::models::aws_account::{
+    ActiveModel, AwsAccountCreateDto, AwsAccountUpdateDto, Column as AwsAccountColumn, DomainModel,
+    Entity as AwsAccountEntity, Model,
+};
 
 /// Repository for AWS account operations
-/// 
+///
 /// Uses SeaORM for database interactions, providing type-safe
 /// query operations and entity management
+#[derive(Debug)]
 pub struct AwsAccountRepository {
     db: Arc<DatabaseConnection>,
 }
@@ -41,7 +37,7 @@ impl AwsAccountRepository {
                 error!("Error fetching AWS accounts: {:?}", e);
                 AppError::Database(e)
             })?;
-        
+
         Ok(entities.into_iter().map(DomainModel::from).collect())
     }
 
@@ -54,12 +50,15 @@ impl AwsAccountRepository {
                 error!("Error fetching AWS account by ID: {:?}", e);
                 AppError::Database(e)
             })?;
-        
+
         Ok(entity.into_iter().map(DomainModel::from).next())
     }
 
     /// Get a single AWS account by account ID
-    pub async fn get_by_account_id(&self, account_id: &str) -> Result<Option<DomainModel>, AppError> {
+    pub async fn get_by_account_id(
+        &self,
+        account_id: &str,
+    ) -> Result<Option<DomainModel>, AppError> {
         let entity = AwsAccountEntity::find()
             .filter(AwsAccountColumn::AccountId.eq(account_id))
             .all(&*self.db)
@@ -68,7 +67,7 @@ impl AwsAccountRepository {
                 error!("Error fetching AWS account by account ID: {:?}", e);
                 AppError::Database(e)
             })?;
-        
+
         Ok(entity.into_iter().map(DomainModel::from).next())
     }
 
@@ -82,19 +81,23 @@ impl AwsAccountRepository {
                 dto.account_id
             )));
         }
-        
+
         // Convert DTO to ActiveModel and insert
         let active_model = ActiveModel::from(dto);
         let entity = active_model.insert(&*self.db).await.map_err(|e| {
             error!("Error creating AWS account: {:?}", e);
             AppError::Database(e)
         })?;
-        
+
         Ok(DomainModel::from(entity))
     }
 
     /// Update an existing AWS account
-    pub async fn update(&self, id: Uuid, dto: AwsAccountUpdateDto) -> Result<DomainModel, AppError> {
+    pub async fn update(
+        &self,
+        id: Uuid,
+        dto: AwsAccountUpdateDto,
+    ) -> Result<DomainModel, AppError> {
         // Find the existing entity to get the secret key
         let existing = AwsAccountEntity::find_by_id(id)
             .one(&*self.db)
@@ -104,14 +107,14 @@ impl AwsAccountRepository {
                 AppError::Database(e)
             })?
             .ok_or_else(|| AppError::NotFound(format!("AWS account with ID {} not found", id)))?;
-        
+
         // Convert DTO to ActiveModel and update
         let active_model = ActiveModel::from((dto, existing.secret_access_key, id));
         let entity = active_model.update(&*self.db).await.map_err(|e| {
             error!("Error updating AWS account: {:?}", e);
             AppError::Database(e)
         })?;
-        
+
         Ok(DomainModel::from(entity))
     }
 
@@ -141,20 +144,23 @@ impl AwsAccountRepository {
                 error!("Error deleting AWS account: {:?}", e);
                 AppError::Database(e)
             })?;
-        
+
         Ok(())
     }
 
     /// Update the last synced timestamp for an account
     pub async fn update_last_synced(&self, id: Uuid) -> Result<(), AppError> {
         let now = Utc::now();
-        
+
         // Find the existing entity
         let account = AwsAccountEntity::find_by_id(id)
             .one(&*self.db)
             .await
             .map_err(|e| {
-                error!("Error finding AWS account for updating last synced: {:?}", e);
+                error!(
+                    "Error finding AWS account for updating last synced: {:?}",
+                    e
+                );
                 AppError::Database(e)
             })?
             .ok_or_else(|| AppError::NotFound(format!("AWS account with ID {} not found", id)))?;
@@ -168,7 +174,7 @@ impl AwsAccountRepository {
             error!("Error updating last synced timestamp: {:?}", e);
             AppError::Database(e)
         })?;
-        
+
         Ok(())
     }
 }
