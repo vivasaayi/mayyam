@@ -1,5 +1,5 @@
 use crate::models::query_fingerprint::{QueryFingerprint, Entity as QueryFingerprintEntity, Column as QueryFingerprintColumn};
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, ActiveModelTrait, Set, PaginatorTrait, QueryOrder};
+use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, ActiveModelTrait, Set, PaginatorTrait, QueryOrder, QuerySelect, IntoActiveModel};
 use std::sync::Arc;
 use uuid::Uuid;
 use chrono::{NaiveDateTime, Duration};
@@ -16,32 +16,30 @@ impl QueryFingerprintRepository {
 
     pub async fn create(&self, fingerprint: QueryFingerprint) -> Result<QueryFingerprint, String> {
         let active_model: crate::models::query_fingerprint::ActiveModel = fingerprint.into();
-        active_model.insert(&self.db*self.db*self.db)
+        active_model.insert(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to create query fingerprint: {}", e))
     }
 
-    pub async fn find_by_hash(&self, cluster_id: Uuid, query_hash: &str) -> Result<Option<QueryFingerprint>, String> {
+    pub async fn find_by_hash(&self, _cluster_id: Uuid, query_hash: &str) -> Result<Option<QueryFingerprint>, String> {
         QueryFingerprintEntity::find()
-            .filter(QueryFingerprintColumn::ClusterId.eq(cluster_id))
-            .filter(QueryFingerprintColumn::QueryHash.eq(query_hash))
-            .one(&self.db*self.db*self.db)
+            .filter(QueryFingerprintColumn::FingerprintHash.eq(query_hash))
+            .one(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to find query fingerprint: {}", e))
     }
 
     pub async fn find_by_id(&self, fingerprint_id: Uuid) -> Result<Option<QueryFingerprint>, String> {
         QueryFingerprintEntity::find_by_id(fingerprint_id)
-            .one(&self.db*self.db*self.db)
+            .one(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to find query fingerprint: {}", e))
     }
 
-    pub async fn find_by_cluster(&self, cluster_id: Uuid) -> Result<Vec<QueryFingerprint>, String> {
+    pub async fn find_by_cluster(&self, _cluster_id: Uuid) -> Result<Vec<QueryFingerprint>, String> {
         QueryFingerprintEntity::find()
-            .filter(QueryFingerprintColumn::ClusterId.eq(cluster_id))
-            .order_by_desc(QueryFingerprintColumn::TotalExecutionTime)
-            .all(&self.db*self.db*self.db)
+            .order_by_desc(QueryFingerprintColumn::TotalQueryTime)
+            .all(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to find query fingerprints: {}", e))
     }
@@ -57,19 +55,17 @@ impl QueryFingerprintRepository {
         let mut query = QueryFingerprintEntity::find()
             .filter(QueryFingerprintColumn::LastSeen.gte(cutoff_time));
 
-        if let Some(cluster) = cluster_id {
-            query = query.filter(QueryFingerprintColumn::ClusterId.eq(cluster));
-        }
+        // Note: Query fingerprints are global across clusters, not filtered by cluster_id
 
         query
             .order_by_desc(QueryFingerprintColumn::TotalQueryTime)
             .limit(limit)
-            .all(&self.db*self.db*self.db)
+            .all(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to find top fingerprints: {}", e))
     }
 
-    pub async fn update_statistics(
+    pub async fn update_stats(
         &self,
         fingerprint_id: Uuid,
         execution_count: i64,
@@ -78,7 +74,7 @@ impl QueryFingerprintRepository {
         last_seen: NaiveDateTime,
     ) -> Result<(), String> {
         let mut active_model = QueryFingerprintEntity::find_by_id(fingerprint_id)
-            .one(&self.db*self.db*self.db)
+            .one(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to find query fingerprint: {}", e))?
             .ok_or_else(|| "Query fingerprint not found".to_string())?
@@ -89,7 +85,7 @@ impl QueryFingerprintRepository {
         active_model.avg_query_time = Set(avg_time);
         active_model.last_seen = Set(last_seen);
 
-        active_model.update(&self.db*self.db*self.db)
+        active_model.update(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to update statistics: {}", e))?;
         Ok(())
@@ -102,7 +98,7 @@ impl QueryFingerprintRepository {
         columns: Vec<String>,
     ) -> Result<(), String> {
         let mut active_model = QueryFingerprintEntity::find_by_id(fingerprint_id)
-            .one(&self.db*self.db*self.db)
+            .one(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to find query fingerprint: {}", e))?
             .ok_or_else(|| "Query fingerprint not found".to_string())?
@@ -113,16 +109,15 @@ impl QueryFingerprintRepository {
         active_model.columns_used = Set(serde_json::to_value(columns)
             .map_err(|e| format!("Failed to serialize columns: {}", e))?);
 
-        active_model.update(&self.db*self.db*self.db)
+        active_model.update(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to update catalog data: {}", e))?;
         Ok(())
     }
 
-    pub async fn count_by_cluster(&self, cluster_id: Uuid) -> Result<u64, String> {
+    pub async fn count_by_cluster(&self, _cluster_id: Uuid) -> Result<u64, String> {
         QueryFingerprintEntity::find()
-            .filter(QueryFingerprintColumn::ClusterId.eq(cluster_id))
-            .count(&self.db*self.db*self.db)
+            .count(&*self.db)
             .await
             .map_err(|e| format!("Failed to count fingerprints: {}", e))
     }
@@ -132,7 +127,7 @@ impl QueryFingerprintRepository {
 
         let delete_result = QueryFingerprintEntity::delete_many()
             .filter(QueryFingerprintColumn::LastSeen.lt(cutoff_date))
-            .exec(&self.db*self.db*self.db)
+            .exec(&*self.db)
             .await
             .map_err(|e| format!("Failed to delete unused fingerprints: {}", e))?;
 

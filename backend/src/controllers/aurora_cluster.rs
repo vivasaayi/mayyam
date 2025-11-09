@@ -95,10 +95,11 @@ pub async fn get_clusters(
 ) -> Result<impl Responder, AppError> {
     let cluster_repo = AuroraClusterRepository::new(db_pool.get_ref().clone());
     let clusters = cluster_repo.find_all_active().await?;
+    let total = clusters.len();
 
     let response = AuroraClustersResponse {
         clusters: clusters.into_iter().map(AuroraClusterDto::from).collect(),
-        total: clusters.len(),
+        total,
     };
 
     Ok(HttpResponse::Ok().json(response))

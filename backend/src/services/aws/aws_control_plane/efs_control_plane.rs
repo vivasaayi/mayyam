@@ -75,8 +75,7 @@ impl EfsControlPlane {
         aws_account_dto: &AwsAccountDto,
         sync_id: Uuid,
     ) -> Result<AwsResourceDto, AppError> {
-        let resource_id = fs.file_system_id()
-            .ok_or_else(|| AppError::Validation("EFS file system ID missing".to_string()))?;
+        let resource_id = fs.file_system_id().to_string();
 
         let arn = format!(
             "arn:aws:elasticfilesystem:{}:{}:file-system/{}",

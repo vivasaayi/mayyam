@@ -1,5 +1,5 @@
 use crate::models::ai_analysis::{AIAnalysis, Entity as AIAnalysisEntity, Column as AIAnalysisColumn};
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, ActiveModelTrait, Set, PaginatorTrait, QueryOrder};
+use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, ActiveModelTrait, Set, PaginatorTrait, QueryOrder, QuerySelect, IntoActiveModel};
 use std::sync::Arc;
 use uuid::Uuid;
 use chrono::NaiveDateTime;
@@ -16,6 +16,12 @@ impl AIAnalysisRepository {
 
     pub async fn create(&self, analysis: AIAnalysis) -> Result<AIAnalysis, String> {
         let active_model: crate::models::ai_analysis::ActiveModel = analysis.into();
+        active_model.insert(&*self.db)
+            .await
+            .map_err(|e| format!("Failed to create AI analysis: {}", e))
+    }
+
+    pub async fn create_from_active_model(&self, active_model: crate::models::ai_analysis::ActiveModel) -> Result<AIAnalysis, String> {
         active_model.insert(&*self.db)
             .await
             .map_err(|e| format!("Failed to create AI analysis: {}", e))
@@ -89,7 +95,7 @@ impl AIAnalysisRepository {
             .ok_or_else(|| "AI analysis not found".to_string())?
             .into_active_model();
 
-        active_model.confidence_score = Set(confidence);
+        active_model.confidence_score = Set(Some(confidence));
         active_model.update(&*self.db)
             .await
             .map_err(|e| format!("Failed to update confidence score: {}", e))?;

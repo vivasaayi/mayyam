@@ -88,10 +88,12 @@ pub async fn get_slow_queries(
         }
     };
 
-    let has_more = events.len() == limit as usize;
+    let total = events.len();
+    let has_more = total == limit as usize;
+
     let response = SlowQueryEventsResponse {
         events,
-        total: events.len(),
+        total,
         has_more,
     };
 
@@ -109,7 +111,9 @@ pub async fn get_slow_query(
 
     // For now, we'll need to implement a find_by_id method in the repository
     // Since we don't have it yet, let's return a not implemented error
-    Err(AppError::NotImplemented("Individual slow query retrieval not yet implemented".to_string()))
+    Ok(HttpResponse::NotImplemented().json(serde_json::json!({
+        "error": "Individual slow query retrieval not yet implemented"
+    })))
 }
 
 pub async fn get_slow_query_stats(

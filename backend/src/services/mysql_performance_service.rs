@@ -12,7 +12,7 @@ pub struct MySQLPerformanceService {
     cluster_repo: AuroraClusterRepository,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct PerformanceMetrics {
     pub connections: ConnectionMetrics,
     pub workload: WorkloadMetrics,
@@ -20,7 +20,7 @@ pub struct PerformanceMetrics {
     pub replication: ReplicationMetrics,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct ConnectionMetrics {
     pub max_connections: i64,
     pub threads_connected: i64,
@@ -28,7 +28,7 @@ pub struct ConnectionMetrics {
     pub connection_errors: HashMap<String, i64>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct WorkloadMetrics {
     pub queries_per_second: f64,
     pub slow_queries: i64,
@@ -38,7 +38,7 @@ pub struct WorkloadMetrics {
     pub delete_commands: i64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct InnoDBMetrics {
     pub buffer_pool_hit_rate: f64,
     pub buffer_pool_pages_total: i64,
@@ -48,7 +48,7 @@ pub struct InnoDBMetrics {
     pub lock_waits: i64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct ReplicationMetrics {
     pub slave_io_running: bool,
     pub slave_sql_running: bool,
@@ -242,7 +242,7 @@ impl MySQLPerformanceService {
         Ok(anomalies)
     }
 
-    fn perform_health_check(&self, metrics: &PerformanceMetrics) -> HealthCheckResult {
+    pub fn perform_health_check(&self, metrics: &PerformanceMetrics) -> HealthCheckResult {
         let mut score: f64 = 1.0; // Start with perfect score
         let mut issues = Vec::new();
         let mut recommendations = Vec::new();

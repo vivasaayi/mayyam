@@ -147,7 +147,7 @@ impl ResourceCostEnrichmentService {
             ];
 
             for key in &cost_tag_keys {
-                if let Some(value) = tags_obj.get(key).and_then(|v| v.as_str()) {
+                if let Some(value) = tags_obj.get(*key).and_then(|v| v.as_str()) {
                     cost_tags.insert(key.to_string(), value.to_string());
                 }
             }

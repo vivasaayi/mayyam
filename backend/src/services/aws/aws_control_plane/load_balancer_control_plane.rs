@@ -5,7 +5,7 @@ use crate::repositories::aws_resource::AwsResourceRepository;
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::aws::service::AwsService;
 use crate::utils::time_conversion::AwsDateTimeExt;
-use aws_sdk_elasticloadbalancingv2::types::LoadBalancer as ClassicLoadBalancer;
+use aws_sdk_elasticloadbalancing::types::LoadBalancerDescription as ClassicLoadBalancer;
 use aws_sdk_elasticloadbalancingv2::types::LoadBalancer as AlbLoadBalancer;
 use chrono::Utc;
 use std::sync::Arc;
@@ -48,7 +48,7 @@ impl LoadBalancerControlPlane {
                 Ok(response) => {
                     if let Some(load_balancers) = response.load_balancers {
                         for lb in load_balancers {
-                            if let Some(lb_type) = &lb.type_ {
+                            if let Some(lb_type) = &lb.r#type {
                                 // Only process Application Load Balancers
                                 if lb_type.as_str() == "application" {
                                     match self.create_alb_resource(&lb, aws_account_dto, sync_id).await {
@@ -102,7 +102,7 @@ impl LoadBalancerControlPlane {
                 Ok(response) => {
                     if let Some(load_balancers) = response.load_balancers {
                         for lb in load_balancers {
-                            if let Some(lb_type) = &lb.type_ {
+                            if let Some(lb_type) = &lb.r#type {
                                 // Only process Network Load Balancers
                                 if lb_type.as_str() == "network" {
                                     match self.create_nlb_resource(&lb, aws_account_dto, sync_id).await {
@@ -190,33 +190,21 @@ impl LoadBalancerControlPlane {
             .clone();
 
         // Extract tags
-        let tags = if let Some(tags_list) = &lb.tags {
-            serde_json::json!(tags_list.iter()
-                .filter_map(|tag| {
-                    if let (Some(key), Some(value)) = (&tag.key, &tag.value) {
-                        Some((key.clone(), value.clone()))
-                    } else {
-                        None
-                    }
-                })
-                .collect::<std::collections::HashMap<_, _>>())
-        } else {
-            serde_json::json!({})
-        };
+        let tags = serde_json::json!({});
 
         // Build resource data
         let resource_data = serde_json::json!({
             "dns_name": lb.dns_name,
             "canonical_hosted_zone_id": lb.canonical_hosted_zone_id,
             "vpc_id": lb.vpc_id,
-            "state": lb.state.as_ref().map(|s| s.code.as_ref()),
-            "scheme": lb.scheme,
-            "load_balancer_type": lb.r#type,
+            "state": lb.state.as_ref().map(|s| s.code.as_ref().map(|c| c.as_str()).unwrap_or("unknown")).unwrap_or("unknown"),
+            "scheme": lb.scheme.as_ref().map(|s| s.as_str()),
+            "load_balancer_type": lb.r#type.as_ref().map(|t| t.as_str()).unwrap_or("application"),
             "availability_zones": lb.availability_zones.as_ref().map(|azs|
                 azs.iter().filter_map(|az| az.zone_name.clone()).collect::<Vec<_>>()
             ),
             "security_groups": lb.security_groups,
-            "ip_address_type": lb.ip_address_type,
+            "ip_address_type": lb.ip_address_type.as_ref().map(|i| i.as_str()),
             "customer_owned_ipv4_pool": lb.customer_owned_ipv4_pool
         });
 
@@ -269,9 +257,9 @@ impl LoadBalancerControlPlane {
             "dns_name": lb.dns_name,
             "canonical_hosted_zone_id": lb.canonical_hosted_zone_id,
             "vpc_id": lb.vpc_id,
-            "state": lb.state.as_ref().map(|s| s.code.as_ref()),
+            "state": lb.state.as_ref().map(|s| s.code.as_ref().map(|c| c.as_str()).unwrap_or("unknown")).unwrap_or("unknown"),
             "scheme": lb.scheme.as_ref().map(|s| s.as_str()),
-            "load_balancer_type": lb.r#type,
+            "load_balancer_type": lb.r#type.as_ref().map(|t| t.as_str()).unwrap_or("network"),
             "created_time": lb.created_time.map(|t| t.to_chrono_utc())
         });
 
@@ -318,10 +306,10 @@ impl LoadBalancerControlPlane {
         // Build resource data
         let resource_data = serde_json::json!({
             "dns_name": lb.dns_name,
-            "canonical_hosted_zone_id": lb.canonical_hosted_zone_id,
+            "canonical_hosted_zone_id": lb.canonical_hosted_zone_name,
             "vpc_id": lb.vpc_id,
             "load_balancer_type": "classic",
-            "scheme": lb.scheme.map(|s| s.as_str()),
+            "scheme": lb.scheme.as_ref().map(|s| s.as_str()),
             "created_time": lb.created_time.map(|t| t.to_chrono_utc())
         });
 

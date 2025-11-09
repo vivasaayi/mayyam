@@ -69,7 +69,9 @@ pub async fn create_explain_plan(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let explain_repo = ExplainPlanRepository::new(db_pool.get_ref().clone());
-    let explain_service = ExplainPlanService::new(explain_repo);
+    let fingerprint_repo = crate::repositories::query_fingerprint_repository::QueryFingerprintRepository::new(db_pool.get_ref().clone());
+    let cluster_repo = crate::repositories::aurora_cluster_repository::AuroraClusterRepository::new(db_pool.get_ref().clone());
+    let explain_service = ExplainPlanService::new(explain_repo, fingerprint_repo, cluster_repo);
 
     let plan = explain_service.create_explain_plan(
         req.fingerprint_id,
@@ -108,16 +110,18 @@ pub async fn get_explain_plans(
     let limit = query.limit.unwrap_or(50).min(200); // Max 200 records
 
     let plans = if let Some(fingerprint_id) = fingerprint_id {
-        explain_repo.find_by_fingerprint(fingerprint_id, limit).await?
+        explain_repo.find_by_fingerprint(fingerprint_id).await?
     } else if let Some(cluster_id) = cluster_id {
         explain_repo.find_by_cluster(cluster_id, limit).await?
     } else {
         explain_repo.find_recent(limit).await?
     };
 
+    let total = plans.len();
+
     let response = ExplainPlansResponse {
         plans,
-        total: plans.len(),
+        total,
     };
 
     Ok(HttpResponse::Ok().json(response))
@@ -148,9 +152,11 @@ pub async fn analyze_explain_plan(
 ) -> Result<impl Responder, AppError> {
     let plan_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
     let explain_repo = ExplainPlanRepository::new(db_pool.get_ref().clone());
-    let explain_service = ExplainPlanService::new(explain_repo);
+    let fingerprint_repo = crate::repositories::query_fingerprint_repository::QueryFingerprintRepository::new(db_pool.get_ref().clone());
+    let cluster_repo = crate::repositories::aurora_cluster_repository::AuroraClusterRepository::new(db_pool.get_ref().clone());
+    let explain_service = ExplainPlanService::new(explain_repo, fingerprint_repo, cluster_repo);
 
-    let analysis = explain_service.analyze_explain_plan(plan_id).await?;
+    let analysis = explain_service.get_plan_analysis(plan_id).await?;
 
     let response = PlanAnalysisResponse {
         plan_id,
@@ -169,7 +175,9 @@ pub async fn compare_explain_plans(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let explain_repo = ExplainPlanRepository::new(db_pool.get_ref().clone());
-    let explain_service = ExplainPlanService::new(explain_repo);
+    let fingerprint_repo = crate::repositories::query_fingerprint_repository::QueryFingerprintRepository::new(db_pool.get_ref().clone());
+    let cluster_repo = crate::repositories::aurora_cluster_repository::AuroraClusterRepository::new(db_pool.get_ref().clone());
+    let explain_service = ExplainPlanService::new(explain_repo, fingerprint_repo, cluster_repo);
 
     let comparison = explain_service.compare_explain_plans(req.plan_id_1, req.plan_id_2).await?;
 
@@ -209,7 +217,9 @@ pub async fn update_optimization_flags(
 ) -> Result<impl Responder, AppError> {
     let plan_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
     let explain_repo = ExplainPlanRepository::new(db_pool.get_ref().clone());
-    let explain_service = ExplainPlanService::new(explain_repo);
+    let fingerprint_repo = crate::repositories::query_fingerprint_repository::QueryFingerprintRepository::new(db_pool.get_ref().clone());
+    let cluster_repo = crate::repositories::aurora_cluster_repository::AuroraClusterRepository::new(db_pool.get_ref().clone());
+    let explain_service = ExplainPlanService::new(explain_repo, fingerprint_repo, cluster_repo);
 
     explain_service.update_optimization_flags(plan_id, req.into_inner()).await?;
 

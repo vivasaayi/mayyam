@@ -4,6 +4,7 @@ use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel, Aws
 use crate::repositories::aws_resource::AwsResourceRepository;
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::aws::service::AwsService;
+use crate::utils::time_conversion::AwsDateTimeExt;
 use aws_sdk_cloudfront::types::DistributionSummary;
 use chrono::Utc;
 use std::sync::Arc;
@@ -54,19 +55,15 @@ impl CloudFrontControlPlane {
                             }
                         }
 
-                        // Check if there are more pages
-                        if let Some(is_truncated) = distribution_list.is_truncated {
-                            if is_truncated {
-                                marker = distribution_list.next_marker.clone();
-                                if marker.is_none() {
-                                    break;
-                                }
-                            } else {
-                                break;
-                            }
-                        } else {
-                            break;
-                        }
+        // Check if there are more pages
+        if distribution_list.is_truncated {
+            marker = distribution_list.next_marker.clone();
+            if marker.is_none() {
+                break;
+            }
+        } else {
+            break;
+        }
                     } else {
                         break;
                     }
@@ -89,8 +86,7 @@ impl CloudFrontControlPlane {
         aws_account_dto: &AwsAccountDto,
         sync_id: Uuid,
     ) -> Result<AwsResourceDto, AppError> {
-        let resource_id = dist.id.as_ref()
-            .ok_or_else(|| AppError::Validation("CloudFront distribution ID missing".to_string()))?;
+        let resource_id = dist.id.clone();
 
         let arn = format!(
             "arn:aws:cloudfront::{}:distribution/{}",
@@ -99,9 +95,7 @@ impl CloudFrontControlPlane {
         );
 
         // Get distribution comment as name, or use ID if not available
-        let name = dist.comment.as_ref()
-            .unwrap_or(&resource_id.clone())
-            .clone();
+        let name = if dist.comment.is_empty() { resource_id.clone() } else { dist.comment.clone() };
 
         // Extract tags (CloudFront tags are retrieved separately)
         let tags = serde_json::json!({});
@@ -112,34 +106,32 @@ impl CloudFrontControlPlane {
             "comment": dist.comment,
             "enabled": dist.enabled,
             "status": dist.status,
-            "last_modified_time": dist.last_modified_time.map(|t| t.to_chrono_utc()),
+                        "last_modified_time": Some(dist.last_modified_time.to_chrono_utc()),
             "origins": dist.origins.as_ref().map(|origins| {
-                origins.items.as_ref().map(|items| {
-                    items.iter().map(|origin| {
-                        serde_json::json!({
-                            "id": origin.id,
-                            "domain_name": origin.domain_name,
-                            "origin_path": origin.origin_path,
-                            "connection_attempts": origin.connection_attempts,
-                            "connection_timeout": origin.connection_timeout,
-                            "custom_headers": origin.custom_headers.as_ref().map(|headers| {
-                                headers.items.as_ref().map(|items| {
-                                    items.iter().map(|header| {
-                                        serde_json::json!({
-                                            "name": header.name,
-                                            "value": header.value
-                                        })
-                                    }).collect::<Vec<_>>()
-                                })
+                origins.items.iter().map(|origin| {
+                    serde_json::json!({
+                        "id": origin.id,
+                        "domain_name": origin.domain_name,
+                        "origin_path": origin.origin_path,
+                        "connection_attempts": origin.connection_attempts,
+                        "connection_timeout": origin.connection_timeout,
+                        "custom_headers": origin.custom_headers.as_ref().map(|headers| {
+                            headers.items.as_ref().map(|items| {
+                                items.iter().map(|header| {
+                                    serde_json::json!({
+                                        "name": header.header_name,
+                                        "value": header.header_value
+                                    })
+                                }).collect::<Vec<_>>()
                             })
                         })
-                    }).collect::<Vec<_>>()
-                })
+                    })
+                }).collect::<Vec<_>>()
             }),
             "default_cache_behavior": dist.default_cache_behavior.as_ref().map(|behavior| {
                 serde_json::json!({
                     "target_origin_id": behavior.target_origin_id,
-                    "viewer_protocol_policy": behavior.viewer_protocol_policy,
+                    "viewer_protocol_policy": format!("{:?}", behavior.viewer_protocol_policy),
                     "trusted_signers": behavior.trusted_signers.as_ref().map(|signers| {
                         serde_json::json!({
                             "enabled": signers.enabled,
@@ -152,7 +144,7 @@ impl CloudFrontControlPlane {
                             "query_string": values.query_string,
                             "cookies": values.cookies.as_ref().map(|cookies| {
                                 serde_json::json!({
-                                    "forward": cookies.forward,
+                                    "forward": format!("{:?}", cookies.forward),
                                     "whitelisted_names": cookies.whitelisted_names.as_ref().map(|names| {
                                         serde_json::json!({
                                             "quantity": names.quantity,
@@ -186,7 +178,7 @@ impl CloudFrontControlPlane {
                         serde_json::json!({
                             "path_pattern": behavior.path_pattern,
                             "target_origin_id": behavior.target_origin_id,
-                            "viewer_protocol_policy": behavior.viewer_protocol_policy
+                            "viewer_protocol_policy": format!("{:?}", behavior.viewer_protocol_policy)
                         })
                     }).collect::<Vec<_>>()
                 })
@@ -209,10 +201,9 @@ impl CloudFrontControlPlane {
                     "items": aliases.items
                 })
             }),
-            "web_acl_id": dist.web_acl_id,
-            "http_version": dist.http_version,
+            "http_version": format!("{:?}", dist.http_version),
             "is_ipv6_enabled": dist.is_ipv6_enabled,
-            "price_class": dist.price_class
+            "price_class": format!("{:?}", dist.price_class)
         });
 
         let resource_dto = AwsResourceDto {

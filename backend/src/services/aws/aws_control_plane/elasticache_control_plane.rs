@@ -132,7 +132,7 @@ impl ElasticacheControlPlane {
             }
 
             if let Some(status) = cache_cluster.cache_cluster_status() {
-                resource_data.insert("status".to_string(), json!(status));
+                resource_data.insert("status".to_string(), json!(format!("{:?}", status)));
             }
 
             if let Some(window) = cache_cluster.preferred_maintenance_window() {

@@ -127,7 +127,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
         crate::repositories::llm_model::LlmProviderModelRepository::new(db_connection.clone()),
     );
     let cost_analytics_repo = Arc::new(CostAnalyticsRepository::new(db_connection.clone()));
-    let cost_budget_repo = Arc::new(crate::repositories::cost_budget_repository::CostBudgetRepository::new(db_connection.clone()));
+    let cost_budget_repo = Arc::new(crate::repositories::cost_budget_repository::CostBudgetRepository::new((*db_connection).clone()));
     let llm_provider_service = Arc::new(LlmProviderService::new(llm_provider_repo.clone()));
 
     // Initialize services

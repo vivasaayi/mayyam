@@ -193,7 +193,7 @@ impl SlowQueryIngestionService {
         let new_avg_time = new_total_time / new_count as f64;
 
         // For now, we'll update basic statistics. P95/P99 would need more sophisticated calculation
-        self.fingerprint_repo.update_statistics(
+        self.fingerprint_repo.update_stats(
             fingerprint_id,
             new_count,
             new_total_time,

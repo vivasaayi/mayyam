@@ -5,6 +5,7 @@ use crate::repositories::slow_query_repository::SlowQueryRepository;
 use crate::repositories::explain_plan_repository::ExplainPlanRepository;
 use uuid::Uuid;
 use serde_json;
+use serde::Serialize;
 use std::collections::HashMap;
 
 #[derive(Clone)]
@@ -22,7 +23,7 @@ pub struct AnalysisRequest {
     pub context_data: HashMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct AnalysisResult {
     pub analysis_id: Uuid,
     pub recommendations: Vec<String>,
@@ -53,7 +54,7 @@ impl AIAnalysisService {
 
         // Get recent slow query events for this fingerprint
         let recent_events = self.slow_query_repo.find_top_by_total_time(
-            Some(fingerprint.cluster_id),
+            None, // cluster_id not available in fingerprint model
             24, // Last 24 hours
             10, // Top 10
         ).await?;
@@ -71,24 +72,29 @@ impl AIAnalysisService {
         };
 
         // Store the analysis
-        let ai_analysis = AIAnalysis {
-            id: Uuid::new_v4(),
-            cluster_id: fingerprint.cluster_id,
-            fingerprint_id: request.fingerprint_id,
-            analysis_type: request.analysis_type,
-            recommendations: serde_json::to_value(&analysis_result.recommendations)
-                .map_err(|e| format!("Failed to serialize recommendations: {}", e))?,
-            root_causes: serde_json::to_value(&analysis_result.root_causes)
-                .map_err(|e| format!("Failed to serialize root causes: {}", e))?,
-            confidence_score: analysis_result.confidence_score,
-            suggestions: serde_json::to_value(&analysis_result.suggestions)
-                .map_err(|e| format!("Failed to serialize suggestions: {}", e))?,
-            context_data: serde_json::to_value(request.context_data)
-                .map_err(|e| format!("Failed to serialize context data: {}", e))?,
-            created_at: chrono::Utc::now().naive_utc(),
+        use crate::models::ai_analysis::ActiveModel;
+        let active_model = ActiveModel {
+            id: sea_orm::Set(Uuid::new_v4()),
+            cluster_id: sea_orm::Set(Uuid::nil()), // TODO: Get cluster_id from request or context
+            fingerprint_id: sea_orm::Set(Some(request.fingerprint_id)),
+            slow_query_id: sea_orm::Set(None),
+            ai_provider: sea_orm::Set("openai".to_string()), // TODO: Make configurable
+            ai_model: sea_orm::Set("gpt-4".to_string()), // TODO: Make configurable
+            analysis_type: sea_orm::Set(request.analysis_type.clone()),
+            input_data: sea_orm::Set(serde_json::to_value(&analysis_result)
+                .map_err(|e| format!("Failed to serialize input data: {}", e))?),
+            analysis_result: sea_orm::Set(serde_json::to_string(&analysis_result.recommendations)
+                .map_err(|e| format!("Failed to serialize analysis result: {}", e))?),
+            confidence_score: sea_orm::Set(Some(analysis_result.confidence_score)),
+            suggested_indexes: sea_orm::Set(serde_json::to_value(&analysis_result.suggestions)
+                .map_err(|e| format!("Failed to serialize suggested indexes: {}", e))?),
+            suggested_rewrites: sea_orm::Set(serde_json::json!([])), // TODO: Add rewrite suggestions
+            root_causes: sea_orm::Set(serde_json::to_value(&analysis_result.root_causes)
+                .map_err(|e| format!("Failed to serialize root causes: {}", e))?),
+            created_at: sea_orm::Set(chrono::Utc::now().naive_utc()),
         };
 
-        self.ai_repo.create(ai_analysis).await?;
+        self.ai_repo.create_from_active_model(active_model).await?;
 
         Ok(analysis_result)
     }
@@ -102,17 +108,17 @@ impl AIAnalysisService {
         let mut recommendations = Vec::new();
         let mut root_causes = Vec::new();
         let mut suggestions = Vec::new();
-        let mut confidence_score = 0.7; // Base confidence
+        let mut confidence_score: f64 = 0.7; // Base confidence
 
         // Analyze execution time patterns
         if fingerprint.execution_count > 10 {
-            if fingerprint.avg_execution_time > 1000.0 { // Over 1 second average
+            if fingerprint.avg_query_time > 1000.0 { // Over 1 second average
                 root_causes.push("High average execution time detected".to_string());
                 recommendations.push("Consider query optimization or index improvements".to_string());
                 confidence_score += 0.1;
             }
 
-            if fingerprint.max_execution_time > fingerprint.avg_execution_time * 5.0 {
+            if fingerprint.p95_query_time > fingerprint.avg_query_time * 5.0 {
                 root_causes.push("Significant execution time variance".to_string());
                 suggestions.push("Investigate parameter sniffing or plan instability".to_string());
             }
@@ -120,7 +126,7 @@ impl AIAnalysisService {
 
         // Analyze explain plan if available
         if let Some(plan) = plan {
-            if plan.has_full_table_scan {
+            if plan.has_full_scan {
                 root_causes.push("Full table scan detected in execution plan".to_string());
                 recommendations.push("Add appropriate indexes to avoid table scans".to_string());
                 confidence_score += 0.15;
@@ -132,7 +138,7 @@ impl AIAnalysisService {
                 confidence_score += 0.1;
             }
 
-            if plan.has_temporary_table {
+            if plan.has_temp_table {
                 root_causes.push("Temporary table usage detected".to_string());
                 suggestions.push("Review GROUP BY or subquery optimization".to_string());
                 confidence_score += 0.1;
@@ -150,7 +156,7 @@ impl AIAnalysisService {
         }
 
         // Table access patterns
-        if let Ok(tables) = serde_json::from_value::<Vec<String>>(fingerprint.tables_accessed.clone()) {
+        if let Ok(tables) = serde_json::from_value::<Vec<String>>(fingerprint.tables_used.clone()) {
             if tables.len() > 5 {
                 suggestions.push("Query accesses many tables - consider denormalization or query splitting".to_string());
             }
@@ -178,29 +184,29 @@ impl AIAnalysisService {
 
         // Analyze explain plan for indexing issues
         if let Some(plan) = plan {
-            if plan.has_full_table_scan {
+            if plan.has_full_scan {
                 root_causes.push("Query performing full table scan".to_string());
                 recommendations.push("Create indexes on frequently queried columns".to_string());
 
                 // Suggest specific indexes based on WHERE clauses
-                if let Ok(columns) = serde_json::from_value::<Vec<String>>(fingerprint.columns_accessed.clone()) {
+                if let Ok(columns) = serde_json::from_value::<Vec<String>>(fingerprint.columns_used.clone()) {
                     for column in &columns {
                         recommendations.push(format!("Consider index on column: {}", column));
                     }
                 }
             }
 
-            if !plan.uses_indexes && !plan.has_full_table_scan {
+            if !plan.has_full_scan {
                 suggestions.push("Query is using index lookups effectively".to_string());
             }
         }
 
         // Analyze WHERE clause patterns from SQL text
-        if let Ok(tables) = serde_json::from_value::<Vec<String>>(fingerprint.tables_accessed.clone()) {
-            if let Ok(columns) = serde_json::from_value::<Vec<String>>(fingerprint.columns_accessed.clone()) {
+        if let Ok(tables) = serde_json::from_value::<Vec<String>>(fingerprint.tables_used.clone()) {
+            if let Ok(columns) = serde_json::from_value::<Vec<String>>(fingerprint.columns_used.clone()) {
                 for table in &tables {
                     let table_columns: Vec<_> = columns.iter()
-                        .filter(|col| fingerprint.normalized_query.contains(&format!("{}.{}", table, col)))
+                        .filter(|col| fingerprint.normalized_sql.contains(&format!("{}.{}", table, col)))
                         .collect();
 
                     if !table_columns.is_empty() {
@@ -216,7 +222,7 @@ impl AIAnalysisService {
         }
 
         // Check for LIKE queries that might benefit from indexes
-        if fingerprint.normalized_query.contains("LIKE") {
+        if fingerprint.normalized_sql.contains("LIKE") {
             suggestions.push("LIKE queries may not use indexes efficiently - consider full-text search".to_string());
         }
 
@@ -239,7 +245,7 @@ impl AIAnalysisService {
         let mut suggestions = Vec::new();
         let mut confidence_score = 0.75;
 
-        let sql = &fingerprint.normalized_query;
+        let sql = &fingerprint.normalized_sql;
 
         // Check for SELECT *
         if sql.contains("SELECT *") {
@@ -305,7 +311,7 @@ impl AIAnalysisService {
 
         // Analyze lock time patterns
         let high_lock_events: Vec<_> = events.iter()
-            .filter(|e| e.lock_time > 1000.0) // Over 1 second waiting for locks
+            .filter(|e| e.lock_time.filter(|&lt| lt > 1000.0).is_some()) // Over 1 second waiting for locks
             .collect();
 
         if !high_lock_events.is_empty() {

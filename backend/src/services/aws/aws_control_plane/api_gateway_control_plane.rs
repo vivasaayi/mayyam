@@ -4,6 +4,7 @@ use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel, Aws
 use crate::repositories::aws_resource::AwsResourceRepository;
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::aws::service::AwsService;
+use crate::utils::time_conversion::AwsDateTimeExt;
 use aws_sdk_apigateway::types::{RestApi, Stage, Resource, Method};
 use chrono::Utc;
 use std::sync::Arc;
@@ -243,17 +244,16 @@ impl ApiGatewayControlPlane {
         let resource_data = serde_json::json!({
             "description": api.description,
             "created_date": api.created_date.map(|d| d.to_chrono_utc()),
-            "api_key_source_type": api.api_key_source_type,
+            "api_key_source_type": api.api_key_source.as_ref().map(|s| s.as_str()),
             "endpoint_configuration": api.endpoint_configuration.as_ref().map(|config| {
                 serde_json::json!({
-                    "types": config.types,
+                    "types": config.types.as_ref().map(|types| types.iter().map(|t| t.as_str()).collect::<Vec<_>>()),
                     "vpc_endpoint_ids": config.vpc_endpoint_ids
                 })
             }),
             "disable_execute_api_endpoint": api.disable_execute_api_endpoint,
             "binary_media_types": api.binary_media_types,
             "minimum_compression_size": api.minimum_compression_size,
-            "api_gateway_managed": api.api_gateway_managed,
             "policy": api.policy,
             "tags": api.tags,
             "warnings": api.warnings,
@@ -311,9 +311,8 @@ impl ApiGatewayControlPlane {
             "deployment_id": stage.deployment_id,
             "client_certificate_id": stage.client_certificate_id,
             "cache_cluster_enabled": stage.cache_cluster_enabled,
-            "cache_cluster_size": stage.cache_cluster_size,
-            "cache_cluster_status": stage.cache_cluster_status,
-            "method_settings": stage.method_settings,
+            "cache_cluster_size": stage.cache_cluster_size.as_ref().map(|s| s.as_str()),
+            "cache_cluster_status": stage.cache_cluster_status.as_ref().map(|s| s.as_str()),
             "variables": stage.variables,
             "documentation_version": stage.documentation_version,
             "access_log_settings": stage.access_log_settings.as_ref().map(|settings| {
@@ -457,10 +456,7 @@ impl ApiGatewayControlPlane {
             "request_models": method.request_models,
             "method_responses": method.method_responses.as_ref().map(|responses| {
                 responses.keys().collect::<Vec<_>>()
-            }),
-            "status_code": method.status_code,
-            "response_parameters": method.response_parameters,
-            "response_models": method.response_models
+            })
         });
 
         let resource_dto = AwsResourceDto {

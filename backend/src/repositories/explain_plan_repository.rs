@@ -1,5 +1,5 @@
 use crate::models::explain_plan::{ExplainPlan, Entity as ExplainPlanEntity, Column as ExplainPlanColumn};
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, ActiveModelTrait, Set, PaginatorTrait, QueryOrder};
+use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, ActiveModelTrait, Set, PaginatorTrait, QueryOrder, IntoActiveModel, QuerySelect};
 use std::sync::Arc;
 use uuid::Uuid;
 use chrono::NaiveDateTime;
@@ -77,7 +77,6 @@ impl ExplainPlanRepository {
             .ok_or_else(|| "Explain plan not found".to_string())?
             .into_active_model();
 
-        active_model.uses_indexes = Set(uses_indexes);
         active_model.has_full_scan = Set(has_full_scan);
         active_model.has_filesort = Set(has_filesort);
         active_model.has_temp_table = Set(has_temp_table);

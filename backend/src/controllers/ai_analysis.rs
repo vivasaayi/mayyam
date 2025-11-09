@@ -83,7 +83,7 @@ pub async fn create_ai_analysis(
         root_causes: result.root_causes,
         confidence_score: result.confidence_score,
         suggestions: result.suggestions,
-        created_at: result.created_at,
+        created_at: chrono::Utc::now(),
     };
 
     Ok(HttpResponse::Created().json(response))
@@ -121,9 +121,11 @@ pub async fn get_ai_analyses(
         ai_repo.find_recent(limit).await?
     };
 
+    let total = analyses.len();
+
     let response = AIAnalysesResponse {
         analyses,
-        total: analyses.len(),
+        total,
     };
 
     Ok(HttpResponse::Ok().json(response))
@@ -169,7 +171,7 @@ pub async fn get_analysis_history(
     );
 
     let analyses = if let Some(analysis_type) = analysis_type {
-        ai_service.get_analysis_history(fingerprint_id, Some(analysis_type)).await?
+        ai_service.get_analysis_history(fingerprint_id, Some(analysis_type.clone())).await?
     } else {
         ai_service.get_analysis_history(fingerprint_id, None).await?
     };

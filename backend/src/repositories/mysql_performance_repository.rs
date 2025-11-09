@@ -1,5 +1,5 @@
 use crate::models::mysql_performance_snapshot::{MySQLPerformanceSnapshot, Entity as MySQLPerformanceEntity, Column as MySQLPerformanceColumn};
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, ActiveModelTrait, Set, PaginatorTrait};
+use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, ActiveModelTrait, Set, PaginatorTrait, QueryOrder, IntoActiveModel, QuerySelect};
 use std::sync::Arc;
 use uuid::Uuid;
 use chrono::{NaiveDateTime, Duration};
@@ -16,7 +16,7 @@ impl MySQLPerformanceRepository {
 
     pub async fn create(&self, snapshot: MySQLPerformanceSnapshot) -> Result<MySQLPerformanceSnapshot, String> {
         let active_model: crate::models::mysql_performance_snapshot::ActiveModel = snapshot.into();
-        active_model.insert(&self.db*self.db*self.db*self.db*self.db)
+        active_model.insert(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to create performance snapshot: {}", e))
     }
@@ -24,15 +24,15 @@ impl MySQLPerformanceRepository {
     pub async fn find_by_cluster(&self, cluster_id: Uuid) -> Result<Vec<MySQLPerformanceSnapshot>, String> {
         MySQLPerformanceEntity::find()
             .filter(MySQLPerformanceColumn::ClusterId.eq(cluster_id))
-            .order_by_desc(MySQLPerformanceColumn::CapturedAt)
-            .all(&self.db*self.db*self.db*self.db*self.db)
+            .order_by_desc(MySQLPerformanceColumn::SnapshotTime)
+            .all(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to find performance snapshots: {}", e))
     }
 
     pub async fn find_by_id(&self, snapshot_id: Uuid) -> Result<Option<MySQLPerformanceSnapshot>, String> {
         MySQLPerformanceEntity::find_by_id(snapshot_id)
-            .one(&self.db*self.db*self.db*self.db*self.db)
+            .one(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to find performance snapshot: {}", e))
     }
@@ -40,8 +40,8 @@ impl MySQLPerformanceRepository {
     pub async fn find_latest_by_cluster(&self, cluster_id: Uuid) -> Result<Option<MySQLPerformanceSnapshot>, String> {
         MySQLPerformanceEntity::find()
             .filter(MySQLPerformanceColumn::ClusterId.eq(cluster_id))
-            .order_by_desc(MySQLPerformanceColumn::CapturedAt)
-            .one(&self.db*self.db*self.db*self.db*self.db)
+            .order_by_desc(MySQLPerformanceColumn::SnapshotTime)
+            .one(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to find latest snapshot: {}", e))
     }
@@ -54,10 +54,10 @@ impl MySQLPerformanceRepository {
     ) -> Result<Vec<MySQLPerformanceSnapshot>, String> {
         MySQLPerformanceEntity::find()
             .filter(MySQLPerformanceColumn::ClusterId.eq(cluster_id))
-            .filter(MySQLPerformanceColumn::CapturedAt.gte(start_time))
-            .filter(MySQLPerformanceColumn::CapturedAt.lte(end_time))
-            .order_by_desc(MySQLPerformanceColumn::CapturedAt)
-            .all(&self.db*self.db*self.db*self.db*self.db)
+            .filter(MySQLPerformanceColumn::SnapshotTime.gte(start_time))
+            .filter(MySQLPerformanceColumn::SnapshotTime.lte(end_time))
+            .order_by_desc(MySQLPerformanceColumn::SnapshotTime)
+            .all(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to find snapshots by time range: {}", e))
     }
@@ -72,24 +72,24 @@ impl MySQLPerformanceRepository {
 
         MySQLPerformanceEntity::find()
             .filter(MySQLPerformanceColumn::ClusterId.eq(cluster_id))
-            .filter(MySQLPerformanceColumn::CapturedAt.gte(cutoff_time))
-            .filter(MySQLPerformanceColumn::OverallHealthScore.lt(threshold))
-            .order_by_desc(MySQLPerformanceColumn::CapturedAt)
-            .all(&self.db*self.db*self.db*self.db*self.db)
+            .filter(MySQLPerformanceColumn::SnapshotTime.gte(cutoff_time))
+            .filter(MySQLPerformanceColumn::HealthScore.lt(threshold))
+            .order_by_desc(MySQLPerformanceColumn::SnapshotTime)
+            .all(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to find unhealthy snapshots: {}", e))
     }
 
     pub async fn update_health_score(&self, snapshot_id: Uuid, score: f64) -> Result<(), String> {
         let mut active_model = MySQLPerformanceEntity::find_by_id(snapshot_id)
-            .one(&self.db*self.db*self.db*self.db*self.db)
+            .one(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to find snapshot: {}", e))?
             .ok_or_else(|| "Performance snapshot not found".to_string())?
             .into_active_model();
 
-        active_model.overall_health_score = Set(score);
-        active_model.update(&self.db*self.db*self.db*self.db*self.db)
+        active_model.health_score = Set(score.to_string());
+        active_model.update(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to update health score: {}", e))?;
         Ok(())
@@ -98,7 +98,7 @@ impl MySQLPerformanceRepository {
     pub async fn count_by_cluster(&self, cluster_id: Uuid) -> Result<u64, String> {
         MySQLPerformanceEntity::find()
             .filter(MySQLPerformanceColumn::ClusterId.eq(cluster_id))
-            .count(&self.db*self.db*self.db*self.db*self.db)
+            .count(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to count snapshots: {}", e))
     }
@@ -107,8 +107,8 @@ impl MySQLPerformanceRepository {
         let cutoff_date = chrono::Utc::now().naive_utc() - Duration::days(days_to_keep);
 
         let delete_result = MySQLPerformanceEntity::delete_many()
-            .filter(MySQLPerformanceColumn::CapturedAt.lt(cutoff_date))
-            .exec(&*self.db)
+            .filter(MySQLPerformanceColumn::SnapshotTime.lt(cutoff_date))
+            .exec(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to delete old snapshots: {}", e))?;
 
@@ -126,9 +126,9 @@ impl MySQLPerformanceRepository {
 
     pub async fn find_recent(&self, limit: u64) -> Result<Vec<MySQLPerformanceSnapshot>, String> {
         MySQLPerformanceEntity::find()
-            .order_by_desc(MySQLPerformanceColumn::CapturedAt)
+            .order_by_desc(MySQLPerformanceColumn::SnapshotTime)
             .limit(limit)
-            .all(&*self.db)
+            .all(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to find recent snapshots: {}", e))
     }
@@ -140,7 +140,7 @@ impl MySQLPerformanceRepository {
 
     pub async fn delete(&self, snapshot_id: Uuid) -> Result<(), String> {
         MySQLPerformanceEntity::delete_by_id(snapshot_id)
-            .exec(&*self.db)
+            .exec(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to delete snapshot: {}", e))?;
         Ok(())

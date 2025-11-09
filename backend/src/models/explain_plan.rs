@@ -44,6 +44,12 @@ pub enum Relation {
 
 impl ActiveModelBehavior for ActiveModel {}
 
+impl Related<super::query_fingerprint::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::QueryFingerprint.def()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExplainPlanDto {
     pub fingerprint_id: Uuid,

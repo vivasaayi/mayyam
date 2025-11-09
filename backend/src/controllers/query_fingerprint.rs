@@ -63,10 +63,11 @@ pub async fn get_fingerprints(
     let limit = query.limit.unwrap_or(50).min(200); // Max 200 records
 
     let fingerprints = fingerprint_repo.find_top_by_execution_time(cluster_id, hours, limit).await?;
+    let total = fingerprints.len();
 
     let response = QueryFingerprintsResponse {
         fingerprints,
-        total: fingerprints.len(),
+        total,
     };
 
     Ok(HttpResponse::Ok().json(response))
@@ -152,7 +153,7 @@ pub async fn get_fingerprint_analysis_history(
     );
 
     let analyses = if let Some(analysis_type) = analysis_type {
-        ai_service.get_analysis_history(fingerprint_id, Some(analysis_type)).await?
+        ai_service.get_analysis_history(fingerprint_id, Some(analysis_type.clone())).await?
     } else {
         ai_service.get_analysis_history(fingerprint_id, None).await?
     };
@@ -173,10 +174,10 @@ pub async fn update_fingerprint_catalog(
     let fingerprint_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
 
     let fingerprint_repo = QueryFingerprintRepository::new(db_pool.get_ref().clone());
-    let fingerprinting_service = QueryFingerprintingService::new(fingerprint_repo);
-
     let fingerprint = fingerprint_repo.find_by_id(fingerprint_id).await?
         .ok_or_else(|| AppError::NotFound(format!("Fingerprint not found: {}", fingerprint_id)))?;
+
+    let fingerprinting_service = QueryFingerprintingService::new(QueryFingerprintRepository::new(db_pool.get_ref().clone()));
 
     // Update catalog data based on the normalized SQL
     fingerprinting_service.fingerprint_and_update_catalog(fingerprint_id, &fingerprint.normalized_sql).await?;

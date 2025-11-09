@@ -26,6 +26,9 @@ pub struct ExplainPlanAnalysis {
     pub actual_rows: Option<i64>,
     pub execution_time: Option<f64>,
     pub cost: Option<f64>,
+    pub analysis: serde_json::Value,
+    pub recommendations: Vec<String>,
+    pub optimization_flags: Vec<String>,
 }
 
 impl ExplainPlanService {
@@ -127,7 +130,7 @@ impl ExplainPlanService {
         self.analyze_explain_plan(&plan)
     }
 
-    fn analyze_explain_plan(&self, plan: &ExplainPlan) -> Result<ExplainPlanAnalysis, String> {
+    pub fn analyze_explain_plan(&self, plan: &ExplainPlan) -> Result<ExplainPlanAnalysis, String> {
         let mut analysis = ExplainPlanAnalysis {
             plan_id: plan.id,
             uses_indexes: false,
@@ -138,6 +141,9 @@ impl ExplainPlanService {
             actual_rows: None,
             execution_time: None,
             cost: None,
+            analysis: serde_json::json!({}),
+            recommendations: Vec::new(),
+            optimization_flags: Vec::new(),
         };
 
         match plan.plan_format.as_str() {

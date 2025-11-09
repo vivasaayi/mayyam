@@ -1,5 +1,5 @@
 use crate::models::slow_query_event::{SlowQueryEvent, Entity as SlowQueryEntity, Column as SlowQueryColumn};
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, ActiveModelTrait, Set, PaginatorTrait};
+use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, ActiveModelTrait, Set, PaginatorTrait, QueryOrder, IntoActiveModel, QuerySelect};
 use std::sync::Arc;
 use uuid::Uuid;
 use chrono::{DateTime, Utc, NaiveDateTime, Duration};
