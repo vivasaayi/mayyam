@@ -3,6 +3,7 @@ use crate::models::aws_cost_data::CostDataModel;
 use crate::models::aws_resource::Model as AwsResourceModel;
 use crate::repositories::aws_resource::AwsResourceRepository;
 use crate::repositories::cost_analytics::CostAnalyticsRepository;
+use bigdecimal::ToPrimitive;
 use chrono::NaiveDate;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
@@ -125,7 +126,7 @@ impl ResourceCostEnrichmentService {
                     });
 
                 EnrichedCostData {
-                    cost_data: cost,
+                    cost_data: cost.into(),
                     resource_metadata,
                 }
             })

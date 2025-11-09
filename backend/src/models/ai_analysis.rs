@@ -9,6 +9,7 @@ use uuid::Uuid;
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: Uuid,
+    pub cluster_id: Uuid,
     pub fingerprint_id: Option<Uuid>,
     pub slow_query_id: Option<Uuid>,
     pub ai_provider: String, // openai, local_llm, none
@@ -43,6 +44,7 @@ impl ActiveModelBehavior for ActiveModel {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AIAnalysisDto {
+    pub cluster_id: Uuid,
     pub fingerprint_id: Option<Uuid>,
     pub slow_query_id: Option<Uuid>,
     pub ai_provider: String,
@@ -60,6 +62,7 @@ impl AIAnalysisDto {
     pub fn into_active_model(self) -> ActiveModel {
         ActiveModel {
             id: Set(Uuid::new_v4()),
+            cluster_id: Set(self.cluster_id),
             fingerprint_id: Set(self.fingerprint_id),
             slow_query_id: Set(self.slow_query_id),
             ai_provider: Set(self.ai_provider),

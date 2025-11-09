@@ -1,6 +1,7 @@
 use crate::errors::AppError;
 use crate::models::aws_cost_data::CostDataModel;
 use crate::repositories::cost_analytics::CostAnalyticsRepository;
+use bigdecimal::ToPrimitive;
 use chrono::NaiveDate;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
@@ -205,13 +206,14 @@ impl CostCategoriesService {
             let mut cost_breakdown = HashMap::new();
 
             for cost_item in &cost_data {
-                if self.matches_category(cost_item, category) {
-                    let cost = cost_item.unblended_cost.to_f64().unwrap_or(0.0);
+                let cost_data_model: CostDataModel = cost_item.clone().into();
+                if self.matches_category(&cost_data_model, category) {
+                    let cost = cost_data_model.unblended_cost;
                     category_cost += cost;
                     resource_count += 1;
 
                     // Add to service breakdown within category
-                    let service = cost_item.service_name.clone();
+                    let service = cost_data_model.service_name.clone();
                     *cost_breakdown.entry(service).or_insert(0.0) += cost;
                 }
             }

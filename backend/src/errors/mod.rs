@@ -46,6 +46,9 @@ pub enum AppError {
     #[error("AI service error: {0}")]
     AI(String),
 
+    #[error("Not implemented: {0}")]
+    NotImplemented(String),
+
     #[error("Internal server error: {0}")]
     Internal(String),
 
@@ -73,6 +76,7 @@ impl AppError {
             AppError::Kubernetes(_) => "KUBERNETES_ERROR",
             AppError::Kafka(_) => "KAFKA_ERROR",
             AppError::AI(_) => "AI_ERROR",
+            AppError::NotImplemented(_) => "NOT_IMPLEMENTED",
             AppError::Internal(_) => "INTERNAL_SERVER_ERROR",
             AppError::ExternalServiceError(_) => "EXTERNAL_SERVICE_ERROR",
             AppError::InternalServerError(_) => "INTERNAL_SERVER_ERROR",
@@ -116,6 +120,7 @@ impl ErrorResponse {
             AppError::Kubernetes(_) => "KUBERNETES_ERROR",
             AppError::Kafka(_) => "KAFKA_ERROR",
             AppError::AI(_) => "AI_ERROR",
+            AppError::NotImplemented(_) => "NOT_IMPLEMENTED",
             AppError::Internal(_) => "INTERNAL_SERVER_ERROR",
             AppError::ExternalServiceError(_) => "EXTERNAL_SERVICE_ERROR",
             AppError::InternalServerError(_) => "INTERNAL_SERVER_ERROR",

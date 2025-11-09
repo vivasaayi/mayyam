@@ -13,7 +13,7 @@ impl CostBudgetRepository {
     }
 
     pub fn get_db(&self) -> &DatabaseConnection {
-        &self.db*self.db*self.db
+        &self.db
     }
 
     /// Find budget by ID

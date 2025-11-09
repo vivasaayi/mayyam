@@ -4,6 +4,7 @@ use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel, Aws
 use crate::repositories::aws_resource::AwsResourceRepository;
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::aws::service::AwsService;
+use crate::utils::time_conversion::AwsDateTimeExt;
 use aws_sdk_elasticloadbalancingv2::types::LoadBalancer as ClassicLoadBalancer;
 use aws_sdk_elasticloadbalancingv2::types::LoadBalancer as AlbLoadBalancer;
 use chrono::Utc;
@@ -210,7 +211,7 @@ impl LoadBalancerControlPlane {
             "vpc_id": lb.vpc_id,
             "state": lb.state.as_ref().map(|s| s.code.as_ref()),
             "scheme": lb.scheme,
-            "load_balancer_type": lb.type_,
+            "load_balancer_type": lb.r#type,
             "availability_zones": lb.availability_zones.as_ref().map(|azs|
                 azs.iter().filter_map(|az| az.zone_name.clone()).collect::<Vec<_>>()
             ),
@@ -260,20 +261,8 @@ impl LoadBalancerControlPlane {
             .ok_or_else(|| AppError::Validation("NLB ARN missing".to_string()))?
             .clone();
 
-        // Extract tags
-        let tags = if let Some(tags_list) = &lb.tags {
-            serde_json::json!(tags_list.iter()
-                .filter_map(|tag| {
-                    if let (Some(key), Some(value)) = (&tag.key, &tag.value) {
-                        Some((key.clone(), value.clone()))
-                    } else {
-                        None
-                    }
-                })
-                .collect::<std::collections::HashMap<_, _>>())
-        } else {
-            serde_json::json!({})
-        };
+        // Extract tags (NLB tags are retrieved separately)
+        let tags = serde_json::json!({});
 
         // Build resource data
         let resource_data = serde_json::json!({
@@ -281,14 +270,9 @@ impl LoadBalancerControlPlane {
             "canonical_hosted_zone_id": lb.canonical_hosted_zone_id,
             "vpc_id": lb.vpc_id,
             "state": lb.state.as_ref().map(|s| s.code.as_ref()),
-            "scheme": lb.scheme,
-            "load_balancer_type": lb.type_,
-            "availability_zones": lb.availability_zones.as_ref().map(|azs|
-                azs.iter().filter_map(|az| az.zone_name.clone()).collect::<Vec<_>>()
-            ),
-            "security_groups": lb.security_groups,
-            "ip_address_type": lb.ip_address_type,
-            "customer_owned_ipv4_pool": lb.customer_owned_ipv4_pool
+            "scheme": lb.scheme.as_ref().map(|s| s.as_str()),
+            "load_balancer_type": lb.r#type,
+            "created_time": lb.created_time.map(|t| t.to_chrono_utc())
         });
 
         let resource_dto = AwsResourceDto {
@@ -334,22 +318,10 @@ impl LoadBalancerControlPlane {
         // Build resource data
         let resource_data = serde_json::json!({
             "dns_name": lb.dns_name,
-            "canonical_hosted_zone_name": lb.canonical_hosted_zone_name,
-            "canonical_hosted_zone_name_id": lb.canonical_hosted_zone_name_id,
+            "canonical_hosted_zone_id": lb.canonical_hosted_zone_id,
             "vpc_id": lb.vpc_id,
             "load_balancer_type": "classic",
-            "availability_zones": lb.availability_zones,
-            "security_groups": lb.security_groups,
-            "scheme": lb.scheme,
-            "health_check": lb.health_check.as_ref().map(|hc| {
-                serde_json::json!({
-                    "target": hc.target,
-                    "interval": hc.interval,
-                    "timeout": hc.timeout,
-                    "unhealthy_threshold": hc.unhealthy_threshold,
-                    "healthy_threshold": hc.healthy_threshold
-                })
-            }),
+            "scheme": lb.scheme.map(|s| s.as_str()),
             "created_time": lb.created_time.map(|t| t.to_chrono_utc())
         });
 

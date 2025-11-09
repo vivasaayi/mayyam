@@ -59,16 +59,14 @@ pub async fn get_slow_queries(
 
     let start_time = if let Some(start_str) = &query.start_time {
         Some(NaiveDateTime::parse_from_str(start_str, "%Y-%m-%dT%H:%M:%S%.fZ")
-            .map_err(|e| AppError::BadRequest(format!("Invalid start_time format: {}", e)))?
-            .naive_utc())
+            .map_err(|e| AppError::BadRequest(format!("Invalid start_time format: {}", e)))?)
     } else {
         None
     };
 
     let end_time = if let Some(end_str) = &query.end_time {
         Some(NaiveDateTime::parse_from_str(end_str, "%Y-%m-%dT%H:%M:%S%.fZ")
-            .map_err(|e| AppError::BadRequest(format!("Invalid end_time format: {}", e)))?
-            .naive_utc())
+            .map_err(|e| AppError::BadRequest(format!("Invalid end_time format: {}", e)))?)
     } else {
         None
     };

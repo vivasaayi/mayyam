@@ -112,11 +112,11 @@ pub async fn get_ai_analyses(
     let limit = query.limit.unwrap_or(50).min(200); // Max 200 records
 
     let analyses = if let Some(fingerprint_id) = fingerprint_id {
-        ai_repo.find_by_fingerprint(fingerprint_id, limit).await?
+        ai_repo.find_by_fingerprint(fingerprint_id, Some(limit)).await?
     } else if let Some(cluster_id) = cluster_id {
         ai_repo.find_by_cluster(cluster_id, limit).await?
     } else if let Some(analysis_type) = &query.analysis_type {
-        ai_repo.find_by_analysis_type(analysis_type.clone(), limit).await?
+        ai_repo.find_by_analysis_type_with_limit(analysis_type.clone(), limit).await?
     } else {
         ai_repo.find_recent(limit).await?
     };

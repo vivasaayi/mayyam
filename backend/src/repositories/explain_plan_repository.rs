@@ -16,7 +16,7 @@ impl ExplainPlanRepository {
 
     pub async fn create(&self, plan: ExplainPlan) -> Result<ExplainPlan, String> {
         let active_model: crate::models::explain_plan::ActiveModel = plan.into();
-        active_model.insert(&self.db*self.db*self.db)
+        active_model.insert(&*self.db)
             .await
             .map_err(|e| format!("Failed to create explain plan: {}", e))
     }
@@ -25,14 +25,14 @@ impl ExplainPlanRepository {
         ExplainPlanEntity::find()
             .filter(ExplainPlanColumn::FingerprintId.eq(fingerprint_id))
             .order_by_desc(ExplainPlanColumn::CapturedAt)
-            .all(&self.db*self.db*self.db)
+            .all(&*self.db)
             .await
             .map_err(|e| format!("Failed to find explain plans: {}", e))
     }
 
     pub async fn find_by_id(&self, plan_id: Uuid) -> Result<Option<ExplainPlan>, String> {
         ExplainPlanEntity::find_by_id(plan_id)
-            .one(&self.db*self.db*self.db)
+            .one(&*self.db)
             .await
             .map_err(|e| format!("Failed to find explain plan: {}", e))
     }
@@ -41,7 +41,7 @@ impl ExplainPlanRepository {
         ExplainPlanEntity::find()
             .filter(ExplainPlanColumn::FingerprintId.eq(fingerprint_id))
             .order_by_desc(ExplainPlanColumn::CapturedAt)
-            .one(&self.db*self.db*self.db)
+            .one(&*self.db)
             .await
             .map_err(|e| format!("Failed to find latest explain plan: {}", e))
     }
@@ -57,7 +57,7 @@ impl ExplainPlanRepository {
             .filter(ExplainPlanColumn::CapturedAt.gte(start_time))
             .filter(ExplainPlanColumn::CapturedAt.lte(end_time))
             .order_by_desc(ExplainPlanColumn::CapturedAt)
-            .all(&self.db*self.db*self.db)
+            .all(&*self.db)
             .await
             .map_err(|e| format!("Failed to find explain plans: {}", e))
     }
@@ -66,23 +66,23 @@ impl ExplainPlanRepository {
         &self,
         plan_id: Uuid,
         uses_indexes: bool,
-        has_full_table_scan: bool,
+        has_full_scan: bool,
         has_filesort: bool,
-        has_temporary_table: bool,
+        has_temp_table: bool,
     ) -> Result<(), String> {
         let mut active_model = ExplainPlanEntity::find_by_id(plan_id)
-            .one(&self.db*self.db*self.db)
+            .one(&*self.db)
             .await
             .map_err(|e| format!("Failed to find explain plan: {}", e))?
             .ok_or_else(|| "Explain plan not found".to_string())?
             .into_active_model();
 
         active_model.uses_indexes = Set(uses_indexes);
-        active_model.has_full_table_scan = Set(has_full_table_scan);
+        active_model.has_full_scan = Set(has_full_scan);
         active_model.has_filesort = Set(has_filesort);
-        active_model.has_temporary_table = Set(has_temporary_table);
+        active_model.has_temp_table = Set(has_temp_table);
 
-        active_model.update(&self.db*self.db*self.db)
+        active_model.update(&*self.db)
             .await
             .map_err(|e| format!("Failed to update optimization flags: {}", e))?;
         Ok(())
@@ -93,7 +93,7 @@ impl ExplainPlanRepository {
             .filter(ExplainPlanColumn::FingerprintId.eq(fingerprint_id))
             .order_by_desc(ExplainPlanColumn::CapturedAt)
             .limit(limit)
-            .all(&self.db*self.db*self.db)
+            .all(&*self.db)
             .await
             .map_err(|e| format!("Failed to compare plans: {}", e))
     }
@@ -101,7 +101,7 @@ impl ExplainPlanRepository {
     pub async fn count_by_fingerprint(&self, fingerprint_id: Uuid) -> Result<u64, String> {
         ExplainPlanEntity::find()
             .filter(ExplainPlanColumn::FingerprintId.eq(fingerprint_id))
-            .count(&self.db*self.db*self.db)
+            .count(&*self.db)
             .await
             .map_err(|e| format!("Failed to count explain plans: {}", e))
     }
@@ -111,10 +111,37 @@ impl ExplainPlanRepository {
 
         let delete_result = ExplainPlanEntity::delete_many()
             .filter(ExplainPlanColumn::CapturedAt.lt(cutoff_date))
-            .exec(&self.db*self.db*self.db)
+            .exec(&*self.db)
             .await
             .map_err(|e| format!("Failed to delete old plans: {}", e))?;
 
         Ok(delete_result.rows_affected)
+    }
+
+    pub async fn find_by_cluster(&self, cluster_id: Uuid, limit: u64) -> Result<Vec<ExplainPlan>, String> {
+        ExplainPlanEntity::find()
+            .filter(ExplainPlanColumn::ClusterId.eq(cluster_id))
+            .order_by_desc(ExplainPlanColumn::CapturedAt)
+            .limit(limit)
+            .all(&*self.db)
+            .await
+            .map_err(|e| format!("Failed to find explain plans by cluster: {}", e))
+    }
+
+    pub async fn find_recent(&self, limit: u64) -> Result<Vec<ExplainPlan>, String> {
+        ExplainPlanEntity::find()
+            .order_by_desc(ExplainPlanColumn::CapturedAt)
+            .limit(limit)
+            .all(&*self.db)
+            .await
+            .map_err(|e| format!("Failed to find recent explain plans: {}", e))
+    }
+
+    pub async fn delete(&self, plan_id: Uuid) -> Result<(), String> {
+        ExplainPlanEntity::delete_by_id(plan_id)
+            .exec(&*self.db)
+            .await
+            .map_err(|e| format!("Failed to delete explain plan: {}", e))?;
+        Ok(())
     }
 }

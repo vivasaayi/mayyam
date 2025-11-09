@@ -4,6 +4,7 @@ use crate::repositories::query_fingerprint_repository::QueryFingerprintRepositor
 use crate::repositories::aurora_cluster_repository::AuroraClusterRepository;
 use uuid::Uuid;
 use chrono::NaiveDateTime;
+use serde::Serialize;
 use serde_json;
 use std::collections::HashMap;
 
@@ -14,15 +15,16 @@ pub struct ExplainPlanService {
     cluster_repo: AuroraClusterRepository,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ExplainPlanAnalysis {
     pub plan_id: Uuid,
     pub uses_indexes: bool,
-    pub has_full_table_scan: bool,
+    pub has_full_scan: bool,
     pub has_filesort: bool,
-    pub has_temporary_table: bool,
+    pub has_temp_table: bool,
     pub estimated_rows: Option<i64>,
     pub actual_rows: Option<i64>,
+    pub execution_time: Option<f64>,
     pub cost: Option<f64>,
 }
 
@@ -61,16 +63,17 @@ impl ExplainPlanService {
             fingerprint_id,
             sql_text: sql.to_string(),
             plan_format: plan_format.to_string(),
-            plan_data,
+            plan_data: plan_data.to_string(),
+            engine_version: "Unknown".to_string(), // TODO: detect from cluster
             captured_at: chrono::Utc::now().naive_utc(),
-            uses_indexes: false, // Will be analyzed
-            has_full_table_scan: false,
+            is_before_optimization: false,
+            has_full_scan: false, // Will be analyzed
             has_filesort: false,
-            has_temporary_table: false,
-            estimated_cost: None,
+            has_temp_table: false,
             estimated_rows: None,
             actual_rows: None,
-            execution_time_ms: None,
+            execution_time: None,
+            created_at: chrono::Utc::now().naive_utc(),
         };
 
         let created_plan = self.explain_repo.create(explain_plan).await?;
@@ -80,6 +83,37 @@ impl ExplainPlanService {
         self.update_plan_analysis(created_plan.id, &analysis).await?;
 
         Ok(created_plan)
+    }
+
+    pub async fn create_explain_plan(
+        &self,
+        fingerprint_id: Uuid,
+        cluster_id: Uuid,
+        plan_data: serde_json::Value,
+        plan_format: String,
+        execution_time_ms: Option<f64>,
+        total_cost: Option<f64>,
+    ) -> Result<ExplainPlan, String> {
+        // Get the SQL from the fingerprint
+        let fingerprint = self.fingerprint_repo.find_by_id(fingerprint_id).await?
+            .ok_or_else(|| "Query fingerprint not found".to_string())?;
+
+        let mut explain_plan = self.capture_explain_plan(
+            cluster_id,
+            fingerprint_id,
+            &fingerprint.normalized_sql,
+            &plan_format,
+            plan_data,
+        ).await?;
+
+        // Update execution time and cost if provided
+        if let Some(exec_time) = execution_time_ms {
+            explain_plan.execution_time = Some(exec_time);
+        }
+
+        // Note: total_cost would need to be added to the ExplainPlan model if we want to store it
+
+        Ok(explain_plan)
     }
 
     pub async fn compare_plans(&self, fingerprint_id: Uuid, limit: u64) -> Result<Vec<ExplainPlan>, String> {
@@ -97,17 +131,22 @@ impl ExplainPlanService {
         let mut analysis = ExplainPlanAnalysis {
             plan_id: plan.id,
             uses_indexes: false,
-            has_full_table_scan: false,
+            has_full_scan: false,
             has_filesort: false,
-            has_temporary_table: false,
+            has_temp_table: false,
             estimated_rows: None,
             actual_rows: None,
+            execution_time: None,
             cost: None,
         };
 
         match plan.plan_format.as_str() {
-            "JSON" => self.analyze_json_plan(&plan.plan_data, &mut analysis)?,
-            "TRADITIONAL" => self.analyze_traditional_plan(&plan.plan_data, &mut analysis)?,
+            "JSON" => {
+                let plan_json: serde_json::Value = serde_json::from_str(&plan.plan_data)
+                    .map_err(|e| format!("Failed to parse JSON plan: {}", e))?;
+                self.analyze_json_plan(&plan_json, &mut analysis)?
+            },
+            "TRADITIONAL" => self.analyze_traditional_plan(&serde_json::Value::String(plan.plan_data.clone()), &mut analysis)?,
             _ => {} // Unknown format, skip analysis
         }
 
@@ -127,7 +166,7 @@ impl ExplainPlanService {
             if let Some(access_type) = table.get("access_type") {
                 if let Some(access_str) = access_type.as_str() {
                     match access_str {
-                        "ALL" => analysis.has_full_table_scan = true,
+                        "ALL" => analysis.has_full_scan = true,
                         "index" | "range" | "ref" | "eq_ref" | "const" | "system" => {
                             analysis.uses_indexes = true;
                         }
@@ -157,7 +196,7 @@ impl ExplainPlanService {
         if let Some(grouping_operation) = query_block.get("grouping_operation") {
             if let Some(using_tmp_table) = grouping_operation.get("using_temporary_table") {
                 if using_tmp_table.as_bool().unwrap_or(false) {
-                    analysis.has_temporary_table = true;
+                    analysis.has_temp_table = true;
                 }
             }
         }
@@ -199,7 +238,7 @@ impl ExplainPlanService {
 
                 // Check for full table scan
                 if line_lower.contains("all") && !line_lower.contains("using index") {
-                    analysis.has_full_table_scan = true;
+                    analysis.has_full_scan = true;
                 }
 
                 // Check for index usage
@@ -214,7 +253,7 @@ impl ExplainPlanService {
 
                 // Check for temporary table
                 if line_lower.contains("using temporary") {
-                    analysis.has_temporary_table = true;
+                    analysis.has_temp_table = true;
                 }
             }
         }
@@ -226,9 +265,9 @@ impl ExplainPlanService {
         self.explain_repo.update_optimization_flags(
             plan_id,
             analysis.uses_indexes,
-            analysis.has_full_table_scan,
+            analysis.has_full_scan,
             analysis.has_filesort,
-            analysis.has_temporary_table,
+            analysis.has_temp_table,
         ).await
     }
 
@@ -239,7 +278,7 @@ impl ExplainPlanService {
         let analysis = self.analyze_explain_plan(&plan)?;
         let mut recommendations = Vec::new();
 
-        if analysis.has_full_table_scan {
+        if analysis.has_full_scan {
             recommendations.push("Consider adding indexes to avoid full table scans".to_string());
         }
 
@@ -247,11 +286,11 @@ impl ExplainPlanService {
             recommendations.push("Filesort detected - consider adding indexes on ORDER BY columns".to_string());
         }
 
-        if analysis.has_temporary_table {
+        if analysis.has_temp_table {
             recommendations.push("Temporary table created - review GROUP BY or subquery performance".to_string());
         }
 
-        if !analysis.uses_indexes && !analysis.has_full_table_scan {
+        if !analysis.uses_indexes && !analysis.has_full_scan {
             recommendations.push("Query is using index lookups - good performance".to_string());
         }
 
@@ -259,31 +298,71 @@ impl ExplainPlanService {
     }
 
     pub async fn compare_plan_performance(&self, plan_ids: Vec<Uuid>) -> Result<HashMap<String, serde_json::Value>, String> {
-        let mut comparison = HashMap::new();
-        let mut plans_data = Vec::new();
-
+        // Implementation for comparing multiple plans
+        let mut results = HashMap::new();
+        
         for plan_id in plan_ids {
-            if let Ok(plan) = self.explain_repo.find_by_id(plan_id).await {
-                if let Some(plan) = plan {
-                    let analysis = self.analyze_explain_plan(&plan)?;
-                    let plan_info = serde_json::json!({
-                        "plan_id": plan.id,
-                        "captured_at": plan.captured_at,
-                        "uses_indexes": analysis.uses_indexes,
-                        "has_full_table_scan": analysis.has_full_table_scan,
-                        "has_filesort": analysis.has_filesort,
-                        "has_temporary_table": analysis.has_temporary_table,
-                        "estimated_cost": analysis.cost,
-                        "estimated_rows": analysis.estimated_rows,
-                    });
-                    plans_data.push(plan_info);
-                }
+            let analysis = self.get_plan_analysis(plan_id).await?;
+            results.insert(plan_id.to_string(), serde_json::to_value(analysis).unwrap());
+        }
+        
+        Ok(results)
+    }
+
+    pub async fn compare_explain_plans(&self, plan_id_1: Uuid, plan_id_2: Uuid) -> Result<PlanComparison, String> {
+        let plan_1 = self.explain_repo.find_by_id(plan_id_1).await?
+            .ok_or_else(|| "Plan 1 not found".to_string())?;
+        
+        let plan_2 = self.explain_repo.find_by_id(plan_id_2).await?
+            .ok_or_else(|| "Plan 2 not found".to_string())?;
+
+        // Simple comparison logic
+        let mut comparison = serde_json::Map::new();
+        comparison.insert("same_fingerprint".to_string(), serde_json::Value::Bool(plan_1.fingerprint_id == plan_2.fingerprint_id));
+        comparison.insert("plan_1_better".to_string(), serde_json::Value::Bool(
+            plan_1.execution_time.unwrap_or(0.0) < plan_2.execution_time.unwrap_or(0.0)
+        ));
+
+        let recommendations = self.get_plan_recommendations(plan_id_1).await.unwrap_or_default();
+
+        Ok(PlanComparison {
+            plan_1,
+            plan_2,
+            comparison: serde_json::Value::Object(comparison),
+            recommendations,
+        })
+    }
+
+    pub async fn update_optimization_flags(&self, plan_id: Uuid, flags: Vec<String>) -> Result<(), String> {
+        let mut uses_indexes = false;
+        let mut has_full_scan = false;
+        let mut has_filesort = false;
+        let mut has_temp_table = false;
+
+        for flag in flags {
+            match flag.as_str() {
+                "uses_indexes" => uses_indexes = true,
+                "has_full_scan" => has_full_scan = true,
+                "has_filesort" => has_filesort = true,
+                "has_temp_table" => has_temp_table = true,
+                _ => {} // Ignore unknown flags
             }
         }
 
-        comparison.insert("plans".to_string(), serde_json::Value::Array(plans_data));
-        comparison.insert("total_plans".to_string(), serde_json::Value::Number(plans_data.len().into()));
-
-        Ok(comparison)
+        self.explain_repo.update_optimization_flags(
+            plan_id,
+            uses_indexes,
+            has_full_scan,
+            has_filesort,
+            has_temp_table,
+        ).await
     }
+}
+
+#[derive(Debug)]
+pub struct PlanComparison {
+    pub plan_1: ExplainPlan,
+    pub plan_2: ExplainPlan,
+    pub comparison: serde_json::Value,
+    pub recommendations: Vec<String>,
 }

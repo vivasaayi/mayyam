@@ -327,7 +327,7 @@ impl AIAnalysisService {
         if let Some(analysis_type) = analysis_type {
             self.ai_repo.find_by_analysis_type(fingerprint_id, &analysis_type).await
         } else {
-            self.ai_repo.find_by_fingerprint(fingerprint_id).await
+            self.ai_repo.find_by_fingerprint(fingerprint_id, None).await
         }
     }
 
