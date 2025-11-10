@@ -1,3 +1,18 @@
+// Copyright (c) 2025 Rajan Panneer Selvam
+//
+// Licensed under the Business Source License 1.1 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.mariadb.com/bsl11
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+
 use crate::config::Config;
 use crate::errors::AppError;
 use crate::models::database::Model as DatabaseConnectionModel;
@@ -469,6 +484,99 @@ pub async fn ensure_sync_runs_table(db: &DatabaseConnection) -> Result<(), DbErr
     db.execute(Statement::from_string(
         DbBackend::Postgres,
         create_trigger.to_string(),
+    ))
+    .await?;
+
+    Ok(())
+}
+
+pub async fn ensure_aws_accounts_table(db: &DatabaseConnection) -> Result<(), DbErr> {
+    // Create table if it doesn't exist
+    let create_table_sql = r#"
+        CREATE TABLE IF NOT EXISTS aws_accounts (
+            id UUID PRIMARY KEY,
+            account_id VARCHAR(20) NOT NULL UNIQUE,
+            account_name VARCHAR(100) NOT NULL,
+            profile VARCHAR(100),
+            default_region VARCHAR(20) NOT NULL,
+            regions JSONB,
+            use_role BOOLEAN NOT NULL DEFAULT FALSE,
+            role_arn VARCHAR(255),
+            external_id VARCHAR(255),
+            access_key_id VARCHAR(255),
+            secret_access_key VARCHAR(255),
+            auth_type VARCHAR(50) NOT NULL DEFAULT 'auto',
+            source_profile VARCHAR(100),
+            sso_profile VARCHAR(100),
+            web_identity_token_file VARCHAR(255),
+            session_name VARCHAR(100),
+            last_synced_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL
+        )
+    "#;
+
+    db.execute(Statement::from_string(
+        DbBackend::Postgres,
+        create_table_sql.to_string(),
+    ))
+    .await?;
+
+    // Add missing columns if they don't exist
+    let add_columns_sql = r#"
+        DO $$
+        BEGIN
+            -- Add regions column if missing
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                          WHERE table_name = 'aws_accounts' AND column_name = 'regions') THEN
+                ALTER TABLE aws_accounts ADD COLUMN regions JSONB;
+            END IF;
+
+            -- Add auth_type column if missing
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                          WHERE table_name = 'aws_accounts' AND column_name = 'auth_type') THEN
+                ALTER TABLE aws_accounts ADD COLUMN auth_type VARCHAR(50) NOT NULL DEFAULT 'auto';
+            END IF;
+
+            -- Add source_profile column if missing
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                          WHERE table_name = 'aws_accounts' AND column_name = 'source_profile') THEN
+                ALTER TABLE aws_accounts ADD COLUMN source_profile VARCHAR(100);
+            END IF;
+
+            -- Add sso_profile column if missing
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                          WHERE table_name = 'aws_accounts' AND column_name = 'sso_profile') THEN
+                ALTER TABLE aws_accounts ADD COLUMN sso_profile VARCHAR(100);
+            END IF;
+
+            -- Add web_identity_token_file column if missing
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                          WHERE table_name = 'aws_accounts' AND column_name = 'web_identity_token_file') THEN
+                ALTER TABLE aws_accounts ADD COLUMN web_identity_token_file VARCHAR(255);
+            END IF;
+
+            -- Add session_name column if missing
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                          WHERE table_name = 'aws_accounts' AND column_name = 'session_name') THEN
+                ALTER TABLE aws_accounts ADD COLUMN session_name VARCHAR(100);
+            END IF;
+        END $$;
+    "#;
+
+    db.execute(Statement::from_string(
+        DbBackend::Postgres,
+        add_columns_sql.to_string(),
+    ))
+    .await?;
+
+    // Create index if it doesn't exist
+    let create_idx_account_id =
+        r#"CREATE INDEX IF NOT EXISTS aws_accounts_account_id_idx ON aws_accounts(account_id)"#;
+
+    db.execute(Statement::from_string(
+        DbBackend::Postgres,
+        create_idx_account_id.to_string(),
     ))
     .await?;
 

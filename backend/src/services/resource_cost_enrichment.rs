@@ -1,8 +1,24 @@
+// Copyright (c) 2025 Rajan Panneer Selvam
+//
+// Licensed under the Business Source License 1.1 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.mariadb.com/bsl11
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+
 use crate::errors::AppError;
 use crate::models::aws_cost_data::CostDataModel;
 use crate::models::aws_resource::Model as AwsResourceModel;
 use crate::repositories::aws_resource::AwsResourceRepository;
 use crate::repositories::cost_analytics::CostAnalyticsRepository;
+use bigdecimal::ToPrimitive;
 use chrono::NaiveDate;
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
@@ -125,7 +141,7 @@ impl ResourceCostEnrichmentService {
                     });
 
                 EnrichedCostData {
-                    cost_data: cost,
+                    cost_data: cost.into(),
                     resource_metadata,
                 }
             })
@@ -146,7 +162,7 @@ impl ResourceCostEnrichmentService {
             ];
 
             for key in &cost_tag_keys {
-                if let Some(value) = tags_obj.get(key).and_then(|v| v.as_str()) {
+                if let Some(value) = tags_obj.get(*key).and_then(|v| v.as_str()) {
                     cost_tags.insert(key.to_string(), value.to_string());
                 }
             }

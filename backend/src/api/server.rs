@@ -1,3 +1,18 @@
+// Copyright (c) 2025 Rajan Panneer Selvam
+//
+// Licensed under the Business Source License 1.1 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.mariadb.com/bsl11
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+
 use actix_cors::Cors;
 use actix_web::{middleware::Logger, web, App, HttpServer};
 use std::error::Error;
@@ -86,6 +101,9 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     if let Err(e) = database::ensure_aws_resources_table(&db_connection_val).await {
         tracing::warn!("Failed to ensure aws_resources table exists: {}", e);
     }
+    if let Err(e) = database::ensure_aws_accounts_table(&db_connection_val).await {
+        tracing::warn!("Failed to ensure aws_accounts table exists: {}", e);
+    }
     // Child tables (with foreign key references)
     if let Err(e) = database::ensure_llm_provider_models_table(&db_connection_val).await {
         tracing::warn!("Failed to ensure llm_provider_models table exists: {}", e);
@@ -127,7 +145,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
         crate::repositories::llm_model::LlmProviderModelRepository::new(db_connection.clone()),
     );
     let cost_analytics_repo = Arc::new(CostAnalyticsRepository::new(db_connection.clone()));
-    let cost_budget_repo = Arc::new(crate::repositories::cost_budget_repository::CostBudgetRepository::new(db_connection.clone()));
+    let cost_budget_repo = Arc::new(crate::repositories::cost_budget_repository::CostBudgetRepository::new((*db_connection).clone()));
     let llm_provider_service = Arc::new(LlmProviderService::new(llm_provider_repo.clone()));
 
     // Initialize services

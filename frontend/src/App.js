@@ -1,3 +1,18 @@
+// Copyright (c) 2025 Rajan Panneer Selvam
+//
+// Licensed under the Business Source License 1.1 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.mariadb.com/bsl11
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+
 import React, { Suspense, lazy } from "react";
 import { Routes, Route, Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "./hooks/useAuth";
@@ -37,6 +52,12 @@ const KinesisDashboard = lazy(() => import("./components/Kinesis/KinesisDashboar
 const SyncRunsDashboard = lazy(() => import("./pages/SyncRunsDashboard"));
 const CloudResources = lazy(() => import("./pages/CloudResources")); // New import for Cloud Resources
 const CostAnalytics = lazy(() => import("./pages/CostAnalytics")); // Import for Cost Analytics
+const AuroraClusters = lazy(() => import("./pages/AuroraClusters")); // Import for Aurora Clusters
+const SlowQueryAnalysis = lazy(() => import("./pages/SlowQueryAnalysis")); // Import for Slow Query Analysis
+const QueryFingerprints = lazy(() => import("./pages/QueryFingerprints")); // Import for Query Fingerprints
+const ExplainPlans = lazy(() => import("./pages/ExplainPlans")); // Import for Explain Plans
+const AiAnalysis = lazy(() => import("./pages/AiAnalysis")); // Import for AI Analysis
+const PerformanceMonitoring = lazy(() => import("./pages/PerformanceMonitoring")); // Import for Performance Monitoring
 
 const App = () => {
   const { isAuthenticated, isLoading } = useAuth();
@@ -82,6 +103,12 @@ const App = () => {
             <Route path="sync-runs" element={<SyncRunsDashboard />} />
             <Route path="cloud-resources" element={<CloudResources />} /> {/* New route for Cloud Resources */}
             <Route path="cost-analytics" element={<CostAnalytics />} /> {/* Route for Cost Analytics */}
+            <Route path="aurora-clusters" element={<AuroraClusters />} /> {/* Route for Aurora Clusters */}
+            <Route path="slow-queries" element={<SlowQueryAnalysis />} /> {/* Route for Slow Query Analysis */}
+            <Route path="query-fingerprints" element={<QueryFingerprints />} /> {/* Route for Query Fingerprints */}
+            <Route path="explain-plans" element={<ExplainPlans />} /> {/* Route for Explain Plans */}
+            <Route path="ai-analysis" element={<AiAnalysis />} /> {/* Route for AI Analysis */}
+            <Route path="performance-monitoring" element={<PerformanceMonitoring />} /> {/* Route for Performance Monitoring */}
             <Route path="*" element={<NotFound />} />
           </Route>
         </Route>

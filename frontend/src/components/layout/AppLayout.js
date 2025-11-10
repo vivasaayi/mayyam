@@ -1,3 +1,18 @@
+// Copyright (c) 2025 Rajan Panneer Selvam
+//
+// Licensed under the Business Source License 1.1 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.mariadb.com/bsl11
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+
 import React from "react";
 import {
   CContainer,
@@ -66,6 +81,24 @@ const AppLayout = () => {
           </CNavItem>
           <CNavItem>
             <CNavLink as={Link} to="/cost-analytics">Cost Analytics</CNavLink>
+          </CNavItem>
+          <CNavItem>
+            <CNavLink as={Link} to="/performance-analysis">Performance Analysis</CNavLink>
+          </CNavItem>
+          <CNavItem>
+            <CNavLink as={Link} to="/aurora-clusters">Aurora Clusters</CNavLink>
+          </CNavItem>
+          <CNavItem>
+            <CNavLink as={Link} to="/slow-queries">Slow Query Analysis</CNavLink>
+          </CNavItem>
+          <CNavItem>
+            <CNavLink as={Link} to="/query-fingerprints">Query Fingerprints</CNavLink>
+          </CNavItem>
+          <CNavItem>
+            <CNavLink as={Link} to="/explain-plans">Explain Plans</CNavLink>
+          </CNavItem>
+          <CNavItem>
+            <CNavLink as={Link} to="/ai-analysis">AI Analysis</CNavLink>
           </CNavItem>
           <CNavItem>
             <CNavLink as={Link} to="/chaos">Chaos Engineering</CNavLink>
