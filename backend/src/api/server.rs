@@ -86,6 +86,9 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     if let Err(e) = database::ensure_aws_resources_table(&db_connection_val).await {
         tracing::warn!("Failed to ensure aws_resources table exists: {}", e);
     }
+    if let Err(e) = database::ensure_aws_accounts_table(&db_connection_val).await {
+        tracing::warn!("Failed to ensure aws_accounts table exists: {}", e);
+    }
     // Child tables (with foreign key references)
     if let Err(e) = database::ensure_llm_provider_models_table(&db_connection_val).await {
         tracing::warn!("Failed to ensure llm_provider_models table exists: {}", e);
