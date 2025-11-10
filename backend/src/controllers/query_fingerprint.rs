@@ -10,6 +10,7 @@ use crate::models::query_fingerprint::QueryFingerprint;
 use crate::repositories::query_fingerprint_repository::QueryFingerprintRepository;
 use crate::services::query_fingerprinting_service::QueryFingerprintingService;
 use crate::services::ai_analysis_service::AIAnalysisService;
+use crate::repositories::slow_query_repository::SlowQueryRepository;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
@@ -45,14 +46,38 @@ pub struct FingerprintAnalysisResponse {
     pub suggestions: Vec<String>,
 }
 
+#[derive(Clone)]
+pub struct QueryFingerprintController {
+    fingerprint_repo: QueryFingerprintRepository,
+    slow_query_repo: SlowQueryRepository,
+    fingerprint_service: QueryFingerprintingService,
+    ai_service: AIAnalysisService,
+}
+
+impl QueryFingerprintController {
+    pub fn new(db: Arc<DatabaseConnection>) -> Self {
+        let fingerprint_repo = QueryFingerprintRepository::new(db.clone());
+        let slow_query_repo = SlowQueryRepository::new(db.clone());
+        let fingerprint_service = QueryFingerprintingService::new(fingerprint_repo.clone());
+        let ai_repo = crate::repositories::ai_analysis_repository::AIAnalysisRepository::new(db.clone());
+        let explain_repo = crate::repositories::explain_plan_repository::ExplainPlanRepository::new(db.clone());
+        let ai_service = AIAnalysisService::new(ai_repo, fingerprint_repo.clone(), slow_query_repo.clone(), explain_repo);
+
+        Self {
+            fingerprint_repo,
+            slow_query_repo,
+            fingerprint_service,
+            ai_service,
+        }
+    }
+}
+
 pub async fn get_fingerprints(
+    controller: web::Data<QueryFingerprintController>,
     query: web::Query<FingerprintFilter>,
-    db_pool: web::Data<Arc<DatabaseConnection>>,
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let fingerprint_repo = QueryFingerprintRepository::new(db_pool.get_ref().clone());
-
     let cluster_id = if let Some(cluster_id_str) = &query.cluster_id {
         Some(Uuid::parse_str(cluster_id_str).map_err(|e| AppError::BadRequest(format!("Invalid cluster UUID: {}", e)))?)
     } else {
@@ -62,7 +87,7 @@ pub async fn get_fingerprints(
     let hours = query.hours.unwrap_or(24);
     let limit = query.limit.unwrap_or(50).min(200); // Max 200 records
 
-    let fingerprints = fingerprint_repo.find_top_by_execution_time(cluster_id, hours, limit).await?;
+    let fingerprints = controller.fingerprint_repo.find_top_by_execution_time(cluster_id, hours, limit).await?;
     let total = fingerprints.len();
 
     let response = QueryFingerprintsResponse {
@@ -74,15 +99,14 @@ pub async fn get_fingerprints(
 }
 
 pub async fn get_fingerprint(
+    controller: web::Data<QueryFingerprintController>,
     path: web::Path<String>,
-    db_pool: web::Data<Arc<DatabaseConnection>>,
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let fingerprint_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
-    let fingerprint_repo = QueryFingerprintRepository::new(db_pool.get_ref().clone());
 
-    let fingerprint = fingerprint_repo.find_by_id(fingerprint_id).await?
+    let fingerprint = controller.fingerprint_repo.find_by_id(fingerprint_id).await?
         .ok_or_else(|| AppError::NotFound(format!("Fingerprint not found: {}", fingerprint_id)))?;
 
     let response = QueryFingerprintResponse { fingerprint };
@@ -91,130 +115,53 @@ pub async fn get_fingerprint(
 }
 
 pub async fn analyze_fingerprint(
+    controller: web::Data<QueryFingerprintController>,
     path: web::Path<String>,
     req: web::Json<AnalyzeFingerprintRequest>,
-    db_pool: web::Data<Arc<DatabaseConnection>>,
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let fingerprint_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
 
-    let ai_repo = crate::repositories::ai_analysis_repository::AIAnalysisRepository::new(db_pool.get_ref().clone());
-    let fingerprint_repo = QueryFingerprintRepository::new(db_pool.get_ref().clone());
-    let slow_query_repo = crate::repositories::slow_query_repository::SlowQueryRepository::new(db_pool.get_ref().clone());
-    let explain_repo = crate::repositories::explain_plan_repository::ExplainPlanRepository::new(db_pool.get_ref().clone());
+    let fingerprint = controller.fingerprint_repo.find_by_id(fingerprint_id).await?
+        .ok_or_else(|| AppError::NotFound(format!("Fingerprint not found: {}", fingerprint_id)))?;
 
-    let ai_service = AIAnalysisService::new(
-        ai_repo,
-        fingerprint_repo,
-        slow_query_repo,
-        explain_repo,
-    );
+    // Get slow query events for this fingerprint
+    let events = controller.slow_query_repo.find_by_fingerprint(fingerprint_id, 100).await?;
 
+    // Perform AI analysis
     let analysis_request = crate::services::ai_analysis_service::AnalysisRequest {
         fingerprint_id,
         analysis_type: req.analysis_type.clone(),
-        context_data: req.context_data.clone().unwrap_or_default(),
+        context_data: std::collections::HashMap::new(),
     };
-
-    let result = ai_service.generate_analysis(analysis_request).await?;
+    let analysis = controller.ai_service.generate_analysis(analysis_request).await?;
 
     let response = FingerprintAnalysisResponse {
         fingerprint_id,
-        recommendations: result.recommendations,
-        root_causes: result.root_causes,
-        confidence_score: result.confidence_score,
-        suggestions: result.suggestions,
+        recommendations: analysis.recommendations,
+        root_causes: analysis.root_causes,
+        confidence_score: analysis.confidence_score,
+        suggestions: analysis.suggestions,
     };
 
     Ok(HttpResponse::Ok().json(response))
 }
 
-pub async fn get_fingerprint_analysis_history(
+pub async fn get_fingerprint_patterns(
+    controller: web::Data<QueryFingerprintController>,
     path: web::Path<String>,
-    query: web::Query<std::collections::HashMap<String, String>>,
-    db_pool: web::Data<Arc<DatabaseConnection>>,
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let fingerprint_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
-    let analysis_type = query.get("analysis_type");
+    let cluster_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid cluster UUID: {}", e)))?;
 
-    let ai_repo = crate::repositories::ai_analysis_repository::AIAnalysisRepository::new(db_pool.get_ref().clone());
-    let fingerprint_repo = QueryFingerprintRepository::new(db_pool.get_ref().clone());
-    let slow_query_repo = crate::repositories::slow_query_repository::SlowQueryRepository::new(db_pool.get_ref().clone());
-    let explain_repo = crate::repositories::explain_plan_repository::ExplainPlanRepository::new(db_pool.get_ref().clone());
-
-    let ai_service = AIAnalysisService::new(
-        ai_repo,
-        fingerprint_repo,
-        slow_query_repo,
-        explain_repo,
-    );
-
-    let analyses = if let Some(analysis_type) = analysis_type {
-        ai_service.get_analysis_history(fingerprint_id, Some(analysis_type.clone())).await?
-    } else {
-        ai_service.get_analysis_history(fingerprint_id, None).await?
-    };
+    // Get fingerprint patterns for the cluster
+    let patterns = controller.fingerprint_repo.find_patterns_by_cluster(cluster_id, 24).await?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
-        "fingerprint_id": fingerprint_id,
-        "analyses": analyses,
-        "total": analyses.len()
-    })))
-}
-
-pub async fn update_fingerprint_catalog(
-    path: web::Path<String>,
-    db_pool: web::Data<Arc<DatabaseConnection>>,
-    _config: web::Data<Config>,
-    _claims: web::ReqData<Claims>,
-) -> Result<impl Responder, AppError> {
-    let fingerprint_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
-
-    let fingerprint_repo = QueryFingerprintRepository::new(db_pool.get_ref().clone());
-    let fingerprint = fingerprint_repo.find_by_id(fingerprint_id).await?
-        .ok_or_else(|| AppError::NotFound(format!("Fingerprint not found: {}", fingerprint_id)))?;
-
-    let fingerprinting_service = QueryFingerprintingService::new(QueryFingerprintRepository::new(db_pool.get_ref().clone()));
-
-    // Update catalog data based on the normalized SQL
-    fingerprinting_service.fingerprint_and_update_catalog(fingerprint_id, &fingerprint.normalized_sql).await?;
-
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "message": "Fingerprint catalog updated successfully",
-        "fingerprint_id": fingerprint_id
-    })))
-}
-
-pub async fn get_fingerprint_stats(
-    query: web::Query<FingerprintFilter>,
-    db_pool: web::Data<Arc<DatabaseConnection>>,
-    _config: web::Data<Config>,
-    _claims: web::ReqData<Claims>,
-) -> Result<impl Responder, AppError> {
-    let fingerprint_repo = QueryFingerprintRepository::new(db_pool.get_ref().clone());
-
-    let cluster_id = if let Some(cluster_id_str) = &query.cluster_id {
-        Some(Uuid::parse_str(cluster_id_str).map_err(|e| AppError::BadRequest(format!("Invalid cluster UUID: {}", e)))?)
-    } else {
-        None
-    };
-
-    let total_fingerprints = if let Some(cluster_id) = cluster_id {
-        fingerprint_repo.count_by_cluster(cluster_id).await?
-    } else {
-        // This would need a method to count across all clusters
-        0 // Placeholder
-    };
-
-    let hours = query.hours.unwrap_or(24);
-    let active_fingerprints = fingerprint_repo.find_top_by_execution_time(cluster_id, hours, 1000).await?.len() as u64;
-
-    Ok(HttpResponse::Ok().json(serde_json::json!({
-        "total_fingerprints": total_fingerprints,
-        "active_fingerprints_last_hours": active_fingerprints,
-        "hours": hours
+        "cluster_id": cluster_id,
+        "patterns": patterns,
+        "total_patterns": patterns.len()
     })))
 }

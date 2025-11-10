@@ -46,18 +46,14 @@ impl QueryFingerprintRepository {
 
     pub async fn find_top_by_execution_time(
         &self,
-        cluster_id: Option<Uuid>,
+        _cluster_id: Option<Uuid>,
         hours: i64,
         limit: u64,
     ) -> Result<Vec<QueryFingerprint>, String> {
         let cutoff_time = chrono::Utc::now().naive_utc() - Duration::hours(hours);
 
-        let mut query = QueryFingerprintEntity::find()
-            .filter(QueryFingerprintColumn::LastSeen.gte(cutoff_time));
-
-        // Note: Query fingerprints are global across clusters, not filtered by cluster_id
-
-        query
+        QueryFingerprintEntity::find()
+            .filter(QueryFingerprintColumn::LastSeen.gte(cutoff_time))
             .order_by_desc(QueryFingerprintColumn::TotalQueryTime)
             .limit(limit)
             .all(self.db.as_ref())
@@ -88,6 +84,18 @@ impl QueryFingerprintRepository {
         active_model.update(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to update statistics: {}", e))?;
+        Ok(())
+    }
+
+    pub async fn update_stats_batch(
+        &self,
+        updates: Vec<(Uuid, i64, f64, f64, NaiveDateTime)>,
+    ) -> Result<(), String> {
+        // For batch updates, we'll update each fingerprint individually
+        // In a production system, you might want to use raw SQL for better performance
+        for (fingerprint_id, execution_count, total_time, avg_time, last_seen) in updates {
+            self.update_stats(fingerprint_id, execution_count, total_time, avg_time, last_seen).await?;
+        }
         Ok(())
     }
 
@@ -132,5 +140,16 @@ impl QueryFingerprintRepository {
             .map_err(|e| format!("Failed to delete unused fingerprints: {}", e))?;
 
         Ok(delete_result.rows_affected)
+    }
+
+    pub async fn find_patterns_by_cluster(&self, _cluster_id: Uuid, hours: i64) -> Result<Vec<QueryFingerprint>, String> {
+        let cutoff_time = chrono::Utc::now().naive_utc() - Duration::hours(hours);
+
+        QueryFingerprintEntity::find()
+            .filter(QueryFingerprintColumn::LastSeen.gte(cutoff_time))
+            .order_by_desc(QueryFingerprintColumn::TotalQueryTime)
+            .all(self.db.as_ref())
+            .await
+            .map_err(|e| format!("Failed to find patterns by cluster: {}", e))
     }
 }

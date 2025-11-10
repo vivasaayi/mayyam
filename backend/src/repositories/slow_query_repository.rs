@@ -105,4 +105,14 @@ impl SlowQueryRepository {
 
         Ok(delete_result.rows_affected)
     }
+
+    pub async fn find_by_fingerprint(&self, fingerprint_id: Uuid, limit: u64) -> Result<Vec<SlowQueryEvent>, String> {
+        SlowQueryEntity::find()
+            .filter(SlowQueryColumn::FingerprintId.eq(Some(fingerprint_id)))
+            .order_by_desc(SlowQueryColumn::EventTimestamp)
+            .limit(limit)
+            .all(&*self.db)
+            .await
+            .map_err(|e| format!("Failed to find slow query events by fingerprint: {}", e))
+    }
 }

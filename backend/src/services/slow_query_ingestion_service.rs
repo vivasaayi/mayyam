@@ -3,9 +3,9 @@ use crate::models::query_fingerprint::QueryFingerprint;
 use crate::repositories::slow_query_repository::SlowQueryRepository;
 use crate::repositories::query_fingerprint_repository::QueryFingerprintRepository;
 use crate::repositories::aurora_cluster_repository::AuroraClusterRepository;
+use crate::utils::retry::{retry_with_backoff, db_retry_config};
 use uuid::Uuid;
 use chrono::NaiveDateTime;
-use std::collections::HashMap;
 use regex::Regex;
 
 #[derive(Clone)]
@@ -67,7 +67,10 @@ impl SlowQueryIngestionService {
         log_content: &str,
     ) -> Result<(), String> {
         // Verify cluster exists and is active
-        let cluster = self.cluster_repo.find_by_id(cluster_id).await?
+        let cluster = retry_with_backoff(
+            &db_retry_config(),
+            || self.cluster_repo.find_by_id(cluster_id),
+        ).await?
             .ok_or_else(|| "Aurora cluster not found".to_string())?;
 
         if !cluster.is_active {
@@ -77,13 +80,19 @@ impl SlowQueryIngestionService {
         // Parse the slow query log
         let events = self.parse_slow_query_log(log_content)?;
 
-        // Process each event
-        for event in events {
-            if event.cluster_id != cluster_id {
-                continue; // Skip events for different clusters
-            }
+        // Filter events for this cluster and process in batches
+        let cluster_events: Vec<_> = events.into_iter()
+            .filter(|event| event.cluster_id == cluster_id)
+            .collect();
 
-            self.process_slow_query_event(event).await?;
+        if cluster_events.is_empty() {
+            return Ok(());
+        }
+
+        // Process events in batches to improve performance
+        const BATCH_SIZE: usize = 100;
+        for chunk in cluster_events.chunks(BATCH_SIZE) {
+            self.process_slow_query_event_batch(chunk).await?;
         }
 
         Ok(())
@@ -114,10 +123,87 @@ impl SlowQueryIngestionService {
             created_at: chrono::Utc::now().naive_utc(),
         };
 
-        self.slow_query_repo.create(slow_query_event).await?;
+        retry_with_backoff(
+            &db_retry_config(),
+            || self.slow_query_repo.create(slow_query_event.clone()),
+        ).await?;
 
         // Update fingerprint statistics
         self.update_fingerprint_statistics(fingerprint_record.id, event.query_time).await?;
+
+        Ok(())
+    }
+
+    pub async fn process_slow_query_event_batch(&self, events: &[ParsedSlowQueryEvent]) -> Result<(), String> {
+        if events.is_empty() {
+            return Ok(());
+        }
+
+        // Generate fingerprints for all queries
+        let mut fingerprints = Vec::new();
+        let mut fingerprint_records = Vec::new();
+
+        for event in events {
+            let fingerprint = self.generate_query_fingerprint(&event.sql_text)?;
+            fingerprints.push(fingerprint);
+        }
+
+        // Find or create fingerprint records
+        for (i, fingerprint) in fingerprints.iter().enumerate() {
+            let record = self.find_or_create_fingerprint(events[i].cluster_id, fingerprint).await?;
+            fingerprint_records.push(record);
+        }
+
+        // Create slow query events
+        let slow_query_events: Vec<SlowQueryEvent> = events.iter().enumerate().map(|(i, event)| {
+            SlowQueryEvent {
+                id: Uuid::new_v4(),
+                cluster_id: event.cluster_id,
+                event_timestamp: event.event_timestamp,
+                query_time: event.query_time,
+                lock_time: Some(event.lock_time),
+                rows_sent: Some(event.rows_sent),
+                rows_examined: Some(event.rows_examined),
+                user_host: Some(event.user_host.clone()),
+                database: event.schema_name.clone(),
+                sql_text: event.sql_text.clone(),
+                raw_log_line: String::new(), // Will be populated from original log
+                fingerprint_id: Some(fingerprint_records[i].id),
+                parsed_at: chrono::Utc::now().naive_utc(),
+                created_at: chrono::Utc::now().naive_utc(),
+            }
+        }).collect();
+
+        // Batch insert slow query events
+        retry_with_backoff(
+            &db_retry_config(),
+            || self.slow_query_repo.create_many(slow_query_events.clone()),
+        ).await?;
+
+        // Update fingerprint statistics in batches
+        let mut stats_updates = Vec::new();
+        for (i, record) in fingerprint_records.iter().enumerate() {
+            let current = record.clone();
+            let new_count = current.execution_count + 1;
+            let new_total_time = current.total_query_time + events[i].query_time;
+            let new_avg_time = new_total_time / new_count as f64;
+
+            stats_updates.push((
+                current.id,
+                new_count,
+                new_total_time,
+                new_avg_time,
+                chrono::Utc::now().naive_utc(),
+            ));
+        }
+
+        // Batch update statistics
+        if !stats_updates.is_empty() {
+            retry_with_backoff(
+                &db_retry_config(),
+                || self.fingerprint_repo.update_stats_batch(stats_updates.clone()),
+            ).await?;
+        }
 
         Ok(())
     }
@@ -152,7 +238,10 @@ impl SlowQueryIngestionService {
 
     async fn find_or_create_fingerprint(&self, cluster_id: Uuid, query_hash: &str) -> Result<QueryFingerprint, String> {
         // Try to find existing fingerprint
-        if let Some(existing) = self.fingerprint_repo.find_by_hash(cluster_id, query_hash).await? {
+        if let Some(existing) = retry_with_backoff(
+            &db_retry_config(),
+            || self.fingerprint_repo.find_by_hash(cluster_id, query_hash),
+        ).await? {
             return Ok(existing);
         }
 
@@ -180,12 +269,18 @@ impl SlowQueryIngestionService {
             updated_at: chrono::Utc::now().naive_utc(),
         };
 
-        self.fingerprint_repo.create(fingerprint).await
+        retry_with_backoff(
+            &db_retry_config(),
+            || self.fingerprint_repo.create(fingerprint.clone()),
+        ).await
     }
 
     async fn update_fingerprint_statistics(&self, fingerprint_id: Uuid, query_time: f64) -> Result<(), String> {
         // Get current fingerprint
-        let current = self.fingerprint_repo.find_by_id(fingerprint_id).await?
+        let current = retry_with_backoff(
+            &db_retry_config(),
+            || self.fingerprint_repo.find_by_id(fingerprint_id),
+        ).await?
             .ok_or_else(|| "Fingerprint not found".to_string())?;
 
         let new_count = current.execution_count + 1;
@@ -193,12 +288,15 @@ impl SlowQueryIngestionService {
         let new_avg_time = new_total_time / new_count as f64;
 
         // For now, we'll update basic statistics. P95/P99 would need more sophisticated calculation
-        self.fingerprint_repo.update_stats(
-            fingerprint_id,
-            new_count,
-            new_total_time,
-            new_avg_time,
-            chrono::Utc::now().naive_utc(),
+        retry_with_backoff(
+            &db_retry_config(),
+            || self.fingerprint_repo.update_stats(
+                fingerprint_id,
+                new_count,
+                new_total_time,
+                new_avg_time,
+                chrono::Utc::now().naive_utc(),
+            ),
         ).await
     }
 
