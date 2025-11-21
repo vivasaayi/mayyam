@@ -116,6 +116,8 @@ RUST_LOG=info  # dev mode
 RUST_LOG=debug # development
 ```
 
+Tip: A template `.env.example` is included — copy it to `.env` and fill your credentials. Never check `.env` or secrets into version control. If you generated tokens locally (by running `node generate_jwt.js`) make sure to remove them or add to `.gitignore`.
+
 ### Quick Commands
 
 ```bash
@@ -130,6 +132,29 @@ RUST_LOG=debug # development
 docker-compose --profile dev up --build
 docker-compose --profile uat up --build
 docker-compose -f docker-compose.prod.yml up -d
+```
+
+### Local test runner
+
+To run both backend and frontend unit tests locally use:
+
+```bash
+./run-local-tests.sh
+Note: Make the script executable once using:
+
+```bash
+chmod +x ./run-local-tests.sh
+```
+```
+
+You can opt to skip either set of tests:
+
+```bash
+./run-local-tests.sh --skip-backend
+./run-local-tests.sh --skip-frontend
+You can also run tests using `make test` from the repo root which will call the same test steps.
+
+For contribution guidelines and PR checklist refer to `CONTRIBUTING.md`.
 ```
 
 ### Integration tests (gated)

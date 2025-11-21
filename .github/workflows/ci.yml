@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: ["*"]
+  pull_request:
+    branches: ["*"]
+
+jobs:
+  backend-tests:
+    name: Backend tests (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            backend/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Run backend unit tests
+        env:
+          DATABASE_URL: "sqlite::memory:"
+          RUST_LOG: "info"
+          AWS_ACCESS_KEY_ID: ""
+          AWS_SECRET_ACCESS_KEY: ""
+        run: |
+          cd backend
+          cargo test --workspace --all-targets
+
+  frontend-tests:
+    name: Frontend tests (Node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: frontend/node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('frontend/package-lock.json') }}
+      - name: Install dependencies
+        run: cd frontend && npm ci
+      - name: Run unit tests
+        run: cd frontend && CI=true npm test --silent -- --watchAll=false
+
+  local-tests:
+    name: Local tests runner
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure script is executable
+        run: chmod +x ./run-local-tests.sh
+      - name: Run full local test script
+        run: |
+          chmod +x ./run-local-tests.sh
+          ./run-local-tests.sh

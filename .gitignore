@@ -74,6 +74,10 @@ yarn-error.log*
 logs/
 *.log
 
+# Don't accidentally commit local dev tokens
+token.txt
+token.*
+
 # Cache files
 .eslintcache
 .stylelintcache
