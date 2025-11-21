@@ -4,7 +4,62 @@ Parameters
 
 Licensor:             Rajan Panneer Selvam
 Licensed Work:        Mayyam
-                              The Licensed Work is (c) 2025 Rajan Panneer Selvam
+                      Copyright (c) 2025 Rajan Panneer Selvam
 Additional Use Grant: None
+Change Date:          9999-01-01
 
-Change Date:          No Automatic Change
+Notice
+
+The Business Source License (this “License”) is not an Open Source license.
+However, the Licensed Work will eventually become available under an Open Source
+License, as stated in this License.
+
+Copyright Notice
+
+The Licensed Work is (c) 2025 Rajan Panneer Selvam.
+
+License Grant
+
+During the Change License Period (defined below), the Licensor grants you the
+non-exclusive, worldwide, non-transferable, non-sublicensable right to use,
+copy, modify, create derivative works, and redistribute the Licensed Work,
+provided: (i) your use of the Licensed Work does not violate the Additional Use
+Grant described above; and (ii) you comply with the terms of this License.
+
+Change License
+
+On the Change Date specified above, the Licensed Work will be made available
+under the terms of the “GNU General Public License, version 2.0 or later”
+(the “Change License”). On and after the Change Date, you may use the Licensed
+Work under the Change License.
+
+Change License Period
+
+The “Change License Period” is the period beginning on the date you receive the
+Licensed Work and ending immediately before the Change Date.
+
+Restrictions
+
+You may not remove or alter any legal notices contained in the Licensed Work.
+Your use of the Licensed Work must comply with all applicable laws and
+regulations.
+
+Disclaimer
+
+THE LICENSED WORK IS PROVIDED “AS IS,” WITHOUT WARRANTIES OR CONDITIONS OF ANY
+KIND, WHETHER EXPRESS OR IMPLIED, INCLUDING WITHOUT LIMITATION ANY WARRANTIES
+OR CONDITIONS OF TITLE, NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A
+PARTICULAR PURPOSE.
+
+Limitation of Liability
+
+IN NO EVENT WILL THE LICENSOR BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES, OR ANY DAMAGES WHATSOEVER,
+ARISING OUT OF OR IN CONNECTION WITH THE LICENSED WORK OR THIS LICENSE,
+REGARDLESS OF THE THEORY OF LIABILITY, EVEN IF ADVISED OF THE POSSIBILITY OF
+SUCH DAMAGES.
+
+-----
+
+This License is based on the Business Source License 1.1 developed by MariaDB.
+For more information, see https://mariadb.com/bsl11/
