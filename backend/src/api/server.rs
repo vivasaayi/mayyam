@@ -14,7 +14,8 @@
 
 
 use actix_cors::Cors;
-use actix_web::{middleware::Logger, web, App, HttpServer};
+use actix_web::{middleware::Logger, web, App, HttpServer, HttpResponse, Responder};
+use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use std::error::Error;
 use std::sync::Arc;
 use tracing::info;
@@ -429,11 +430,49 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
                 // Pass Arc<DatabaseConnection> to the general routes::configure function
                 routes::configure(cfg_param, db_connection.clone());
             })
-            .service(web::resource("/health").to(|| async { "Mayyam API is running!" }))
+                .service(web::resource("/health").route(web::get().to(health_check)))
     })
     .bind(addr)?
     .run()
     .await?;
 
     Ok(())
+}
+
+async fn health_check(
+    db: web::Data<Arc<sea_orm::DatabaseConnection>>,
+    cfg: web::Data<Config>,
+) -> impl Responder {
+    // Check primary Postgres DB
+    match db
+        .execute(Statement::from_string(DbBackend::Postgres, "SELECT 1".to_string()))
+        .await
+    {
+        Ok(_) => (),
+        Err(e) => {
+            tracing::error!("Postgres health check failed: {}", e);
+            return HttpResponse::ServiceUnavailable().body("Postgres DB not ready");
+        }
+    }
+
+    // If MySQL is configured, check it as well
+    if let Some(mysql_cfg) = cfg.database.mysql.first() {
+        match crate::utils::database::connect_to_specific_mysql(mysql_cfg).await {
+            Ok(conn) => {
+                if let Err(e) = conn
+                    .execute(Statement::from_string(DbBackend::MySql, "SELECT 1".to_string()))
+                    .await
+                {
+                    tracing::error!("MySQL health check failed: {}", e);
+                    return HttpResponse::ServiceUnavailable().body("MySQL DB not ready");
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to connect to MySQL for health check: {}", e);
+                return HttpResponse::ServiceUnavailable().body("MySQL DB not ready");
+            }
+        }
+    }
+
+    HttpResponse::Ok().body("Mayyam API is running and DBs are healthy")
 }

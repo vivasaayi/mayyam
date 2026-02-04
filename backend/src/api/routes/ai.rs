@@ -32,6 +32,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .route(
             "/analyze/rds/question",
             web::post().to(ai::answer_rds_question),
+        )
+        .route(
+            "/analyze/mysql/{id}/{workflow}",
+            web::get().to(ai::analyze_mysql_triage),
         );
 
     cfg.service(scope);

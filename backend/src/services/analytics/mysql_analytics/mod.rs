@@ -14,3 +14,4 @@
 
 
 pub mod mysql_analytics_service;
+pub use mysql_analytics_service::MySqlAnalyticsService;

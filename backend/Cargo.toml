@@ -59,30 +59,30 @@ walkdir = "2.4"    # Directory traversal for backup management
 tempfile = "3.8"   # Temporary file creation for safe operations
 
 # AWS SDKX
-aws-config = "*"
-aws-sdk-ec2 = "*"
-aws-smithy-http = "*"  # Added for AWS SDK core types
-aws-smithy-types = "*"  # Added for AWS SDK date time formatting
-aws-sdk-s3 = "*"
-aws-sdk-rds = "*"
-aws-sdk-dynamodb = "*"
-aws-sdk-kinesis = "*"
-aws-sdk-sqs = "*"
-aws-sdk-sns = "*"
-aws-sdk-lambda = "*"
-aws-sdk-cloudwatch = "*"
-aws-sdk-cloudwatchlogs = "*"
-aws-sdk-elasticache = "*"
-aws-sdk-opensearch = "*"
-aws-sdk-costexplorer = "*"
-aws-sdk-sts = "*"
-aws-sdk-apigateway = "*"
-aws-sdk-cloudfront = "*"
-aws-sdk-elasticloadbalancing = "*"
-aws-sdk-elasticloadbalancingv2 = "*"
-aws-sdk-efs = "*"
-aws-types = "*"
-aws-credential-types = "*"
+aws-config = "1.1.7"
+aws-sdk-ec2 = "1.23.0"
+aws-smithy-http = "0.60.6"  # Added for AWS SDK core types
+aws-smithy-types = "1.1.7"  # Added for AWS SDK date time formatting
+aws-sdk-s3 = "1.23.0"
+aws-sdk-rds = "1.23.0"
+aws-sdk-dynamodb = "1.22.0"
+aws-sdk-kinesis = "1.22.0"
+aws-sdk-sqs = "1.22.0"
+aws-sdk-sns = "1.22.0"
+aws-sdk-lambda = "1.23.0"
+aws-sdk-cloudwatch = "1.23.0"
+aws-sdk-cloudwatchlogs = "1.22.0"
+aws-sdk-elasticache = "1.22.0"
+aws-sdk-opensearch = "1.22.0"
+aws-sdk-costexplorer = "1.22.0"
+aws-sdk-sts = "1.22.0"
+aws-sdk-apigateway = "1.22.0"
+aws-sdk-cloudfront = "1.22.0"
+aws-sdk-elasticloadbalancing = "1.22.0"
+aws-sdk-elasticloadbalancingv2 = "1.22.0"
+aws-sdk-efs = "1.22.0"
+aws-types = "1.1.7"
+aws-credential-types = "1.1.7"
 
 # Kubernetes
 kube = { version = "0.85", features = ["runtime", "derive", "ws"] }

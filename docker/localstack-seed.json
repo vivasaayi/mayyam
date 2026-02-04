@@ -1,0 +1,11 @@
+{
+  "s3": [
+    { "bucket": "mayyam-test-bucket" }
+  ],
+  "kinesis": [
+    { "stream_name": "mayyam-test-stream", "shard_count": 1 }
+  ],
+  "dynamodb": [
+    { "table_name": "mayyam-test-table", "key_schema": [ { "AttributeName": "id", "KeyType": "HASH" } ], "attribute_definitions": [ { "AttributeName": "id", "AttributeType": "S" } ], "provisioned_throughput": { "ReadCapacityUnits": 5, "WriteCapacityUnits": 5 } }
+  ]
+}

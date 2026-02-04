@@ -61,6 +61,7 @@ import PerformanceAnalysis from "../components/database/PerformanceAnalysis";
 import QueryTool from "../components/database/QueryTool";
 import SchemaExplorer from "../components/database/SchemaExplorer";
 import DatabaseMonitoring from "../components/database/DatabaseMonitoring";
+import MySqlTriage from "../components/database/MySqlTriage";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 
@@ -72,7 +73,7 @@ const DatabaseManagement = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
-  
+
   // Connection modal state
   const [showConnectionModal, setShowConnectionModal] = useState(false);
   const [editingConnection, setEditingConnection] = useState(null);
@@ -170,7 +171,7 @@ const DatabaseManagement = () => {
 
   const handleDeleteConnection = async (connectionId) => {
     if (!window.confirm("Are you sure you want to delete this connection?")) return;
-    
+
     try {
       await api.delete(`/api/databases/${connectionId}`);
       setSuccess("Connection deleted successfully");
@@ -222,7 +223,7 @@ const DatabaseManagement = () => {
         query: currentQuery.trim(),
         explain: activeView === "query" && currentQuery.toLowerCase().startsWith("select")
       });
-      
+
       setQueryResult(response.data);
       setQueryHistory(prev => [...prev.slice(-9), {
         query: currentQuery,
@@ -305,20 +306,20 @@ const DatabaseManagement = () => {
       width: 200,
       cellRenderer: (params) => (
         <div className="d-flex gap-1">
-          <CButton size="sm" color="primary" variant="outline" 
-                   onClick={() => setSelectedConnection(params.data)}>
+          <CButton size="sm" color="primary" variant="outline"
+            onClick={() => setSelectedConnection(params.data)}>
             Connect
           </CButton>
           <CButton size="sm" color="info" variant="outline"
-                   onClick={() => handleTestConnection(params.data.id)}>
+            onClick={() => handleTestConnection(params.data.id)}>
             Test
           </CButton>
           <CButton size="sm" color="warning" variant="outline"
-                   onClick={() => handleEditConnection(params.data)}>
+            onClick={() => handleEditConnection(params.data)}>
             Edit
           </CButton>
           <CButton size="sm" color="danger" variant="outline"
-                   onClick={() => handleDeleteConnection(params.data.id)}>
+            onClick={() => handleDeleteConnection(params.data.id)}>
             Delete
           </CButton>
         </div>
@@ -330,7 +331,7 @@ const DatabaseManagement = () => {
   const getDatabaseIcon = (type) => {
     const icons = {
       mysql: "🐬",
-      postgresql: "🐘", 
+      postgresql: "🐘",
       postgres: "🐘",
       redis: "🔴",
       opensearch: "🔍"
@@ -342,7 +343,7 @@ const DatabaseManagement = () => {
     const colors = {
       mysql: "primary",
       postgresql: "info",
-      postgres: "info", 
+      postgres: "info",
       redis: "danger",
       opensearch: "warning"
     };
@@ -403,7 +404,7 @@ const DatabaseManagement = () => {
         {/* Main Content Area */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
           {selectedConnection ? (
-            <DatabaseWorkbench 
+            <DatabaseWorkbench
               connection={selectedConnection}
               analysisWorkflows={ANALYSIS_WORKFLOWS}
               onAnalyze={handleAnalyzeDatabase}
@@ -450,7 +451,7 @@ const DatabaseManagement = () => {
                 <CFormInput
                   id="name"
                   value={connectionForm.name}
-                  onChange={(e) => setConnectionForm({...connectionForm, name: e.target.value})}
+                  onChange={(e) => setConnectionForm({ ...connectionForm, name: e.target.value })}
                   required
                 />
               </CCol>
@@ -463,7 +464,7 @@ const DatabaseManagement = () => {
                     const type = e.target.value;
                     const defaultPorts = { mysql: 3306, postgresql: 5432, postgres: 5432, redis: 6379, opensearch: 9200 };
                     setConnectionForm({
-                      ...connectionForm, 
+                      ...connectionForm,
                       connection_type: type,
                       port: defaultPorts[type] || 3306
                     });
@@ -482,7 +483,7 @@ const DatabaseManagement = () => {
                 <CFormInput
                   id="host"
                   value={connectionForm.host}
-                  onChange={(e) => setConnectionForm({...connectionForm, host: e.target.value})}
+                  onChange={(e) => setConnectionForm({ ...connectionForm, host: e.target.value })}
                   placeholder="localhost"
                   required
                 />
@@ -493,7 +494,7 @@ const DatabaseManagement = () => {
                   type="number"
                   id="port"
                   value={connectionForm.port}
-                  onChange={(e) => setConnectionForm({...connectionForm, port: parseInt(e.target.value)})}
+                  onChange={(e) => setConnectionForm({ ...connectionForm, port: parseInt(e.target.value) })}
                   required
                 />
               </CCol>
@@ -504,7 +505,7 @@ const DatabaseManagement = () => {
                 <CFormInput
                   id="username"
                   value={connectionForm.username}
-                  onChange={(e) => setConnectionForm({...connectionForm, username: e.target.value})}
+                  onChange={(e) => setConnectionForm({ ...connectionForm, username: e.target.value })}
                 />
               </CCol>
               <CCol md={6}>
@@ -513,7 +514,7 @@ const DatabaseManagement = () => {
                   type="password"
                   id="password"
                   value={connectionForm.password}
-                  onChange={(e) => setConnectionForm({...connectionForm, password: e.target.value})}
+                  onChange={(e) => setConnectionForm({ ...connectionForm, password: e.target.value })}
                 />
               </CCol>
             </CRow>
@@ -523,7 +524,7 @@ const DatabaseManagement = () => {
                 <CFormInput
                   id="database"
                   value={connectionForm.database_name}
-                  onChange={(e) => setConnectionForm({...connectionForm, database_name: e.target.value})}
+                  onChange={(e) => setConnectionForm({ ...connectionForm, database_name: e.target.value })}
                 />
               </CCol>
               <CCol md={6}>
@@ -531,7 +532,7 @@ const DatabaseManagement = () => {
                 <CFormSelect
                   id="ssl"
                   value={connectionForm.ssl_mode}
-                  onChange={(e) => setConnectionForm({...connectionForm, ssl_mode: e.target.value})}
+                  onChange={(e) => setConnectionForm({ ...connectionForm, ssl_mode: e.target.value })}
                 >
                   <option value="disable">Disable</option>
                   <option value="require">Require</option>
@@ -555,11 +556,11 @@ const DatabaseManagement = () => {
 };
 
 // Database Workbench Component
-const DatabaseWorkbench = ({ 
-  connection, 
-  analysisWorkflows, 
-  onAnalyze, 
-  analysisResult, 
+const DatabaseWorkbench = ({
+  connection,
+  analysisWorkflows,
+  onAnalyze,
+  analysisResult,
   analysisLoading,
   performanceMetrics,
   queryResult,
@@ -588,7 +589,7 @@ const DatabaseWorkbench = ({
           </div>
           <div className="d-flex gap-2">
             <CButton size="sm" color="info" variant="outline"
-                     onClick={() => onAnalyze(connection.id, selectedWorkflow)}>
+              onClick={() => onAnalyze(connection.id, selectedWorkflow)}>
               🔍 Analyze
             </CButton>
             <CDropdown>
@@ -611,7 +612,7 @@ const DatabaseWorkbench = ({
       <div>
         <CNav variant="pills" className="px-3 pt-3 bg-light">
           <CNavItem>
-            <CNavLink 
+            <CNavLink
               active={activeTab === 'overview'}
               onClick={() => setActiveTab('overview')}
               href="#"
@@ -620,7 +621,7 @@ const DatabaseWorkbench = ({
             </CNavLink>
           </CNavItem>
           <CNavItem>
-            <CNavLink 
+            <CNavLink
               active={activeTab === 'performance'}
               onClick={() => setActiveTab('performance')}
               href="#"
@@ -629,7 +630,7 @@ const DatabaseWorkbench = ({
             </CNavLink>
           </CNavItem>
           <CNavItem>
-            <CNavLink 
+            <CNavLink
               active={activeTab === 'query'}
               onClick={() => setActiveTab('query')}
               href="#"
@@ -638,7 +639,7 @@ const DatabaseWorkbench = ({
             </CNavLink>
           </CNavItem>
           <CNavItem>
-            <CNavLink 
+            <CNavLink
               active={activeTab === 'schema'}
               onClick={() => setActiveTab('schema')}
               href="#"
@@ -647,7 +648,7 @@ const DatabaseWorkbench = ({
             </CNavLink>
           </CNavItem>
           <CNavItem>
-            <CNavLink 
+            <CNavLink
               active={activeTab === 'monitoring'}
               onClick={() => setActiveTab('monitoring')}
               href="#"
@@ -655,11 +656,22 @@ const DatabaseWorkbench = ({
               📊 Monitoring
             </CNavLink>
           </CNavItem>
+          {connection.connection_type === 'mysql' && (
+            <CNavItem>
+              <CNavLink
+                active={activeTab === 'triage'}
+                onClick={() => setActiveTab('triage')}
+                href="#"
+              >
+                🤖 AI Triage
+              </CNavLink>
+            </CNavItem>
+          )}
         </CNav>
 
         <CTabContent style={{ flex: 1 }}>
           <CTabPane visible={activeTab === 'overview'} className="p-3">
-            <DatabaseOverview 
+            <DatabaseOverview
               connection={connection}
               analysisResult={analysisResult}
               performanceMetrics={performanceMetrics}
@@ -667,7 +679,7 @@ const DatabaseWorkbench = ({
           </CTabPane>
 
           <CTabPane visible={activeTab === 'performance'} className="p-3">
-            <PerformanceAnalysis 
+            <PerformanceAnalysis
               connection={connection}
               analysisWorkflows={analysisWorkflows}
               selectedWorkflow={selectedWorkflow}
@@ -680,7 +692,7 @@ const DatabaseWorkbench = ({
           </CTabPane>
 
           <CTabPane visible={activeTab === 'query'} className="p-3">
-            <QueryTool 
+            <QueryTool
               connection={connection}
               currentQuery={currentQuery}
               setCurrentQuery={setCurrentQuery}
@@ -696,11 +708,17 @@ const DatabaseWorkbench = ({
           </CTabPane>
 
           <CTabPane visible={activeTab === 'monitoring'} className="p-3">
-            <DatabaseMonitoring 
+            <DatabaseMonitoring
               connection={connection}
               performanceMetrics={performanceMetrics}
             />
           </CTabPane>
+
+          {connection.connection_type === 'mysql' && (
+            <CTabPane visible={activeTab === 'triage'} className="p-3">
+              <MySqlTriage connection={connection} />
+            </CTabPane>
+          )}
         </CTabContent>
       </div>
     </div>
@@ -711,7 +729,7 @@ const DatabaseWorkbench = ({
 const getDatabaseIcon = (type) => {
   const icons = {
     mysql: "🐬",
-    postgresql: "🐘", 
+    postgresql: "🐘",
     postgres: "🐘",
     redis: "🔴",
     opensearch: "🔍"

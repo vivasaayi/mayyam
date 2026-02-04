@@ -167,6 +167,44 @@ Some integration tests depend on external services. They are gated with environm
 
 The test harness auto-starts the backend on an ephemeral port and waits for `/health`. If the backend can't become healthy (for example, no local Postgres is running for `config.test.yml`), Kubernetes smoke tests will skip gracefully with a message. To get full coverage locally, bring up the dev compose stack first so DB/Kafka are available, then run `cargo test` in `backend/`.
 
+Note: The `/health` endpoint performs DB-level readiness checks (Postgres and optionally MySQL if configured) — it may return 503 until the database(s) are ready. Use `./scripts/wait-for-db.sh` to test database connectivity from CI/local machines before calling `/health`.
+
+Local integration tests (Docker Compose)
+--------------------------------------------------
+We provide a `test` profile for Docker Compose that starts Postgres, MySQL, Kafka, and Localstack for AWS mocking. To run local integration tests:
+
+```bash
+# Start services and run integration tests in a containerized environment
+docker compose --profile dev --profile test up --build integration-tests
+
+# Or use the helper script (recommended)
+./scripts/run-integration-tests.sh
+```
+
+Notes:
+- The `AWS_ENDPOINT` environment variable is respected by the backend and points to Localstack in the test profile.
+- Integration tests use `API_URL` to call the actual backend process (http://backend-uat:8080) so you get real API behavior.
+
+DB readiness and seeding
+--------------------------------
+To ensure DBs are truly ready for queries, we added `scripts/wait-for-db.sh`.
+
+To seed test data, add a SQL file to `backend/test_data/seed.sql` then run:
+
+```bash
+./scripts/seed-db.sh backend/test_data/seed.sql
+```
+
+To wipe volumes and re-seed from scratch:
+
+```bash
+make cleanup
+docker compose --profile dev --profile test up -d
+./scripts/seed-db.sh backend/test_data/seed.sql
+```
+
+Gating: Integration and e2e tests are gated in CI; they run automatically for the `main` branch or manually via `workflow_dispatch`. To execute integration jobs for feature branches, run the workflow manually from GitHub Actions and enable the tests.
+
 ### Development Setup
 
 #### Backend

@@ -19,7 +19,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # ===== BACKEND BUILD STAGE =====
-FROM rust:1.85-slim AS backend-builder
+FROM rust:1.88-slim AS backend-builder
 
 WORKDIR /usr/src/app
 

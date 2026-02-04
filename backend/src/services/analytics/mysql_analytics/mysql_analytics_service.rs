@@ -62,6 +62,36 @@ impl MySqlAnalyticsService {
         })
     }
 
+    pub async fn get_triage_context(
+        &self,
+        conn: &DatabaseConnection,
+    ) -> Result<serde_json::Value, AppError> {
+        let query_stats = self.get_query_statistics(conn).await?;
+        let performance_metrics = self.get_performance_metrics(conn).await?;
+        let storage_metrics = self.get_storage_metrics(conn).await?;
+        
+        // Combine into a simple JSON object for LLM context
+        Ok(serde_json::json!({
+            "query_statistics": {
+                "total_queries": query_stats.total_queries,
+                "slow_queries": query_stats.slow_queries,
+                "avg_query_time_ms": query_stats.avg_query_time_ms,
+                "top_slow_queries": query_stats.top_slow_queries,
+            },
+            "performance_metrics": {
+                "connection_count": performance_metrics.connection_count,
+                "active_sessions": performance_metrics.active_sessions,
+                "buffer_hit_ratio": performance_metrics.buffer_hit_ratio,
+                "blocked_queries": performance_metrics.blocked_queries,
+            },
+            "storage_metrics": {
+                "total_bytes": storage_metrics.total_bytes,
+                "free_space_bytes": storage_metrics.free_space_bytes,
+                "top_tables_by_size": storage_metrics.top_tables_by_size,
+            }
+        }))
+    }
+
     async fn get_query_statistics(
         &self,
         conn: &DatabaseConnection,
