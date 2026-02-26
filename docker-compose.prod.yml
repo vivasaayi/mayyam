@@ -1,0 +1,98 @@
+# Production deployment for Mayyam
+# This compose file is designed to be run via the install.sh bootstrapper
+# It pulls pre-built images from GitHub Container Registry rather than building locally
+
+services:
+  mayyam-prod:
+    # Use the image published by the GitHub Action
+    image: ghcr.io/sumitharajan/mayyam:latest
+    ports:
+      - "80:80"
+    environment:
+      - RUST_LOG=info
+      - MODE=prod
+      - DATABASE_URL=postgres://postgres:${DB_PASSWORD:-postgres}@postgres:5432/mayyam
+      - MYSQL_URL=mysql://mayyam_user:${MYSQL_PASSWORD:-mayyam_password}@mysql:3306/mayyam_db
+      - KAFKA_BROKERS=kafka:29092
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    depends_on:
+      - postgres
+      - mysql
+      - kafka
+    networks:
+      - mayyam_network
+
+  postgres:
+    image: postgres:14-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=mayyam
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - mayyam_network
+
+  mysql:
+    image: mysql:8.0
+    container_name: mayyam_mysql_prod
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-mayyam_password}
+      MYSQL_DATABASE: mayyam_db
+      MYSQL_USER: mayyam_user
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-mayyam_password}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - mayyam_network
+    command: --default-authentication-plugin=mysql_native_password
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: mayyam_zookeeper_prod
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - mayyam_network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: mayyam_kafka_prod
+    restart: unless-stopped
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    networks:
+      - mayyam_network
+
+volumes:
+  postgres_data:
+  mysql_data:
+
+networks:
+  mayyam_network:
+    driver: bridge

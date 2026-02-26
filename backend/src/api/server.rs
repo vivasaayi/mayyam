@@ -93,28 +93,15 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     info!("Starting Mayyam server on http://{}", addr);
 
     // Connect to the database
-    let db_connection_val = database::connect(&config).await?;
-    // Ensure critical tables exist in case migrations weren't applied
-    // Parent tables first (referenced by foreign keys)
-    if let Err(e) = database::ensure_llm_providers_table(&db_connection_val).await {
-        tracing::warn!("Failed to ensure llm_providers table exists: {}", e);
+    let db_connection_val = crate::utils::database::connect(&config).await?;
+    
+    // Run automated DB migrations
+    if let Err(e) = crate::utils::migrations::run_migrations(&db_connection_val).await {
+        tracing::error!("Failed to run database migrations: {}", e);
+        // Depending on your policy, you might want to return the error here to stop startup
+        // return Err(e.into());
     }
-    if let Err(e) = database::ensure_aws_resources_table(&db_connection_val).await {
-        tracing::warn!("Failed to ensure aws_resources table exists: {}", e);
-    }
-    if let Err(e) = database::ensure_aws_accounts_table(&db_connection_val).await {
-        tracing::warn!("Failed to ensure aws_accounts table exists: {}", e);
-    }
-    // Child tables (with foreign key references)
-    if let Err(e) = database::ensure_llm_provider_models_table(&db_connection_val).await {
-        tracing::warn!("Failed to ensure llm_provider_models table exists: {}", e);
-    }
-    if let Err(e) = database::ensure_sync_runs_table(&db_connection_val).await {
-        tracing::warn!("Failed to ensure sync_runs table exists: {}", e);
-    }
-    if let Err(e) = database::ensure_aws_resources_table(&db_connection_val).await {
-        tracing::warn!("Failed to ensure aws_resources table exists: {}", e);
-    }
+
     let db_connection = Arc::new(db_connection_val);
 
     // Initialize repositories
