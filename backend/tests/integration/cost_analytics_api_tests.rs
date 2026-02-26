@@ -159,7 +159,7 @@ async fn cost_forecast_api_returns_expected_projection() -> Result<()> {
         return Ok(());
     };
 
-    let account_id = format!("cost-api-test-{}", Uuid::new_v4());
+    let account_id = format!("test{}", &Uuid::new_v4().as_simple().to_string()[..12]);
     seed_cost_analytics_data(&db, &account_id)
         .await
         .context("seeding cost analytics data")?;
@@ -170,9 +170,9 @@ async fn cost_forecast_api_returns_expected_projection() -> Result<()> {
     let test_result: Result<()> = async {
         let response = harness
             .client()
-            .get(&harness.build_url(&format!("/api/cost-analytics/{}/forecast", account_id)))
+            .get(&harness.build_url("/api/cost-analytics/forecast"))
             .header("Authorization", format!("Bearer {}", harness.auth_token()))
-            .query(&[("days_ahead", 90)])
+            .query(&[("account_id", account_id.as_str()), ("days_ahead", "90")])
             .send()
             .await
             .context("calling forecast endpoint")?;
@@ -235,7 +235,7 @@ async fn cost_anomalies_api_returns_seeded_anomaly() -> Result<()> {
         return Ok(());
     };
 
-    let account_id = format!("cost-api-test-{}", Uuid::new_v4());
+    let account_id = format!("test{}", &Uuid::new_v4().as_simple().to_string()[..12]);
     let anomaly_id = seed_cost_analytics_data(&db, &account_id)
         .await
         .context("seeding cost analytics data")?;

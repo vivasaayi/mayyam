@@ -882,14 +882,14 @@ pub async fn analyze_mysql_triage(
 
     // 4. Fetch prompt template
     let template = prompt_repo
-        .search(Some(template_name), None, None)
+        .search(template_name)
         .await?
         .into_iter()
         .next()
         .ok_or_else(|| AppError::NotFound(format!("Prompt template '{}' not found", template_name)))?;
 
     // 5. Get triage context (metrics)
-    let analytics_service = MySqlAnalyticsService::new((*config).clone());
+    let analytics_service = MySqlAnalyticsService::new((**config).clone());
     let metrics_json = analytics_service.get_triage_context(&conn).await?;
 
     // 6. Construct variables for the template

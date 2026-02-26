@@ -1,0 +1,123 @@
+services:
+  # Dependencies
+  postgres:
+    image: postgres:14-alpine
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=mayyam
+    volumes:
+      - ./backend/migrations:/migrations
+      - ./backend/test_data/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: mayyam_db
+      MYSQL_USER: mayyam_user
+      MYSQL_PASSWORD: mayyam_password
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server kafka:29092 --list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  localstack:
+    image: localstack/localstack:1.2.0
+    environment:
+      - SERVICES=kinesis,s3,sqs,sts,dynamodb
+      - DEFAULT_REGION=us-east-1
+      - DEBUG=1
+    healthcheck:
+      test: ["CMD", "curl", "-s", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Server
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    environment:
+      - RUST_LOG=info
+      - MODE=dev
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/mayyam
+      - MYSQL_URL=mysql://mayyam_user:mayyam_password@mysql:3306/mayyam_db
+      - KAFKA_BROKERS=kafka:29092
+      - AWS_ENDPOINT=http://localstack:4566
+      - AWS_REGION=us-east-1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+      start_period: 600s
+
+  # Tests
+  integration-tests:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    environment:
+      - RUST_LOG=debug
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/mayyam
+      - MYSQL_URL=mysql://mayyam_user:mayyam_password@mysql:3306/mayyam_db
+      - KAFKA_BROKERS=kafka:29092
+      - AWS_ENDPOINT=http://localstack:4566
+      - AWS_REGION=us-east-1
+      - API_URL=http://backend:8085
+      - TEST_API_BASE_URL=http://backend:8085
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./backend:/usr/src/app
+    working_dir: /usr/src/app
+    command: bash -c "cargo test --test integration_tests --features integration-tests -- --nocapture && cargo test --test integration_api -- --nocapture"
