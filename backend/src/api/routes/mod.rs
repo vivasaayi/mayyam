@@ -30,6 +30,7 @@ pub mod kubernetes;
 pub mod kubernetes_cluster_management; // New module
 pub mod llm_analytics;
 pub mod llm_provider;
+pub mod metrics;
 pub mod prompt_template;
 pub mod query_fingerprint;
 pub mod query_template;

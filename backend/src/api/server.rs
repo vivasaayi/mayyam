@@ -429,6 +429,9 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
                 info!("Registering other general routes");
                 // Pass Arc<DatabaseConnection> to the general routes::configure function
                 routes::configure(cfg_param, db_connection.clone());
+
+                info!("Registering Prometheus metrics route");
+                routes::metrics::configure(cfg_param);
             })
                 .service(web::resource("/health").route(web::get().to(health_check)))
     })
