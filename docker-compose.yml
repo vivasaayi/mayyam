@@ -71,18 +71,26 @@ services:
   # ===== UAT MODE SERVICES =====
   # Production-like setup with testing
   backend-uat:
-    profiles: ["uat"]
+    profiles: ["uat", "test"]
     build:
       context: .
       dockerfile: Dockerfile
     ports:
       - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
     environment:
       - RUST_LOG=info
       - MODE=uat
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/mayyam
       - MYSQL_URL=mysql://mayyam_user:mayyam_password@mysql:3306/mayyam_db
       - KAFKA_BROKERS=kafka:29092
+      - AWS_ENDPOINT=http://localstack:4566
+      - AWS_REGION=us-east-1
+      - API_URL=http://backend-uat:8080
     depends_on:
       - postgres
       - mysql
@@ -93,7 +101,7 @@ services:
       - mayyam_network
 
   frontend-uat:
-    profiles: ["uat"]
+    profiles: ["uat", "test"]
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -199,6 +207,19 @@ services:
     networks:
       - mayyam_network
 
+  localstack:
+    profiles: ["dev", "uat", "test"]
+    image: localstack/localstack:1.2.0
+    container_name: mayyam_localstack
+    environment:
+      - SERVICES=kinesis,s3,sqs,sts,dynamodb
+      - DEFAULT_REGION=us-east-1
+      - DEBUG=1
+    ports:
+      - "4566:4566"
+    networks:
+      - mayyam_network
+
   kafka-ui:
     profiles: ["dev", "uat"]
     image: provectuslabs/kafka-ui:latest
@@ -230,29 +251,35 @@ services:
       MESSAGE_COUNT: 10000
     networks:
       - mayyam_network
-    command: ["python", "generate_test_data.py"]
+    command: ["python", "generate_test_kafka_data.py"]
 
-  # integration-tests:
-  #   profiles: ["dev", "uat"]
-  #   build:
-  #     context: ./backend
-  #     dockerfile: Dockerfile.test
-  #   environment:
-  #     - DATABASE_URL=postgres://postgres:postgres@postgres:5432/mayyam
-  #     - MYSQL_URL=mysql://mayyam_user:mayyam_password@mysql:3306/mayyam_db
-  #     - KAFKA_BROKERS=kafka:29092
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     mysql:
-  #       condition: service_started
-  #     kafka:
-  #       condition: service_started
-  #   volumes:
-  #     - ./backend:/usr/src/app
-  #   networks:
-  #     - mayyam_network
-  #   command: cargo test --test integration
+  integration-tests:
+    profiles: ["test"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.test
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/mayyam
+      - MYSQL_URL=mysql://mayyam_user:mayyam_password@mysql:3306/mayyam_db
+      - KAFKA_BROKERS=kafka:29092
+      - AWS_ENDPOINT=http://localstack:4566
+      - AWS_REGION=us-east-1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mysql:
+        condition: service_started
+      kafka:
+        condition: service_started
+      backend-uat:
+        condition: service_healthy
+      localstack:
+        condition: service_started
+    volumes:
+      - ./backend:/usr/src/app
+    networks:
+      - mayyam_network
+    command: cargo test --test integration -- --nocapture
 
 volumes:
   postgres_data:

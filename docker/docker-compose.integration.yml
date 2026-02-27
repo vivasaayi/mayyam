@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:14-alpine
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=mayyam
+    ports:
+      - '5432:5432'
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      - MYSQL_ROOT_PASSWORD=rootpassword
+      - MYSQL_DATABASE=mayyam_db
+      - MYSQL_USER=mayyam_user
+      - MYSQL_PASSWORD=mayyam_password
+    ports:
+      - '3306:3306'
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    environment:
+      - ZOOKEEPER_CLIENT_PORT=2181
+      - ZOOKEEPER_TICK_TIME=2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+
+  localstack:
+    image: localstack/localstack:1.2.0
+    environment:
+      - SERVICES=kinesis,s3,dynamodb,sqs,sts
+      - DEFAULT_REGION=us-east-1
+    ports:
+      - '4566:4566'
+
+  backend-uat:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/mayyam
+      - MYSQL_URL=mysql://mayyam_user:mayyam_password@mysql:3306/mayyam_db
+      - KAFKA_BROKERS=kafka:29092
+      - AWS_ENDPOINT=http://localstack:4566
+    depends_on:
+      - postgres
+      - mysql
+      - kafka
+      - localstack
+
+  frontend-uat:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    depends_on:
+      - backend-uat
+
+  integration-tests:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile.test
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/mayyam
+      - AWS_ENDPOINT=http://localstack:4566
+    depends_on:
+      - backend-uat
+      - postgres
+      - mysql
+      - kafka
+      - localstack
+    command: cargo nextest run --profile ci --junit output=test-results/junit.xml

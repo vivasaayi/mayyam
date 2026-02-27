@@ -13,7 +13,7 @@
 # Rust
 /target/
 **/*.rs.bk
-Cargo.lock
+# Cargo.lock
 
 # IDE and editor files
 .idea/
@@ -73,6 +73,10 @@ yarn-error.log*
 # Logs
 logs/
 *.log
+
+# Don't accidentally commit local dev tokens
+token.txt
+token.*
 
 # Cache files
 .eslintcache

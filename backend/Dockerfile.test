@@ -1,0 +1,26 @@
+FROM rust:1.88-slim-bullseye
+
+# Install OS dependencies needed for database drivers and libraries
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libssl-dev pkg-config libpq-dev build-essential curl git ca-certificates && \
+  rm -rf /var/lib/apt/lists/*
+
+WORKDIR /usr/src/app
+
+# Copy Cargo files first to cache dependencies
+COPY Cargo.toml Cargo.lock ./
+COPY Cargo.* ./
+
+# Copy the workspace crates to avoid recompiling all dependencies every test run
+COPY . ./backend
+
+WORKDIR /usr/src/app/backend
+
+# Build tests (this will compile dependencies)
+RUN cargo test --no-run --workspace || true
+
+# Install cargo-nextest for JUnit-style reports
+RUN cargo install cargo-nextest || true
+RUN cargo install cargo2junit || true
+
+CMD ["bash", "-lc", "mkdir -p test-results && (cargo nextest run --profile ci --junit output=test-results/junit.xml || (cargo test --test integration -- --nocapture | cargo2junit > test-results/junit.xml))"]

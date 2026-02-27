@@ -1,0 +1,54 @@
+# Integration Test Framework Walkthrough
+
+We have successfully established a robust integration testing framework for the Mayyam backend. The test flow leverages [docker-compose.dev.yml](file:///Users/rajanpanneerselvam/work/mayyam-master/docker-compose.dev.yml) to provision all necessary dependencies, build the server, and reliably execute the test suite via the [run-integration-tests.sh](file:///Users/rajanpanneerselvam/work/mayyam-master/run-integration-tests.sh) script.
+
+## The Docker Compose Setup
+We introduced a structured way to run tests using a self-contained docker-compose process in [docker-compose.dev.yml](file:///Users/rajanpanneerselvam/work/mayyam-master/docker-compose.dev.yml):
+1. **Dependencies Orchestrated**: [postgres](file:///Users/rajanpanneerselvam/work/mayyam-master/backend/src/utils/database.rs#55-68), [mysql](file:///Users/rajanpanneerselvam/work/mayyam-master/backend/src/utils/database.rs#69-84), `zookeeper`, [kafka](file:///Users/rajanpanneerselvam/work/mayyam-master/backend/src/repositories/cluster.rs#78-124), and `localstack` are started concurrently, each using rigorous healthchecks up to 60 seconds to ensure readiness before the application starts up.
+2. **Database Initialization**: The Postgres [init-db.sh](file:///Users/rajanpanneerselvam/work/mayyam-master/backend/test_data/init-db.sh) seeding script successfully runs inside a custom SQL execution process. It loads user records in the right order to abide by strict constraints, inserts schemas, and seeds test instances with query templates. Wait conditions and volumes successfully hook to the `migrations/` directory without issues.
+3. **Backend Service**: Built from zero with caching, providing hot reload endpoints and exposing `port: 8085` strictly using the [Dockerfile.dev](file:///Users/rajanpanneerselvam/work/mayyam-master/backend/Dockerfile.dev) strategy.
+4. **Integration Tester Core**: A standalone service, `integration-tests`, waits until the `backend` answers an HTTP 200 via `curl`, verifying connectivity. Next, it kicks off `cargo test` sequentially. The service ensures that any exit code explicitly triggers an error shutdown due to `docker-compose --abort-on-container-exit`.
+
+## Bug Fixes and Code Quality Enhancements
+During our validation runs, several tests required immediate fixes due strictly string matching limitations:
+- **Foreign Key Violation in Schema Seeder:** We identified a hard-coded admin `UUID` mismatch spanning [initial_schema.sql](file:///Users/rajanpanneerselvam/work/mayyam-master/backend/migrations/initial_schema.sql) and [query_templates_table.sql](file:///Users/rajanpanneerselvam/work/mayyam-master/backend/migrations/query_templates_table.sql).
+- **Constraint Violation on Postgres Variable Limits:** The [cost_analytics](file:///Users/rajanpanneerselvam/work/mayyam-master/backend/tests/integration/cost_analytics_api_tests.rs#53-138) tests generated a fake 50-character account ID using `UUID::new()`, which violated the 20-character maximum for `service_name / account_id`. We updated the `String` instantiation to `format!("test{}", &...[..12])` allowing Postgres to complete its insertions. 
+- **API Param Expectation Misalignment:** Noticed that `/api/cost-analytics/{account_id}/forecast` routed internally but tests requested `days_ahead` as a query parameter in a GET endpoint. We aligned the route handler so it takes everything in query string formats (e.g. `/forecast?account_id=xx&days_ahead=90`).
+
+## Execution Command
+To start the integration tests, use the following bash script execution which gracefully tears down instances natively, handling any failed testing containers correctly.
+```bash
+./run-integration-tests.sh
+```
+
+## Results
+The latest run shows comprehensive backend test coverage executing safely underneath a local docker sandbox environment.
+```text
+integration-tests-1  | test result: ok. 23 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.69s
+```
+
+---
+
+# Kafka Integration Improvements (Production Readiness)
+We significantly enhanced the Kafka subsystem for full production deployments, fulfilling the Production Readiness milestone:
+
+## Observability
+- Added `lazy_static` Prometheus metric registers: `KAFKA_MESSAGES_PRODUCED`, `KAFKA_MESSAGES_CONSUMED`, `KAFKA_OPERATION_ERRORS`, and `KAFKA_ACTIVE_CONNECTIONS`.
+- Automatically exposed the `/metrics` endpoint on the API which serves standard Prometheus format payload metrics.
+- Enriched [list_topics](file:///Users/rajanpanneerselvam/work/mayyam-master/backend/src/services/kafka.rs#971-1009), [produce_message](file:///Users/rajanpanneerselvam/work/mayyam-master/backend/src/services/kafka.rs#1124-1187), and [consume_messages](file:///Users/rajanpanneerselvam/work/mayyam-master/backend/src/services/kafka.rs#1188-1290) with Actix `#[tracing::instrument]` labels for structured observability correlating `cluster_id` and `topic_name` effortlessly.
+
+## Resilience
+- Updated generic `rdkafka` client timeout parameters:
+  - `request.timeout.ms`: 10,000
+  - `message.timeout.ms`: 15,000
+  - `socket.timeout.ms`: 10,000
+- These tightly bounded timeout configs ensure missing brokers fail gracefully (yielding a 503 instead of halting the Actix thread infinitely).
+- Correctly bubbled mapped errors using `AppError::ExternalService()`.
+
+## Security (Encryption at Rest)
+- Introduced an AES-256-GCM encryption utility initialized via an `ENCRYPTION_KEY` environment variable in [backend/src/utils/encryption.rs](file:///Users/rajanpanneerselvam/work/mayyam-master/backend/src/utils/encryption.rs).
+- Injected [encrypt()](file:///Users/rajanpanneerselvam/work/mayyam-master/backend/src/utils/encryption.rs#30-52) directly in `ClusterRepository::create_kafka_cluster` to seamlessly obscure SASL passwords before performing SQL `INSERT`s or saves.
+- `KafkaService::get_cluster` decrypts `sasl_password` on the fly, keeping the configuration plaintext securely in memory exactly when it builds the `rdkafka` client interface, ensuring your database remains sterile of leaked credentials.
+
+## Verification
+- We verified these capabilities locally using `cargo test --features integration-tests`. The integration test suite caught a missing `hex` crate dependency, which we successfully restored and passed natively without affecting any operational workflows.

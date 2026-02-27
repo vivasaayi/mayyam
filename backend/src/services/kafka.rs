@@ -41,6 +41,35 @@ use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use walkdir::WalkDir;
 
+use lazy_static::lazy_static;
+use prometheus::{register_int_counter_vec, register_int_gauge_vec, IntCounterVec, IntGaugeVec};
+
+lazy_static! {
+    pub static ref KAFKA_MESSAGES_PRODUCED: IntCounterVec = register_int_counter_vec!(
+        "kafka_messages_produced_total",
+        "Total number of Kafka messages produced",
+        &["cluster_id", "topic"]
+    ).unwrap();
+
+    pub static ref KAFKA_MESSAGES_CONSUMED: IntCounterVec = register_int_counter_vec!(
+        "kafka_messages_consumed_total",
+        "Total number of Kafka messages consumed",
+        &["cluster_id", "topic"]
+    ).unwrap();
+
+    pub static ref KAFKA_OPERATION_ERRORS: IntCounterVec = register_int_counter_vec!(
+        "kafka_operation_errors_total",
+        "Total number of Kafka operation errors",
+        &["cluster_id", "operation"]
+    ).unwrap();
+
+    pub static ref KAFKA_ACTIVE_CONNECTIONS: IntGaugeVec = register_int_gauge_vec!(
+        "kafka_active_connections",
+        "Number of active connections",
+        &["cluster_id"]
+    ).unwrap();
+}
+
 // ===== FILESYSTEM STORAGE STRUCTURES =====
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -774,10 +803,18 @@ impl KafkaService {
         let stored_cluster = self.cluster_repository.find_by_id(cluster_id).await?;
         if let Some(cluster) = stored_cluster {
             // Convert from stored cluster to KafkaClusterConfig
-            let kafka_config: KafkaClusterConfig =
+            let mut kafka_config: KafkaClusterConfig =
                 serde_json::from_value(cluster.config).map_err(|e| {
                     AppError::Validation(format!("Invalid cluster configuration: {}", e))
                 })?;
+                
+            // Decrypt password if it exists
+            if let Some(pwd) = &kafka_config.sasl_password {
+                if !pwd.is_empty() {
+                    kafka_config.sasl_password = Some(crate::utils::encryption::decrypt(pwd)?);
+                }
+            }
+                
             return Ok(kafka_config);
         }
 
@@ -875,10 +912,13 @@ impl KafkaService {
             client_config.set("security.protocol", &cluster.security_protocol);
         }
 
-        // Common settings for reliability
-        client_config.set("request.timeout.ms", "30000");
-        client_config.set("message.timeout.ms", "300000");
-        client_config.set("socket.timeout.ms", "60000");
+        // Common settings for resilience in a web context
+        client_config.set("request.timeout.ms", "10000");
+        client_config.set("message.timeout.ms", "15000");
+        client_config.set("socket.timeout.ms", "10000");
+        client_config.set("metadata.request.timeout.ms", "10000");
+        client_config.set("message.send.max.retries", "3");
+        client_config.set("retry.backoff.ms", "500");
 
         client_config
     }
@@ -929,6 +969,7 @@ impl KafkaService {
     }
 
     // List topics in a cluster
+    #[tracing::instrument(skip(self, config), fields(cluster_id = %cluster_id))]
     pub async fn list_topics(
         &self,
         cluster_id: &str,
@@ -946,6 +987,7 @@ impl KafkaService {
         // Get topic metadata with timeout
         let timeout = Duration::from_secs(30);
         let metadata = admin.inner().fetch_metadata(None, timeout).map_err(|e| {
+            KAFKA_OPERATION_ERRORS.with_label_values(&[cluster_id, "list_topics"]).inc();
             AppError::ExternalService(format!("Failed to fetch topic metadata: {}", e))
         })?;
 
@@ -1080,6 +1122,7 @@ impl KafkaService {
     }
 
     // Produce a message to a topic
+    #[tracing::instrument(skip(self, message, config), fields(cluster_id = %cluster_id, topic_name = %topic_name))]
     pub async fn produce_message(
         &self,
         cluster_id: &str,
@@ -1125,7 +1168,12 @@ impl KafkaService {
         let delivery_status = producer
             .send(record, Duration::from_secs(10))
             .await
-            .map_err(|e| AppError::ExternalService(format!("Failed to send message: {:?}", e)))?;
+            .map_err(|e| {
+                KAFKA_OPERATION_ERRORS.with_label_values(&[cluster_id, "produce"]).inc();
+                AppError::ExternalService(format!("Failed to send message: {:?}", e))
+            })?;
+
+        KAFKA_MESSAGES_PRODUCED.with_label_values(&[cluster_id, topic_name]).inc();
 
         let response = serde_json::json!({
             "message": "Message produced successfully",
@@ -1138,6 +1186,7 @@ impl KafkaService {
     }
 
     // Consume messages from a topic
+    #[tracing::instrument(skip(self, options, config), fields(cluster_id = %cluster_id, topic_name = %topic_name))]
     pub async fn consume_messages(
         &self,
         cluster_id: &str,
@@ -1216,6 +1265,7 @@ impl KafkaService {
                     });
 
                     messages.push(msg_json);
+                    KAFKA_MESSAGES_CONSUMED.with_label_values(&[cluster_id, topic_name]).inc();
 
                     // Manually commit the offset
                     if let Err(e) = consumer.commit_message(&message, CommitMode::Async) {
@@ -1223,6 +1273,7 @@ impl KafkaService {
                     }
                 }
                 Err(e) => {
+                    KAFKA_OPERATION_ERRORS.with_label_values(&[cluster_id, "consume"]).inc();
                     error!("Error while consuming message: {:?}", e);
                     break;
                 }

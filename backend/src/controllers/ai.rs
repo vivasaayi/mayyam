@@ -24,6 +24,11 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::info;
+use crate::repositories::database::DatabaseRepository;
+use crate::repositories::prompt_template::PromptTemplateRepository;
+use crate::services::analytics::mysql_analytics::MySqlAnalyticsService;
+use crate::utils::database::connect_to_dynamic_database;
+use crate::config::Config;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChatRequest {
@@ -838,6 +843,85 @@ pub async fn answer_dynamodb_question(
     };
 
     Ok(HttpResponse::Ok().json(response))
+}
+
+pub async fn analyze_mysql_triage(
+    path: web::Path<(String, String)>,
+    db_repo: web::Data<Arc<DatabaseRepository>>,
+    prompt_repo: web::Data<Arc<PromptTemplateRepository>>,
+    llm_service: web::Data<Arc<crate::services::llm::LlmIntegrationService>>,
+    llm_provider_repo: web::Data<Arc<crate::repositories::llm_provider::LlmProviderRepository>>,
+    config: web::Data<Config>,
+    _claims: web::ReqData<Claims>,
+) -> Result<HttpResponse, AppError> {
+    let (connection_id_str, workflow) = path.into_inner();
+    
+    let connection_id = uuid::Uuid::parse_str(&connection_id_str)
+        .map_err(|_| AppError::BadRequest(format!("Invalid UUID: {}", connection_id_str)))?;
+
+    // 1. Get database connection details
+    let db_model = db_repo
+        .find_by_id(connection_id)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("Database connection {} not found", connection_id)))?;
+
+    if db_model.connection_type != "mysql" {
+        return Err(AppError::BadRequest("Only MySQL triaging is supported at this time".to_string()));
+    }
+
+    // 2. Connect to the dynamic database
+    let conn = connect_to_dynamic_database(&db_model, &config).await?;
+
+    // 3. Resolve prompt template name
+    let template_name = match workflow.as_str() {
+        "performance" => "MySQL_performance_triage",
+        "connection" => "MySQL_connection_triage",
+        "index" => "MySQL_index_advisor",
+        _ => return Err(AppError::BadRequest(format!("Unsupported workflow: {}", workflow))),
+    };
+
+    // 4. Fetch prompt template
+    let template = prompt_repo
+        .search(template_name)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or_else(|| AppError::NotFound(format!("Prompt template '{}' not found", template_name)))?;
+
+    // 5. Get triage context (metrics)
+    let analytics_service = MySqlAnalyticsService::new((**config).clone());
+    let metrics_json = analytics_service.get_triage_context(&conn).await?;
+
+    // 6. Construct variables for the template
+    let variables = serde_json::json!({
+        "connection_name": db_model.name,
+        "host": db_model.host,
+        "database_name": db_model.database_name.unwrap_or_default(),
+        "metrics_json": metrics_json
+    });
+
+    // 7. Get default LLM provider
+    let provider = llm_provider_repo
+        .find_all()
+        .await?
+        .into_iter()
+        .find(|p| p.is_default)
+        .ok_or_else(|| AppError::BadRequest("No default LLM provider configured".to_string()))?;
+
+    // 8. Generate response using template
+    let response = llm_service
+        .generate_with_template(provider.id, template.id, Some(variables), None, None)
+        .await?;
+
+    Ok(HttpResponse::Ok().json(RdsAnalysisResponse {
+        format: "markdown".to_string(),
+        content: response.content,
+        related_questions: vec![
+            "Explain the top finding in more detail".to_string(),
+            "Generate SQL to fix the primary issue".to_string(),
+            "How can I monitor this metric better?".to_string(),
+        ],
+    }))
 }
 
 // Mock response content generators

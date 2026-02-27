@@ -14,7 +14,8 @@
 
 
 use actix_cors::Cors;
-use actix_web::{middleware::Logger, web, App, HttpServer};
+use actix_web::{middleware::Logger, web, App, HttpServer, HttpResponse, Responder};
+use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use std::error::Error;
 use std::sync::Arc;
 use tracing::info;
@@ -92,28 +93,15 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     info!("Starting Mayyam server on http://{}", addr);
 
     // Connect to the database
-    let db_connection_val = database::connect(&config).await?;
-    // Ensure critical tables exist in case migrations weren't applied
-    // Parent tables first (referenced by foreign keys)
-    if let Err(e) = database::ensure_llm_providers_table(&db_connection_val).await {
-        tracing::warn!("Failed to ensure llm_providers table exists: {}", e);
+    let db_connection_val = crate::utils::database::connect(&config).await?;
+    
+    // Run automated DB migrations
+    if let Err(e) = crate::utils::migrations::run_migrations(&db_connection_val).await {
+        tracing::error!("Failed to run database migrations: {}", e);
+        // Depending on your policy, you might want to return the error here to stop startup
+        // return Err(e.into());
     }
-    if let Err(e) = database::ensure_aws_resources_table(&db_connection_val).await {
-        tracing::warn!("Failed to ensure aws_resources table exists: {}", e);
-    }
-    if let Err(e) = database::ensure_aws_accounts_table(&db_connection_val).await {
-        tracing::warn!("Failed to ensure aws_accounts table exists: {}", e);
-    }
-    // Child tables (with foreign key references)
-    if let Err(e) = database::ensure_llm_provider_models_table(&db_connection_val).await {
-        tracing::warn!("Failed to ensure llm_provider_models table exists: {}", e);
-    }
-    if let Err(e) = database::ensure_sync_runs_table(&db_connection_val).await {
-        tracing::warn!("Failed to ensure sync_runs table exists: {}", e);
-    }
-    if let Err(e) = database::ensure_aws_resources_table(&db_connection_val).await {
-        tracing::warn!("Failed to ensure aws_resources table exists: {}", e);
-    }
+
     let db_connection = Arc::new(db_connection_val);
 
     // Initialize repositories
@@ -428,12 +416,53 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
                 info!("Registering other general routes");
                 // Pass Arc<DatabaseConnection> to the general routes::configure function
                 routes::configure(cfg_param, db_connection.clone());
+
+                info!("Registering Prometheus metrics route");
+                routes::metrics::configure(cfg_param);
             })
-            .service(web::resource("/health").to(|| async { "Mayyam API is running!" }))
+                .service(web::resource("/health").route(web::get().to(health_check)))
     })
     .bind(addr)?
     .run()
     .await?;
 
     Ok(())
+}
+
+async fn health_check(
+    db: web::Data<Arc<sea_orm::DatabaseConnection>>,
+    cfg: web::Data<Config>,
+) -> impl Responder {
+    // Check primary Postgres DB
+    match db
+        .execute(Statement::from_string(DbBackend::Postgres, "SELECT 1".to_string()))
+        .await
+    {
+        Ok(_) => (),
+        Err(e) => {
+            tracing::error!("Postgres health check failed: {}", e);
+            return HttpResponse::ServiceUnavailable().body("Postgres DB not ready");
+        }
+    }
+
+    // If MySQL is configured, check it as well
+    if let Some(mysql_cfg) = cfg.database.mysql.first() {
+        match crate::utils::database::connect_to_specific_mysql(mysql_cfg).await {
+            Ok(conn) => {
+                if let Err(e) = conn
+                    .execute(Statement::from_string(DbBackend::MySql, "SELECT 1".to_string()))
+                    .await
+                {
+                    tracing::error!("MySQL health check failed: {}", e);
+                    return HttpResponse::ServiceUnavailable().body("MySQL DB not ready");
+                }
+            }
+            Err(e) => {
+                tracing::error!("Failed to connect to MySQL for health check: {}", e);
+                return HttpResponse::ServiceUnavailable().body("MySQL DB not ready");
+            }
+        }
+    }
+
+    HttpResponse::Ok().body("Mayyam API is running and DBs are healthy")
 }

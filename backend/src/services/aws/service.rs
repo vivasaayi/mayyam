@@ -21,6 +21,7 @@ use crate::repositories::aws_resource::AwsResourceRepository;
 use crate::repositories::cloud_resource::CloudResourceRepository;
 use async_trait::async_trait;
 use aws_config;
+use std::str::FromStr;
 use aws_config::sts::AssumeRoleProvider;
 use aws_config::BehaviorVersion;
 use aws_credential_types::provider::SharedCredentialsProvider;
@@ -140,6 +141,14 @@ impl AwsService {
         let region = aws_types::region::Region::new(aws_account_dto.default_region.clone());
         let mut base_builder =
             aws_config::defaults(BehaviorVersion::latest()).region(region.clone());
+
+        // Support overriding the AWS endpoint via environment variable for localstack/testing
+        if let Ok(endpoint_url) = std::env::var("AWS_ENDPOINT") {
+            if !endpoint_url.is_empty() {
+                base_builder = base_builder.endpoint_url(endpoint_url.clone());
+                trace!("Using custom AWS_ENDPOINT: {}", endpoint_url);
+            }
+        }
 
         // Helper: build config with a specific credentials provider
         async fn load_with_provider<

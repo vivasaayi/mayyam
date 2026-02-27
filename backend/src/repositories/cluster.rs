@@ -89,10 +89,15 @@ impl ClusterRepository {
             )));
         }
 
+        let encrypted_password = match &request.sasl_password {
+            Some(pw) => Some(crate::utils::encryption::encrypt(pw)?),
+            None => None,
+        };
+
         let config = json!({
             "bootstrap_servers": request.bootstrap_servers,
             "sasl_username": request.sasl_username,
-            "sasl_password": request.sasl_password,
+            "sasl_password": encrypted_password,
             "sasl_mechanism": request.sasl_mechanism,
             "security_protocol": request.security_protocol,
         });

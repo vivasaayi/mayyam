@@ -14,7 +14,9 @@
 
 
 pub mod database;
+pub mod migrations;
 pub mod database_ext;
+pub mod encryption;
 pub mod html_generator;
 pub mod logging;
 pub mod retry;

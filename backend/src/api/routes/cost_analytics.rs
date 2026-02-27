@@ -81,7 +81,7 @@ pub fn configure_routes(
                 web::post().to(cost_analytics::analyze_cost_with_llm),
             )
             .route(
-                "/{account_id}/forecast",
+                "/forecast",
                 web::get().to(cost_analytics::get_cost_forecast),
             )
             .route(
