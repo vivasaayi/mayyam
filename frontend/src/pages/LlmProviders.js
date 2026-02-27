@@ -17,9 +17,14 @@ import React, { useEffect, useState } from "react";
 import {
   CCard, CCardBody, CCardHeader, CRow, CCol, CButton, CForm, CFormInput, CFormSelect, CFormLabel, CModal, CModalHeader, CModalBody, CModalFooter, CSpinner, CAlert, CBadge
 } from "@coreui/react";
+import { AgGridReact } from 'ag-grid-react';
+import 'ag-grid-community/styles/ag-grid.css';
+import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { fetchWithAuth } from "../services/api";
+import { useNavigate } from "react-router-dom";
 
 const LlmProviders = () => {
+  const navigate = useNavigate();
   const [providers, setProviders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -74,7 +79,7 @@ const LlmProviders = () => {
     try {
       const url = editingProvider ? `/api/v1/llm-providers/${editingProvider.id}` : "/api/v1/llm-providers";
       const method = editingProvider ? "PUT" : "POST";
-      
+
       // Prepare the payload with correct field mapping
       const payload = {
         name: form.name,
@@ -86,19 +91,19 @@ const LlmProviders = () => {
         is_default: form.is_default,
         model_config: form.model_config,
       };
-      
+
       // Only include api_key if it's provided (for security)
       if (form.api_key) {
         payload.api_key = form.api_key;
       }
-      
+
       const res = await fetchWithAuth(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error(`Failed to ${editingProvider ? 'update' : 'create'} provider`);
-      
+
       setShowModal(false);
       setEditingProvider(null);
       setSuccess(`Provider ${editingProvider ? 'updated' : 'created'} successfully`);
@@ -125,26 +130,14 @@ const LlmProviders = () => {
   };
 
   const handleEdit = (provider) => {
-    setEditingProvider(provider);
-    setForm({
-      name: provider.name,
-      provider_type: provider.provider_type,
-      model_name: provider.model_name,
-      api_endpoint: provider.base_url || "",
-      api_key: "", // Don't populate for security
-      prompt_format: provider.prompt_format,
-      enabled: provider.enabled,
-      is_default: provider.is_default,
-      model_config: provider.model_config || {},
-    });
-    setShowModal(true);
+    navigate(`/llm-providers/${provider.id}`);
   };
 
   const handleDelete = async (providerId) => {
     if (!window.confirm("Are you sure you want to delete this LLM provider?")) {
       return;
     }
-    
+
     setDeleting(providerId);
     setError(null);
     try {
@@ -152,7 +145,7 @@ const LlmProviders = () => {
         method: "DELETE",
       });
       if (!res.ok) throw new Error("Failed to delete provider");
-      
+
       setSuccess("Provider deleted successfully");
       fetchProviders();
     } catch (e) {
@@ -177,7 +170,7 @@ const LlmProviders = () => {
         body: JSON.stringify({ test_prompt: "Hello, this is a test message." }),
       });
       if (!res.ok) throw new Error("Failed to test provider");
-      
+
       const result = await res.json();
       if (result.success) {
         setSuccess(`Test successful: ${result.message}`);
@@ -192,8 +185,8 @@ const LlmProviders = () => {
 
   return (
     <>
-  <h2 className="mb-2">LLM Providers Management</h2>
-  <p className="text-muted">We now support multiple models per provider. Use the LLM Providers list for advanced management.</p>
+      <h2 className="mb-2">LLM Providers Management</h2>
+      <p className="text-muted">We now support multiple models per provider. Use the LLM Providers list for advanced management.</p>
       {error && <CAlert color="danger">{error}</CAlert>}
       {success && <CAlert color="success">{success}</CAlert>}
       <CCard className="mb-4">
@@ -213,49 +206,44 @@ const LlmProviders = () => {
           ) : providers.length === 0 ? (
             <p>No LLM providers configured yet.</p>
           ) : (
-            <CRow>
-              {providers.map((prov) => (
-                <CCol md={6} lg={4} key={prov.id} className="mb-3">
-                  <CCard>
-                    <CCardHeader>
-                      <strong>{prov.name}</strong> <CBadge color={prov.enabled ? "success" : "secondary"}>{prov.enabled ? "Enabled" : "Disabled"}</CBadge>
-                    </CCardHeader>
-                    <CCardBody>
-                      <div><b>Type:</b> {prov.provider_type}</div>
-                      <div><b>Model:</b> {prov.model_name}</div>
-                      <div><b>Default:</b> {prov.is_default ? "Yes" : "No"}</div>
-                      <div><b>Created:</b> {new Date(prov.created_at).toLocaleString()}</div>
-                      
-                      <div className="mt-3 d-flex gap-2 flex-wrap">
-                        <CButton 
-                          color="primary" 
-                          size="sm" 
-                          onClick={() => handleEdit(prov)}
-                        >
-                          Edit
+            <div className="ag-theme-alpine" style={{ height: 600, width: '100%' }}>
+              <AgGridReact
+                rowData={providers}
+                columnDefs={[
+                  { headerName: 'Name', field: 'name', sortable: true, filter: true, flex: 1 },
+                  { headerName: 'Provider Type', field: 'provider_type', sortable: true, filter: true },
+                  { headerName: 'Default Model', field: 'model_name', sortable: true, filter: true },
+                  {
+                    headerName: 'Status',
+                    field: 'enabled',
+                    width: 120,
+                    cellRenderer: params => (
+                      <CBadge color={params.value ? "success" : "secondary"}>
+                        {params.value ? "Enabled" : "Disabled"}
+                      </CBadge>
+                    )
+                  },
+                  {
+                    headerName: 'Actions',
+                    width: 250,
+                    cellRenderer: params => (
+                      <div className="d-flex gap-2 align-items-center h-100">
+                        <CButton size="sm" color="primary" onClick={() => handleEdit(params.data)}>Edit</CButton>
+                        <CButton size="sm" color="info" disabled={testing === params.data.id} onClick={() => handleTest(params.data.id)}>
+                          {testing === params.data.id ? <CSpinner size="sm" /> : "Test"}
                         </CButton>
-                        <CButton 
-                          color="info" 
-                          size="sm" 
-                          onClick={() => handleTest(prov.id)}
-                          disabled={testing === prov.id}
-                        >
-                          {testing === prov.id ? <CSpinner size="sm" /> : "Test"}
-                        </CButton>
-                        <CButton 
-                          color="danger" 
-                          size="sm" 
-                          onClick={() => handleDelete(prov.id)}
-                          disabled={deleting === prov.id}
-                        >
-                          {deleting === prov.id ? <CSpinner size="sm" /> : "Delete"}
+                        <CButton size="sm" color="danger" disabled={deleting === params.data.id} onClick={() => handleDelete(params.data.id)}>
+                          {deleting === params.data.id ? <CSpinner size="sm" /> : "Delete"}
                         </CButton>
                       </div>
-                    </CCardBody>
-                  </CCard>
-                </CCol>
-              ))}
-            </CRow>
+                    )
+                  }
+                ]}
+                animateRows
+                pagination
+                paginationPageSize={10}
+              />
+            </div>
           )}
         </CCardBody>
       </CCard>
@@ -280,11 +268,11 @@ const LlmProviders = () => {
             <CFormLabel className="mt-2">API Endpoint</CFormLabel>
             <CFormInput name="api_endpoint" value={form.api_endpoint} onChange={handleChange} />
             <CFormLabel className="mt-2">API Key</CFormLabel>
-            <CFormInput 
-              name="api_key" 
-              value={form.api_key} 
-              onChange={handleChange} 
-              type="password" 
+            <CFormInput
+              name="api_key"
+              value={form.api_key}
+              onChange={handleChange}
+              type="password"
               autoComplete="new-password"
               placeholder={editingProvider ? "Leave empty to keep existing key" : ""}
             />

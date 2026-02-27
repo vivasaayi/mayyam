@@ -28,12 +28,14 @@ use crate::services::llm::interface::{
 use crate::services::llm::providers::{
     AnthropicProvider, DeepSeekProvider, LocalChatGptProvider, OpenAIProvider,
 };
+use crate::repositories::llm_model::LlmProviderModelRepository;
 
 /// Unified LLM Manager - The main interface for all LLM operations
 #[derive(Debug)]
 pub struct UnifiedLlmManager {
     providers: HashMap<String, Arc<dyn LlmProvider>>,
     provider_repo: Arc<LlmProviderRepository>,
+    model_repo: Arc<LlmProviderModelRepository>,
     default_formatter: ResponseFormatter,
 }
 
@@ -78,10 +80,11 @@ pub struct ProviderInfo {
 }
 
 impl UnifiedLlmManager {
-    pub fn new(provider_repo: Arc<LlmProviderRepository>) -> Self {
+    pub fn new(provider_repo: Arc<LlmProviderRepository>, model_repo: Arc<LlmProviderModelRepository>) -> Self {
         Self {
             providers: HashMap::new(),
             provider_repo,
+            model_repo,
             default_formatter: ResponseFormatter::default(),
         }
     }
@@ -101,68 +104,81 @@ impl UnifiedLlmManager {
                 continue;
             }
 
-            match db_provider.provider_type.as_str() {
-                "openai" => {
-                    if let Some(api_key) = self
-                        .provider_repo
-                        .get_decrypted_api_key(&db_provider)
-                        .await?
-                    {
-                        let mut provider =
-                            OpenAIProvider::new(api_key, db_provider.model_name.clone());
-                        if let Some(base_url) = &db_provider.base_url {
-                            provider = provider.with_base_url(base_url.clone());
-                        }
-                        self.register_provider(db_provider.id.to_string(), Arc::new(provider));
-                    }
-                }
-                "anthropic" => {
-                    if let Some(api_key) = self
-                        .provider_repo
-                        .get_decrypted_api_key(&db_provider)
-                        .await?
-                    {
-                        let mut provider =
-                            AnthropicProvider::new(api_key, db_provider.model_name.clone());
-                        if let Some(base_url) = &db_provider.base_url {
-                            provider = provider.with_base_url(base_url.clone());
-                        }
-                        self.register_provider(db_provider.id.to_string(), Arc::new(provider));
-                    }
-                }
-                "deepseek" => {
-                    if let Some(api_key) = self
-                        .provider_repo
-                        .get_decrypted_api_key(&db_provider)
-                        .await?
-                    {
-                        let mut provider =
-                            DeepSeekProvider::new(api_key, db_provider.model_name.clone());
-                        if let Some(base_url) = &db_provider.base_url {
-                            provider = provider.with_base_url(base_url.clone());
-                        }
-                        self.register_provider(db_provider.id.to_string(), Arc::new(provider));
-                    }
-                }
-                "local" | "ollama" => {
-                    let base_url = db_provider
-                        .base_url
-                        .clone()
-                        .unwrap_or_else(|| {
-                            tracing::warn!(
-                                "Local/Ollama provider '{}' missing base URL; defaulting to http://localhost:11434",
-                                db_provider.name
-                            );
-                            "http://localhost:11434".to_string()
-                        });
+            // Get all models for this provider
+            let db_models = self.model_repo.list_by_provider(db_provider.id).await?;
+            
+            // If no models registered in the models table, use the default model from provider table
+            let models_to_register = if db_models.is_empty() {
+                vec![db_provider.model_name.clone()]
+            } else {
+                db_models.into_iter().filter(|m| m.enabled).map(|m| m.model_name).collect()
+            };
 
-                    let provider =
-                        LocalChatGptProvider::new(base_url, db_provider.model_name.clone());
-                    self.register_provider(db_provider.id.to_string(), Arc::new(provider));
-                }
-                _ => {
-                    // Skip unsupported provider types
-                    tracing::warn!("Unsupported provider type: {}", db_provider.provider_type);
+            for model_name in models_to_register {
+                match db_provider.provider_type.as_str() {
+                    "openai" => {
+                        if let Some(api_key) = self
+                            .provider_repo
+                            .get_decrypted_api_key(&db_provider)
+                            .await?
+                        {
+                            let mut provider =
+                                OpenAIProvider::new(api_key, model_name.clone());
+                            if let Some(base_url) = &db_provider.base_url {
+                                provider = provider.with_base_url(base_url.clone());
+                            }
+                            // Key by provider_id:model_name to support multiple models from same provider
+                            self.register_provider(format!("{}:{}", db_provider.id, model_name), Arc::new(provider));
+                        }
+                    }
+                    "anthropic" => {
+                        if let Some(api_key) = self
+                            .provider_repo
+                            .get_decrypted_api_key(&db_provider)
+                            .await?
+                        {
+                            let mut provider =
+                                AnthropicProvider::new(api_key, model_name.clone());
+                            if let Some(base_url) = &db_provider.base_url {
+                                provider = provider.with_base_url(base_url.clone());
+                            }
+                            self.register_provider(format!("{}:{}", db_provider.id, model_name), Arc::new(provider));
+                        }
+                    }
+                    "deepseek" => {
+                        if let Some(api_key) = self
+                            .provider_repo
+                            .get_decrypted_api_key(&db_provider)
+                            .await?
+                        {
+                            let mut provider =
+                                DeepSeekProvider::new(api_key, model_name.clone());
+                            if let Some(base_url) = &db_provider.base_url {
+                                provider = provider.with_base_url(base_url.clone());
+                            }
+                            self.register_provider(format!("{}:{}", db_provider.id, model_name), Arc::new(provider));
+                        }
+                    }
+                    "local" | "ollama" => {
+                        let base_url = db_provider
+                            .base_url
+                            .clone()
+                            .unwrap_or_else(|| {
+                                tracing::warn!(
+                                    "Local/Ollama provider '{}' missing base URL; defaulting to http://localhost:11434",
+                                    db_provider.name
+                                );
+                                "http://localhost:11434".to_string()
+                            });
+
+                        let provider =
+                            LocalChatGptProvider::new(base_url, model_name.clone());
+                        self.register_provider(format!("{}:{}", db_provider.id, model_name), Arc::new(provider));
+                    }
+                    _ => {
+                        // Skip unsupported provider types
+                        tracing::warn!("Unsupported provider type: {}", db_provider.provider_type);
+                    }
                 }
             }
         }
