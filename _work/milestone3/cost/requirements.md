@@ -23,3 +23,9 @@ The internal foundation for generating LLM insights on cost anomalies is success
 ## 5. UI and Export Enhancements
 - **Export Capabilities:** Expose the backend CSV export helper functions (`export_new_resources_csv`, `export_cost_increases_csv`, etc.) via dedicated user-facing REST endpoints for easy download.
 - **Dashboard Drilldowns:** Implement dedicated drill-down pages for specific services, accounts, and custom tags.
+
+## 6. Cloudwatch Metrics & LLM Analysis
+The core analytical capabilities for CloudWatch metrics are implemented in `backend/src/services/analytics/cloudwatch_analytics/`, including resource usage classification and identifying unused Kinesis Streams, SQS Queues, and RDS instances. However, several integrations are pending:
+- **API Endpoints:** Create REST API routes (e.g., in `cloud.rs` or a new `metrics.rs` controller) to expose the `KinesisAnalyzer`, `SqsAnalyzer`, and `RdsAnalyzer` workflows (`unused`, `classification`, `patterns`, `scaling`) to the frontend.
+- **LLM Pattern Analysis:** The `detect_usage_patterns` function in `CloudWatchAnalyzer` currently returns a placeholder. This needs to be actively wired to the `LlmIntegrationService` to analyze the generated prompt and return actual insights.
+- **UI Presentation:** Develop a frontend interface (HTML/React) to consume these metrics analysis endpoints and display the scores, unused resource flags, and LLM-generated scaling patterns to the user in a readable format.
