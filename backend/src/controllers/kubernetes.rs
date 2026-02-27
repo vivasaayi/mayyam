@@ -23,11 +23,14 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use tracing::{debug, info};
+use actix_web_lab::sse;
+use futures::StreamExt;
+use std::time::Duration;
 use uuid::Uuid;
 
 // Helper function to get cluster config (you'll need to implement this based on your DB structure)
 // This is a simplified example. You'd typically fetch this from a database.
-async fn get_cluster_config_by_id(
+pub async fn get_cluster_config_by_id(
     db: &DatabaseConnection,
     cluster_id_str: &str,
 ) -> Result<KubernetesClusterConfig, AppError> {
@@ -393,6 +396,117 @@ pub async fn get_pod_logs_controller(
     Ok(HttpResponse::Ok()
         .content_type("text/plain; charset=utf-8")
         .body(logs))
+}
+
+pub async fn stream_pod_logs_controller(
+    claims: web::ReqData<Claims>,
+    db: web::Data<Arc<DatabaseConnection>>,
+    path: web::Path<(String, String, String)>,
+    query: web::Query<PodLogsQuery>,
+    pod_service: web::Data<Arc<PodService>>,
+) -> Result<impl Responder, actix_web::Error> {
+    let (cluster_id, namespace, pod_name) = path.into_inner();
+    let query_params = query.into_inner();
+    let container_name = query_params.container.as_deref();
+    let previous = query_params.previous;
+    let tail_lines = query_params.tail_lines;
+
+    let cluster_config = get_cluster_config_by_id(db.get_ref().as_ref(), &cluster_id)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    let log_stream = pod_service
+        .stream_pod_logs(&cluster_config, &namespace, &pod_name, container_name, previous, tail_lines)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    let sse_stream = log_stream.map(|chunk_result| -> Result<sse::Event, actix_web::Error> {
+        match chunk_result {
+            Ok(bytes) => {
+                let string_chunk = String::from_utf8_lossy(&bytes);
+                Ok(sse::Event::Data(sse::Data::new(string_chunk.to_string())))
+            }
+            Err(e) => {
+                Ok(sse::Event::Data(sse::Data::new(format!("ERROR: {}", e)).event("error")))
+            }
+        }
+    });
+
+    Ok(sse::Sse::from_stream(sse_stream).with_keep_alive(Duration::from_secs(10)))
+}
+
+pub async fn watch_pods_controller(
+    claims: web::ReqData<Claims>,
+    db: web::Data<Arc<DatabaseConnection>>,
+    path: web::Path<(String, String)>,
+    pod_service: web::Data<Arc<PodService>>,
+) -> Result<impl Responder, actix_web::Error> {
+    let (cluster_id, namespace) = path.into_inner();
+
+    let cluster_config = get_cluster_config_by_id(db.get_ref().as_ref(), &cluster_id)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    let watch_stream = pod_service
+        .watch_pods(&cluster_config, &namespace)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    let sse_stream = watch_stream.map(|event_result| -> Result<sse::Event, actix_web::Error> {
+        match event_result {
+            Ok(event) => {
+                let json = match event {
+                    kube::runtime::watcher::Event::Applied(obj) => serde_json::json!({"type": "Applied", "object": obj}),
+                    kube::runtime::watcher::Event::Deleted(obj) => serde_json::json!({"type": "Deleted", "object": obj}),
+                    kube::runtime::watcher::Event::Restarted(objs) => serde_json::json!({"type": "Restarted", "objects": objs}),
+                };
+                let json_string = serde_json::to_string(&json).unwrap_or_default();
+                Ok(sse::Event::Data(sse::Data::new(json_string)))
+            },
+            Err(e) => {
+                Ok(sse::Event::Data(sse::Data::new(format!("ERROR: {}", e)).event("error")))
+            }
+        }
+    });
+
+    Ok(sse::Sse::from_stream(sse_stream).with_keep_alive(Duration::from_secs(10)))
+}
+
+pub async fn watch_events_controller(
+    claims: web::ReqData<Claims>,
+    db: web::Data<Arc<DatabaseConnection>>,
+    path: web::Path<(String, String)>,
+    pod_service: web::Data<Arc<PodService>>,
+) -> Result<impl Responder, actix_web::Error> {
+    let (cluster_id, namespace) = path.into_inner();
+
+    let cluster_config = get_cluster_config_by_id(db.get_ref().as_ref(), &cluster_id)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    let watch_stream = pod_service
+        .watch_events(&cluster_config, &namespace)
+        .await
+        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+    let sse_stream = watch_stream.map(|event_result| -> Result<sse::Event, actix_web::Error> {
+        match event_result {
+            Ok(event) => {
+                let json = match event {
+                    kube::runtime::watcher::Event::Applied(obj) => serde_json::json!({"type": "Applied", "object": obj}),
+                    kube::runtime::watcher::Event::Deleted(obj) => serde_json::json!({"type": "Deleted", "object": obj}),
+                    kube::runtime::watcher::Event::Restarted(objs) => serde_json::json!({"type": "Restarted", "objects": objs}),
+                };
+                let json_string = serde_json::to_string(&json).unwrap_or_default();
+                Ok(sse::Event::Data(sse::Data::new(json_string)))
+            },
+            Err(e) => {
+                Ok(sse::Event::Data(sse::Data::new(format!("ERROR: {}", e)).event("error")))
+            }
+        }
+    });
+
+    Ok(sse::Sse::from_stream(sse_stream).with_keep_alive(Duration::from_secs(10)))
 }
 
 #[derive(Deserialize)]
