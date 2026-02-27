@@ -179,6 +179,14 @@ pub fn configure(cfg: &mut web::ServiceConfig, db: Arc<DatabaseConnection>) {
             web::get().to(kube_controller::list_pods_controller),
         )
         .route(
+            "/clusters/{cluster_id}/namespaces/{namespace_name}/pods/watch",
+            web::get().to(crate::controllers::kubernetes::watch_pods_controller),
+        )
+        .route(
+            "/clusters/{cluster_id}/namespaces/{namespace_name}/events/watch",
+            web::get().to(crate::controllers::kubernetes::watch_events_controller),
+        )
+        .route(
             "/clusters/{cluster_id}/namespaces/{namespace_name}/pods/{pod_name}",
             web::get().to(kube_controller::get_pod_details_controller),
         )
@@ -189,6 +197,10 @@ pub fn configure(cfg: &mut web::ServiceConfig, db: Arc<DatabaseConnection>) {
         .route(
             "/clusters/{cluster_id}/namespaces/{namespace_name}/pods/{pod_name}/logs",
             web::get().to(kube_controller::get_pod_logs_controller),
+        )
+        .route(
+            "/clusters/{cluster_id}/namespaces/{namespace_name}/pods/{pod_name}/logs/stream",
+            web::get().to(crate::controllers::kubernetes::stream_pod_logs_controller),
         )
         .route(
             "/clusters/{cluster_id}/namespaces/{namespace_name}/pods/{pod_name}/exec",
@@ -556,6 +568,43 @@ pub fn configure(cfg: &mut web::ServiceConfig, db: Arc<DatabaseConnection>) {
         .route(
             "/clusters/{cluster_id}/nodes/{node}:removeTaint",
             web::post().to(crate::controllers::node_ops::remove_taint_controller),
+        );
+
+    // ReplicaSets
+    let scope = scope
+        .route(
+            "/clusters/{cluster_id}/namespaces/{namespace}/replicasets",
+            web::get().to(crate::controllers::replica_sets::list_replica_sets_controller),
+        )
+        .route(
+            "/clusters/{cluster_id}/namespaces/{namespace}/replicasets/{name}",
+            web::get().to(crate::controllers::replica_sets::get_replica_set_controller),
+        );
+
+    // StorageClasses
+    let scope = scope
+        .route(
+            "/clusters/{cluster_id}/storageclasses",
+            web::get().to(crate::controllers::storage_classes::list_storage_classes_controller),
+        )
+        .route(
+            "/clusters/{cluster_id}/storageclasses/{name}",
+            web::get().to(crate::controllers::storage_classes::get_storage_class_controller),
+        );
+
+    // CRDs and CustomResources
+    let scope = scope
+        .route(
+            "/clusters/{cluster_id}/crds",
+            web::get().to(crate::controllers::crds::list_crds_controller),
+        )
+        .route(
+            "/clusters/{cluster_id}/crds/{name}",
+            web::get().to(crate::controllers::crds::get_crd_controller),
+        )
+        .route(
+            "/clusters/{cluster_id}/customresources/{group}/{version}/{plural}",
+            web::get().to(crate::controllers::crds::list_custom_resources_controller),
         );
 
     cfg.service(scope);

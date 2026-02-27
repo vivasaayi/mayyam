@@ -369,6 +369,72 @@ impl PodService {
             stderr: String::from_utf8_lossy(&stderr_buf).to_string(),
         })
     }
+
+    pub async fn stream_pod_logs(
+        &self,
+        cluster_config: &KubernetesClusterConfig,
+        namespace: &str,
+        pod_name: &str,
+        container_name: Option<&str>,
+        previous: bool,
+        tail_lines: Option<i64>,
+    ) -> Result<impl futures::Stream<Item = Result<bytes::Bytes, kube::Error>>, AppError> {
+        use futures::StreamExt;
+        use futures_util::TryStreamExt;
+        debug!(target: "mayyam::services::kubernetes::pod", cluster_name = cluster_config.api_server_url.as_deref().unwrap_or("unknown"), %namespace, %pod_name, "Streaming pod logs");
+        let client = Self::get_kube_client(cluster_config).await?;
+        let api: Api<Pod> = Api::namespaced(client, namespace);
+        
+        let mut lp = LogParams::default();
+        if let Some(c_name) = container_name {
+            lp.container = Some(c_name.to_string());
+        }
+        lp.previous = previous;
+        lp.tail_lines = tail_lines;
+        lp.follow = true; // Essential for streaming
+
+        let log_reader = api.log_stream(pod_name, &lp).await.map_err(|e| {
+            error!(target: "mayyam::services::kubernetes::pod", cluster_name = cluster_config.api_server_url.as_deref().unwrap_or("unknown"), %namespace, %pod_name, error = %e, "Error streaming pod logs");
+            AppError::Kubernetes(e.to_string())
+        })?;
+
+        use tokio_util::compat::FuturesAsyncReadCompatExt;
+        let compat_reader = log_reader.compat();
+
+        let stream = tokio_util::io::ReaderStream::new(compat_reader)
+            .map_err(|e: std::io::Error| kube::Error::Api(kube::error::ErrorResponse {
+                status: "Failure".to_string(),
+                message: e.to_string(),
+                reason: "InternalError".to_string(),
+                code: 500,
+            }));
+
+        Ok(stream)
+    }
+
+    pub async fn watch_pods(
+        &self,
+        cluster_config: &KubernetesClusterConfig,
+        namespace: &str,
+    ) -> Result<impl futures::Stream<Item = Result<kube::runtime::watcher::Event<Pod>, kube::runtime::watcher::Error>>, AppError> {
+        debug!(target: "mayyam::services::kubernetes::pod", cluster_name = cluster_config.api_server_url.as_deref().unwrap_or("unknown"), %namespace, "Watching pods");
+        let client = Self::get_kube_client(cluster_config).await?;
+        let api: Api<Pod> = Api::namespaced(client, namespace);
+        let watcher = kube::runtime::watcher(api, kube::runtime::watcher::Config::default());
+        Ok(watcher)
+    }
+
+    pub async fn watch_events(
+        &self,
+        cluster_config: &KubernetesClusterConfig,
+        namespace: &str,
+    ) -> Result<impl futures::Stream<Item = Result<kube::runtime::watcher::Event<Event>, kube::runtime::watcher::Error>>, AppError> {
+        debug!(target: "mayyam::services::kubernetes::pod", cluster_name = cluster_config.api_server_url.as_deref().unwrap_or("unknown"), %namespace, "Watching events");
+        let client = Self::get_kube_client(cluster_config).await?;
+        let api: Api<Event> = Api::namespaced(client, namespace);
+        let watcher = kube::runtime::watcher(api, kube::runtime::watcher::Config::default());
+        Ok(watcher)
+    }
 }
 
 impl Default for PodService {

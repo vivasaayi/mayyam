@@ -41,6 +41,9 @@ pub mod pdb_service;
 pub mod rbac_service;
 pub mod resource_quotas_service;
 pub mod service_accounts_service;
+pub mod replica_sets_service;
+pub mod storage_classes_service;
+pub mod crds_service;
 
 pub mod prelude {
     pub use super::authz_service::AuthorizationService;
