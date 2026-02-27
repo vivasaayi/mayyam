@@ -75,6 +75,9 @@ use crate::services::kubernetes::pdb_service::PodDisruptionBudgetsService;
 use crate::services::kubernetes::rbac_service::RbacService;
 use crate::services::kubernetes::resource_quotas_service::ResourceQuotasService;
 use crate::services::kubernetes::service_accounts_service::ServiceAccountsService;
+use crate::services::kubernetes::replica_sets_service::ReplicaSetsService;
+use crate::services::kubernetes::storage_classes_service::StorageClassesService;
+use crate::services::kubernetes::crds_service::CrdsService;
 use crate::services::kubernetes::{
     daemon_sets::DaemonSetsService,
     deployments_service::DeploymentsService,
@@ -233,6 +236,9 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     let rbac_service = Arc::new(RbacService::new());
     let authorization_service = Arc::new(AuthorizationService::new());
     let node_ops_service = Arc::new(NodeOpsService::new());
+    let replica_sets_service = Arc::new(ReplicaSetsService);
+    let storage_classes_service = Arc::new(StorageClassesService);
+    let crds_service = Arc::new(CrdsService);
 
     // Initialize controllers
     let auth_controller = Arc::new(AuthController::new(user_service.clone(), config.clone()));
@@ -366,6 +372,9 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             .app_data(web::Data::new(sqs_control_plane.clone()))
             .app_data(web::Data::new(kinesis_data_plane.clone()))
             .app_data(web::Data::new(kinesis_control_plane.clone()))
+            .app_data(web::Data::new(replica_sets_service.clone()))
+            .app_data(web::Data::new(storage_classes_service.clone()))
+            .app_data(web::Data::new(crds_service.clone()))
             // Middleware
             // Routes configuration - specify the order: analytics first, then general routes
             .configure(|cfg_param: &mut web::ServiceConfig| {

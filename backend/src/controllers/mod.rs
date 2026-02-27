@@ -16,6 +16,9 @@
 pub mod ai;
 pub mod auth;
 pub mod authz;
+pub mod replica_sets;
+pub mod storage_classes;
+pub mod crds;
 pub mod aurora_cluster;
 pub mod ai_analysis;
 pub mod aws_account;
