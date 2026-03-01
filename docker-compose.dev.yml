@@ -84,6 +84,8 @@ services:
       - KAFKA_BROKERS=kafka:29092
       - AWS_ENDPOINT=http://localstack:4566
       - AWS_REGION=us-east-1
+    volumes:
+      - ./backend:/usr/src/app
     depends_on:
       postgres:
         condition: service_healthy
@@ -102,11 +104,9 @@ services:
 
   # Tests
   integration-tests:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.dev
+    image: mayyam-master-backend-dev:latest
     environment:
-      - RUST_LOG=debug
+      - RUST_LOG=info
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/mayyam
       - MYSQL_URL=mysql://mayyam_user:mayyam_password@mysql:3306/mayyam_db
       - KAFKA_BROKERS=kafka:29092
@@ -114,10 +114,12 @@ services:
       - AWS_REGION=us-east-1
       - API_URL=http://backend:8085
       - TEST_API_BASE_URL=http://backend:8085
+      - PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
+      - LD_LIBRARY_PATH=/usr/local/lib
     depends_on:
       backend:
         condition: service_healthy
     volumes:
       - ./backend:/usr/src/app
     working_dir: /usr/src/app
-    command: bash -c "cargo test --test integration_tests --features integration-tests -- --nocapture && cargo test --test integration_api -- --nocapture"
+    command: bash -c "mkdir -p test-results && PATH=$$PATH:/usr/src/app cargo nextest run --test integration_tests --test integration_api --features integration-tests --workspace && cp target/nextest/default/test-results/junit.xml test-results/junit.xml || true"

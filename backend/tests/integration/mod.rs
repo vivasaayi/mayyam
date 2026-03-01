@@ -26,3 +26,4 @@ pub mod kinesis_api_tests;
 pub mod llm;
 pub mod llm_integration_tests;
 pub mod kubernetes_smoke_tests;
+pub mod misc_api_tests;
