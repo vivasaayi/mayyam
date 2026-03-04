@@ -73,10 +73,12 @@ services:
 
   # Server
   backend:
+    image: mayyam-master-backend-dev:latest
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
     environment:
+      - RUST_BACKTRACE=1
       - RUST_LOG=info
       - MODE=dev
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/mayyam
@@ -122,4 +124,4 @@ services:
     volumes:
       - ./backend:/usr/src/app
     working_dir: /usr/src/app
-    command: bash -c "mkdir -p test-results && PATH=$$PATH:/usr/src/app cargo nextest run --test integration_tests --test integration_api --features integration-tests --workspace && cp target/nextest/default/test-results/junit.xml test-results/junit.xml || true"
+    command: ["bash", "-c", "ENABLE_KAFKA_TESTS=1 cargo test --jobs 2 --features integration-tests kafka:: -- --nocapture"]

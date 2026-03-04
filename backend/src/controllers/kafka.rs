@@ -138,6 +138,7 @@ pub async fn produce_batch(
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RetryProduceRequest {
+    pub topic: String,
     pub message: MessageRequest,
     pub max_retries: Option<u32>,
 }
@@ -164,7 +165,7 @@ pub async fn produce_with_retry(
     let response = kafka_service
         .produce_with_retry(
             &cluster_id,
-            "retry-topic",
+            &retry_req.topic,
             &kafka_message,
             &config,
             max_retries,

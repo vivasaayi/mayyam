@@ -84,3 +84,5 @@ token.*
 .cache/
 frontend/test-results
 frontend/playwright-report
+
+/backend/backups

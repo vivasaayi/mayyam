@@ -42,11 +42,16 @@ async fn create_topic(harness: &TestHarness, topic_name: &str) {
         .await
         .expect("failed to create topic");
 
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
     assert!(
-        response.status().is_success(),
-        "topic creation failed: {}",
-        response.status()
+        status.is_success(),
+        "topic creation failed: {} - body: {}",
+        status, body
     );
+
+    // Give Kafka some time to propagate metadata before testing
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
 }
 
 async fn delete_topic(harness: &TestHarness, topic_name: &str) {

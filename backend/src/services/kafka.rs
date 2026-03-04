@@ -17,13 +17,14 @@ use crate::errors::AppError;
 use crate::models::cluster::CreateKafkaClusterRequest;
 use crate::models::cluster::KafkaClusterConfig;
 use crate::repositories::cluster::ClusterRepository;
-use rdkafka::admin::{AdminClient, NewTopic, TopicReplication};
+use rdkafka::admin::{AdminClient, AdminOptions, NewTopic, TopicReplication};
 use rdkafka::config::ClientConfig;
 use rdkafka::consumer::{CommitMode, Consumer, StreamConsumer};
 use rdkafka::message::{Header, Headers, Message, OwnedHeaders};
 use rdkafka::producer::{FutureProducer, FutureRecord, Producer};
-use rdkafka::topic_partition_list::Offset;
+use rdkafka::topic_partition_list::{Offset, TopicPartitionList};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -798,27 +799,27 @@ impl KafkaService {
         config: &crate::config::Config,
     ) -> Result<KafkaClusterConfig, AppError> {
         // First try to find as a stored cluster in the database
-        let cluster_id =
-            Uuid::parse_str(id).map_err(|e| AppError::Internal(format!("Invalid UUID: {}", e)))?;
-        let stored_cluster = self.cluster_repository.find_by_id(cluster_id).await?;
-        if let Some(cluster) = stored_cluster {
-            // Convert from stored cluster to KafkaClusterConfig
-            let mut kafka_config: KafkaClusterConfig =
-                serde_json::from_value(cluster.config).map_err(|e| {
-                    AppError::Validation(format!("Invalid cluster configuration: {}", e))
-                })?;
-                
-            // Decrypt password if it exists
-            if let Some(pwd) = &kafka_config.sasl_password {
-                if !pwd.is_empty() {
-                    kafka_config.sasl_password = Some(crate::utils::encryption::decrypt(pwd)?);
+        if let Ok(cluster_id) = Uuid::parse_str(id) {
+            let stored_cluster = self.cluster_repository.find_by_id(cluster_id).await?;
+            if let Some(cluster) = stored_cluster {
+                // Convert from stored cluster to KafkaClusterConfig
+                let mut kafka_config: KafkaClusterConfig =
+                    serde_json::from_value(cluster.config).map_err(|e| {
+                        AppError::Validation(format!("Invalid cluster configuration: {}", e))
+                    })?;
+                    
+                // Decrypt password if it exists
+                if let Some(pwd) = &kafka_config.sasl_password {
+                    if !pwd.is_empty() {
+                        kafka_config.sasl_password = Some(crate::utils::encryption::decrypt(pwd)?);
+                    }
                 }
+                    
+                return Ok(kafka_config);
             }
-                
-            return Ok(kafka_config);
         }
 
-        // If not found in database, look in configuration
+        // If not found in database or not a valid UUID, look in configuration
         config
             .kafka
             .clusters
@@ -895,8 +896,13 @@ impl KafkaService {
     fn build_client_config(&self, cluster: &KafkaClusterConfig) -> ClientConfig {
         let mut client_config = ClientConfig::new();
 
-        // Set bootstrap servers
-        client_config.set("bootstrap.servers", &cluster.bootstrap_servers.join(","));
+        // Set bootstrap servers (allow environment variable override for Docker/container environments)
+        let bootstrap_servers = if let Ok(env_brokers) = std::env::var("KAFKA_BROKERS") {
+            env_brokers
+        } else {
+            cluster.bootstrap_servers.join(",")
+        };
+        client_config.set("bootstrap.servers", &bootstrap_servers);
 
         // Set security settings if present
         if let (Some(username), Some(password)) = (&cluster.sasl_username, &cluster.sasl_password) {
@@ -1023,9 +1029,10 @@ impl KafkaService {
         })?;
 
         // Create a NewTopic specification
+        let partitions = if topic.partitions <= 0 { 1 } else { topic.partitions };
         let new_topic = NewTopic::new(
             &topic.name,
-            topic.partitions,
+            partitions,
             TopicReplication::Fixed(topic.replication_factor as i32),
         );
 
@@ -1040,8 +1047,21 @@ impl KafkaService {
             new_topic
         };
 
-        // In a real implementation, create the topic with a timeout
-        // For now, return a success response
+        let opts = AdminOptions::new().operation_timeout(Some(Duration::from_secs(10)));
+        let results = admin.create_topics(vec![&new_topic], &opts).await.map_err(|e| {
+            AppError::ExternalService(format!("Failed to execute create topics request: {}", e))
+        })?;
+
+        // Check for individual topic errors
+        if let Some(result) = results.first() {
+            if let Err((topic_name, err)) = result {
+                return Err(AppError::ExternalService(format!(
+                    "Failed to create topic {}: {:?}",
+                    topic_name, err
+                )));
+            }
+        }
+
         let response = serde_json::json!({
             "name": topic.name,
             "partitions": topic.partitions,
@@ -1225,9 +1245,15 @@ impl KafkaService {
         let timeout_duration = Duration::from_millis(timeout_ms);
         let start_time = std::time::Instant::now();
 
-        while messages.len() < max_messages as usize && start_time.elapsed() < timeout_duration {
-            match consumer.recv().await {
-                Ok(message) => {
+        while messages.len() < max_messages as usize {
+            let elapsed = start_time.elapsed();
+            if elapsed >= timeout_duration {
+                break;
+            }
+
+            let remain = timeout_duration - elapsed;
+            match tokio::time::timeout(remain, consumer.recv()).await {
+                Ok(Ok(message)) => {
                     let payload = message
                         .payload()
                         .map(|p| String::from_utf8_lossy(p).to_string())
@@ -1272,9 +1298,13 @@ impl KafkaService {
                         error!("Failed to commit message offset: {:?}", e);
                     }
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     KAFKA_OPERATION_ERRORS.with_label_values(&[cluster_id, "consume"]).inc();
                     error!("Error while consuming message: {:?}", e);
+                    break;
+                }
+                Err(_) => {
+                    // Timeout expired
                     break;
                 }
             }
@@ -1788,7 +1818,11 @@ impl KafkaService {
     ) -> Result<MessageBackupResponse, AppError> {
         let cluster_config = self.get_cluster(cluster_id, config).await?;
 
-        let client_config = self.build_client_config(&cluster_config);
+        let mut client_config = self.build_client_config(&cluster_config);
+        client_config.set("group.id", &format!("mayyam-backup-{}", request.topic));
+        client_config.set("client.id", "mayyam-backup-consumer");
+        client_config.set("enable.auto.commit", "false");
+        client_config.set("auto.offset.reset", "earliest");
         let consumer: StreamConsumer = client_config
             .create()
             .map_err(|e| AppError::Kafka(format!("Failed to create consumer: {}", e)))?;
@@ -1823,113 +1857,130 @@ impl KafkaService {
             .clone()
             .unwrap_or_else(|| (0..topic_metadata.partitions().len() as i32).collect::<Vec<_>>());
 
-        // Subscribe to the topic
+        // Assign the specific partitions to the consumer
+        let mut tpl = TopicPartitionList::new();
+        for &partition in &partitions_to_backup {
+            tpl.add_partition(&request.topic, partition);
+        }
         consumer
-            .subscribe(&[&request.topic])
-            .map_err(|e| AppError::Kafka(format!("Failed to subscribe to topic: {}", e)))?;
+            .assign(&tpl)
+            .map_err(|e| AppError::Kafka(format!("Failed to assign partitions: {}", e)))?;
 
-        // Process messages from each partition
-        for partition in &partitions_to_backup {
-            let mut partition_messages = Vec::new();
+        info!("Backing up {} partitions for topic {}", partitions_to_backup.len(), request.topic);
 
-            // Seek to the starting offset for this partition
-            let timeout = Duration::from_secs(10);
+        // Seek each partition to the starting offset
+        for &partition in &partitions_to_backup {
+            let timeout = Duration::from_secs(5);
             let seek_offset = match request.start_offset {
                 Some(offset) => Offset::Offset(offset),
                 None => Offset::Beginning,
             };
-            if let Err(e) = consumer.seek(&request.topic, *partition, seek_offset, timeout) {
+            info!("Seeking partition {} to {:?}", partition, seek_offset);
+            if let Err(e) = consumer.seek(&request.topic, partition, seek_offset, timeout) {
                 warn!("Failed to seek partition {} to offset: {}", partition, e);
+            }
+        }
+
+        // Map to store messages per partition
+        let mut partition_messages_map: HashMap<i32, Vec<BackupMessage>> = HashMap::new();
+        for &p in &partitions_to_backup {
+            partition_messages_map.insert(p, Vec::new());
+        }
+
+        let max_messages = request.max_messages.unwrap_or(u64::MAX);
+        let silence_timeout = Duration::from_secs(5);
+
+        info!("Starting consumption loop with silence timeout {:?}", silence_timeout);
+
+        // Consume all messages until silence timeout or limit reached
+        while total_messages < max_messages {
+            match tokio::time::timeout(silence_timeout, consumer.recv()).await {
+                Ok(Ok(msg)) => {
+                    let partition = msg.partition();
+                    info!("Received message from partition {} at offset {}", partition, msg.offset());
+                    if !partitions_to_backup.contains(&partition) {
+                        info!("Skipping message from unrequested partition {}", partition);
+                        continue;
+                    }
+
+                    // Check if we've reached the end offset for this partition
+                    if let Some(end_offset) = request.end_offset {
+                        if msg.offset() >= end_offset {
+                            continue;
+                        }
+                    }
+
+                    // Extract message data
+                    let key = msg.key().map(|k| String::from_utf8_lossy(k).to_string());
+                    let value = String::from_utf8_lossy(msg.payload().unwrap_or(&[])).to_string();
+
+                    // Extract headers
+                    let headers = if request.include_headers.unwrap_or(true) {
+                        msg.headers().map(|hdrs| {
+                            (0..hdrs.count())
+                                .filter_map(|i| Some(hdrs.get(i)))
+                                .map(|h| {
+                                    (
+                                        h.key.to_string(),
+                                        h.value
+                                            .map(|v| String::from_utf8_lossy(v).to_string())
+                                            .unwrap_or_default(),
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                    } else {
+                        None
+                    };
+
+                    let backup_message = BackupMessage {
+                        offset: msg.offset(),
+                        timestamp: msg.timestamp().to_millis().unwrap_or(0),
+                        key,
+                        value,
+                        headers,
+                    };
+
+                    if let Some(messages) = partition_messages_map.get_mut(&partition) {
+                        messages.push(backup_message);
+                        total_messages += 1;
+                    }
+                }
+                Ok(Err(e)) => {
+                    warn!("Kafka error during backup: {}", e);
+                    break;
+                }
+                Err(_) => {
+                    // Silence timeout
+                    break;
+                }
+            }
+        }
+
+        // Store messages for each partition
+        for (partition, messages) in partition_messages_map {
+            if messages.is_empty() {
                 continue;
             }
 
-            // Consume messages from this partition
-            let max_messages = request.max_messages.unwrap_or(u64::MAX);
+            let backup_data = BackupData {
+                backup_id: backup_id.clone(),
+                topic: request.topic.clone(),
+                partition,
+                messages,
+                checksum: 0,
+                created_at: start_time_str.clone(),
+            };
 
-            while let Ok(message) =
-                tokio::time::timeout(Duration::from_secs(5), consumer.recv()).await
-            {
-                match message {
-                    Ok(msg) => {
-                        if msg.partition() != *partition {
-                            continue; // Skip messages from other partitions
-                        }
-
-                        // Check if we've reached the end offset
-                        if let Some(end_offset) = request.end_offset {
-                            if msg.offset() >= end_offset {
-                                break;
-                            }
-                        }
-
-                        // Check message limit
-                        if total_messages >= max_messages {
-                            break;
-                        }
-
-                        // Extract message data
-                        let key = msg.key().map(|k| String::from_utf8_lossy(k).to_string());
-                        let value =
-                            String::from_utf8_lossy(msg.payload().unwrap_or(&[])).to_string();
-
-                        // Extract headers if requested
-                        let headers = if request.include_headers.unwrap_or(true) {
-                            msg.headers().map(|hdrs| {
-                                (0..hdrs.count())
-                                    .filter_map(|i| Some(hdrs.get(i)))
-                                    .map(|h| {
-                                        (
-                                            h.key.to_string(),
-                                            h.value
-                                                .map(|v| String::from_utf8_lossy(v).to_string())
-                                                .unwrap_or_default(),
-                                        )
-                                    })
-                                    .collect::<Vec<_>>()
-                            })
-                        } else {
-                            None
-                        };
-
-                        let backup_message = BackupMessage {
-                            offset: msg.offset(),
-                            timestamp: msg.timestamp().to_millis().unwrap_or(0),
-                            key,
-                            value,
-                            headers,
-                        };
-
-                        partition_messages.push(backup_message);
-                        total_messages += 1;
-                    }
-                    Err(e) => {
-                        warn!("Error receiving message: {}", e);
-                        break;
-                    }
-                }
-            }
-
-            // Store partition data if we have messages
-            if !partition_messages.is_empty() {
-                let backup_data = BackupData {
-                    backup_id: backup_id.clone(),
-                    topic: request.topic.clone(),
-                    partition: *partition,
-                    messages: partition_messages,
-                    checksum: 0, // Will be calculated by storage
-                    created_at: start_time_str.clone(),
-                };
-
-                storage
-                    .store_backup(&backup_data, &compression)
-                    .await
-                    .map_err(|e| {
-                        AppError::Internal(format!(
-                            "Failed to store backup for partition {}: {}",
-                            partition, e
-                        ))
-                    })?;
-            }
+            storage
+                .store_backup(&backup_data, &compression)
+                .await
+                .map_err(|e| {
+                    AppError::Internal(format!(
+                        "Failed to store backup for partition {}: {}",
+                        partition, e
+                    ))
+                })?;
         }
 
         let end_time = chrono::Utc::now();

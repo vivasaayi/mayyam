@@ -47,6 +47,9 @@ async fn create_topic(harness: &TestHarness, topic_name: &str) {
         "topic creation failed: {}",
         response.status()
     );
+
+    // Give Kafka some time to propagate metadata before testing
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
 }
 
 async fn delete_topic(harness: &TestHarness, topic_name: &str) {
@@ -84,7 +87,13 @@ async fn produce_messages(harness: &TestHarness, topic_name: &str, messages: Vec
             .await
             .expect("failed to produce message");
 
-        assert!(produce_response.status().is_success());
+        let status = produce_response.status();
+        let body = produce_response.text().await.unwrap_or_default();
+        assert!(status.is_success(), "failed to produce message: [{}] {}", status, body);
+
+        // Add a small delay so we don't spam the backend and exhaust tokio threads 
+        // because the backend creates/drops a producer on every request.
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     }
 }
 
@@ -106,17 +115,17 @@ async fn test_backup_topic_messages() {
         json!({
             "key": "key1",
             "value": "{\"id\":1,\"data\":\"test message 1\"}",
-            "headers": {"source": "test"}
+            "headers": [["source", "test"]]
         }),
         json!({
             "key": "key2",
             "value": "{\"id\":2,\"data\":\"test message 2\"}",
-            "headers": {"source": "test"}
+            "headers": [["source", "test"]]
         }),
         json!({
             "key": "key3",
             "value": "{\"id\":3,\"data\":\"test message 3\"}",
-            "headers": {"source": "test"}
+            "headers": [["source", "test"]]
         }),
     ];
 
@@ -142,11 +151,11 @@ async fn test_backup_topic_messages() {
         .await
         .expect("failed to backup topic");
 
-    assert!(backup_response.status().is_success());
+    let status = backup_response.status();
+    let body = backup_response.text().await.unwrap_or_default();
+    assert!(status.is_success(), "failed to backup topic: [{}] {}", status, body);
 
-    let backup_result: Value = backup_response
-        .json()
-        .await
+    let backup_result: Value = serde_json::from_str(&body)
         .expect("invalid backup response");
 
     // Verify backup response structure
@@ -184,12 +193,12 @@ async fn test_backup_and_restore_topic_messages() {
         json!({
             "key": "msg1",
             "value": "{\"id\":1,\"content\":\"backup test message 1\"}",
-            "headers": {"test": "backup-restore"}
+            "headers": [["test", "backup-restore"]]
         }),
         json!({
             "key": "msg2",
             "value": "{\"id\":2,\"content\":\"backup test message 2\"}",
-            "headers": {"test": "backup-restore"}
+            "headers": [["test", "backup-restore"]]
         }),
     ];
 
@@ -325,7 +334,7 @@ async fn test_backup_with_filters() {
             json!({
                 "key": format!("key{}", i),
                 "value": format!("{{\"id\":{},\"data\":\"message {}\"}}", i, i),
-                "headers": {"batch": "test"}
+                "headers": [["batch", "test"]]
             })
         })
         .collect::<Vec<_>>();

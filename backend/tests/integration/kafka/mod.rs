@@ -15,3 +15,7 @@
 
 pub mod backup_restore_tests;
 pub mod connectivity_tests;
+pub mod topic_management_tests;
+pub mod advanced_operations_tests;
+pub mod consumer_group_tests;
+pub mod error_handling_tests;
