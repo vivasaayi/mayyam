@@ -18,7 +18,11 @@ database:
   opensearch: []
 
 kafka:
-  clusters: []
+  clusters:
+    - name: "test-cluster"
+      bootstrap_servers:
+        - "kafka:29092"
+      security_protocol: "PLAINTEXT"
 
 auth:
   jwt_secret: "change_this_to_a_secure_secret_in_production_environment"

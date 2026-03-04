@@ -16,10 +16,6 @@
 use crate::integration::helpers::auth::get_auth_token;
 use crate::integration::helpers::server::{ensure_server, try_ensure_server};
 use reqwest::Client;
-use std::sync::OnceLock;
-
-/// Global HTTP client shared across all integration tests
-static HTTP_CLIENT: OnceLock<Client> = OnceLock::new();
 
 /// Test configuration structure
 #[derive(Debug, Clone)]
@@ -48,10 +44,9 @@ impl TestConfig {
     }
 }
 
-/// Test harness that provides shared resources for all integration tests
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TestHarness {
-    pub client: &'static Client,
+    pub client: Client,
     pub config: TestConfig,
     pub auth_token: String,
 }
@@ -74,7 +69,7 @@ impl TestHarness {
 
     /// Get the shared HTTP client
     pub fn client(&self) -> &Client {
-        self.client
+        &self.client
     }
 
     /// Get the base URL
@@ -116,7 +111,14 @@ impl TestHarness {
 impl TestHarness {
     async fn initialise() -> Self {
         let config = TestConfig::from_env();
-        let client = get_shared_client();
+        let client = Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .http1_only()
+            .pool_max_idle_per_host(10)
+            .pool_idle_timeout(std::time::Duration::from_secs(30))
+            .tcp_nodelay(true)
+            .build()
+            .expect("Failed to create HTTP client");
         let auth_token = get_auth_token().await;
 
         Self {
@@ -125,20 +127,6 @@ impl TestHarness {
             auth_token,
         }
     }
-}
-
-/// Get the shared HTTP client (used by TestHarness)
-fn get_shared_client() -> &'static Client {
-    HTTP_CLIENT.get_or_init(|| {
-        Client::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .http1_only()
-            .pool_max_idle_per_host(10)
-            .pool_idle_timeout(std::time::Duration::from_secs(30))
-            .tcp_nodelay(true)
-            .build()
-            .expect("Failed to create shared HTTP client")
-    })
 }
 
 /// Get AWS credentials from environment variables

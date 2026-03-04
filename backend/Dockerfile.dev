@@ -18,6 +18,8 @@ RUN apt-get update && \
         libsasl2-dev \
         # Add cargo-watch for hot reloading
         && cargo install cargo-watch \
+        && ARCH=$(uname -m) && if [ "$ARCH" = "aarch64" ]; then NEXTEST_URL="https://get.nexte.st/latest/linux-arm"; else NEXTEST_URL="https://get.nexte.st/latest/linux"; fi \
+        && curl -LsSf $NEXTEST_URL | tar zxf - -C /usr/local/cargo/bin \
         && rm -rf /var/lib/apt/lists/*
 
 # Build librdkafka v2.10.0 from source (required for ARM64)
@@ -39,6 +41,7 @@ COPY Cargo.toml Cargo.lock ./
 
 # Copy source code
 COPY src ./src/
+COPY migrations ./migrations/
 COPY config.default.yml config.yml ./
 
 # Create non-root user

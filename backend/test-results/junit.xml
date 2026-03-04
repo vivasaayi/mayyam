@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="mayyam-integration-tests" tests="24" failures="0" errors="0" uuid="ff0e1d08-da7d-47ff-a608-f0bb0bb3418d" timestamp="2026-03-01T15:16:55.500+00:00" time="1.104">
+    <testsuite name="mayyam::integration_api" tests="1" disabled="0" errors="0" failures="0">
+        <testcase name="test_health_endpoint" classname="mayyam::integration_api" timestamp="2026-03-01T15:16:55.504+00:00" time="0.291">
+        </testcase>
+    </testsuite>
+    <testsuite name="mayyam::integration_tests" tests="23" disabled="0" errors="0" failures="0">
+        <testcase name="integration::api_tests::aws_account_integration_tests::test_delete_aws_account_api" classname="mayyam::integration_tests" timestamp="2026-03-01T15:16:55.503+00:00" time="0.512">
+        </testcase>
+        <testcase name="integration::api_tests::kinesis_integration_tests::test_kinesis_stream_lifecycle" classname="mayyam::integration_tests" timestamp="2026-03-01T15:16:55.511+00:00" time="0.506">
+        </testcase>
+        <testcase name="integration::api_tests::kinesis_integration_tests::test_kinesis_stream_analysis_workflow" classname="mayyam::integration_tests" timestamp="2026-03-01T15:16:55.511+00:00" time="0.505">
+        </testcase>
+        <testcase name="integration::api_tests::aws_account_integration_tests::test_get_aws_account_by_id_api" classname="mayyam::integration_tests" timestamp="2026-03-01T15:16:55.510+00:00" time="0.511">
+        </testcase>
+        <testcase name="integration::api_tests::kinesis_integration_tests::test_kinesis_analysis_error_handling" classname="mayyam::integration_tests" timestamp="2026-03-01T15:16:55.511+00:00" time="0.510">
+        </testcase>
+        <testcase name="integration::helpers::kafka_test_helper::tests::test_generate_test_topic_name" classname="mayyam::integration_tests" timestamp="2026-03-01T15:16:56.017+00:00" time="0.024">
+        </testcase>
+        <testcase name="integration::kafka::backup_restore_tests::test_backup_and_restore_topic_messages" classname="mayyam::integration_tests" timestamp="2026-03-01T15:16:56.018+00:00" time="0.024">
+        </testcase>
+        <testcase name="integration::kafka::backup_restore_tests::test_backup_with_filters" classname="mayyam::integration_tests" timestamp="2026-03-01T15:16:56.024+00:00" time="0.018">
+        </testcase>
+        <testcase name="integration::kafka::backup_restore_tests::test_backup_topic_messages" classname="mayyam::integration_tests" timestamp="2026-03-01T15:16:56.024+00:00" time="0.020">
+        </testcase>
+        <testcase name="integration::api_tests::aws_account_integration_tests::test_update_aws_account_api" classname="mayyam::integration_tests" timestamp="2026-03-01T15:16:55.511+00:00" time="0.547">
+        </testcase>
+        <testcase name="integration::kafka::connectivity_tests::test_kafka_connectivity" classname="mayyam::integration_tests" timestamp="2026-03-01T15:16:56.045+00:00" time="0.019">
+        </testcase>
+        <testcase name="integration::kafka::connectivity_tests::test_topic_creation_and_deletion" classname="mayyam::integration_tests" timestamp="2026-03-01T15:16:56.045+00:00" time="0.019">
+        </testcase>
+        <testcase name="integration::kafka::connectivity_tests::test_message_produce_and_consume" classname="mayyam::integration_tests" timestamp="2026-03-01T15:16:56.045+00:00" time="0.019">
+        </testcase>
+        <testcase name="integration::api_tests::aws_account_integration_tests::test_get_all_aws_accounts_api" classname="mayyam::integration_tests" timestamp="2026-03-01T15:16:55.511+00:00" time="0.652">
+        </testcase>
+        <testcase name="integration::api_tests::kinesis_integration_tests::test_kinesis_analysis_time_ranges" classname="mayyam::integration_tests" timestamp="2026-03-01T15:16:55.511+00:00" time="0.691">
+        </testcase>
+        <testcase name="integration::api_tests::aws_account_integration_tests::test_create_aws_account_api" classname="mayyam::integration_tests" timestamp="2026-03-01T15:16:55.506+00:00" time="0.738">
+        </testcase>
+        <testcase name="integration::helpers::kafka_test_helper::tests::test_kafka_test_helper_creation" classname="mayyam::integration_tests" timestamp="2026-03-01T15:16:56.017+00:00" time="0.238">
+        </testcase>
+        <testcase name="integration::api_tests::aws_account_integration_tests::test_create_account_invalid_data_api" classname="mayyam::integration_tests" timestamp="2026-03-01T15:16:55.511+00:00" time="0.783">
+        </testcase>
+        <testcase name="integration::api_tests::aws_resource_integration_tests::test_get_aws_resources_by_account_api" classname="mayyam::integration_tests" timestamp="2026-03-01T15:16:55.511+00:00" time="0.791">
+        </testcase>
+        <testcase name="integration::api_tests::aws_account_integration_tests::test_get_nonexistent_account_api" classname="mayyam::integration_tests" timestamp="2026-03-01T15:16:55.512+00:00" time="0.804">
+        </testcase>
+        <testcase name="integration::cost_analytics_api_tests::cost_anomalies_api_returns_seeded_anomaly" classname="mayyam::integration_tests" timestamp="2026-03-01T15:16:55.511+00:00" time="0.978">
+        </testcase>
+        <testcase name="integration::llm::provider_and_models_crud::provider_and_models_crud_roundtrip" classname="mayyam::integration_tests" timestamp="2026-03-01T15:16:56.045+00:00" time="0.518">
+        </testcase>
+        <testcase name="integration::cost_analytics_api_tests::cost_forecast_api_returns_expected_projection" classname="mayyam::integration_tests" timestamp="2026-03-01T15:16:55.799+00:00" time="0.805">
+        </testcase>
+    </testsuite>
+</testsuites>

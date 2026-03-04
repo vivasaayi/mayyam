@@ -398,7 +398,11 @@ impl From<Model> for LlmProviderResponseDto {
         };
 
         // Parse enums from strings, with fallbacks
-        let status = LlmProviderStatus::Active; // Default status since it's not in the base model
+        let status = if entity.enabled {
+            LlmProviderStatus::Active
+        } else {
+            LlmProviderStatus::Inactive
+        };
 
         let prompt_format = serde_json::from_str::<LlmPromptFormat>(&entity.prompt_format)
             .unwrap_or(LlmPromptFormat::OpenAI);

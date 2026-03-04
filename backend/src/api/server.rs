@@ -183,9 +183,11 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     ));
     // Initialize Unified LLM Manager
     let mut llm_manager_init =
-        crate::services::llm::UnifiedLlmManager::new(llm_provider_repo.clone());
+        crate::services::llm::UnifiedLlmManager::new(llm_provider_repo.clone(), llm_provider_model_repo.clone());
     llm_manager_init.initialize_common_providers().await?;
     let unified_llm_manager = Arc::new(llm_manager_init);
+
+    let llm_model_controller = Arc::new(LlmModelController::new(llm_provider_model_repo.clone()));
 
     let llm_analytics_service = Arc::new(LlmAnalyticsService::new(
         unified_llm_manager.clone(),
@@ -357,9 +359,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             ))
             .app_data(web::Data::new(data_source_controller.clone()))
             .app_data(web::Data::new(llm_provider_controller.clone()))
-            .app_data(web::Data::new(Arc::new(LlmModelController::new(
-                llm_provider_model_repo.clone(),
-            ))))
+            .app_data(web::Data::new(llm_model_controller.clone()))
             .app_data(web::Data::new(prompt_template_controller.clone()))
             .app_data(web::Data::new(llm_analytics_controller.clone()))
             .app_data(web::Data::new(unified_llm_controller.clone()))
@@ -398,7 +398,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
                 routes::llm_provider::configure(
                     cfg_param,
                     llm_provider_controller.clone(),
-                    Arc::new(LlmModelController::new(llm_provider_model_repo.clone())),
+                    llm_model_controller.clone(),
                 );
                 routes::prompt_template::configure(cfg_param, prompt_template_controller.clone());
                 routes::query_template::configure(cfg_param);

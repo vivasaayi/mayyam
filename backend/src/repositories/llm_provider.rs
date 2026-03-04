@@ -235,39 +235,43 @@ impl LlmProviderRepository {
             .await?
             .ok_or_else(|| AppError::NotFound("LLM provider not found".to_string()))?;
 
-        // Convert string provider_type to enum for matching
         let provider_type = LlmProviderType::from(provider.provider_type);
+        let base_url = provider.base_url.as_deref().unwrap_or_else(|| match provider_type {
+            LlmProviderType::OpenAI => "https://api.openai.com/v1",
+            LlmProviderType::Anthropic => "https://api.anthropic.com/v1",
+            LlmProviderType::DeepSeek => "https://api.deepseek.com/v1",
+            LlmProviderType::Ollama => "http://localhost:11434",
+            _ => "http://localhost",
+        });
 
-        // TODO: Implement actual connection testing based on provider_type
-        // For now, return true as a placeholder
-        match provider_type {
-            LlmProviderType::OpenAI => {
-                // Test OpenAI API connection
-                Ok(true)
+        // Use a simple health check or model list call to test connection
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .build()
+            .map_err(|e| AppError::Internal(format!("Failed to build HTTP client: {}", e)))?;
+
+        let mut request = match provider_type {
+            LlmProviderType::Ollama => client.get(format!("{}/api/tags", base_url)),
+            _ => client.get(format!("{}/models", base_url)),
+        };
+
+        if let Some(api_key) = &provider.api_key {
+            request = request.header("Authorization", format!("Bearer {}", api_key));
+        }
+
+        let response = request.send().await;
+
+        match response {
+            Ok(resp) => {
+                // We consider it a success if we get a response, even if it's 401/403 
+                // which would mean the endpoint is reachable but key is invalid.
+                // However, for a "connection test", reachable is the first step.
+                // Re-validate based on status code if needed.
+                Ok(resp.status().is_success() || resp.status().as_u16() == 401)
             }
-            LlmProviderType::Ollama => {
-                // Test Ollama connection
-                Ok(true)
-            }
-            LlmProviderType::Anthropic => {
-                // Test Anthropic API connection
-                Ok(true)
-            }
-            LlmProviderType::Local => {
-                // Test local model connection
-                Ok(true)
-            }
-            LlmProviderType::Gemini => {
-                // Test Gemini API connection
-                Ok(true)
-            }
-            LlmProviderType::DeepSeek => {
-                // Test DeepSeek API connection
-                Ok(true)
-            }
-            LlmProviderType::Custom => {
-                // Test custom provider connection
-                Ok(true)
+            Err(e) => {
+                tracing::error!("Connection test failed for provider {}: {}", id, e);
+                Ok(false)
             }
         }
     }
