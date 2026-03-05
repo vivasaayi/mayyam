@@ -2,7 +2,7 @@
 
 -- MySQL Performance Root Cause Analysis
 INSERT INTO prompt_templates (id, name, description, category, prompt_type, template_content, variables) VALUES
-(gen_random_uuid(), 'MySQL_performance_triage', 'Root cause analysis for MySQL performance issues', 'Database', 'triage', 
+('00000000-0000-0000-0000-000000000041', 'MySQL_performance_triage', 'Root cause analysis for MySQL performance issues', 'Database', 'triage', 
 'You are an expert MySQL Database Administrator. Analyze the following MySQL performance snapshot for connection {{connection_name}} (Host: {{host}}).
 
 Metric Context:
@@ -19,11 +19,11 @@ Please provide:
 - **Action Items**: Concrete steps (queries to run or configuration changes) to resolve the issues.
 
 Format your response in Markdown with clear headers.',
-'{"connection_name": "string", "host": "string", "metrics_json": "object"}');
+'{"connection_name": "string", "host": "string", "metrics_json": "object"}') ON CONFLICT (name, version) DO NOTHING;
 
 -- MySQL Connection Triage
 INSERT INTO prompt_templates (id, name, description, category, prompt_type, template_content, variables) VALUES
-(gen_random_uuid(), 'MySQL_connection_triage', 'Analyze connection spikes and thread utilization', 'Database', 'triage', 
+('00000000-0000-0000-0000-000000000042', 'MySQL_connection_triage', 'Analyze connection spikes and thread utilization', 'Database', 'triage', 
 'You are an expert MySQL DBA. Analyze the connection metrics for {{connection_name}}.
 
 Connection Snapshot:
@@ -39,11 +39,11 @@ Provide:
 - Recommendations for `max_connections`, `thread_cache_size`, or application-side connection pooling.
 
 Format your response in Markdown.',
-'{"connection_name": "string", "metrics_json": "object"}');
+'{"connection_name": "string", "metrics_json": "object"}') ON CONFLICT (name, version) DO NOTHING;
 
 -- MySQL Index Advisor
 INSERT INTO prompt_templates (id, name, description, category, prompt_type, template_content, variables) VALUES
-(gen_random_uuid(), 'MySQL_index_advisor', 'Identify missing or redundant indexes based on table statistics', 'Database', 'analysis', 
+('00000000-0000-0000-0000-000000000043', 'MySQL_index_advisor', 'Identify missing or redundant indexes based on table statistics', 'Database', 'analysis', 
 'Analyze the following MySQL table and index statistics for database {{database_name}}:
 
 Statistics Context:
@@ -55,4 +55,4 @@ Provide an Index Advisory report including:
 3. **Optimization Recommendations**: Specific `CREATE INDEX` or `DROP INDEX` suggestions.
 
 Format your response in Markdown.',
-'{"database_name": "string", "metrics_json": "object"}');
+'{"database_name": "string", "metrics_json": "object"}') ON CONFLICT (name, version) DO NOTHING;

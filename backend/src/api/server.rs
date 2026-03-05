@@ -102,7 +102,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     if let Err(e) = crate::utils::migrations::run_migrations(&db_connection_val).await {
         tracing::error!("Failed to run database migrations: {}", e);
         // Depending on your policy, you might want to return the error here to stop startup
-        // return Err(e.into());
+        return Err(e.into());
     }
 
     let db_connection = Arc::new(db_connection_val);

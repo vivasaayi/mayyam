@@ -37,7 +37,7 @@ mod aws_account_integration_tests {
         harness.test_delay().await; // Small delay to prevent overwhelming server
 
         let (access_key, secret_key, region, _) = get_aws_credentials();
-        let test_account_id = get_test_account_id();
+        let test_account_id = format!("{:012}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_micros() % 1_000_000_000_000);
 
         let account_data = json!({
             "account_id": test_account_id,
@@ -114,7 +114,7 @@ mod aws_account_integration_tests {
 
         // First create an account
         let (access_key, secret_key, region, _) = get_aws_credentials();
-        let test_account_id = get_test_account_id();
+        let test_account_id = format!("{:012}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_micros() % 1_000_000_000_000);
 
         let account_data = json!({
             "account_id": test_account_id,
@@ -188,7 +188,8 @@ mod aws_account_integration_tests {
 
         // First create an account to update
         let (access_key, secret_key, region, _) = get_aws_credentials();
-        let test_account_id = get_test_account_id();
+        let test_account_id = format!("{:012}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_micros() % 1_000_000_000_000);
+        println!("DEBUG: Generating test account ID for update test: {}", test_account_id);
 
         let account_data = json!({
             "account_id": test_account_id,
@@ -220,8 +221,13 @@ mod aws_account_integration_tests {
 
         // Update the account
         let update_data = json!({
+            "account_id": test_account_id,
             "account_name": "Updated Test Account",
-            "default_region": "us-west-2"
+            "profile": "default",
+            "default_region": "us-west-2",
+            "use_role": false,
+            "access_key_id": access_key,
+            "secret_access_key": secret_key
         });
 
         let update_response = harness
@@ -268,7 +274,7 @@ mod aws_account_integration_tests {
 
         // First create an account
         let (access_key, secret_key, region, _) = get_aws_credentials();
-        let test_account_id = get_test_account_id();
+        let test_account_id = format!("{:012}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_micros() % 1_000_000_000_000);
 
         let account_data = json!({
             "account_id": test_account_id,

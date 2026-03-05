@@ -1049,16 +1049,22 @@ impl KafkaService {
 
         let opts = AdminOptions::new().operation_timeout(Some(Duration::from_secs(10)));
         let results = admin.create_topics(vec![&new_topic], &opts).await.map_err(|e| {
+            error!("Failed to execute create topics request: {}", e);
             AppError::ExternalService(format!("Failed to execute create topics request: {}", e))
         })?;
 
         // Check for individual topic errors
         if let Some(result) = results.first() {
             if let Err((topic_name, err)) = result {
-                return Err(AppError::ExternalService(format!(
-                    "Failed to create topic {}: {:?}",
-                    topic_name, err
-                )));
+                if *err == rdkafka::types::RDKafkaErrorCode::TopicAlreadyExists {
+                    info!("Topic {} already exists, treating as success", topic_name);
+                } else {
+                    error!("Failed to create topic {}: {:?}", topic_name, err);
+                    return Err(AppError::ExternalService(format!(
+                        "Failed to create topic {}: {:?}",
+                        topic_name, err
+                    )));
+                }
             }
         }
 
