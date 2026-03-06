@@ -22,6 +22,7 @@ mod integration {
     pub mod helpers;
     pub mod kafka;
     pub mod llm;
+    pub mod iam_api_tests;
 }
 
 // Re-export integration tests
@@ -30,3 +31,4 @@ pub use integration::cost_analytics_api_tests::*;
 pub use integration::helpers;
 pub use integration::kafka::*;
 pub use integration::llm::*;
+pub use integration::iam_api_tests::*;

@@ -88,6 +88,9 @@ services:
       - AWS_REGION=us-east-1
     volumes:
       - ./backend:/usr/src/app
+      - backend_target:/usr/src/app/target
+      - cargo_registry:/usr/local/cargo/registry
+      - cargo_git:/usr/local/cargo/git
     depends_on:
       postgres:
         condition: service_healthy
@@ -123,5 +126,14 @@ services:
         condition: service_healthy
     volumes:
       - ./backend:/usr/src/app
+      - integration_tests_target:/usr/src/app/target
+      - cargo_registry:/usr/local/cargo/registry
+      - cargo_git:/usr/local/cargo/git
     working_dir: /usr/src/app
     command: ["bash", "-c", "ENABLE_KAFKA_TESTS=1 cargo test --jobs 2 --features integration-tests kafka:: -- --nocapture"]
+
+volumes:
+  backend_target:
+  integration_tests_target:
+  cargo_registry:
+  cargo_git:

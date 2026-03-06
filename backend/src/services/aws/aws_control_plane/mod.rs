@@ -20,6 +20,7 @@ pub mod ebs_control_plane;
 pub mod ec2_control_plane;
 pub mod efs_control_plane;
 pub mod elasticache_control_plane;
+pub mod iam_control_plane;
 pub mod kinesis_control_plane;
 pub mod lambda_control_plane;
 pub mod load_balancer_control_plane;

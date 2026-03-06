@@ -61,6 +61,11 @@ pub enum AwsResourceType {
     LambdaFunction,
     ElasticacheCluster,
     OpenSearchDomain,
+    // IAM Resources
+    IamUser,
+    IamRole,
+    IamPolicy,
+    IamGroup,
     // VPC & Networking Resources
     Vpc,
     Subnet,
@@ -97,6 +102,11 @@ impl ToString for AwsResourceType {
             AwsResourceType::LambdaFunction => "LambdaFunction".to_string(),
             AwsResourceType::ElasticacheCluster => "ElasticacheCluster".to_string(),
             AwsResourceType::OpenSearchDomain => "OpenSearchDomain".to_string(),
+            // IAM Resources
+            AwsResourceType::IamUser => "IamUser".to_string(),
+            AwsResourceType::IamRole => "IamRole".to_string(),
+            AwsResourceType::IamPolicy => "IamPolicy".to_string(),
+            AwsResourceType::IamGroup => "IamGroup".to_string(),
             // VPC & Networking Resources
             AwsResourceType::Vpc => "Vpc".to_string(),
             AwsResourceType::Subnet => "Subnet".to_string(),
@@ -135,6 +145,11 @@ impl From<&str> for AwsResourceType {
             "LambdaFunction" => AwsResourceType::LambdaFunction,
             "ElasticacheCluster" => AwsResourceType::ElasticacheCluster,
             "OpenSearchDomain" => AwsResourceType::OpenSearchDomain,
+            // IAM Resources
+            "IamUser" => AwsResourceType::IamUser,
+            "IamRole" => AwsResourceType::IamRole,
+            "IamPolicy" => AwsResourceType::IamPolicy,
+            "IamGroup" => AwsResourceType::IamGroup,
             // VPC & Networking Resources
             "Vpc" => AwsResourceType::Vpc,
             "Subnet" => AwsResourceType::Subnet,

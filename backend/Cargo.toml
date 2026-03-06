@@ -135,6 +135,7 @@ hex = "0.4.3"
 rust-embed = "8.11.0"
 actix-web-lab = "0.25.0"
 tokio-util = { version = "0.7.18", features = ["compat", "io"] }
+aws-sdk-iam = "1.106.0"
 
 [dev-dependencies]
 mockall = "0.11"
@@ -157,3 +158,11 @@ criterion = { version = "0.5", features = ["html_reports"] }
 default = []
 integration-tests = []
 performance-tests = []
+
+[profile.dev]
+# Speeds up debug linking on macOS and linux
+split-debuginfo = "unpacked"
+
+[profile.test]
+# Optimize test compilation speed at the slight cost of runtime speed
+opt-level = 0

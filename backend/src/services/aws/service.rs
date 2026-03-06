@@ -45,6 +45,7 @@ use aws_sdk_s3::Client as S3Client;
 use aws_sdk_sns::Client as SnsClient;
 use aws_sdk_sqs::Client as SqsClient;
 use aws_sdk_sts::Client as StsClient;
+use aws_sdk_iam::Client as IamClient;
 use aws_types;
 use std::fs;
 use std::sync::Arc;
@@ -487,5 +488,13 @@ impl AwsClientFactory for AwsService {
     ) -> Result<EfsClient, AppError> {
         let config = self.get_aws_sdk_config(aws_account_dto).await?;
         Ok(EfsClient::new(&config))
+    }
+
+    async fn create_iam_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<IamClient, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(IamClient::new(&config))
     }
 }

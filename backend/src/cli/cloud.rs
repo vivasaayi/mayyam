@@ -57,6 +57,18 @@ pub enum AwsCommands {
         #[arg(short, long)]
         region: String,
     },
+
+    /// List IAM Users
+    IamUsers,
+
+    /// List IAM Roles
+    IamRoles,
+
+    /// List IAM Policies
+    IamPolicies,
+
+    /// List IAM Groups
+    IamGroups,
 }
 
 #[derive(Subcommand)]
@@ -154,6 +166,34 @@ pub async fn handle_command(command: CloudCommands, config: &Config) -> Result<(
                         "In production, this would list all RDS instances with their details."
                     );
 
+                    Ok(())
+                }
+
+                AwsCommands::IamUsers => {
+                    println!("Fetching IAM Users...");
+                    println!("Connecting to AWS IAM service...");
+                    println!("Note: IAM User listing requires proper AWS credentials and permissions.");
+                    Ok(())
+                }
+
+                AwsCommands::IamRoles => {
+                    println!("Fetching IAM Roles...");
+                    println!("Connecting to AWS IAM service...");
+                    println!("Note: IAM Role listing requires proper AWS credentials and permissions.");
+                    Ok(())
+                }
+
+                AwsCommands::IamPolicies => {
+                    println!("Fetching IAM Policies...");
+                    println!("Connecting to AWS IAM service...");
+                    println!("Note: IAM Policy listing requires proper AWS credentials and permissions.");
+                    Ok(())
+                }
+
+                AwsCommands::IamGroups => {
+                    println!("Fetching IAM Groups...");
+                    println!("Connecting to AWS IAM service...");
+                    println!("Note: IAM Group listing requires proper AWS credentials and permissions.");
                     Ok(())
                 }
             }

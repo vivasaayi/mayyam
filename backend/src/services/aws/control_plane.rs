@@ -33,6 +33,7 @@ use crate::services::aws::aws_control_plane::ec2_control_plane::Ec2ControlPlane;
 use crate::services::aws::aws_control_plane::ebs_control_plane::EbsControlPlane;
 use crate::services::aws::aws_control_plane::efs_control_plane::EfsControlPlane;
 use crate::services::aws::aws_control_plane::elasticache_control_plane::ElasticacheControlPlane;
+use crate::services::aws::aws_control_plane::iam_control_plane::IamControlPlane;
 use crate::services::aws::aws_control_plane::kinesis_control_plane::KinesisControlPlane;
 use crate::services::aws::aws_control_plane::lambda_control_plane::LambdaControlPlane;
 use crate::services::aws::aws_control_plane::load_balancer_control_plane::LoadBalancerControlPlane;
@@ -389,6 +390,46 @@ impl AwsControlPlane {
         Ok(all_resources)
     }
 
+    async fn sync_iam_resources(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        sync_id: Uuid,
+    ) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!(
+            "Syncing IAM resources for account: {} with sync_id: {}",
+            &aws_account_dto.account_id, sync_id
+        );
+        let iam = IamControlPlane::new(self.aws_service.clone());
+
+        let mut all_resources = Vec::new();
+
+        // Sync IAM Users
+        match iam.sync_users(aws_account_dto, sync_id).await {
+            Ok(resources) => all_resources.extend(resources),
+            Err(e) => error!("Failed to sync IAM Users: {}", e),
+        }
+
+        // Sync IAM Roles
+        match iam.sync_roles(aws_account_dto, sync_id).await {
+            Ok(resources) => all_resources.extend(resources),
+            Err(e) => error!("Failed to sync IAM Roles: {}", e),
+        }
+
+        // Sync IAM Policies
+        match iam.sync_policies(aws_account_dto, sync_id).await {
+            Ok(resources) => all_resources.extend(resources),
+            Err(e) => error!("Failed to sync IAM Policies: {}", e),
+        }
+
+        // Sync IAM Groups
+        match iam.sync_groups(aws_account_dto, sync_id).await {
+            Ok(resources) => all_resources.extend(resources),
+            Err(e) => error!("Failed to sync IAM Groups: {}", e),
+        }
+
+        Ok(all_resources)
+    }
+
     // Kinesis control plane operations
     pub async fn kinesis_create_stream(
         &self,
@@ -575,6 +616,10 @@ impl AwsControlPlane {
                 AwsResourceType::KinesisStream.to_string(),
                 AwsResourceType::SqsQueue.to_string(),
                 AwsResourceType::ElasticacheCluster.to_string(),
+                AwsResourceType::IamUser.to_string(),
+                AwsResourceType::IamRole.to_string(),
+                AwsResourceType::IamPolicy.to_string(),
+                AwsResourceType::IamGroup.to_string(),
                 AwsResourceType::Vpc.to_string(),
                 AwsResourceType::Subnet.to_string(),
                 AwsResourceType::SecurityGroup.to_string(),
@@ -626,6 +671,10 @@ impl AwsControlPlane {
                 }
                 "ElasticacheCluster" => {
                     self.sync_elasticache_resources(aws_account_dto, request.sync_id)
+                        .await
+                }
+                "IamUser" | "IamRole" | "IamPolicy" | "IamGroup" => {
+                    self.sync_iam_resources(aws_account_dto, request.sync_id)
                         .await
                 }
                 "Vpc" | "Subnet" | "SecurityGroup" | "InternetGateway" | "NatGateway" | "RouteTable" | "NetworkAcl" => {

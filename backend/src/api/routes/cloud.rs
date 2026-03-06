@@ -155,6 +155,23 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .route(
             "/accounts/{account_id}/regions/{region}/cost",
             web::get().to(cloud::get_aws_cost_and_usage),
+        )
+        // IAM resources
+        .route(
+            "/accounts/{account_id}/regions/{region}/iam-users",
+            web::get().to(cloud::list_iam_users),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/iam-roles",
+            web::get().to(cloud::list_iam_roles),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/iam-policies",
+            web::get().to(cloud::list_iam_policies),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/iam-groups",
+            web::get().to(cloud::list_iam_groups),
         );
 
     // AWS data plane operations

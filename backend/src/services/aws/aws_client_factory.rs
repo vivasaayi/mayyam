@@ -33,6 +33,7 @@ use aws_sdk_costexplorer::Client as CostExplorerClient;
 use aws_sdk_sns::Client as SnsClient;
 use aws_sdk_sqs::Client as SqsClient;
 use aws_sdk_sts::Client as StsClient;
+use aws_sdk_iam::Client as IamClient;
 
 use crate::models::aws_account::AwsAccountDto;
 use crate::models::aws_auth::AccountAuthInfo;
@@ -115,4 +116,8 @@ pub trait AwsClientFactory {
         &self,
         aws_account_dto: &AwsAccountDto,
     ) -> Result<EfsClient, AppError>;
+    async fn create_iam_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<IamClient, AppError>;
 }

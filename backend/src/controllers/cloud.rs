@@ -1130,3 +1130,76 @@ pub async fn list_elasticache_clusters(
 
     Ok(HttpResponse::Ok().json(resources))
 }
+
+// IAM specific endpoints
+pub async fn list_iam_users(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::IamUser.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_iam_roles(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::IamRole.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_iam_policies(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::IamPolicy.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_iam_groups(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::IamGroup.to_string());
+
+    let resources = aws_repo.search(&query_params).await?;
+
+    Ok(HttpResponse::Ok().json(resources))
+}
