@@ -87,6 +87,40 @@ pub enum AwsResourceType {
     EbsVolume,
     EbsSnapshot,
     EfsFileSystem,
+    // Security & Compliance Resources
+    KmsKey,
+    AcmCertificate,
+    CloudTrailTrail,
+    ConfigRule,
+    // Container & Serverless Resources
+    EcsCluster,
+    EcsService,
+    EcsTask,
+    EksCluster,
+    FargateProfile,
+    AppRunnerService,
+    BatchComputeEnv,
+    // Management & Monitoring Resources
+    CloudWatchAlarm,
+    CloudWatchDashboard,
+    SsmDocument,
+    // Application Integration Resources
+    EventBridgeRule,
+    StepFunction,
+    SesIdentity,
+    AppSyncApi,
+    // Analytics & Big Data Resources
+    RedshiftCluster,
+    EmrCluster,
+    AthenaWorkgroup,
+    GlueDatabase,
+    KinesisAnalyticsApp,
+    // Edge Computing Resources
+    WafWebAcl,
+    GlobalAccelerator,
+    // Backup & DR Resources
+    BackupVault,
+    BackupPlan,
 }
 
 impl ToString for AwsResourceType {
@@ -128,6 +162,40 @@ impl ToString for AwsResourceType {
             AwsResourceType::EbsVolume => "EbsVolume".to_string(),
             AwsResourceType::EbsSnapshot => "EbsSnapshot".to_string(),
             AwsResourceType::EfsFileSystem => "EfsFileSystem".to_string(),
+            // Security & Compliance Resources
+            AwsResourceType::KmsKey => "KmsKey".to_string(),
+            AwsResourceType::AcmCertificate => "AcmCertificate".to_string(),
+            AwsResourceType::CloudTrailTrail => "CloudTrailTrail".to_string(),
+            AwsResourceType::ConfigRule => "ConfigRule".to_string(),
+            // Container & Serverless Resources
+            AwsResourceType::EcsCluster => "EcsCluster".to_string(),
+            AwsResourceType::EcsService => "EcsService".to_string(),
+            AwsResourceType::EcsTask => "EcsTask".to_string(),
+            AwsResourceType::EksCluster => "EksCluster".to_string(),
+            AwsResourceType::FargateProfile => "FargateProfile".to_string(),
+            AwsResourceType::AppRunnerService => "AppRunnerService".to_string(),
+            AwsResourceType::BatchComputeEnv => "BatchComputeEnv".to_string(),
+            // Management & Monitoring Resources
+            AwsResourceType::CloudWatchAlarm => "CloudWatchAlarm".to_string(),
+            AwsResourceType::CloudWatchDashboard => "CloudWatchDashboard".to_string(),
+            AwsResourceType::SsmDocument => "SsmDocument".to_string(),
+            // Application Integration Resources
+            AwsResourceType::EventBridgeRule => "EventBridgeRule".to_string(),
+            AwsResourceType::StepFunction => "StepFunction".to_string(),
+            AwsResourceType::SesIdentity => "SesIdentity".to_string(),
+            AwsResourceType::AppSyncApi => "AppSyncApi".to_string(),
+            // Analytics & Big Data Resources
+            AwsResourceType::RedshiftCluster => "RedshiftCluster".to_string(),
+            AwsResourceType::EmrCluster => "EmrCluster".to_string(),
+            AwsResourceType::AthenaWorkgroup => "AthenaWorkgroup".to_string(),
+            AwsResourceType::GlueDatabase => "GlueDatabase".to_string(),
+            AwsResourceType::KinesisAnalyticsApp => "KinesisAnalyticsApp".to_string(),
+            // Edge Computing Resources
+            AwsResourceType::WafWebAcl => "WafWebAcl".to_string(),
+            AwsResourceType::GlobalAccelerator => "GlobalAccelerator".to_string(),
+            // Backup & DR Resources
+            AwsResourceType::BackupVault => "BackupVault".to_string(),
+            AwsResourceType::BackupPlan => "BackupPlan".to_string(),
         }
     }
 }
@@ -171,6 +239,40 @@ impl From<&str> for AwsResourceType {
             "EbsVolume" => AwsResourceType::EbsVolume,
             "EbsSnapshot" => AwsResourceType::EbsSnapshot,
             "EfsFileSystem" => AwsResourceType::EfsFileSystem,
+            // Security & Compliance Resources
+            "KmsKey" => AwsResourceType::KmsKey,
+            "AcmCertificate" => AwsResourceType::AcmCertificate,
+            "CloudTrailTrail" => AwsResourceType::CloudTrailTrail,
+            "ConfigRule" => AwsResourceType::ConfigRule,
+            // Container & Serverless Resources
+            "EcsCluster" => AwsResourceType::EcsCluster,
+            "EcsService" => AwsResourceType::EcsService,
+            "EcsTask" => AwsResourceType::EcsTask,
+            "EksCluster" => AwsResourceType::EksCluster,
+            "FargateProfile" => AwsResourceType::FargateProfile,
+            "AppRunnerService" => AwsResourceType::AppRunnerService,
+            "BatchComputeEnv" => AwsResourceType::BatchComputeEnv,
+            // Management & Monitoring Resources
+            "CloudWatchAlarm" => AwsResourceType::CloudWatchAlarm,
+            "CloudWatchDashboard" => AwsResourceType::CloudWatchDashboard,
+            "SsmDocument" => AwsResourceType::SsmDocument,
+            // Application Integration Resources
+            "EventBridgeRule" => AwsResourceType::EventBridgeRule,
+            "StepFunction" => AwsResourceType::StepFunction,
+            "SesIdentity" => AwsResourceType::SesIdentity,
+            "AppSyncApi" => AwsResourceType::AppSyncApi,
+            // Analytics & Big Data Resources
+            "RedshiftCluster" => AwsResourceType::RedshiftCluster,
+            "EmrCluster" => AwsResourceType::EmrCluster,
+            "AthenaWorkgroup" => AwsResourceType::AthenaWorkgroup,
+            "GlueDatabase" => AwsResourceType::GlueDatabase,
+            "KinesisAnalyticsApp" => AwsResourceType::KinesisAnalyticsApp,
+            // Edge Computing Resources
+            "WafWebAcl" => AwsResourceType::WafWebAcl,
+            "GlobalAccelerator" => AwsResourceType::GlobalAccelerator,
+            // Backup & DR Resources
+            "BackupVault" => AwsResourceType::BackupVault,
+            "BackupPlan" => AwsResourceType::BackupPlan,
             _ => panic!("Unknown resource type: {}", s),
         }
     }

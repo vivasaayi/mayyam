@@ -39,8 +39,36 @@ use crate::services::aws::aws_control_plane::lambda_control_plane::LambdaControl
 use crate::services::aws::aws_control_plane::load_balancer_control_plane::LoadBalancerControlPlane;
 use crate::services::aws::aws_control_plane::rds_control_plane::RdsControlPlane;
 use crate::services::aws::aws_control_plane::s3_control_plane::S3ControlPlane;
+use crate::services::aws::aws_control_plane::sns_control_plane::SnsControlPlane;
 use crate::services::aws::aws_control_plane::sqs_control_plane::SqsControlPlane;
+use crate::services::aws::aws_control_plane::opensearch_control_plane::OpenSearchControlPlane;
 use crate::services::aws::aws_control_plane::vpc_control_plane::VpcControlPlane;
+// Batch 2: Security & Compliance
+use crate::services::aws::aws_control_plane::kms_control_plane::KmsControlPlane;
+use crate::services::aws::aws_control_plane::acm_control_plane::AcmControlPlane;
+use crate::services::aws::aws_control_plane::cloudtrail_control_plane::CloudTrailControlPlane;
+use crate::services::aws::aws_control_plane::config_control_plane::ConfigControlPlane;
+// Batch 3: Containers & Serverless
+use crate::services::aws::aws_control_plane::ecs_control_plane::EcsControlPlane;
+use crate::services::aws::aws_control_plane::eks_control_plane::EksControlPlane;
+use crate::services::aws::aws_control_plane::apprunner_control_plane::AppRunnerControlPlane;
+use crate::services::aws::aws_control_plane::batch_control_plane::BatchControlPlane;
+// Batch 4: Management & Monitoring
+use crate::services::aws::aws_control_plane::cloudwatch_control_plane::CloudWatchControlPlane;
+use crate::services::aws::aws_control_plane::ssm_control_plane::SsmControlPlane;
+// Batch 5: Application Integration
+use crate::services::aws::aws_control_plane::eventbridge_control_plane::EventBridgeControlPlane;
+use crate::services::aws::aws_control_plane::stepfunctions_control_plane::StepFunctionsControlPlane;
+use crate::services::aws::aws_control_plane::ses_control_plane::SesControlPlane;
+// Batch 6: Analytics & Big Data
+use crate::services::aws::aws_control_plane::redshift_control_plane::RedshiftControlPlane;
+use crate::services::aws::aws_control_plane::emr_control_plane::EmrControlPlane;
+use crate::services::aws::aws_control_plane::athena_control_plane::AthenaControlPlane;
+use crate::services::aws::aws_control_plane::glue_control_plane::GlueControlPlane;
+// Batch 7: Edge & DR
+use crate::services::aws::aws_control_plane::waf_control_plane::WafControlPlane;
+use crate::services::aws::aws_control_plane::globalaccelerator_control_plane::GlobalAcceleratorControlPlane;
+use crate::services::aws::aws_control_plane::backup_control_plane::BackupControlPlane;
 use crate::services::aws::aws_types::resource_sync::{
     ResourceSyncRequest, ResourceSyncResponse, ResourceTypeSyncSummary,
 };
@@ -350,6 +378,32 @@ impl AwsControlPlane {
         cloudfront.sync_distributions(aws_account_dto, sync_id).await
     }
 
+    async fn sync_sns_resources(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        _sync_id: Uuid,
+    ) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!(
+            "Syncing SNS topics for account: {}",
+            &aws_account_dto.account_id
+        );
+        let sns = SnsControlPlane::new(self.aws_service.clone());
+        sns.sync_topics(&aws_account_dto.account_id, aws_account_dto).await
+    }
+
+    async fn sync_opensearch_resources(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        _sync_id: Uuid,
+    ) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!(
+            "Syncing OpenSearch domains for account: {}",
+            &aws_account_dto.account_id
+        );
+        let opensearch = OpenSearchControlPlane::new(self.aws_service.clone());
+        opensearch.sync_domains(&aws_account_dto.account_id, aws_account_dto).await
+    }
+
     async fn sync_api_gateway_resources(
         &self,
         aws_account_dto: &AwsAccountDto,
@@ -638,6 +692,35 @@ impl AwsControlPlane {
                 AwsResourceType::EbsVolume.to_string(),
                 AwsResourceType::EbsSnapshot.to_string(),
                 AwsResourceType::EfsFileSystem.to_string(),
+                AwsResourceType::SnsTopics.to_string(),
+                AwsResourceType::OpenSearchDomain.to_string(),
+                // Batch 2: Security & Compliance
+                AwsResourceType::KmsKey.to_string(),
+                AwsResourceType::AcmCertificate.to_string(),
+                AwsResourceType::CloudTrailTrail.to_string(),
+                AwsResourceType::ConfigRule.to_string(),
+                // Batch 3: Containers & Serverless
+                AwsResourceType::EcsCluster.to_string(),
+                AwsResourceType::EksCluster.to_string(),
+                AwsResourceType::AppRunnerService.to_string(),
+                AwsResourceType::BatchComputeEnv.to_string(),
+                // Batch 4: Management & Monitoring
+                AwsResourceType::CloudWatchAlarm.to_string(),
+                AwsResourceType::SsmDocument.to_string(),
+                // Batch 5: Application Integration
+                AwsResourceType::EventBridgeRule.to_string(),
+                AwsResourceType::StepFunction.to_string(),
+                AwsResourceType::SesIdentity.to_string(),
+                // Batch 6: Analytics & Big Data
+                AwsResourceType::RedshiftCluster.to_string(),
+                AwsResourceType::EmrCluster.to_string(),
+                AwsResourceType::AthenaWorkgroup.to_string(),
+                AwsResourceType::GlueDatabase.to_string(),
+                // Batch 7: Edge & DR
+                AwsResourceType::WafWebAcl.to_string(),
+                AwsResourceType::GlobalAccelerator.to_string(),
+                AwsResourceType::BackupVault.to_string(),
+                AwsResourceType::BackupPlan.to_string(),
             ],
         };
 
@@ -706,6 +789,100 @@ impl AwsControlPlane {
                 "ApiGatewayRestApi" | "ApiGatewayStage" | "ApiGatewayResource" | "ApiGatewayMethod" => {
                     self.sync_api_gateway_resources(aws_account_dto, request.sync_id)
                         .await
+                }
+                "SnsTopic" => {
+                    self.sync_sns_resources(aws_account_dto, request.sync_id)
+                        .await
+                }
+                "OpenSearchDomain" => {
+                    self.sync_opensearch_resources(aws_account_dto, request.sync_id)
+                        .await
+                }
+                // Batch 2: Security & Compliance
+                "KmsKey" => {
+                    let cp = KmsControlPlane::new(self.aws_service.clone());
+                    cp.sync_keys(aws_account_dto, request.sync_id).await
+                }
+                "AcmCertificate" => {
+                    let cp = AcmControlPlane::new(self.aws_service.clone());
+                    cp.sync_certificates(aws_account_dto, request.sync_id).await
+                }
+                "CloudTrailTrail" => {
+                    let cp = CloudTrailControlPlane::new(self.aws_service.clone());
+                    cp.sync_trails(aws_account_dto, request.sync_id).await
+                }
+                "ConfigRule" => {
+                    let cp = ConfigControlPlane::new(self.aws_service.clone());
+                    cp.sync_rules(aws_account_dto, request.sync_id).await
+                }
+                // Batch 3: Containers & Serverless
+                "EcsCluster" | "EcsService" | "EcsTask" => {
+                    let cp = EcsControlPlane::new(self.aws_service.clone());
+                    cp.sync_clusters(aws_account_dto, request.sync_id).await
+                }
+                "EksCluster" | "FargateProfile" => {
+                    let cp = EksControlPlane::new(self.aws_service.clone());
+                    cp.sync_clusters(aws_account_dto, request.sync_id).await
+                }
+                "AppRunnerService" => {
+                    let cp = AppRunnerControlPlane::new(self.aws_service.clone());
+                    cp.sync_services(aws_account_dto, request.sync_id).await
+                }
+                "BatchComputeEnv" => {
+                    let cp = BatchControlPlane::new(self.aws_service.clone());
+                    cp.sync_compute_envs(aws_account_dto, request.sync_id).await
+                }
+                // Batch 4: Management & Monitoring
+                "CloudWatchAlarm" | "CloudWatchDashboard" => {
+                    let cp = CloudWatchControlPlane::new(self.aws_service.clone());
+                    cp.sync_alarms(aws_account_dto, request.sync_id).await
+                }
+                "SsmDocument" => {
+                    let cp = SsmControlPlane::new(self.aws_service.clone());
+                    cp.sync_documents(aws_account_dto, request.sync_id).await
+                }
+                // Batch 5: Application Integration
+                "EventBridgeRule" => {
+                    let cp = EventBridgeControlPlane::new(self.aws_service.clone());
+                    cp.sync_rules(aws_account_dto, request.sync_id).await
+                }
+                "StepFunction" => {
+                    let cp = StepFunctionsControlPlane::new(self.aws_service.clone());
+                    cp.sync_state_machines(aws_account_dto, request.sync_id).await
+                }
+                "SesIdentity" => {
+                    let cp = SesControlPlane::new(self.aws_service.clone());
+                    cp.sync_identities(aws_account_dto, request.sync_id).await
+                }
+                // Batch 6: Analytics & Big Data
+                "RedshiftCluster" => {
+                    let cp = RedshiftControlPlane::new(self.aws_service.clone());
+                    cp.sync_clusters(aws_account_dto, request.sync_id).await
+                }
+                "EmrCluster" => {
+                    let cp = EmrControlPlane::new(self.aws_service.clone());
+                    cp.sync_clusters(aws_account_dto, request.sync_id).await
+                }
+                "AthenaWorkgroup" => {
+                    let cp = AthenaControlPlane::new(self.aws_service.clone());
+                    cp.sync_workgroups(aws_account_dto, request.sync_id).await
+                }
+                "GlueDatabase" => {
+                    let cp = GlueControlPlane::new(self.aws_service.clone());
+                    cp.sync_databases(aws_account_dto, request.sync_id).await
+                }
+                // Batch 7: Edge & DR
+                "WafWebAcl" => {
+                    let cp = WafControlPlane::new(self.aws_service.clone());
+                    cp.sync_web_acls(aws_account_dto, request.sync_id).await
+                }
+                "GlobalAccelerator" => {
+                    let cp = GlobalAcceleratorControlPlane::new(self.aws_service.clone());
+                    cp.sync_accelerators(aws_account_dto, request.sync_id).await
+                }
+                "BackupVault" | "BackupPlan" => {
+                    let cp = BackupControlPlane::new(self.aws_service.clone());
+                    cp.sync_vaults(aws_account_dto, request.sync_id).await
                 }
                 _ => Ok(vec![]),
             };

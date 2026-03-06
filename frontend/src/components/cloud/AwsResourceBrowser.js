@@ -484,6 +484,41 @@ const AwsResourceBrowser = () => {
                     <option value="SqsQueue">SQS Queues</option>
                     <option value="SnsTopic">SNS Topics</option>
                     <option value="LambdaFunction">Lambda Functions</option>
+                    <option value="ElasticacheCluster">ElastiCache Clusters</option>
+                    <option value="OpenSearchDomain">OpenSearch Domains</option>
+                    <option value="Alb">Application Load Balancers</option>
+                    <option value="Nlb">Network Load Balancers</option>
+                    <option value="Elb">Classic Load Balancers</option>
+                    <option value="CloudFrontDistribution">CloudFront Distributions</option>
+                    <option value="ApiGatewayRestApi">API Gateway REST APIs</option>
+                    <option value="EbsVolume">EBS Volumes</option>
+                    <option value="EbsSnapshot">EBS Snapshots</option>
+                    <option value="EfsFileSystem">EFS File Systems</option>
+                    <option value="IamUser">IAM Users</option>
+                    <option value="IamRole">IAM Roles</option>
+                    <option value="IamPolicy">IAM Policies</option>
+                    <option value="IamGroup">IAM Groups</option>
+                    <option value="KmsKey">KMS Keys</option>
+                    <option value="AcmCertificate">ACM Certificates</option>
+                    <option value="CloudTrailTrail">CloudTrail Trails</option>
+                    <option value="ConfigRule">Config Rules</option>
+                    <option value="EcsCluster">ECS Clusters</option>
+                    <option value="EksCluster">EKS Clusters</option>
+                    <option value="AppRunnerService">App Runner Services</option>
+                    <option value="BatchComputeEnv">Batch Compute Envs</option>
+                    <option value="CloudWatchAlarm">CloudWatch Alarms</option>
+                    <option value="SsmDocument">SSM Documents</option>
+                    <option value="EventBridgeRule">EventBridge Rules</option>
+                    <option value="StepFunction">Step Functions</option>
+                    <option value="SesIdentity">SES Identities</option>
+                    <option value="RedshiftCluster">Redshift Clusters</option>
+                    <option value="EmrCluster">EMR Clusters</option>
+                    <option value="AthenaWorkgroup">Athena Workgroups</option>
+                    <option value="GlueDatabase">Glue Databases</option>
+                    <option value="WafWebAcl">WAF Web ACLs</option>
+                    <option value="GlobalAccelerator">Global Accelerators</option>
+                    <option value="BackupVault">Backup Vaults</option>
+                    <option value="BackupPlan">Backup Plans</option>
                   </Input>
                 </FormGroup>
               </Col>
