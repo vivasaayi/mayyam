@@ -1,7 +1,7 @@
 database:
   postgres:
     - name: main
-      host: postgres
+      host: localhost
       port: 5432
       username: postgres
       password: postgres
@@ -9,7 +9,7 @@ database:
       ssl_mode: disable
   mysql:
     - name: main
-      host: mysql
+      host: localhost
       port: 3306
       username: root
       password: rootpassword
@@ -21,7 +21,7 @@ kafka:
   clusters:
     - name: "test-cluster"
       bootstrap_servers:
-        - "kafka:29092"
+        - "localhost:9092"
       security_protocol: "PLAINTEXT"
 
 auth:

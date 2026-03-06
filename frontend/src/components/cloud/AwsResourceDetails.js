@@ -45,7 +45,7 @@ const AwsResourceDetails = ({ resource, isOpen, toggle }) => {
   const [actionPayload, setActionPayload] = useState("");
   const [actionResult, setActionResult] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
-  
+
   // Reset data plane action when resource changes
   useEffect(() => {
     setDataPlaneAction(null);
@@ -56,7 +56,7 @@ const AwsResourceDetails = ({ resource, isOpen, toggle }) => {
   // Function to get default payload template based on resource type and action
   const getDefaultPayload = () => {
     if (!resource || !dataPlaneAction) return "{}";
-    
+
     switch (resource.resource_type) {
       case "S3Bucket":
         if (dataPlaneAction === "getObject") {
@@ -126,21 +126,21 @@ const AwsResourceDetails = ({ resource, isOpen, toggle }) => {
       default:
         return "{}";
     }
-    
+
     return "{}";
   };
 
   // Execute data plane action
   const executeAction = async () => {
     if (!resource || !dataPlaneAction) return;
-    
+
     setActionLoading(true);
     setActionResult(null);
-    
+
     try {
       let endpoint = "";
       let payload = {};
-      
+
       try {
         payload = JSON.parse(actionPayload);
       } catch (e) {
@@ -150,10 +150,10 @@ const AwsResourceDetails = ({ resource, isOpen, toggle }) => {
         setActionLoading(false);
         return;
       }
-      
+
       const profile = resource.profile || "default";
       const region = resource.region;
-      
+
       switch (resource.resource_type) {
         case "S3Bucket":
           if (dataPlaneAction === "getObject") {
@@ -167,7 +167,7 @@ const AwsResourceDetails = ({ resource, isOpen, toggle }) => {
             setActionResult(response.data);
           }
           break;
-          
+
         case "DynamoDbTable":
           endpoint = `/api/aws-data/profiles/${profile}/regions/${region}/dynamodb/${resource.resource_id}`;
           if (dataPlaneAction === "getItem") {
@@ -184,7 +184,7 @@ const AwsResourceDetails = ({ resource, isOpen, toggle }) => {
             setActionResult(response.data);
           }
           break;
-          
+
         case "SqsQueue":
           if (dataPlaneAction === "sendMessage") {
             endpoint = `/api/aws-data/profiles/${profile}/regions/${region}/sqs/send`;
@@ -196,7 +196,7 @@ const AwsResourceDetails = ({ resource, isOpen, toggle }) => {
             setActionResult(response.data);
           }
           break;
-          
+
         case "KinesisStream":
           if (dataPlaneAction === "putRecord") {
             endpoint = `/api/aws-data/profiles/${profile}/regions/${region}/kinesis`;
@@ -204,7 +204,7 @@ const AwsResourceDetails = ({ resource, isOpen, toggle }) => {
             setActionResult(response.data);
           }
           break;
-          
+
         default:
           setActionResult({
             error: "No data plane actions available for this resource type"
@@ -222,9 +222,9 @@ const AwsResourceDetails = ({ resource, isOpen, toggle }) => {
 
   const renderDataPlaneActions = () => {
     if (!resource) return null;
-    
+
     const actions = [];
-    
+
     switch (resource.resource_type) {
       case "S3Bucket":
         actions.push({ id: "getObject", label: "Get Object" });
@@ -245,7 +245,7 @@ const AwsResourceDetails = ({ resource, isOpen, toggle }) => {
       default:
         return <p className="text-muted">No data plane actions available for this resource type.</p>;
     }
-    
+
     return (
       <div>
         <FormGroup>
@@ -267,7 +267,7 @@ const AwsResourceDetails = ({ resource, isOpen, toggle }) => {
             ))}
           </Input>
         </FormGroup>
-        
+
         {dataPlaneAction && (
           <>
             <FormGroup>
@@ -281,25 +281,25 @@ const AwsResourceDetails = ({ resource, isOpen, toggle }) => {
                 style={{ fontFamily: "monospace" }}
               />
             </FormGroup>
-            
-            <Button 
-              color="primary" 
+
+            <Button
+              color="primary"
               onClick={executeAction}
               disabled={actionLoading}
             >
               Execute Action
             </Button>
-            
+
             {actionLoading && <Spinner />}
-            
+
             {actionResult && (
               <div className="mt-3">
                 <h5>Result</h5>
                 <Card>
                   <CardBody style={{ maxHeight: "300px", overflow: "auto" }}>
-                    <ReactJson 
-                      src={actionResult} 
-                      name={null} 
+                    <ReactJson
+                      src={actionResult}
+                      name={null}
                       displayDataTypes={false}
                       collapsed={1}
                     />
@@ -322,131 +322,131 @@ const AwsResourceDetails = ({ resource, isOpen, toggle }) => {
       </ModalHeader>
       <ModalBody>
         <Nav tabs>
-              <NavItem>
-                <NavLink
-                  className={classnames({ active: activeTab === "overview" })}
-                  onClick={() => setActiveTab("overview")}
-                >
-                  Overview
-                </NavLink>
-              </NavItem>
-              <NavItem>
-                <NavLink
-                  className={classnames({ active: activeTab === "tags" })}
-                  onClick={() => setActiveTab("tags")}
-                >
-                  Tags
-                </NavLink>
-              </NavItem>
-              <NavItem>
-                <NavLink
-                  className={classnames({ active: activeTab === "data" })}
-                  onClick={() => setActiveTab("data")}
-                >
-                  Resource Data
-                </NavLink>
-              </NavItem>
-              <NavItem>
-                <NavLink
-                  className={classnames({ active: activeTab === "actions" })}
-                  onClick={() => setActiveTab("actions")}
-                >
-                  Data Plane Actions
-                </NavLink>
-              </NavItem>
+          <NavItem>
+            <NavLink
+              className={classnames({ active: activeTab === "overview" })}
+              onClick={() => setActiveTab("overview")}
+            >
+              Overview
+            </NavLink>
+          </NavItem>
+          <NavItem>
+            <NavLink
+              className={classnames({ active: activeTab === "tags" })}
+              onClick={() => setActiveTab("tags")}
+            >
+              Tags
+            </NavLink>
+          </NavItem>
+          <NavItem>
+            <NavLink
+              className={classnames({ active: activeTab === "data" })}
+              onClick={() => setActiveTab("data")}
+            >
+              Resource Data
+            </NavLink>
+          </NavItem>
+          <NavItem>
+            <NavLink
+              className={classnames({ active: activeTab === "actions" })}
+              onClick={() => setActiveTab("actions")}
+            >
+              Data Plane Actions
+            </NavLink>
+          </NavItem>
 
-            </Nav>
-            
-            <TabContent activeTab={activeTab}>
-              <TabPane tabId="overview">
-                <div className="p-3">
-                  <Row>
-                    <Col sm="3" className="font-weight-bold">Resource Type</Col>
-                    <Col sm="9">
-                      <Badge color="primary">{resource.resource_type}</Badge>
-                    </Col>
-                  </Row>
-                  <hr />
-                  <Row>
-                    <Col sm="3" className="font-weight-bold">Resource ID</Col>
-                    <Col sm="9">{resource.resource_id}</Col>
-                  </Row>
-                  <hr />
-                  <Row>
-                    <Col sm="3" className="font-weight-bold">Name</Col>
-                    <Col sm="9">{resource.name || <em>No name</em>}</Col>
-                  </Row>
-                  <hr />
-                  <Row>
-                    <Col sm="3" className="font-weight-bold">ARN</Col>
-                    <Col sm="9" style={{ wordBreak: "break-all" }}>{resource.arn}</Col>
-                  </Row>
-                  <hr />
-                  <Row>
-                    <Col sm="3" className="font-weight-bold">Account</Col>
-                    <Col sm="9">{resource.account_id}</Col>
-                  </Row>
-                  <hr />
-                  <Row>
-                    <Col sm="3" className="font-weight-bold">Region</Col>
-                    <Col sm="9">{resource.region}</Col>
-                  </Row>
-                  <hr />
-                  <Row>
-                    <Col sm="3" className="font-weight-bold">Last Updated</Col>
-                    <Col sm="9">{new Date(resource.updated_at).toLocaleString()}</Col>
-                  </Row>
-                  <hr />
-                  <Row>
-                    <Col sm="3" className="font-weight-bold">Last Refreshed</Col>
-                    <Col sm="9">{new Date(resource.last_refreshed).toLocaleString()}</Col>
-                  </Row>
-                </div>
-              </TabPane>
-              
-              <TabPane tabId="tags">
-                <div className="p-3">
-                  {Object.keys(resource.tags).length === 0 ? (
-                    <p className="text-muted">This resource has no tags.</p>
-                  ) : (
-                    <Table striped bordered>
-                      <thead>
-                        <tr>
-                          <th>Key</th>
-                          <th>Value</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {Object.entries(resource.tags).map(([key, value]) => (
-                          <tr key={key}>
-                            <td>{key}</td>
-                            <td>{value}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </Table>
-                  )}
-                </div>
-              </TabPane>
-              
-              <TabPane tabId="data">
-                <div className="p-3">
-                  <ReactJson 
-                    src={resource.resource_data} 
-                    name={null}
-                    displayDataTypes={false}
-                    collapsed={1}
-                  />
-                </div>
-              </TabPane>
-              
-              <TabPane tabId="actions">
-                <div className="p-3">
-                  {renderDataPlaneActions()}
-                </div>
-              </TabPane>
+        </Nav>
 
-            </TabContent>
+        <TabContent activeTab={activeTab}>
+          <TabPane tabId="overview">
+            <div className="p-3">
+              <Row>
+                <Col sm="3" className="font-weight-bold">Resource Type</Col>
+                <Col sm="9">
+                  <Badge color="primary">{resource.resource_type}</Badge>
+                </Col>
+              </Row>
+              <hr />
+              <Row>
+                <Col sm="3" className="font-weight-bold">Resource ID</Col>
+                <Col sm="9">{resource.resource_id}</Col>
+              </Row>
+              <hr />
+              <Row>
+                <Col sm="3" className="font-weight-bold">Name</Col>
+                <Col sm="9">{resource.name || <em>No name</em>}</Col>
+              </Row>
+              <hr />
+              <Row>
+                <Col sm="3" className="font-weight-bold">ARN</Col>
+                <Col sm="9" style={{ wordBreak: "break-all" }}>{resource.arn}</Col>
+              </Row>
+              <hr />
+              <Row>
+                <Col sm="3" className="font-weight-bold">Account</Col>
+                <Col sm="9">{resource.account_id}</Col>
+              </Row>
+              <hr />
+              <Row>
+                <Col sm="3" className="font-weight-bold">Region</Col>
+                <Col sm="9">{resource.region}</Col>
+              </Row>
+              <hr />
+              <Row>
+                <Col sm="3" className="font-weight-bold">Last Updated</Col>
+                <Col sm="9">{new Date(resource.updated_at).toLocaleString()}</Col>
+              </Row>
+              <hr />
+              <Row>
+                <Col sm="3" className="font-weight-bold">Last Refreshed</Col>
+                <Col sm="9">{new Date(resource.last_refreshed).toLocaleString()}</Col>
+              </Row>
+            </div>
+          </TabPane>
+
+          <TabPane tabId="tags">
+            <div className="p-3">
+              {!resource.tags || Object.keys(resource.tags).length === 0 ? (
+                <p className="text-muted">This resource has no tags.</p>
+              ) : (
+                <Table striped bordered>
+                  <thead>
+                    <tr>
+                      <th>Key</th>
+                      <th>Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(resource.tags).map(([key, value]) => (
+                      <tr key={key}>
+                        <td>{key}</td>
+                        <td>{value}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              )}
+            </div>
+          </TabPane>
+
+          <TabPane tabId="data">
+            <div className="p-3">
+              <ReactJson
+                src={resource.resource_data}
+                name={null}
+                displayDataTypes={false}
+                collapsed={1}
+              />
+            </div>
+          </TabPane>
+
+          <TabPane tabId="actions">
+            <div className="p-3">
+              {renderDataPlaneActions()}
+            </div>
+          </TabPane>
+
+        </TabContent>
       </ModalBody>
     </Modal>
   );

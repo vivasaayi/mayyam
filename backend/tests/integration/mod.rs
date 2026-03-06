@@ -16,6 +16,8 @@
 #![cfg(feature = "integration-tests")]
 
 // Integration test modules
+pub mod ec2_api_tests;
+pub use ec2_api_tests::*;
 pub mod api_tests;
 pub mod aws_account_api_tests;
 pub mod cost_analytics_api_tests;

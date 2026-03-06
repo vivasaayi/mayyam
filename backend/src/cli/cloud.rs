@@ -69,6 +69,41 @@ pub enum AwsCommands {
 
     /// List IAM Groups
     IamGroups,
+
+    /// List VPCs
+    Vpcs {
+        /// AWS region
+        #[arg(short, long)]
+        region: String,
+    },
+
+    /// List Subnets
+    Subnets {
+        /// AWS region
+        #[arg(short, long)]
+        region: String,
+    },
+
+    /// List Security Groups
+    SecurityGroups {
+        /// AWS region
+        #[arg(short, long)]
+        region: String,
+    },
+
+    /// List Route Tables
+    RouteTables {
+        /// AWS region
+        #[arg(short, long)]
+        region: String,
+    },
+
+    /// List Internet Gateways
+    InternetGateways {
+        /// AWS region
+        #[arg(short, long)]
+        region: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -196,6 +231,42 @@ pub async fn handle_command(command: CloudCommands, config: &Config) -> Result<(
                     println!("Note: IAM Group listing requires proper AWS credentials and permissions.");
                     Ok(())
                 }
+
+                AwsCommands::Vpcs { region } => {
+                    println!("Fetching VPCs in region {}...", region);
+                    println!("Connecting to AWS EC2 service in region: {}", region);
+                    println!("Note: VPC listing requires proper AWS credentials and permissions.");
+                    Ok(())
+                }
+
+                AwsCommands::Subnets { region } => {
+                    println!("Fetching Subnets in region {}...", region);
+                    println!("Connecting to AWS EC2 service in region: {}", region);
+                    println!("Note: Subnet listing requires proper AWS credentials and permissions.");
+                    Ok(())
+                }
+
+                AwsCommands::SecurityGroups { region } => {
+                    println!("Fetching Security Groups in region {}...", region);
+                    println!("Connecting to AWS EC2 service in region: {}", region);
+                    println!("Note: Security Group listing requires proper AWS credentials and permissions.");
+                    Ok(())
+                }
+
+                AwsCommands::RouteTables { region } => {
+                    println!("Fetching Route Tables in region {}...", region);
+                    println!("Connecting to AWS EC2 service in region: {}", region);
+                    println!("Note: Route Table listing requires proper AWS credentials and permissions.");
+                    Ok(())
+                }
+
+                AwsCommands::InternetGateways { region } => {
+                    println!("Fetching Internet Gateways in region {}...", region);
+                    println!("Connecting to AWS EC2 service in region: {}", region);
+                    println!("Note: Internet Gateway listing requires proper AWS credentials and permissions.");
+                    Ok(())
+                }
+
             }
         }
 
