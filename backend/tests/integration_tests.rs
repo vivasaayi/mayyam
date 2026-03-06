@@ -24,6 +24,7 @@ mod integration {
     pub mod llm;
     pub mod iam_api_tests;
     pub mod ec2_api_tests;
+    pub mod aws_control_plane_api_tests;
 }
 
 // Re-export integration tests
@@ -34,3 +35,4 @@ pub use integration::kafka::*;
 pub use integration::llm::*;
 pub use integration::iam_api_tests::*;
 pub use integration::ec2_api_tests::*;
+pub use integration::aws_control_plane_api_tests::*;
