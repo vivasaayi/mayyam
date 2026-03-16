@@ -42,8 +42,7 @@ impl BatchControlPlane {
         );
 
         let client = self.aws_service.create_batch_client(aws_account_dto).await?;
-        let repo = &self.aws_service.aws_resource_repo;
-        let mut resources = Vec::new();
+        let mut resources: Vec<AwsResourceModel> = Vec::new();
 
         // List Batch compute environments from AWS
         let response = client.describe_compute_environments()

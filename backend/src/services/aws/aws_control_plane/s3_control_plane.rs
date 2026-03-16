@@ -60,7 +60,7 @@ impl S3ControlPlane {
 
         debug!("Fetched {} buckets from S3", response.buckets().len());
         for aws_bucket in response.buckets() {
-            let bucket_name = aws_bucket.name().unwrap_or_default();
+            let bucket_name = aws_bucket.name().unwrap_or("");
             debug!("Found S3 bucket: {}", &bucket_name);
 
             // Get bucket location/region

@@ -42,8 +42,7 @@ impl ConfigControlPlane {
         );
 
         let client = self.aws_service.create_config_client(aws_account_dto).await?;
-        let repo = &self.aws_service.aws_resource_repo;
-        let mut resources = Vec::new();
+        let mut resources: Vec<AwsResourceModel> = Vec::new();
 
         // List Config rules from AWS
         let response = client.describe_config_rules()

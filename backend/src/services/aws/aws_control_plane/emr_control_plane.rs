@@ -42,8 +42,7 @@ impl EmrControlPlane {
         );
 
         let client = self.aws_service.create_emr_client(aws_account_dto).await?;
-        let repo = &self.aws_service.aws_resource_repo;
-        let mut resources = Vec::new();
+        let mut resources: Vec<AwsResourceModel> = Vec::new();
 
         // List EMR clusters from AWS
         let response = client.list_clusters()

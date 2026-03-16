@@ -38,7 +38,6 @@ impl SnsControlPlane {
         aws_account_dto: &AwsAccountDto,
     ) -> Result<Vec<aws_resource::Model>, AppError> {
         let client = self.aws_service.create_sns_client(aws_account_dto).await?;
-
         let repo = &self.aws_service.aws_resource_repo;
 
         // Get SNS topics from AWS
@@ -64,7 +63,7 @@ impl SnsControlPlane {
             for aws_topic in response.topics() {
                 if let Some(topic_arn) = aws_topic.topic_arn() {
                     // Extract the topic name from ARN
-                    let topic_name = topic_arn.split(':').last().unwrap_or_default();
+                    let topic_name = topic_arn.split(':').last().unwrap_or("");
 
                     // Get topic attributes
                     let attrs_response = client

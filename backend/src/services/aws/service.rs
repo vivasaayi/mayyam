@@ -649,4 +649,44 @@ impl AwsClientFactory for AwsService {
         let config = self.get_aws_sdk_config(aws_account_dto).await?;
         Ok(aws_sdk_batch::Client::new(&config))
     }
+
+    async fn create_glacier_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<aws_sdk_glacier::Client, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(aws_sdk_glacier::Client::new(&config))
+    }
+
+    async fn create_storagegateway_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<aws_sdk_storagegateway::Client, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(aws_sdk_storagegateway::Client::new(&config))
+    }
+
+    async fn create_connect_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<aws_sdk_connect::Client, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(aws_sdk_connect::Client::new(&config))
+    }
+
+    async fn create_appsync_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<aws_sdk_appsync::Client, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(aws_sdk_appsync::Client::new(&config))
+    }
+
+    async fn create_kinesisanalytics_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<aws_sdk_kinesisanalyticsv2::Client, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(aws_sdk_kinesisanalyticsv2::Client::new(&config))
+    }
 }

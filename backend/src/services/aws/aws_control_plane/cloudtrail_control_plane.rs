@@ -42,8 +42,7 @@ impl CloudTrailControlPlane {
         );
 
         let client = self.aws_service.create_cloudtrail_client(aws_account_dto).await?;
-        let repo = &self.aws_service.aws_resource_repo;
-        let mut resources = Vec::new();
+        let mut resources: Vec<AwsResourceModel> = Vec::new();
 
         // List CloudTrail trails from AWS
         let response = client.describe_trails()

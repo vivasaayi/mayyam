@@ -56,3 +56,9 @@ pub mod glue_control_plane;
 pub mod waf_control_plane;
 pub mod globalaccelerator_control_plane;
 pub mod backup_control_plane;
+// Final Review Additions
+pub mod glacier_control_plane;
+pub mod storagegateway_control_plane;
+pub mod connect_control_plane;
+pub mod appsync_control_plane;
+pub mod kinesisanalytics_control_plane;

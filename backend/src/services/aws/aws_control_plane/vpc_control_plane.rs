@@ -52,7 +52,7 @@ impl VpcControlPlane {
         let mut vpcs = Vec::new();
 
         for vpc in response.vpcs() {
-            let vpc_id = vpc.vpc_id().unwrap_or_default().to_string();
+            let vpc_id = vpc.vpc_id().unwrap_or("").to_string();
             let arn = format!(
                 "arn:aws:ec2:{}:{}:vpc/{}",
                 aws_account_dto.default_region, aws_account_dto.account_id, vpc_id
@@ -125,7 +125,7 @@ impl VpcControlPlane {
         let mut subnets = Vec::new();
 
         for subnet in response.subnets() {
-            let subnet_id = subnet.subnet_id().unwrap_or_default().to_string();
+            let subnet_id = subnet.subnet_id().unwrap_or("").to_string();
             let arn = format!(
                 "arn:aws:ec2:{}:{}:subnet/{}",
                 aws_account_dto.default_region, aws_account_dto.account_id, subnet_id
@@ -206,7 +206,7 @@ impl VpcControlPlane {
         let mut security_groups = Vec::new();
 
         for sg in response.security_groups() {
-            let group_id = sg.group_id().unwrap_or_default().to_string();
+            let group_id = sg.group_id().unwrap_or("").to_string();
             let arn = format!(
                 "arn:aws:ec2:{}:{}:security-group/{}",
                 aws_account_dto.default_region, aws_account_dto.account_id, group_id
@@ -282,7 +282,7 @@ impl VpcControlPlane {
         let mut internet_gateways = Vec::new();
 
         for igw in response.internet_gateways() {
-            let igw_id = igw.internet_gateway_id().unwrap_or_default().to_string();
+            let igw_id = igw.internet_gateway_id().unwrap_or("").to_string();
             let arn = format!(
                 "arn:aws:ec2:{}:{}:internet-gateway/{}",
                 aws_account_dto.default_region, aws_account_dto.account_id, igw_id
@@ -343,7 +343,7 @@ impl VpcControlPlane {
         let mut nat_gateways = Vec::new();
 
         for nat_gw in response.nat_gateways() {
-            let nat_gw_id = nat_gw.nat_gateway_id().unwrap_or_default().to_string();
+            let nat_gw_id = nat_gw.nat_gateway_id().unwrap_or("").to_string();
             let arn = format!(
                 "arn:aws:ec2:{}:{}:natgateway/{}",
                 aws_account_dto.default_region, aws_account_dto.account_id, nat_gw_id
@@ -416,7 +416,7 @@ impl VpcControlPlane {
         let mut route_tables = Vec::new();
 
         for rt in response.route_tables() {
-            let rt_id = rt.route_table_id().unwrap_or_default().to_string();
+            let rt_id = rt.route_table_id().unwrap_or("").to_string();
             let arn = format!(
                 "arn:aws:ec2:{}:{}:route-table/{}",
                 aws_account_dto.default_region, aws_account_dto.account_id, rt_id
@@ -481,7 +481,7 @@ impl VpcControlPlane {
         let mut network_acls = Vec::new();
 
         for nacl in response.network_acls() {
-            let nacl_id = nacl.network_acl_id().unwrap_or_default().to_string();
+            let nacl_id = nacl.network_acl_id().unwrap_or("").to_string();
             let arn = format!(
                 "arn:aws:ec2:{}:{}:network-acl/{}",
                 aws_account_dto.default_region, aws_account_dto.account_id, nacl_id

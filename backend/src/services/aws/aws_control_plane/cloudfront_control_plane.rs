@@ -237,4 +237,88 @@ impl CloudFrontControlPlane {
 
         Ok(resource_dto)
     }
+
+    /// Sync CloudFront Functions
+    pub async fn sync_functions(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+        sync_id: Uuid,
+    ) -> Result<Vec<AwsResourceModel>, AppError> {
+        debug!(
+            "Syncing CloudFront Functions for account: {} with sync_id: {}",
+            &aws_account_dto.account_id, sync_id
+        );
+
+        let client = self.aws_service.create_cloudfront_client(aws_account_dto).await?;
+        let mut resources: Vec<AwsResourceModel> = Vec::new();
+
+        let mut marker = None;
+
+        loop {
+            let mut request = client.list_functions();
+            if let Some(m) = marker {
+                request = request.marker(m);
+            }
+
+            let response = match request.send().await {
+                Ok(res) => res,
+                Err(e) => {
+                    error!("Failed to list CloudFront Functions: {}", e);
+                    break;
+                }
+            };
+
+            if let Some(function_list) = response.function_list() {
+                let items = function_list.items();
+                if true {
+                    for function in items {
+                        let name = function.name();
+                        let arn = function.function_metadata().map(|m| m.function_arn()).unwrap_or("");
+                        
+                        let resource_data = serde_json::json!({
+                            "Name": name,
+                            "FunctionARN": arn,
+                            "Status": function.status().unwrap_or(""),
+                            "FunctionConfig": function.function_config().map(|c| {
+                                serde_json::json!({
+                                    "Comment": c.comment(),
+                                    "Runtime": c.runtime().as_str()
+                                })
+                            })
+                        });
+
+                        let dto = AwsResourceDto {
+                            id: None,
+                            sync_id: Some(sync_id),
+                            account_id: aws_account_dto.account_id.clone(),
+                            profile: aws_account_dto.profile.clone(),
+                            region: "global".to_string(),
+                            resource_type: AwsResourceType::CloudFrontFunction.to_string(),
+                            resource_id: name.to_string(),
+                            arn: arn.to_string(),
+                            name: Some(name.to_string()),
+                            tags: serde_json::json!({}),
+                            resource_data,
+                        };
+
+                        resources.push(dto.into());
+                    }
+                }
+
+                marker = function_list.next_marker().map(String::from);
+                if marker.is_none() {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        debug!(
+            "Successfully synced {} CloudFront Functions",
+            resources.len()
+        );
+
+        Ok(resources)
+    }
 }

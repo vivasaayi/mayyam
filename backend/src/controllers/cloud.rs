@@ -1376,6 +1376,36 @@ pub async fn list_ecs_clusters(
     Ok(HttpResponse::Ok().json(resources))
 }
 
+pub async fn list_ecs_services(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::EcsService.to_string());
+    let resources = aws_repo.search(&query_params).await?;
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_ecs_tasks(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::EcsTask.to_string());
+    let resources = aws_repo.search(&query_params).await?;
+    Ok(HttpResponse::Ok().json(resources))
+}
+
 pub async fn list_eks_clusters(
     path: web::Path<(String, String)>,
     query: web::Query<AwsResourceQuery>,
@@ -1387,6 +1417,21 @@ pub async fn list_eks_clusters(
     query_params.account_id = Some(account_id);
     query_params.region = Some(region);
     query_params.resource_type = Some(AwsResourceType::EksCluster.to_string());
+    let resources = aws_repo.search(&query_params).await?;
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_eks_fargate_profiles(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::FargateProfile.to_string());
     let resources = aws_repo.search(&query_params).await?;
     Ok(HttpResponse::Ok().json(resources))
 }
@@ -1433,6 +1478,21 @@ pub async fn list_cloudwatch_alarms(
     query_params.account_id = Some(account_id);
     query_params.region = Some(region);
     query_params.resource_type = Some(AwsResourceType::CloudWatchAlarm.to_string());
+    let resources = aws_repo.search(&query_params).await?;
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_cloudwatch_dashboards(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::CloudWatchDashboard.to_string());
     let resources = aws_repo.search(&query_params).await?;
     Ok(HttpResponse::Ok().json(resources))
 }
@@ -1601,6 +1661,98 @@ pub async fn list_backup_vaults(
     query_params.account_id = Some(account_id);
     query_params.region = Some(region);
     query_params.resource_type = Some(AwsResourceType::BackupVault.to_string());
+    let resources = aws_repo.search(&query_params).await?;
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+// Final Review Additions
+pub async fn list_glacier_vaults(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::GlacierArchive.to_string());
+    let resources = aws_repo.search(&query_params).await?;
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_storage_gateways(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::StorageGateway.to_string());
+    let resources = aws_repo.search(&query_params).await?;
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_connect_instances(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::ConnectInstance.to_string());
+    let resources = aws_repo.search(&query_params).await?;
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_cloudfront_functions(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, _region) = path.into_inner();
+    let mut query_params = query.into_inner();
+    query_params.account_id = Some(account_id);
+    // CloudFront Functions are global
+    query_params.region = Some("global".to_string());
+    query_params.resource_type = Some(AwsResourceType::CloudFrontFunction.to_string());
+    let resources = aws_repo.search(&query_params).await?;
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_appsync_apis(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::AppSyncApi.to_string());
+    let resources = aws_repo.search(&query_params).await?;
+    Ok(HttpResponse::Ok().json(resources))
+}
+
+pub async fn list_kinesis_analytics_apps(
+    path: web::Path<(String, String)>,
+    query: web::Query<AwsResourceQuery>,
+    aws_repo: web::Data<Arc<crate::repositories::aws_resource::AwsResourceRepository>>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let (account_id, region) = path.into_inner();
+    let mut query_params = query.into_inner();
+    query_params.account_id = Some(account_id);
+    query_params.region = Some(region);
+    query_params.resource_type = Some(AwsResourceType::KinesisAnalyticsApp.to_string());
     let resources = aws_repo.search(&query_params).await?;
     Ok(HttpResponse::Ok().json(resources))
 }

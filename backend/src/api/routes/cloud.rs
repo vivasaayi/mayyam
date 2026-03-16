@@ -221,8 +221,20 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             web::get().to(cloud::list_ecs_clusters),
         )
         .route(
+            "/accounts/{account_id}/regions/{region}/ecs-services",
+            web::get().to(cloud::list_ecs_services),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/ecs-tasks",
+            web::get().to(cloud::list_ecs_tasks),
+        )
+        .route(
             "/accounts/{account_id}/regions/{region}/eks-clusters",
             web::get().to(cloud::list_eks_clusters),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/eks-fargate-profiles",
+            web::get().to(cloud::list_eks_fargate_profiles),
         )
         .route(
             "/accounts/{account_id}/regions/{region}/apprunner-services",
@@ -236,6 +248,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .route(
             "/accounts/{account_id}/regions/{region}/cloudwatch-alarms",
             web::get().to(cloud::list_cloudwatch_alarms),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/cloudwatch-dashboards",
+            web::get().to(cloud::list_cloudwatch_dashboards),
         )
         .route(
             "/accounts/{account_id}/regions/{region}/ssm-documents",
@@ -283,6 +299,31 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .route(
             "/accounts/{account_id}/regions/{region}/backup-vaults",
             web::get().to(cloud::list_backup_vaults),
+        )
+        // Final Review Additions
+        .route(
+            "/accounts/{account_id}/regions/{region}/glacier-vaults",
+            web::get().to(cloud::list_glacier_vaults),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/storage-gateways",
+            web::get().to(cloud::list_storage_gateways),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/connect-instances",
+            web::get().to(cloud::list_connect_instances),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/cloudfront-functions",
+            web::get().to(cloud::list_cloudfront_functions),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/appsync-apis",
+            web::get().to(cloud::list_appsync_apis),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/kinesis-analytics-apps",
+            web::get().to(cloud::list_kinesis_analytics_apps),
         );
 
     // AWS data plane operations

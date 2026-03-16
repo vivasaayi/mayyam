@@ -1066,6 +1066,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "aws-sdk-appsync"
+version = "1.109.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a95e602a6110f7945c85e238bfdaeb5f04910eb7298bfc05dde50427e35b9656"
+dependencies = [
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-smithy-async",
+ "aws-smithy-http 0.63.6",
+ "aws-smithy-json 0.62.5",
+ "aws-smithy-observability",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
+ "aws-types",
+ "bytes",
+ "fastrand 2.3.0",
+ "http 0.2.12",
+ "http 1.3.1",
+ "regex-lite",
+ "tracing",
+]
+
+[[package]]
 name = "aws-sdk-athena"
 version = "1.103.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1237,6 +1261,30 @@ name = "aws-sdk-config"
 version = "1.103.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a551849f94b10f7692b711b131f369813918e7c0c5315b2ae427308894cb5e3"
+dependencies = [
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-smithy-async",
+ "aws-smithy-http 0.63.6",
+ "aws-smithy-json 0.62.5",
+ "aws-smithy-observability",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
+ "aws-types",
+ "bytes",
+ "fastrand 2.3.0",
+ "http 0.2.12",
+ "http 1.3.1",
+ "regex-lite",
+ "tracing",
+]
+
+[[package]]
+name = "aws-sdk-connect"
+version = "1.162.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9713f60c7bce72ed12da3d0668c7a6a2eeefbca96ff8f44d820c859d902191ec"
 dependencies = [
  "aws-credential-types",
  "aws-runtime",
@@ -1511,6 +1559,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "aws-sdk-glacier"
+version = "1.97.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6181ac56273a16e33126113ab52b1611ce970dbd6d84d92bb3416f12afe65d05"
+dependencies = [
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-sigv4",
+ "aws-smithy-async",
+ "aws-smithy-http 0.63.6",
+ "aws-smithy-json 0.62.5",
+ "aws-smithy-observability",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
+ "aws-types",
+ "bytes",
+ "fastrand 2.3.0",
+ "hex",
+ "http 0.2.12",
+ "http 1.3.1",
+ "regex-lite",
+ "ring 0.17.14",
+ "tracing",
+]
+
+[[package]]
 name = "aws-sdk-globalaccelerator"
 version = "1.98.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1602,6 +1677,30 @@ dependencies = [
  "bytes",
  "fastrand 2.3.0",
  "http 0.2.12",
+ "regex-lite",
+ "tracing",
+]
+
+[[package]]
+name = "aws-sdk-kinesisanalyticsv2"
+version = "1.100.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec61e0ef453d29500d2f5a8dc47ce19b30f5245800cd9259df13ee49e2e4549c"
+dependencies = [
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-smithy-async",
+ "aws-smithy-http 0.63.6",
+ "aws-smithy-json 0.62.5",
+ "aws-smithy-observability",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
+ "aws-types",
+ "bytes",
+ "fastrand 2.3.0",
+ "http 0.2.12",
+ "http 1.3.1",
  "regex-lite",
  "tracing",
 ]
@@ -1916,6 +2015,30 @@ dependencies = [
  "bytes",
  "fastrand 2.3.0",
  "http 0.2.12",
+ "regex-lite",
+ "tracing",
+]
+
+[[package]]
+name = "aws-sdk-storagegateway"
+version = "1.104.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f2c6f42330432c44ab280bffc95179fd2983f4c950b695eb80946a823411b1a"
+dependencies = [
+ "aws-credential-types",
+ "aws-runtime",
+ "aws-smithy-async",
+ "aws-smithy-http 0.63.6",
+ "aws-smithy-json 0.62.5",
+ "aws-smithy-observability",
+ "aws-smithy-runtime",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
+ "aws-types",
+ "bytes",
+ "fastrand 2.3.0",
+ "http 0.2.12",
+ "http 1.3.1",
  "regex-lite",
  "tracing",
 ]
@@ -5032,6 +5155,7 @@ dependencies = [
  "aws-sdk-acm",
  "aws-sdk-apigateway",
  "aws-sdk-apprunner",
+ "aws-sdk-appsync",
  "aws-sdk-athena",
  "aws-sdk-backup",
  "aws-sdk-batch",
@@ -5040,6 +5164,7 @@ dependencies = [
  "aws-sdk-cloudwatch",
  "aws-sdk-cloudwatchlogs",
  "aws-sdk-config",
+ "aws-sdk-connect",
  "aws-sdk-costexplorer",
  "aws-sdk-dynamodb",
  "aws-sdk-ec2",
@@ -5051,10 +5176,12 @@ dependencies = [
  "aws-sdk-elasticloadbalancingv2",
  "aws-sdk-emr",
  "aws-sdk-eventbridge",
+ "aws-sdk-glacier",
  "aws-sdk-globalaccelerator",
  "aws-sdk-glue",
  "aws-sdk-iam",
  "aws-sdk-kinesis",
+ "aws-sdk-kinesisanalyticsv2",
  "aws-sdk-kms",
  "aws-sdk-lambda",
  "aws-sdk-opensearch",
@@ -5066,6 +5193,7 @@ dependencies = [
  "aws-sdk-sns",
  "aws-sdk-sqs",
  "aws-sdk-ssm",
+ "aws-sdk-storagegateway",
  "aws-sdk-sts",
  "aws-sdk-wafv2",
  "aws-smithy-http 0.60.12",

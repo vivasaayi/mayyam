@@ -42,8 +42,7 @@ impl AthenaControlPlane {
         );
 
         let client = self.aws_service.create_athena_client(aws_account_dto).await?;
-        let repo = &self.aws_service.aws_resource_repo;
-        let mut resources = Vec::new();
+        let mut resources: Vec<AwsResourceModel> = Vec::new();
 
         // List Athena workgroups from AWS
         let response = client.list_work_groups()

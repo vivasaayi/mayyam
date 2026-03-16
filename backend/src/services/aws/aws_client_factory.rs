@@ -53,6 +53,11 @@ use aws_sdk_ssm::Client as SsmClient;
 use aws_sdk_apprunner::Client as AppRunnerClient;
 use aws_sdk_globalaccelerator::Client as GlobalAcceleratorClient;
 use aws_sdk_batch::Client as BatchClient;
+use aws_sdk_glacier::Client as GlacierClient;
+use aws_sdk_storagegateway::Client as StorageGatewayClient;
+use aws_sdk_connect::Client as ConnectClient;
+use aws_sdk_appsync::Client as AppSyncClient;
+use aws_sdk_kinesisanalyticsv2::Client as KinesisAnalyticsClient;
 
 use crate::models::aws_account::AwsAccountDto;
 use crate::models::aws_auth::AccountAuthInfo;
@@ -215,4 +220,24 @@ pub trait AwsClientFactory {
         &self,
         aws_account_dto: &AwsAccountDto,
     ) -> Result<BatchClient, AppError>;
+    async fn create_glacier_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<GlacierClient, AppError>;
+    async fn create_storagegateway_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<StorageGatewayClient, AppError>;
+    async fn create_connect_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<ConnectClient, AppError>;
+    async fn create_appsync_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<AppSyncClient, AppError>;
+    async fn create_kinesisanalytics_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<KinesisAnalyticsClient, AppError>;
 }

@@ -69,6 +69,13 @@ use crate::services::aws::aws_control_plane::glue_control_plane::GlueControlPlan
 use crate::services::aws::aws_control_plane::waf_control_plane::WafControlPlane;
 use crate::services::aws::aws_control_plane::globalaccelerator_control_plane::GlobalAcceleratorControlPlane;
 use crate::services::aws::aws_control_plane::backup_control_plane::BackupControlPlane;
+// Final Review Additions
+use crate::services::aws::aws_control_plane::glacier_control_plane::GlacierControlPlane;
+use crate::services::aws::aws_control_plane::storagegateway_control_plane::StorageGatewayControlPlane;
+use crate::services::aws::aws_control_plane::connect_control_plane::ConnectControlPlane;
+use crate::services::aws::aws_control_plane::appsync_control_plane::AppSyncControlPlane;
+use crate::services::aws::aws_control_plane::kinesisanalytics_control_plane::KinesisAnalyticsControlPlane;
+
 use crate::services::aws::aws_types::resource_sync::{
     ResourceSyncRequest, ResourceSyncResponse, ResourceTypeSyncSummary,
 };
@@ -375,7 +382,21 @@ impl AwsControlPlane {
             &aws_account_dto.account_id, sync_id
         );
         let cloudfront = CloudFrontControlPlane::new(self.aws_service.clone());
-        cloudfront.sync_distributions(aws_account_dto, sync_id).await
+        let mut all_resources = Vec::new();
+
+        // Sync CloudFront Distributions
+        match cloudfront.sync_distributions(aws_account_dto, sync_id).await {
+            Ok(resources) => all_resources.extend(resources),
+            Err(e) => error!("Failed to sync CloudFront distributions: {}", e),
+        }
+
+        // Sync CloudFront Functions
+        match cloudfront.sync_functions(aws_account_dto, sync_id).await {
+            Ok(resources) => all_resources.extend(resources),
+            Err(e) => error!("Failed to sync CloudFront Functions: {}", e),
+        }
+
+        Ok(all_resources)
     }
 
     async fn sync_sns_resources(
@@ -721,6 +742,11 @@ impl AwsControlPlane {
                 AwsResourceType::GlobalAccelerator.to_string(),
                 AwsResourceType::BackupVault.to_string(),
                 AwsResourceType::BackupPlan.to_string(),
+                AwsResourceType::GlacierArchive.to_string(),
+                AwsResourceType::StorageGateway.to_string(),
+                AwsResourceType::ConnectInstance.to_string(),
+                AwsResourceType::AppSyncApi.to_string(),
+                AwsResourceType::KinesisAnalyticsApp.to_string(),
             ],
         };
 
@@ -782,7 +808,7 @@ impl AwsControlPlane {
                     self.sync_efs_resources(aws_account_dto, request.sync_id)
                         .await
                 }
-                "CloudFrontDistribution" => {
+                "CloudFrontDistribution" | "CloudFrontFunction" => {
                     self.sync_cloudfront_resources(aws_account_dto, request.sync_id)
                         .await
                 }
@@ -816,13 +842,25 @@ impl AwsControlPlane {
                     cp.sync_rules(aws_account_dto, request.sync_id).await
                 }
                 // Batch 3: Containers & Serverless
-                "EcsCluster" | "EcsService" | "EcsTask" => {
+                "EcsCluster" => {
                     let cp = EcsControlPlane::new(self.aws_service.clone());
                     cp.sync_clusters(aws_account_dto, request.sync_id).await
                 }
-                "EksCluster" | "FargateProfile" => {
+                "EcsService" => {
+                    let cp = EcsControlPlane::new(self.aws_service.clone());
+                    cp.sync_services(aws_account_dto, request.sync_id).await
+                }
+                "EcsTask" => {
+                    let cp = EcsControlPlane::new(self.aws_service.clone());
+                    cp.sync_tasks(aws_account_dto, request.sync_id).await
+                }
+                "EksCluster" => {
                     let cp = EksControlPlane::new(self.aws_service.clone());
                     cp.sync_clusters(aws_account_dto, request.sync_id).await
+                }
+                "FargateProfile" => {
+                    let cp = EksControlPlane::new(self.aws_service.clone());
+                    cp.sync_fargate_profiles(aws_account_dto, request.sync_id).await
                 }
                 "AppRunnerService" => {
                     let cp = AppRunnerControlPlane::new(self.aws_service.clone());
@@ -833,9 +871,13 @@ impl AwsControlPlane {
                     cp.sync_compute_envs(aws_account_dto, request.sync_id).await
                 }
                 // Batch 4: Management & Monitoring
-                "CloudWatchAlarm" | "CloudWatchDashboard" => {
+                "CloudWatchAlarm" => {
                     let cp = CloudWatchControlPlane::new(self.aws_service.clone());
                     cp.sync_alarms(aws_account_dto, request.sync_id).await
+                }
+                "CloudWatchDashboard" => {
+                    let cp = CloudWatchControlPlane::new(self.aws_service.clone());
+                    cp.sync_dashboards(aws_account_dto, request.sync_id).await
                 }
                 "SsmDocument" => {
                     let cp = SsmControlPlane::new(self.aws_service.clone());
@@ -883,6 +925,26 @@ impl AwsControlPlane {
                 "BackupVault" | "BackupPlan" => {
                     let cp = BackupControlPlane::new(self.aws_service.clone());
                     cp.sync_vaults(aws_account_dto, request.sync_id).await
+                }
+                "GlacierArchive" => {
+                    let cp = GlacierControlPlane::new(self.aws_service.clone());
+                    cp.sync_vaults(aws_account_dto, request.sync_id).await
+                }
+                "StorageGateway" => {
+                    let cp = StorageGatewayControlPlane::new(self.aws_service.clone());
+                    cp.sync_gateways(aws_account_dto, request.sync_id).await
+                }
+                "ConnectInstance" => {
+                    let cp = ConnectControlPlane::new(self.aws_service.clone());
+                    cp.sync_instances(aws_account_dto, request.sync_id).await
+                }
+                "AppSyncApi" => {
+                    let cp = AppSyncControlPlane::new(self.aws_service.clone());
+                    cp.sync_apis(aws_account_dto, request.sync_id).await
+                }
+                "KinesisAnalyticsApp" => {
+                    let cp = KinesisAnalyticsControlPlane::new(self.aws_service.clone());
+                    cp.sync_applications(aws_account_dto, request.sync_id).await
                 }
                 _ => Ok(vec![]),
             };

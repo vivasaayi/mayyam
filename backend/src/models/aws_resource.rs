@@ -87,6 +87,8 @@ pub enum AwsResourceType {
     EbsVolume,
     EbsSnapshot,
     EfsFileSystem,
+    GlacierArchive,
+    StorageGateway,
     // Security & Compliance Resources
     KmsKey,
     AcmCertificate,
@@ -109,6 +111,7 @@ pub enum AwsResourceType {
     StepFunction,
     SesIdentity,
     AppSyncApi,
+    ConnectInstance,
     // Analytics & Big Data Resources
     RedshiftCluster,
     EmrCluster,
@@ -118,6 +121,7 @@ pub enum AwsResourceType {
     // Edge Computing Resources
     WafWebAcl,
     GlobalAccelerator,
+    CloudFrontFunction,
     // Backup & DR Resources
     BackupVault,
     BackupPlan,
@@ -162,6 +166,8 @@ impl ToString for AwsResourceType {
             AwsResourceType::EbsVolume => "EbsVolume".to_string(),
             AwsResourceType::EbsSnapshot => "EbsSnapshot".to_string(),
             AwsResourceType::EfsFileSystem => "EfsFileSystem".to_string(),
+            AwsResourceType::GlacierArchive => "GlacierArchive".to_string(),
+            AwsResourceType::StorageGateway => "StorageGateway".to_string(),
             // Security & Compliance Resources
             AwsResourceType::KmsKey => "KmsKey".to_string(),
             AwsResourceType::AcmCertificate => "AcmCertificate".to_string(),
@@ -184,6 +190,7 @@ impl ToString for AwsResourceType {
             AwsResourceType::StepFunction => "StepFunction".to_string(),
             AwsResourceType::SesIdentity => "SesIdentity".to_string(),
             AwsResourceType::AppSyncApi => "AppSyncApi".to_string(),
+            AwsResourceType::ConnectInstance => "ConnectInstance".to_string(),
             // Analytics & Big Data Resources
             AwsResourceType::RedshiftCluster => "RedshiftCluster".to_string(),
             AwsResourceType::EmrCluster => "EmrCluster".to_string(),
@@ -193,6 +200,7 @@ impl ToString for AwsResourceType {
             // Edge Computing Resources
             AwsResourceType::WafWebAcl => "WafWebAcl".to_string(),
             AwsResourceType::GlobalAccelerator => "GlobalAccelerator".to_string(),
+            AwsResourceType::CloudFrontFunction => "CloudFrontFunction".to_string(),
             // Backup & DR Resources
             AwsResourceType::BackupVault => "BackupVault".to_string(),
             AwsResourceType::BackupPlan => "BackupPlan".to_string(),
@@ -239,6 +247,8 @@ impl From<&str> for AwsResourceType {
             "EbsVolume" => AwsResourceType::EbsVolume,
             "EbsSnapshot" => AwsResourceType::EbsSnapshot,
             "EfsFileSystem" => AwsResourceType::EfsFileSystem,
+            "GlacierArchive" => AwsResourceType::GlacierArchive,
+            "StorageGateway" => AwsResourceType::StorageGateway,
             // Security & Compliance Resources
             "KmsKey" => AwsResourceType::KmsKey,
             "AcmCertificate" => AwsResourceType::AcmCertificate,
@@ -261,6 +271,7 @@ impl From<&str> for AwsResourceType {
             "StepFunction" => AwsResourceType::StepFunction,
             "SesIdentity" => AwsResourceType::SesIdentity,
             "AppSyncApi" => AwsResourceType::AppSyncApi,
+            "ConnectInstance" => AwsResourceType::ConnectInstance,
             // Analytics & Big Data Resources
             "RedshiftCluster" => AwsResourceType::RedshiftCluster,
             "EmrCluster" => AwsResourceType::EmrCluster,
@@ -270,6 +281,7 @@ impl From<&str> for AwsResourceType {
             // Edge Computing Resources
             "WafWebAcl" => AwsResourceType::WafWebAcl,
             "GlobalAccelerator" => AwsResourceType::GlobalAccelerator,
+            "CloudFrontFunction" => AwsResourceType::CloudFrontFunction,
             // Backup & DR Resources
             "BackupVault" => AwsResourceType::BackupVault,
             "BackupPlan" => AwsResourceType::BackupPlan,
