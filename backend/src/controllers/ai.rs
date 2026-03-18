@@ -27,6 +27,7 @@ use tracing::info;
 use crate::repositories::database::DatabaseRepository;
 use crate::repositories::prompt_template::PromptTemplateRepository;
 use crate::services::analytics::mysql_analytics::MySqlAnalyticsService;
+use crate::services::analytics::postgres_analytics::postgres_analytics_service::PostgresAnalyticsService;
 use crate::utils::database::connect_to_dynamic_database;
 use crate::config::Config;
 
@@ -845,7 +846,7 @@ pub async fn answer_dynamodb_question(
     Ok(HttpResponse::Ok().json(response))
 }
 
-pub async fn analyze_mysql_triage(
+pub async fn analyze_database_triage(
     path: web::Path<(String, String)>,
     db_repo: web::Data<Arc<DatabaseRepository>>,
     prompt_repo: web::Data<Arc<PromptTemplateRepository>>,
@@ -865,32 +866,49 @@ pub async fn analyze_mysql_triage(
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Database connection {} not found", connection_id)))?;
 
-    if db_model.connection_type != "mysql" {
-        return Err(AppError::BadRequest("Only MySQL triaging is supported at this time".to_string()));
+    if db_model.connection_type != "mysql" && db_model.connection_type != "postgres" {
+        return Err(AppError::BadRequest("Only MySQL and PostgreSQL triaging is supported at this time".to_string()));
     }
 
     // 2. Connect to the dynamic database
     let conn = connect_to_dynamic_database(&db_model, &config).await?;
 
     // 3. Resolve prompt template name
-    let template_name = match workflow.as_str() {
-        "performance" => "MySQL_performance_triage",
-        "connection" => "MySQL_connection_triage",
-        "index" => "MySQL_index_advisor",
+    let template_prefix = match db_model.connection_type.as_str() {
+        "mysql" => "MySQL",
+        "postgres" => "PostgreSQL",
+        _ => unreachable!(),
+    };
+
+    let template_suffix = match workflow.as_str() {
+        "performance" => "performance_triage",
+        "connection" => "connection_triage",
+        "index" => "index_advisor",
         _ => return Err(AppError::BadRequest(format!("Unsupported workflow: {}", workflow))),
     };
 
+    let template_name = format!("{}_{}", template_prefix, template_suffix);
+
     // 4. Fetch prompt template
     let template = prompt_repo
-        .search(template_name)
+        .search(&template_name)
         .await?
         .into_iter()
         .next()
         .ok_or_else(|| AppError::NotFound(format!("Prompt template '{}' not found", template_name)))?;
 
     // 5. Get triage context (metrics)
-    let analytics_service = MySqlAnalyticsService::new((**config).clone());
-    let metrics_json = analytics_service.get_triage_context(&conn).await?;
+    let metrics_json = match db_model.connection_type.as_str() {
+        "mysql" => {
+            let analytics_service = MySqlAnalyticsService::new((**config).clone());
+            analytics_service.get_triage_context(&conn).await?
+        }
+        "postgres" => {
+            let analytics_service = PostgresAnalyticsService::new((**config).clone());
+            analytics_service.get_triage_context(&conn).await?
+        }
+        _ => unreachable!(),
+    };
 
     // 6. Construct variables for the template
     let variables = serde_json::json!({
