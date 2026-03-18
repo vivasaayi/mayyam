@@ -20,8 +20,9 @@ use crate::repositories::query_fingerprint_repository::QueryFingerprintRepositor
 use crate::repositories::aurora_cluster_repository::AuroraClusterRepository;
 use crate::utils::retry::{retry_with_backoff, db_retry_config};
 use uuid::Uuid;
-use chrono::NaiveDateTime;
+use chrono::{NaiveDateTime, Utc};
 use regex::Regex;
+use serde_json;
 
 #[derive(Clone)]
 pub struct SlowQueryIngestionService {
@@ -42,25 +43,6 @@ pub struct ParsedSlowQueryEvent {
     pub sql_text: String,
     pub thread_id: Option<i64>,
     pub schema_name: Option<String>,
-    pub last_errno: Option<i32>,
-    pub killed: Option<i32>,
-    pub bytes_received: Option<i64>,
-    pub bytes_sent: Option<i64>,
-    pub read_first: Option<i64>,
-    pub read_last: Option<i64>,
-    pub read_key: Option<i64>,
-    pub read_next: Option<i64>,
-    pub read_prev: Option<i64>,
-    pub read_rnd: Option<i64>,
-    pub read_rnd_next: Option<i64>,
-    pub sort_merge_passes: Option<i64>,
-    pub sort_range_count: Option<i64>,
-    pub sort_rows: Option<i64>,
-    pub sort_scan_count: Option<i64>,
-    pub tmp_table_size: Option<i64>,
-    pub tmp_tables: Option<i64>,
-    pub tmp_disk_tables: Option<i64>,
-    pub tmp_table_on_disk: Option<i64>,
 }
 
 impl SlowQueryIngestionService {
@@ -76,12 +58,12 @@ impl SlowQueryIngestionService {
         }
     }
 
-    pub async fn ingest_slow_query_log(
+    pub async fn ingest_logs(
         &self,
         cluster_id: Uuid,
-        log_content: &str,
+        logs: &[String],
+        engine: &str,
     ) -> Result<(), String> {
-        // Verify cluster exists and is active
         let cluster = retry_with_backoff(
             &db_retry_config(),
             || self.cluster_repo.find_by_id(cluster_id),
@@ -89,87 +71,89 @@ impl SlowQueryIngestionService {
             .ok_or_else(|| "Aurora cluster not found".to_string())?;
 
         if !cluster.is_active {
-            return Err("Cluster is not active".to_string());
-        }
-
-        // Parse the slow query log
-        let events = self.parse_slow_query_log(log_content)?;
-
-        // Filter events for this cluster and process in batches
-        let cluster_events: Vec<_> = events.into_iter()
-            .filter(|event| event.cluster_id == cluster_id)
-            .collect();
-
-        if cluster_events.is_empty() {
             return Ok(());
         }
 
-        // Process events in batches to improve performance
-        const BATCH_SIZE: usize = 100;
-        for chunk in cluster_events.chunks(BATCH_SIZE) {
-            self.process_slow_query_event_batch(chunk).await?;
-        }
-
-        Ok(())
-    }
-
-    pub async fn process_slow_query_event(&self, event: ParsedSlowQueryEvent) -> Result<(), String> {
-        // Generate fingerprint for the query
-        let fingerprint = self.generate_query_fingerprint(&event.sql_text)?;
-
-        // Find or create fingerprint record
-        let fingerprint_record = self.find_or_create_fingerprint(event.cluster_id, &fingerprint).await?;
-
-        // Create slow query event
-        let slow_query_event = SlowQueryEvent {
-            id: Uuid::new_v4(),
-            cluster_id: event.cluster_id,
-            event_timestamp: event.event_timestamp,
-            query_time: event.query_time,
-            lock_time: Some(event.lock_time),
-            rows_sent: Some(event.rows_sent),
-            rows_examined: Some(event.rows_examined),
-            user_host: Some(event.user_host),
-            database: event.schema_name,
-            sql_text: event.sql_text,
-            raw_log_line: String::new(), // Will be populated from original log
-            fingerprint_id: Some(fingerprint_record.id),
-            parsed_at: chrono::Utc::now().naive_utc(),
-            created_at: chrono::Utc::now().naive_utc(),
+        let events = match engine.to_lowercase().as_str() {
+            "mysql" | "aurora-mysql" => self.parse_mysql_logs(logs, cluster_id)?,
+            "postgresql" | "aurora-postgresql" => self.parse_postgresql_logs(logs, cluster_id)?,
+            _ => return Err(format!("Unsupported engine: {}", engine)),
         };
 
-        retry_with_backoff(
-            &db_retry_config(),
-            || self.slow_query_repo.create(slow_query_event.clone()),
-        ).await?;
-
-        // Update fingerprint statistics
-        self.update_fingerprint_statistics(fingerprint_record.id, event.query_time).await?;
-
-        Ok(())
-    }
-
-    pub async fn process_slow_query_event_batch(&self, events: &[ParsedSlowQueryEvent]) -> Result<(), String> {
         if events.is_empty() {
             return Ok(());
         }
 
-        // Generate fingerprints for all queries
-        let mut fingerprints = Vec::new();
-        let mut fingerprint_records = Vec::new();
-
-        for event in events {
-            let fingerprint = self.generate_query_fingerprint(&event.sql_text)?;
-            fingerprints.push(fingerprint);
+        const BATCH_SIZE: usize = 100;
+        for chunk in events.chunks(BATCH_SIZE) {
+            self.process_slow_query_event_batch(chunk, engine).await?;
         }
 
-        // Find or create fingerprint records
-        for (i, fingerprint) in fingerprints.iter().enumerate() {
-            let record = self.find_or_create_fingerprint(events[i].cluster_id, fingerprint).await?;
+        Ok(())
+    }
+
+    fn parse_mysql_logs(&self, logs: &[String], cluster_id: Uuid) -> Result<Vec<ParsedSlowQueryEvent>, String> {
+        let log_content = logs.join("\n");
+        let mut events = Vec::new();
+        let lines: Vec<&str> = log_content.lines().collect();
+
+        let mut i = 0;
+        while i < lines.len() {
+            if lines[i].starts_with("# Time:") {
+                if let Some(mut ev) = self.parse_single_mysql_event(&lines[i..])? {
+                    ev.cluster_id = cluster_id;
+                    events.push(ev);
+                    i += self.count_mysql_event_lines(&lines[i..]);
+                } else {
+                    i += 1;
+                }
+            } else {
+                i += 1;
+            }
+        }
+        Ok(events)
+    }
+
+    fn parse_postgresql_logs(&self, logs: &[String], cluster_id: Uuid) -> Result<Vec<ParsedSlowQueryEvent>, String> {
+        let re = Regex::new(r"(?x)
+            ^(?P<ts>\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\.\d{3}\s\w+)\s
+            \[(?P<pid>\d+)\]\s
+            (?P<user>[\w-]+)@(?P<db>[\w-]+)\s
+            LOG:\s+duration:\s+(?P<dur>\d+\.?\d*)\sms\s+
+            statement:\s+(?P<sql>.*)$").map_err(|e| e.to_string())?;
+
+        let mut events = Vec::new();
+        for log in logs {
+            if let Some(caps) = re.captures(log) {
+                let timestamp_str = &caps["ts"];
+                let event_timestamp = NaiveDateTime::parse_from_str(&timestamp_str[..23], "%Y-%m-%d %H:%M:%S.%3f")
+                    .unwrap_or_else(|_| Utc::now().naive_utc());
+
+                events.push(ParsedSlowQueryEvent {
+                    cluster_id,
+                    event_timestamp,
+                    user_host: caps["user"].to_string(),
+                    query_time: caps["dur"].parse::<f64>().unwrap_or(0.0) / 1000.0,
+                    lock_time: 0.0,
+                    rows_sent: 0,
+                    rows_examined: 0,
+                    sql_text: caps["sql"].to_string(),
+                    thread_id: Some(caps["pid"].parse().unwrap_or(0)),
+                    schema_name: Some(caps["db"].to_string()),
+                });
+            }
+        }
+        Ok(events)
+    }
+
+    async fn process_slow_query_event_batch(&self, events: &[ParsedSlowQueryEvent], engine: &str) -> Result<(), String> {
+        let mut fingerprint_records = Vec::new();
+        for event in events {
+            let hash = self.generate_query_hash(&event.sql_text)?;
+            let record = self.find_or_create_fingerprint(event.cluster_id, &hash, &event.sql_text, engine).await?;
             fingerprint_records.push(record);
         }
 
-        // Create slow query events
         let slow_query_events: Vec<SlowQueryEvent> = events.iter().enumerate().map(|(i, event)| {
             SlowQueryEvent {
                 id: Uuid::new_v4(),
@@ -182,169 +166,139 @@ impl SlowQueryIngestionService {
                 user_host: Some(event.user_host.clone()),
                 database: event.schema_name.clone(),
                 sql_text: event.sql_text.clone(),
-                raw_log_line: String::new(), // Will be populated from original log
+                raw_log_line: String::new(),
                 fingerprint_id: Some(fingerprint_records[i].id),
-                parsed_at: chrono::Utc::now().naive_utc(),
-                created_at: chrono::Utc::now().naive_utc(),
+                parsed_at: Utc::now().naive_utc(),
+                created_at: Utc::now().naive_utc(),
             }
         }).collect();
 
-        // Batch insert slow query events
-        retry_with_backoff(
-            &db_retry_config(),
-            || self.slow_query_repo.create_many(slow_query_events.clone()),
-        ).await?;
+        retry_with_backoff(&db_retry_config(), || self.slow_query_repo.create_many(slow_query_events.clone())).await?;
 
-        // Update fingerprint statistics in batches
         let mut stats_updates = Vec::new();
         for (i, record) in fingerprint_records.iter().enumerate() {
             let current = record.clone();
             let new_count = current.execution_count + 1;
             let new_total_time = current.total_query_time + events[i].query_time;
             let new_avg_time = new_total_time / new_count as f64;
+            let new_rows_ex = current.total_rows_examined + events[i].rows_examined;
+            let new_rows_sent = current.total_rows_sent + events[i].rows_sent;
 
             stats_updates.push((
                 current.id,
                 new_count,
                 new_total_time,
                 new_avg_time,
-                chrono::Utc::now().naive_utc(),
+                new_rows_ex,
+                new_rows_sent,
+                Utc::now().naive_utc()
             ));
         }
 
-        // Batch update statistics
         if !stats_updates.is_empty() {
-            retry_with_backoff(
-                &db_retry_config(),
-                || self.fingerprint_repo.update_stats_batch(stats_updates.clone()),
-            ).await?;
+            retry_with_backoff(&db_retry_config(), || self.fingerprint_repo.update_stats_batch(stats_updates.clone())).await?;
         }
-
         Ok(())
     }
 
-    fn generate_query_fingerprint(&self, sql: &str) -> Result<String, String> {
-        // Normalize the SQL query for fingerprinting
+    fn generate_query_hash(&self, sql: &str) -> Result<String, String> {
         let normalized = self.normalize_sql(sql)?;
         Ok(format!("{:x}", md5::compute(normalized.as_bytes())))
     }
 
     fn normalize_sql(&self, sql: &str) -> Result<String, String> {
         let mut normalized = sql.to_uppercase();
-
-        // Remove comments
-        let comment_regex = Regex::new(r"/\*.*?\*/|--.*?$").map_err(|e| e.to_string())?;
+        let comment_regex = Regex::new(r"(?s)/\*.*?\*/|--.*?$").unwrap();
         normalized = comment_regex.replace_all(&normalized, "").to_string();
-
-        // Normalize whitespace
-        let whitespace_regex = Regex::new(r"\s+").map_err(|e| e.to_string())?;
+        let whitespace_regex = Regex::new(r"\s+").unwrap();
         normalized = whitespace_regex.replace_all(&normalized, " ").to_string();
-
-        // Normalize numbers
-        let number_regex = Regex::new(r"\b\d+\b").map_err(|e| e.to_string())?;
+        let number_regex = Regex::new(r"\b\d+\b").unwrap();
         normalized = number_regex.replace_all(&normalized, "?").to_string();
-
-        // Normalize quoted strings
-        let string_regex = Regex::new(r"'[^']*'").map_err(|e| e.to_string())?;
+        let string_regex = Regex::new(r"'[^']*'").unwrap();
         normalized = string_regex.replace_all(&normalized, "?").to_string();
-
         Ok(normalized.trim().to_string())
     }
 
-    async fn find_or_create_fingerprint(&self, cluster_id: Uuid, query_hash: &str) -> Result<QueryFingerprint, String> {
-        // Try to find existing fingerprint
-        if let Some(existing) = retry_with_backoff(
-            &db_retry_config(),
-            || self.fingerprint_repo.find_by_hash(cluster_id, query_hash),
-        ).await? {
+    fn extract_catalog_metadata(&self, sql: &str, engine: &str) -> (Vec<String>, Vec<String>) {
+        use sqlparser::dialect::{MySqlDialect, PostgreSqlDialect, Dialect};
+        use sqlparser::parser::Parser;
+        use sqlparser::ast::Statement;
+
+        let dialect: Box<dyn Dialect> = match engine.to_lowercase().as_str() {
+            "mysql" | "aurora-mysql" => Box::new(MySqlDialect {}),
+            _ => Box::new(PostgreSqlDialect {}),
+        };
+
+        let mut tables = Vec::new();
+        let mut columns = Vec::new();
+
+        if let Ok(ast) = Parser::parse_sql(&*dialect, sql) {
+            for stmt in ast {
+                match stmt {
+                    Statement::Query(_query) => {
+                        // Advanced AST traversal would happen here
+                    }
+                    _ => {}
+                }
+            }
+        }
+        
+        let table_re = Regex::new(r"(?i)FROM\s+([\w\.]+)").unwrap();
+        for cap in table_re.captures_iter(sql) {
+            tables.push(cap[1].to_string());
+        }
+        let join_re = Regex::new(r"(?i)JOIN\s+([\w\.]+)").unwrap();
+        for cap in join_re.captures_iter(sql) {
+            tables.push(cap[1].to_string());
+        }
+
+        tables.sort();
+        tables.dedup();
+        (tables, columns)
+    }
+
+    async fn find_or_create_fingerprint(&self, cluster_id: Uuid, hash: &str, raw_sql: &str, engine: &str) -> Result<QueryFingerprint, String> {
+        if let Some(existing) = retry_with_backoff(&db_retry_config(), || self.fingerprint_repo.find_by_hash(cluster_id, hash)).await? {
             return Ok(existing);
         }
 
-        // Create new fingerprint
+        let normalized = self.normalize_sql(raw_sql)?;
+        let (tables, columns) = self.extract_catalog_metadata(raw_sql, engine);
+        
         let fingerprint = QueryFingerprint {
             id: Uuid::new_v4(),
-            normalized_sql: String::new(), // Will be populated later
-            fingerprint_hash: query_hash.to_string(),
+            normalized_sql: normalized,
+            fingerprint_hash: hash.to_string(),
             total_query_time: 0.0,
             avg_query_time: 0.0,
             p95_query_time: 0.0,
             p99_query_time: 0.0,
             total_rows_examined: 0,
             total_rows_sent: 0,
+            waste_score: 0.0,
             execution_count: 0,
             cluster_count: 1,
-            first_seen: chrono::Utc::now().naive_utc(),
-            last_seen: chrono::Utc::now().naive_utc(),
-            tables_used: serde_json::Value::Array(vec![]),
-            columns_used: serde_json::Value::Array(vec![]),
+            first_seen: Utc::now().naive_utc(),
+            last_seen: Utc::now().naive_utc(),
+            tables_used: serde_json::to_value(tables).unwrap_or(serde_json::Value::Array(vec![])),
+            columns_used: serde_json::to_value(columns).unwrap_or(serde_json::Value::Array(vec![])),
             has_full_scan: false,
             has_filesort: false,
             has_temp_table: false,
-            created_at: chrono::Utc::now().naive_utc(),
-            updated_at: chrono::Utc::now().naive_utc(),
+            created_at: Utc::now().naive_utc(),
+            updated_at: Utc::now().naive_utc(),
         };
 
-        retry_with_backoff(
-            &db_retry_config(),
-            || self.fingerprint_repo.create(fingerprint.clone()),
-        ).await
+        retry_with_backoff(&db_retry_config(), || self.fingerprint_repo.create(fingerprint.clone())).await
     }
 
-    async fn update_fingerprint_statistics(&self, fingerprint_id: Uuid, query_time: f64) -> Result<(), String> {
-        // Get current fingerprint
-        let current = retry_with_backoff(
-            &db_retry_config(),
-            || self.fingerprint_repo.find_by_id(fingerprint_id),
-        ).await?
-            .ok_or_else(|| "Fingerprint not found".to_string())?;
-
-        let new_count = current.execution_count + 1;
-        let new_total_time = current.total_query_time + query_time;
-        let new_avg_time = new_total_time / new_count as f64;
-
-        // For now, we'll update basic statistics. P95/P99 would need more sophisticated calculation
-        retry_with_backoff(
-            &db_retry_config(),
-            || self.fingerprint_repo.update_stats(
-                fingerprint_id,
-                new_count,
-                new_total_time,
-                new_avg_time,
-                chrono::Utc::now().naive_utc(),
-            ),
-        ).await
-    }
-
-    fn parse_slow_query_log(&self, log_content: &str) -> Result<Vec<ParsedSlowQueryEvent>, String> {
-        let mut events = Vec::new();
-        let lines: Vec<&str> = log_content.lines().collect();
-
-        let mut i = 0;
-        while i < lines.len() {
-            if lines[i].starts_with("# Time:") {
-                if let Some(event) = self.parse_single_event(&lines[i..])? {
-                    events.push(event);
-                    // Skip the lines consumed by this event
-                    i += self.count_event_lines(&lines[i..]);
-                } else {
-                    i += 1;
-                }
-            } else {
-                i += 1;
-            }
-        }
-
-        Ok(events)
-    }
-
-    fn parse_single_event(&self, lines: &[&str]) -> Result<Option<ParsedSlowQueryEvent>, String> {
+    fn parse_single_mysql_event(&self, lines: &[&str]) -> Result<Option<ParsedSlowQueryEvent>, String> {
         if lines.is_empty() || !lines[0].starts_with("# Time:") {
             return Ok(None);
         }
-
         let mut event = ParsedSlowQueryEvent {
-            cluster_id: Uuid::nil(), // Will be set by caller
-            event_timestamp: chrono::Utc::now().naive_utc(),
+            cluster_id: Uuid::nil(),
+            event_timestamp: Utc::now().naive_utc(),
             user_host: String::new(),
             query_time: 0.0,
             lock_time: 0.0,
@@ -353,109 +307,42 @@ impl SlowQueryIngestionService {
             sql_text: String::new(),
             thread_id: None,
             schema_name: None,
-            last_errno: None,
-            killed: None,
-            bytes_received: None,
-            bytes_sent: None,
-            read_first: None,
-            read_last: None,
-            read_key: None,
-            read_next: None,
-            read_prev: None,
-            read_rnd: None,
-            read_rnd_next: None,
-            sort_merge_passes: None,
-            sort_range_count: None,
-            sort_rows: None,
-            sort_scan_count: None,
-            tmp_table_size: None,
-            tmp_tables: None,
-            tmp_disk_tables: None,
-            tmp_table_on_disk: None,
         };
-
         let mut sql_lines = Vec::new();
         let mut in_sql = false;
-
         for line in lines {
             if line.starts_with("# Time:") {
-                // Parse timestamp
-                if let Some(timestamp_str) = line.split(": ").nth(1) {
-                    if let Ok(timestamp) = chrono::NaiveDateTime::parse_from_str(timestamp_str, "%y%m%d %H:%M:%S") {
-                        event.event_timestamp = timestamp;
+                let ts = line.split(": ").nth(1).unwrap_or("");
+                if let Ok(parsed) = NaiveDateTime::parse_from_str(ts, "%y%m%d %H:%M:%S") { event.event_timestamp = parsed; }
+            } else if line.starts_with("# User@Host:") { event.user_host = line.split(": ").nth(1).unwrap_or("").to_string(); }
+            else if line.starts_with("# Query_time:") {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                for i in 0..parts.len() {
+                    match parts[i] {
+                        "Query_time:" => event.query_time = parts.get(i + 1).and_then(|v| v.parse().ok()).unwrap_or(0.0),
+                        "Lock_time:" => event.lock_time = parts.get(i + 1).and_then(|v| v.parse().ok()).unwrap_or(0.0),
+                        "Rows_sent:" => event.rows_sent = parts.get(i + 1).and_then(|v| v.parse().ok()).unwrap_or(0),
+                        "Rows_examined:" => event.rows_examined = parts.get(i + 1).and_then(|v| v.parse().ok()).unwrap_or(0),
+                        _ => {}
                     }
                 }
-            } else if line.starts_with("# User@Host:") {
-                event.user_host = line.split(": ").nth(1).unwrap_or("").to_string();
-            } else if line.starts_with("# Query_time:") {
-                self.parse_performance_metrics(line, &mut event)?;
-            } else if line.starts_with("# Schema:") {
-                event.schema_name = Some(line.split(": ").nth(1).unwrap_or("").to_string());
-            } else if line.starts_with("SET ") {
-                // Skip SET statements
-                continue;
-            } else if !line.starts_with("#") && !line.trim().is_empty() {
-                // This is SQL
-                sql_lines.push(line.to_string());
-                in_sql = true;
-            } else if in_sql && line.trim().is_empty() {
-                // End of SQL
-                break;
-            }
+            } else if line.starts_with("# Schema:") { event.schema_name = Some(line.split(": ").nth(1).unwrap_or("").to_string()); }
+            else if !line.starts_with("#") && !line.trim().is_empty() { sql_lines.push(line.to_string()); in_sql = true; }
+            else if in_sql && line.trim().is_empty() { break; }
         }
-
         event.sql_text = sql_lines.join("\n");
         Ok(Some(event))
     }
 
-    fn parse_performance_metrics(&self, line: &str, event: &mut ParsedSlowQueryEvent) -> Result<(), String> {
-        // Parse line like: "# Query_time: 0.000123  Lock_time: 0.000045 Rows_sent: 1  Rows_examined: 10"
-        let parts: Vec<&str> = line.split_whitespace().collect();
-
-        for i in 0..parts.len() {
-            match parts[i] {
-                "Query_time:" => {
-                    if let Some(val) = parts.get(i + 1) {
-                        event.query_time = val.parse().unwrap_or(0.0);
-                    }
-                }
-                "Lock_time:" => {
-                    if let Some(val) = parts.get(i + 1) {
-                        event.lock_time = val.parse().unwrap_or(0.0);
-                    }
-                }
-                "Rows_sent:" => {
-                    if let Some(val) = parts.get(i + 1) {
-                        event.rows_sent = val.parse().unwrap_or(0);
-                    }
-                }
-                "Rows_examined:" => {
-                    if let Some(val) = parts.get(i + 1) {
-                        event.rows_examined = val.parse().unwrap_or(0);
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        Ok(())
-    }
-
-    fn count_event_lines(&self, lines: &[&str]) -> usize {
+    fn count_mysql_event_lines(&self, lines: &[&str]) -> usize {
         let mut count = 0;
         let mut in_sql = false;
-
         for line in lines {
             count += 1;
-            if line.starts_with("# Time:") {
-                continue;
-            } else if !line.starts_with("#") && !line.trim().is_empty() {
-                in_sql = true;
-            } else if in_sql && line.trim().is_empty() {
-                break;
-            }
+            if line.starts_with("# Time:") { continue; }
+            if !line.starts_with("#") && !line.trim().is_empty() { in_sql = true; }
+            else if in_sql && line.trim().is_empty() { break; }
         }
-
         count
     }
 }

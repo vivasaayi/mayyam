@@ -82,6 +82,8 @@ impl QueryFingerprintRepository {
         execution_count: i64,
         total_time: f64,
         avg_time: f64,
+        rows_examined: i64,
+        rows_sent: i64,
         last_seen: NaiveDateTime,
     ) -> Result<(), String> {
         let mut active_model = QueryFingerprintEntity::find_by_id(fingerprint_id)
@@ -91,9 +93,14 @@ impl QueryFingerprintRepository {
             .ok_or_else(|| "Query fingerprint not found".to_string())?
             .into_active_model();
 
+        let waste_score = (rows_examined as f64 + 1.0) / (rows_sent as f64 + 1.0);
+
         active_model.execution_count = Set(execution_count);
         active_model.total_query_time = Set(total_time);
         active_model.avg_query_time = Set(avg_time);
+        active_model.total_rows_examined = Set(rows_examined);
+        active_model.total_rows_sent = Set(rows_sent);
+        active_model.waste_score = Set(waste_score);
         active_model.last_seen = Set(last_seen);
 
         active_model.update(self.db.as_ref())
@@ -104,12 +111,10 @@ impl QueryFingerprintRepository {
 
     pub async fn update_stats_batch(
         &self,
-        updates: Vec<(Uuid, i64, f64, f64, NaiveDateTime)>,
+        updates: Vec<(Uuid, i64, f64, f64, i64, i64, NaiveDateTime)>,
     ) -> Result<(), String> {
-        // For batch updates, we'll update each fingerprint individually
-        // In a production system, you might want to use raw SQL for better performance
-        for (fingerprint_id, execution_count, total_time, avg_time, last_seen) in updates {
-            self.update_stats(fingerprint_id, execution_count, total_time, avg_time, last_seen).await?;
+        for (fingerprint_id, execution_count, total_time, avg_time, rows_ex, rows_sent, last_seen) in updates {
+            self.update_stats(fingerprint_id, execution_count, total_time, avg_time, rows_ex, rows_sent, last_seen).await?;
         }
         Ok(())
     }
@@ -166,5 +171,48 @@ impl QueryFingerprintRepository {
             .all(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to find patterns by cluster: {}", e))
+    }
+
+    pub async fn get_top_offending_tables(
+        &self,
+        _cluster_id: Option<Uuid>,
+        hours: i64,
+        limit: usize,
+    ) -> Result<Vec<serde_json::Value>, String> {
+        let fingerprints = self.find_top_by_execution_time(_cluster_id, hours, 1000).await?;
+        
+        let mut table_stats: std::collections::HashMap<String, (f64, i64, f64)> = std::collections::HashMap::new();
+
+        for fp in fingerprints {
+            if let Some(tables) = fp.tables_used.as_array() {
+                for table_val in tables {
+                    if let Some(table_name) = table_val.as_str() {
+                        let entry = table_stats.entry(table_name.to_string()).or_insert((0.0, 0, 0.0));
+                        entry.0 += fp.total_query_time;
+                        entry.1 += fp.execution_count;
+                        entry.2 += fp.waste_score * fp.execution_count as f64;
+                    }
+                }
+            }
+        }
+
+        let mut result: Vec<serde_json::Value> = table_stats.into_iter()
+            .map(|(table_name, (total_time, exec_count, total_waste))| {
+                serde_json::json!({
+                    "table_name": table_name,
+                    "total_query_time": total_time,
+                    "execution_count": exec_count,
+                    "avg_waste_score": if exec_count > 0 { total_waste / exec_count as f64 } else { 0.0 }
+                })
+            })
+            .collect();
+
+        result.sort_by(|a, b| {
+            let a_time = a["total_query_time"].as_f64().unwrap_or(0.0);
+            let b_time = b["total_query_time"].as_f64().unwrap_or(0.0);
+            b_time.partial_cmp(&a_time).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        Ok(result.into_iter().take(limit).collect())
     }
 }

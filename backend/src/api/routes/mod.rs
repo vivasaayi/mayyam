@@ -42,13 +42,15 @@ use actix_web::web;
 use sea_orm::DatabaseConnection; // Ensure this is imported
 use std::sync::Arc; // Ensure this is imported
 
-// Modified signature to accept db connection
-pub fn configure(cfg: &mut web::ServiceConfig, db: Arc<DatabaseConnection>) {
+use crate::services::llm::manager::UnifiedLlmManager;
+
+// Modified signature to accept db connection and llm manager
+pub fn configure(cfg: &mut web::ServiceConfig, db: Arc<DatabaseConnection>, llm_manager: Arc<UnifiedLlmManager>) {
     auth::configure(cfg);
     database::configure(cfg); // This might also need the db if it configures routes needing it directly
     slow_query::configure(cfg, db.clone());
-    query_fingerprint::configure(cfg, db.clone());
-    explain_plan::configure(cfg, db.clone());
+    query_fingerprint::configure(cfg, db.clone(), llm_manager.clone());
+    explain_plan::configure(cfg, db.clone(), llm_manager);
     kafka::configure(cfg); // Same for this
     kubernetes::configure(cfg, db.clone()); // Pass db to kubernetes::configure
     cloud::configure(cfg);

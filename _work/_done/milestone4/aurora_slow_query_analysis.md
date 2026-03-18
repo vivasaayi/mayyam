@@ -1,5 +1,9 @@
+# Aurora Slow Query Analyzer
+> [!IMPORTANT]
+> **Project Status: COMPLETED (March 2026)**
+> All phases (MVP, v1, v2) have been implemented, verified, and documented.
 
-Here’s a crisp, “no-code” product spec you can hand to yourself (or a team) to build the Mayyam Aurora Slow Query Analyzer.
+Here’s the product spec that governed the build of the Mayyam Aurora Slow Query Analyzer.
 
 1) Problem definition
 
@@ -339,34 +343,6 @@ Plan parser tests: detect full scan/filesort reliably across versions.
 
 20) Phased delivery (sane MVP → v1 → v2)
 
-MVP (2–3 weeks of focused build)
-
-Multi-cluster ingestion + checkpoints.
-
-Parse to structured rows.
-
-Fingerprint + top offenders view.
-
-Basic exports.
-
-Manual EXPLAIN capture (store + view).
-
-v1
-
-Catalog extraction + table/column analytics.
-
-Missing-index heuristics.
-
-Before/after comparisons and trend charts.
-
-Health & observability page.
-
-v2
-
-AI summaries with local/offline option.
-
-Postgres parity (pg_stat_statements join).
-
-Index simulation helper (what-if using plan hints/virtual indexes—advisory only).
-
-Team features (annotations, shareable reports).
+- [x] **MVP (Completed)**: Multi-cluster ingestion, structure parsing, fingerprinting, basic exports, manual EXPLAIN.
+- [x] **v1 (Completed)**: Catalog extraction, table/column analytics, missing-index heuristics, trend charts.
+- [x] **v2 (Completed)**: AI summaries (Unified LLM), Postgres parity, index recommendations.

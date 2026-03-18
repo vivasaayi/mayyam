@@ -69,14 +69,22 @@ pub struct QueryFingerprintController {
     ai_service: AIAnalysisService,
 }
 
+use crate::services::llm::manager::UnifiedLlmManager;
+
 impl QueryFingerprintController {
-    pub fn new(db: Arc<DatabaseConnection>) -> Self {
+    pub fn new(db: Arc<DatabaseConnection>, llm_manager: Arc<UnifiedLlmManager>) -> Self {
         let fingerprint_repo = QueryFingerprintRepository::new(db.clone());
         let slow_query_repo = SlowQueryRepository::new(db.clone());
         let fingerprint_service = QueryFingerprintingService::new(fingerprint_repo.clone());
         let ai_repo = crate::repositories::ai_analysis_repository::AIAnalysisRepository::new(db.clone());
         let explain_repo = crate::repositories::explain_plan_repository::ExplainPlanRepository::new(db.clone());
-        let ai_service = AIAnalysisService::new(ai_repo, fingerprint_repo.clone(), slow_query_repo.clone(), explain_repo);
+        let ai_service = AIAnalysisService::new(
+            ai_repo,
+            fingerprint_repo.clone(),
+            slow_query_repo.clone(),
+            explain_repo,
+            llm_manager,
+        );
 
         Self {
             fingerprint_repo,
@@ -149,6 +157,7 @@ pub async fn analyze_fingerprint(
         fingerprint_id,
         analysis_type: req.analysis_type.clone(),
         context_data: std::collections::HashMap::new(),
+        llm_provider: None,
     };
     let analysis = controller.ai_service.generate_analysis(analysis_request).await?;
 

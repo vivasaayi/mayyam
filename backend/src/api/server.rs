@@ -424,7 +424,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
 
                 info!("Registering other general routes");
                 // Pass Arc<DatabaseConnection> to the general routes::configure function
-                routes::configure(cfg_param, db_connection.clone());
+                routes::configure(cfg_param, db_connection.clone(), unified_llm_manager.clone());
 
                 info!("Registering Prometheus metrics route");
                 routes::metrics::configure(cfg_param);

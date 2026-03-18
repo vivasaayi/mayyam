@@ -229,7 +229,7 @@ pub async fn ingest_slow_queries(
     let cluster_id = Uuid::parse_str(&payload.cluster_id).map_err(|e| AppError::BadRequest(format!("Invalid cluster UUID: {}", e)))?;
 
     // Use the ingestion service to process the log content
-    controller.ingestion_service.ingest_slow_query_log(cluster_id, &payload.log_content).await?;
+    controller.ingestion_service.ingest_logs(cluster_id, &payload.log_content.lines().map(|s| s.to_string()).collect::<Vec<_>>(), "mysql").await?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": "Slow query logs ingested successfully",

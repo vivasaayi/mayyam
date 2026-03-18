@@ -32,6 +32,7 @@ pub struct Model {
     pub p99_query_time: f64,
     pub total_rows_examined: i64,
     pub total_rows_sent: i64,
+    pub waste_score: f64, // (rows_examined + 1) / (rows_sent + 1)
     pub execution_count: i64,
     pub cluster_count: i32, // Number of clusters this fingerprint appears in
     pub first_seen: NaiveDateTime,
@@ -61,6 +62,7 @@ pub struct QueryFingerprintDto {
     pub fingerprint_hash: String,
     pub tables_used: Vec<String>,
     pub columns_used: Vec<String>,
+    pub waste_score: f64,
 }
 
 impl QueryFingerprintDto {
@@ -75,6 +77,7 @@ impl QueryFingerprintDto {
             p99_query_time: Set(0.0),
             total_rows_examined: Set(0),
             total_rows_sent: Set(0),
+            waste_score: Set(self.waste_score),
             execution_count: Set(0),
             cluster_count: Set(0),
             first_seen: Set(Utc::now().naive_utc()),

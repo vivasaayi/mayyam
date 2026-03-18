@@ -497,6 +497,18 @@ export const getSlowQueryStatistics = async (clusterId, params = {}) => {
   }
 };
 
+export const getTopOffendingTables = async (clusterId, hours = 24, limit = 20) => {
+  try {
+    const response = await api.get(`/api/query-fingerprints/top-tables/${clusterId}`, {
+      params: { hours, limit }
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching top offending tables:', error);
+    throw error;
+  }
+};
+
 // Query Fingerprints
 export const getQueryFingerprints = async (params = {}) => {
   try {
