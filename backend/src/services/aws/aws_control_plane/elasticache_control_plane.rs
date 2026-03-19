@@ -72,11 +72,11 @@ impl ElasticacheControlPlane {
         );
 
         for cache_cluster in response.cache_clusters() {
-            let cluster_id = cache_cluster.cache_cluster_id().unwrap_or_default();
+            let cluster_id = cache_cluster.cache_cluster_id().unwrap_or("");
             debug!("Found ElastiCache cluster: {}", &cluster_id);
 
             // Get ARN for the cluster
-            let arn = cache_cluster.arn().unwrap_or_default();
+            let arn = cache_cluster.arn().unwrap_or("");
 
             // Get tags for the cluster
             let tags_response = client

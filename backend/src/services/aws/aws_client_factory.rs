@@ -33,6 +33,31 @@ use aws_sdk_costexplorer::Client as CostExplorerClient;
 use aws_sdk_sns::Client as SnsClient;
 use aws_sdk_sqs::Client as SqsClient;
 use aws_sdk_sts::Client as StsClient;
+use aws_sdk_iam::Client as IamClient;
+use aws_sdk_kms::Client as KmsClient;
+use aws_sdk_acm::Client as AcmClient;
+use aws_sdk_cloudtrail::Client as CloudTrailClient;
+use aws_sdk_config::Client as ConfigServiceClient;
+use aws_sdk_ecs::Client as EcsClient;
+use aws_sdk_eks::Client as EksClient;
+use aws_sdk_sfn::Client as SfnClient;
+use aws_sdk_eventbridge::Client as EventBridgeClient;
+use aws_sdk_redshift::Client as RedshiftClient;
+use aws_sdk_emr::Client as EmrClient;
+use aws_sdk_athena::Client as AthenaClient;
+use aws_sdk_glue::Client as GlueClient;
+use aws_sdk_sesv2::Client as SesV2Client;
+use aws_sdk_wafv2::Client as WafV2Client;
+use aws_sdk_backup::Client as BackupClient;
+use aws_sdk_ssm::Client as SsmClient;
+use aws_sdk_apprunner::Client as AppRunnerClient;
+use aws_sdk_globalaccelerator::Client as GlobalAcceleratorClient;
+use aws_sdk_batch::Client as BatchClient;
+use aws_sdk_glacier::Client as GlacierClient;
+use aws_sdk_storagegateway::Client as StorageGatewayClient;
+use aws_sdk_connect::Client as ConnectClient;
+use aws_sdk_appsync::Client as AppSyncClient;
+use aws_sdk_kinesisanalyticsv2::Client as KinesisAnalyticsClient;
 
 use crate::models::aws_account::AwsAccountDto;
 use crate::models::aws_auth::AccountAuthInfo;
@@ -115,4 +140,104 @@ pub trait AwsClientFactory {
         &self,
         aws_account_dto: &AwsAccountDto,
     ) -> Result<EfsClient, AppError>;
+    async fn create_iam_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<IamClient, AppError>;
+    async fn create_kms_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<KmsClient, AppError>;
+    async fn create_acm_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<AcmClient, AppError>;
+    async fn create_cloudtrail_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<CloudTrailClient, AppError>;
+    async fn create_config_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<ConfigServiceClient, AppError>;
+    async fn create_ecs_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<EcsClient, AppError>;
+    async fn create_eks_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<EksClient, AppError>;
+    async fn create_sfn_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<SfnClient, AppError>;
+    async fn create_eventbridge_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<EventBridgeClient, AppError>;
+    async fn create_redshift_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<RedshiftClient, AppError>;
+    async fn create_emr_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<EmrClient, AppError>;
+    async fn create_athena_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<AthenaClient, AppError>;
+    async fn create_glue_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<GlueClient, AppError>;
+    async fn create_ses_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<SesV2Client, AppError>;
+    async fn create_waf_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<WafV2Client, AppError>;
+    async fn create_backup_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<BackupClient, AppError>;
+    async fn create_ssm_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<SsmClient, AppError>;
+    async fn create_apprunner_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<AppRunnerClient, AppError>;
+    async fn create_globalaccelerator_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<GlobalAcceleratorClient, AppError>;
+    async fn create_batch_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<BatchClient, AppError>;
+    async fn create_glacier_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<GlacierClient, AppError>;
+    async fn create_storagegateway_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<StorageGatewayClient, AppError>;
+    async fn create_connect_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<ConnectClient, AppError>;
+    async fn create_appsync_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<AppSyncClient, AppError>;
+    async fn create_kinesisanalytics_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<KinesisAnalyticsClient, AppError>;
 }

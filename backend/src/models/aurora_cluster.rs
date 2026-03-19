@@ -31,6 +31,7 @@ pub struct Model {
     pub log_stream: Option<String>,
     pub read_only_dsn: String, // For EXPLAIN queries
     pub is_active: bool,
+    pub last_event_timestamp: Option<NaiveDateTime>, // Checkpoint for log ingestion
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
 }
@@ -48,6 +49,7 @@ pub struct AuroraClusterDto {
     pub log_group: Option<String>,
     pub log_stream: Option<String>,
     pub read_only_dsn: String,
+    pub last_event_timestamp: Option<NaiveDateTime>,
 }
 
 impl AuroraClusterDto {
@@ -61,6 +63,7 @@ impl AuroraClusterDto {
             log_stream: Set(self.log_stream),
             read_only_dsn: Set(self.read_only_dsn),
             is_active: Set(true),
+            last_event_timestamp: Set(self.last_event_timestamp),
             created_at: Set(Utc::now().naive_utc()),
             updated_at: Set(Utc::now().naive_utc()),
         }
@@ -78,6 +81,7 @@ impl From<Model> for AuroraClusterDto {
             log_group: model.log_group,
             log_stream: model.log_stream,
             read_only_dsn: model.read_only_dsn,
+            last_event_timestamp: model.last_event_timestamp,
         }
     }
 }

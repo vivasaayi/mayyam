@@ -101,7 +101,7 @@ const AwsResourceBrowser = () => {
         let badgeColor = "primary";
         let icon = "cloud";
 
-        switch(resourceType) {
+        switch (resourceType) {
           case "EC2Instance":
             badgeColor = "info";
             icon = "server";
@@ -168,9 +168,9 @@ const AwsResourceBrowser = () => {
         const resource = params.data;
         return (
           <div className="d-flex gap-2">
-            <Button 
-              color="primary" 
-              size="sm" 
+            <Button
+              color="primary"
+              size="sm"
               onClick={() => viewResourceDetails(resource)}
             >
               <i className="fa fa-eye me-1"></i>View
@@ -220,10 +220,10 @@ const AwsResourceBrowser = () => {
         return (
           <div style={{ maxHeight: "60px", overflow: "auto" }}>
             {Object.entries(tags).map(([key, value]) => (
-              <Badge 
-                key={key} 
-                color="light" 
-                className="mr-1 mb-1" 
+              <Badge
+                key={key}
+                color="light"
+                className="mr-1 mb-1"
                 style={{ margin: "2px", display: "inline-block" }}
               >
                 {key}: {value}
@@ -300,7 +300,7 @@ const AwsResourceBrowser = () => {
         }
       });
 
-  // Add pagination parameters
+      // Add pagination parameters
       queryParams.append('page', page);
       queryParams.append('page_size', pageSize);
 
@@ -383,7 +383,7 @@ const AwsResourceBrowser = () => {
                   </>
                 ) : (
                   <>
-                    <i className="fa fa-sync me-1"></i> 
+                    <i className="fa fa-sync me-1"></i>
                     <span>Sync Resources</span>
                   </>
                 )}
@@ -470,6 +470,13 @@ const AwsResourceBrowser = () => {
                   >
                     <option value="">All Types</option>
                     <option value="EC2Instance">EC2 Instances</option>
+                    <option value="Vpc">VPCs</option>
+                    <option value="Subnet">Subnets</option>
+                    <option value="SecurityGroup">Security Groups</option>
+                    <option value="RouteTable">Route Tables</option>
+                    <option value="InternetGateway">Internet Gateways</option>
+                    <option value="NatGateway">NAT Gateways</option>
+                    <option value="NetworkAcl">Network ACLs</option>
                     <option value="S3Bucket">S3 Buckets</option>
                     <option value="RdsInstance">RDS Instances</option>
                     <option value="DynamoDbTable">DynamoDB Tables</option>
@@ -477,6 +484,41 @@ const AwsResourceBrowser = () => {
                     <option value="SqsQueue">SQS Queues</option>
                     <option value="SnsTopic">SNS Topics</option>
                     <option value="LambdaFunction">Lambda Functions</option>
+                    <option value="ElasticacheCluster">ElastiCache Clusters</option>
+                    <option value="OpenSearchDomain">OpenSearch Domains</option>
+                    <option value="Alb">Application Load Balancers</option>
+                    <option value="Nlb">Network Load Balancers</option>
+                    <option value="Elb">Classic Load Balancers</option>
+                    <option value="CloudFrontDistribution">CloudFront Distributions</option>
+                    <option value="ApiGatewayRestApi">API Gateway REST APIs</option>
+                    <option value="EbsVolume">EBS Volumes</option>
+                    <option value="EbsSnapshot">EBS Snapshots</option>
+                    <option value="EfsFileSystem">EFS File Systems</option>
+                    <option value="IamUser">IAM Users</option>
+                    <option value="IamRole">IAM Roles</option>
+                    <option value="IamPolicy">IAM Policies</option>
+                    <option value="IamGroup">IAM Groups</option>
+                    <option value="KmsKey">KMS Keys</option>
+                    <option value="AcmCertificate">ACM Certificates</option>
+                    <option value="CloudTrailTrail">CloudTrail Trails</option>
+                    <option value="ConfigRule">Config Rules</option>
+                    <option value="EcsCluster">ECS Clusters</option>
+                    <option value="EksCluster">EKS Clusters</option>
+                    <option value="AppRunnerService">App Runner Services</option>
+                    <option value="BatchComputeEnv">Batch Compute Envs</option>
+                    <option value="CloudWatchAlarm">CloudWatch Alarms</option>
+                    <option value="SsmDocument">SSM Documents</option>
+                    <option value="EventBridgeRule">EventBridge Rules</option>
+                    <option value="StepFunction">Step Functions</option>
+                    <option value="SesIdentity">SES Identities</option>
+                    <option value="RedshiftCluster">Redshift Clusters</option>
+                    <option value="EmrCluster">EMR Clusters</option>
+                    <option value="AthenaWorkgroup">Athena Workgroups</option>
+                    <option value="GlueDatabase">Glue Databases</option>
+                    <option value="WafWebAcl">WAF Web ACLs</option>
+                    <option value="GlobalAccelerator">Global Accelerators</option>
+                    <option value="BackupVault">Backup Vaults</option>
+                    <option value="BackupPlan">Backup Plans</option>
                   </Input>
                 </FormGroup>
               </Col>
@@ -485,9 +527,9 @@ const AwsResourceBrowser = () => {
                   <Button type="submit" color="primary" className="me-2" disabled={loading}>
                     Apply Filters
                   </Button>
-                  <Button 
-                    type="button" 
-                    color="secondary" 
+                  <Button
+                    type="button"
+                    color="secondary"
                     onClick={() => {
                       setFilter({
                         account_id: "",
@@ -513,8 +555,8 @@ const AwsResourceBrowser = () => {
             <p>Total Resources: {totalResources}</p>
           </div>
 
-          <div 
-            className="ag-theme-alpine" 
+          <div
+            className="ag-theme-alpine"
             style={{ height: '600px', width: '100%' }}
           >
             <AgGridReact
@@ -533,7 +575,7 @@ const AwsResourceBrowser = () => {
       </Card>
 
       {/* Add the Resource Details Modal */}
-      <AwsResourceDetails 
+      <AwsResourceDetails
         resource={selectedResource}
         isOpen={detailsModalOpen}
         toggle={() => setDetailsModalOpen(!detailsModalOpen)}

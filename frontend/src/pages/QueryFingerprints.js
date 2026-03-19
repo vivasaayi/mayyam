@@ -14,6 +14,7 @@
 
 
 import React, { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   CCard,
   CCardBody,
@@ -55,6 +56,7 @@ import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 
 const QueryFingerprints = () => {
+  const navigate = useNavigate();
   // State management
   const [clusters, setClusters] = useState([]);
   const [selectedCluster, setSelectedCluster] = useState(null);
@@ -263,18 +265,16 @@ const QueryFingerprints = () => {
     },
     {
       headerName: "Actions",
-      field: "actions",
+      field: "id",
       width: 120,
       cellRenderer: (params) => (
         <CButton
           size="sm"
-          color="info"
+          color="primary"
           variant="outline"
-          onClick={() => handleAnalyzeFingerprint(params.data)}
-          disabled={analyzing}
+          onClick={() => navigate(`/query-fingerprints/${params.value}`)}
         >
-          {analyzing && selectedFingerprint?.id === params.data.id ?
-            <CSpinner size="sm" /> : "Analyze"}
+          View Details
         </CButton>
       )
     }

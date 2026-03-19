@@ -18,8 +18,10 @@ use actix_web::{web, HttpResponse};
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 
-pub fn configure(cfg: &mut web::ServiceConfig, db: Arc<DatabaseConnection>) {
-    let explain_controller = explain_plan::ExplainPlanController::new(db.clone());
+use crate::services::llm::manager::UnifiedLlmManager;
+
+pub fn configure(cfg: &mut web::ServiceConfig, db: Arc<DatabaseConnection>, llm_manager: Arc<UnifiedLlmManager>) {
+    let explain_controller = explain_plan::ExplainPlanController::new(db.clone(), llm_manager);
 
     cfg.service(
         web::scope("/api/explain-plans")
@@ -35,6 +37,10 @@ pub fn configure(cfg: &mut web::ServiceConfig, db: Arc<DatabaseConnection>) {
             .service(
                 web::resource("/{id}/analysis")
                     .route(web::get().to(explain_plan::analyze_explain_plan)),
+            )
+            .service(
+                web::resource("/execute")
+                    .route(web::post().to(explain_plan::execute_explain_plan)),
             )
             .service(
                 web::resource("/compare")

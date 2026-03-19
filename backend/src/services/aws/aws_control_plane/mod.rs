@@ -20,6 +20,7 @@ pub mod ebs_control_plane;
 pub mod ec2_control_plane;
 pub mod efs_control_plane;
 pub mod elasticache_control_plane;
+pub mod iam_control_plane;
 pub mod kinesis_control_plane;
 pub mod lambda_control_plane;
 pub mod load_balancer_control_plane;
@@ -29,3 +30,35 @@ pub mod s3_control_plane;
 pub mod sns_control_plane;
 pub mod sqs_control_plane;
 pub mod vpc_control_plane;
+// Batch 2: Security & Compliance
+pub mod kms_control_plane;
+pub mod acm_control_plane;
+pub mod cloudtrail_control_plane;
+pub mod config_control_plane;
+// Batch 3: Containers & Serverless
+pub mod ecs_control_plane;
+pub mod eks_control_plane;
+pub mod apprunner_control_plane;
+pub mod batch_control_plane;
+// Batch 4: Management & Monitoring
+pub mod cloudwatch_control_plane;
+pub mod ssm_control_plane;
+// Batch 5: Application Integration
+pub mod eventbridge_control_plane;
+pub mod stepfunctions_control_plane;
+pub mod ses_control_plane;
+// Batch 6: Analytics & Big Data
+pub mod redshift_control_plane;
+pub mod emr_control_plane;
+pub mod athena_control_plane;
+pub mod glue_control_plane;
+// Batch 7: Edge & DR
+pub mod waf_control_plane;
+pub mod globalaccelerator_control_plane;
+pub mod backup_control_plane;
+// Final Review Additions
+pub mod glacier_control_plane;
+pub mod storagegateway_control_plane;
+pub mod connect_control_plane;
+pub mod appsync_control_plane;
+pub mod kinesisanalytics_control_plane;

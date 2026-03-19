@@ -86,7 +86,7 @@ impl DynamoDbControlPlane {
 
             if let Some(table_details) = describe_resp.table() {
                 // Get tags for the table
-                let arn = table_details.table_arn().unwrap_or_default();
+                let arn = table_details.table_arn().unwrap_or("");
 
                 let tags_response = client
                     .list_tags_of_resource()

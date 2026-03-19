@@ -57,3 +57,4 @@ pub mod service_accounts;
 pub mod slow_query;
 pub mod sync_run;
 pub mod unified_llm;
+pub mod table_analytics;

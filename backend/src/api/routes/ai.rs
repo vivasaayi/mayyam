@@ -35,7 +35,11 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         )
         .route(
             "/analyze/mysql/{id}/{workflow}",
-            web::get().to(ai::analyze_mysql_triage),
+            web::get().to(ai::analyze_database_triage),
+        )
+        .route(
+            "/analyze/postgres/{id}/{workflow}",
+            web::get().to(ai::analyze_database_triage),
         );
 
     cfg.service(scope);

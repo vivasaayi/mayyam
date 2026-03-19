@@ -59,7 +59,7 @@ impl SqsControlPlane {
 
         for queue_url in response.queue_urls() {
             // Extract queue name from URL
-            let queue_name = queue_url.split('/').last().unwrap_or_default();
+            let queue_name = queue_url.split('/').last().unwrap_or("");
 
             debug!("Found SQS queue: {}", &queue_name);
 

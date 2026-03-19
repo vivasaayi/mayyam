@@ -58,7 +58,7 @@ INSERT INTO aws_resources (
     NOW(),
     NOW(),
     NOW()
-);
+) ON CONFLICT (id) DO NOTHING;
 
 -- Insert a couple of EC2 instance records
 INSERT INTO aws_resources (
@@ -105,7 +105,7 @@ INSERT INTO aws_resources (
     NOW(),
     NOW(),
     NOW()
-);
+) ON CONFLICT (id) DO NOTHING;
 
 -- Insert S3 bucket record
 INSERT INTO aws_resources (
@@ -137,4 +137,4 @@ INSERT INTO aws_resources (
     NOW(),
     NOW(),
     NOW()
-);
+) ON CONFLICT (id) DO NOTHING;

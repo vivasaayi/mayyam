@@ -91,6 +91,7 @@ pub async fn create_cluster(
         log_stream: req.log_stream.clone(),
         read_only_dsn: req.read_only_dsn.clone(),
         is_active: req.is_active.unwrap_or(true),
+        last_event_timestamp: None,
         created_at: chrono::Utc::now().naive_utc(),
         updated_at: chrono::Utc::now().naive_utc(),
     };
@@ -217,7 +218,7 @@ pub async fn ingest_slow_queries(
         cluster_repo,
     );
 
-    ingestion_service.ingest_slow_query_log(cluster_id, &req.log_content).await?;
+    ingestion_service.ingest_logs(cluster_id, &req.log_content.lines().map(|s| s.to_string()).collect::<Vec<_>>(), "mysql").await?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": "Slow query logs ingested successfully",

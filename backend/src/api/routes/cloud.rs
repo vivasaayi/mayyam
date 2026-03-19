@@ -155,6 +155,175 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
         .route(
             "/accounts/{account_id}/regions/{region}/cost",
             web::get().to(cloud::get_aws_cost_and_usage),
+        )
+        // IAM resources
+        .route(
+            "/accounts/{account_id}/regions/{region}/iam-users",
+            web::get().to(cloud::list_iam_users),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/iam-roles",
+            web::get().to(cloud::list_iam_roles),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/iam-policies",
+            web::get().to(cloud::list_iam_policies),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/iam-groups",
+            web::get().to(cloud::list_iam_groups),
+        )
+        // SNS Topics
+        .route(
+            "/accounts/{account_id}/regions/{region}/sns-topics",
+            web::get().to(cloud::list_sns_topics),
+        )
+        // Lambda Functions
+        .route(
+            "/accounts/{account_id}/regions/{region}/lambda-functions",
+            web::get().to(cloud::list_lambda_functions),
+        )
+        // OpenSearch Domains
+        .route(
+            "/accounts/{account_id}/regions/{region}/opensearch-domains",
+            web::get().to(cloud::list_opensearch_domains),
+        )
+        // SQS Queues
+        .route(
+            "/accounts/{account_id}/regions/{region}/sqs-queues",
+            web::get().to(cloud::list_sqs_queues),
+        )
+        // Kinesis Streams
+        .route(
+            "/accounts/{account_id}/regions/{region}/kinesis-streams",
+            web::get().to(cloud::list_kinesis_streams),
+        )
+        // Batch 2: Security & Compliance
+        .route(
+            "/accounts/{account_id}/regions/{region}/kms-keys",
+            web::get().to(cloud::list_kms_keys),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/acm-certificates",
+            web::get().to(cloud::list_acm_certificates),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/cloudtrail-trails",
+            web::get().to(cloud::list_cloudtrail_trails),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/config-rules",
+            web::get().to(cloud::list_config_rules),
+        )
+        // Batch 3: Containers & Serverless
+        .route(
+            "/accounts/{account_id}/regions/{region}/ecs-clusters",
+            web::get().to(cloud::list_ecs_clusters),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/ecs-services",
+            web::get().to(cloud::list_ecs_services),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/ecs-tasks",
+            web::get().to(cloud::list_ecs_tasks),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/eks-clusters",
+            web::get().to(cloud::list_eks_clusters),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/eks-fargate-profiles",
+            web::get().to(cloud::list_eks_fargate_profiles),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/apprunner-services",
+            web::get().to(cloud::list_apprunner_services),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/batch-compute-envs",
+            web::get().to(cloud::list_batch_compute_envs),
+        )
+        // Batch 4: Management & Monitoring
+        .route(
+            "/accounts/{account_id}/regions/{region}/cloudwatch-alarms",
+            web::get().to(cloud::list_cloudwatch_alarms),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/cloudwatch-dashboards",
+            web::get().to(cloud::list_cloudwatch_dashboards),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/ssm-documents",
+            web::get().to(cloud::list_ssm_documents),
+        )
+        // Batch 5: Application Integration
+        .route(
+            "/accounts/{account_id}/regions/{region}/eventbridge-rules",
+            web::get().to(cloud::list_eventbridge_rules),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/step-functions",
+            web::get().to(cloud::list_step_functions),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/ses-identities",
+            web::get().to(cloud::list_ses_identities),
+        )
+        // Batch 6: Analytics & Big Data
+        .route(
+            "/accounts/{account_id}/regions/{region}/redshift-clusters",
+            web::get().to(cloud::list_redshift_clusters),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/emr-clusters",
+            web::get().to(cloud::list_emr_clusters),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/athena-workgroups",
+            web::get().to(cloud::list_athena_workgroups),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/glue-databases",
+            web::get().to(cloud::list_glue_databases),
+        )
+        // Batch 7: Edge & DR
+        .route(
+            "/accounts/{account_id}/regions/{region}/waf-web-acls",
+            web::get().to(cloud::list_waf_web_acls),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/global-accelerators",
+            web::get().to(cloud::list_global_accelerators),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/backup-vaults",
+            web::get().to(cloud::list_backup_vaults),
+        )
+        // Final Review Additions
+        .route(
+            "/accounts/{account_id}/regions/{region}/glacier-vaults",
+            web::get().to(cloud::list_glacier_vaults),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/storage-gateways",
+            web::get().to(cloud::list_storage_gateways),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/connect-instances",
+            web::get().to(cloud::list_connect_instances),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/cloudfront-functions",
+            web::get().to(cloud::list_cloudfront_functions),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/appsync-apis",
+            web::get().to(cloud::list_appsync_apis),
+        )
+        .route(
+            "/accounts/{account_id}/regions/{region}/kinesis-analytics-apps",
+            web::get().to(cloud::list_kinesis_analytics_apps),
         );
 
     // AWS data plane operations

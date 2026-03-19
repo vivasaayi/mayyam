@@ -88,8 +88,10 @@ pub struct ExplainPlanController {
     ai_service: AIAnalysisService,
 }
 
+use crate::services::llm::manager::UnifiedLlmManager;
+
 impl ExplainPlanController {
-    pub fn new(db: Arc<DatabaseConnection>) -> Self {
+    pub fn new(db: Arc<DatabaseConnection>, llm_manager: Arc<UnifiedLlmManager>) -> Self {
         let explain_repo = ExplainPlanRepository::new(db.clone());
         let fingerprint_repo = QueryFingerprintRepository::new(db.clone());
         let cluster_repo = AuroraClusterRepository::new(db.clone());
@@ -107,6 +109,7 @@ impl ExplainPlanController {
             fingerprint_repo.clone(),
             slow_query_repo,
             explain_repo.clone(),
+            llm_manager,
         );
 
         Self {
@@ -117,6 +120,28 @@ impl ExplainPlanController {
             ai_service,
         }
     }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ExecuteExplainPlanRequest {
+    pub fingerprint_id: Uuid,
+    pub cluster_id: Uuid,
+}
+
+pub async fn execute_explain_plan(
+    controller: web::Data<ExplainPlanController>,
+    req: web::Json<ExecuteExplainPlanRequest>,
+    _config: web::Data<Config>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let plan = controller.explain_service.execute_explain_plan(
+        req.cluster_id,
+        req.fingerprint_id,
+    ).await?;
+
+    let response = ExplainPlanResponse { plan };
+
+    Ok(HttpResponse::Created().json(response))
 }
 
 pub async fn create_explain_plan(

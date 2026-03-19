@@ -48,9 +48,9 @@ CREATE TABLE IF NOT EXISTS clusters (
 );
 
 -- Create indexes for better performance
-CREATE INDEX idx_database_connections_type ON database_connections(connection_type);
-CREATE INDEX idx_clusters_type ON clusters(cluster_type);
-CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_database_connections_type ON database_connections(connection_type);
+CREATE INDEX IF NOT EXISTS idx_clusters_type ON clusters(cluster_type);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
 -- Setup initial user for Mayyam application
 

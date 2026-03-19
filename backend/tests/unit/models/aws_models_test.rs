@@ -200,7 +200,26 @@ mod aws_resource_model_tests {
     fn test_resource_type_validation() {
         let valid_types = vec![
             "ec2", "s3", "rds", "lambda", "dynamodb", "kinesis",
-            "sqs", "sns", "elasticache", "opensearch", "cloudwatch"
+            "sqs", "sns", "elasticache", "opensearch", "cloudwatch",
+            // Networking
+            "Vpc", "Subnet", "SecurityGroup", "RouteTable", "InternetGateway", 
+            "NatGateway", "NetworkAcl",
+            // Load Balancers & Edge
+            "Alb", "Nlb", "Elb", "CloudFrontDistribution", "ApiGatewayRestApi",
+            // Storage
+            "EbsVolume", "EbsSnapshot", "EfsFileSystem",
+            // Security & Compliance
+            "KmsKey", "AcmCertificate", "CloudTrailTrail", "ConfigRule",
+            // Containers & Serverless
+            "EcsCluster", "EksCluster", "AppRunnerService", "BatchComputeEnv",
+            // Management & Monitoring
+            "CloudWatchAlarm", "SsmDocument",
+            // Application Integration
+            "EventBridgeRule", "StepFunction", "SesIdentity",
+            // Analytics & Big Data
+            "RedshiftCluster", "EmrCluster", "AthenaWorkgroup", "GlueDatabase",
+            // Edge & DR
+            "WafWebAcl", "GlobalAccelerator", "BackupVault", "BackupPlan"
         ];
 
         for resource_type in valid_types {

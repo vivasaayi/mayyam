@@ -102,7 +102,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     if let Err(e) = crate::utils::migrations::run_migrations(&db_connection_val).await {
         tracing::error!("Failed to run database migrations: {}", e);
         // Depending on your policy, you might want to return the error here to stop startup
-        // return Err(e.into());
+        return Err(e.into());
     }
 
     let db_connection = Arc::new(db_connection_val);
@@ -424,7 +424,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
 
                 info!("Registering other general routes");
                 // Pass Arc<DatabaseConnection> to the general routes::configure function
-                routes::configure(cfg_param, db_connection.clone());
+                routes::configure(cfg_param, db_connection.clone(), unified_llm_manager.clone());
 
                 info!("Registering Prometheus metrics route");
                 routes::metrics::configure(cfg_param);

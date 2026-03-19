@@ -67,6 +67,7 @@ pub struct AnalysisResultResponse {
 pub async fn create_ai_analysis(
     req: web::Json<CreateAIAnalysisRequest>,
     db_pool: web::Data<Arc<DatabaseConnection>>,
+    llm_manager: web::Data<Arc<crate::services::llm::manager::UnifiedLlmManager>>,
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
@@ -80,12 +81,14 @@ pub async fn create_ai_analysis(
         fingerprint_repo,
         slow_query_repo,
         explain_repo,
+        llm_manager.get_ref().clone(),
     );
 
     let analysis_request = crate::services::ai_analysis_service::AnalysisRequest {
         fingerprint_id: req.fingerprint_id,
         analysis_type: req.analysis_type.clone(),
         context_data: req.context_data.clone().unwrap_or_default(),
+        llm_provider: None,
     };
 
     let result = ai_service.generate_analysis(analysis_request).await?;
@@ -167,6 +170,7 @@ pub async fn get_analysis_history(
     path: web::Path<String>,
     query: web::Query<std::collections::HashMap<String, String>>,
     db_pool: web::Data<Arc<DatabaseConnection>>,
+    llm_manager: web::Data<Arc<crate::services::llm::manager::UnifiedLlmManager>>,
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
@@ -183,6 +187,7 @@ pub async fn get_analysis_history(
         fingerprint_repo,
         slow_query_repo,
         explain_repo,
+        llm_manager.get_ref().clone(),
     );
 
     let analyses = if let Some(analysis_type) = analysis_type {

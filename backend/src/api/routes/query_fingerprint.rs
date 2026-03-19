@@ -18,8 +18,10 @@ use actix_web::{web, HttpResponse};
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 
-pub fn configure(cfg: &mut web::ServiceConfig, db: Arc<DatabaseConnection>) {
-    let fingerprint_controller = query_fingerprint::QueryFingerprintController::new(db.clone());
+use crate::services::llm::manager::UnifiedLlmManager;
+
+pub fn configure(cfg: &mut web::ServiceConfig, db: Arc<DatabaseConnection>, llm_manager: Arc<UnifiedLlmManager>) {
+    let fingerprint_controller = query_fingerprint::QueryFingerprintController::new(db.clone(), llm_manager);
 
     cfg.service(
         web::scope("/api/query-fingerprints")
@@ -39,6 +41,10 @@ pub fn configure(cfg: &mut web::ServiceConfig, db: Arc<DatabaseConnection>) {
             .service(
                 web::resource("/patterns/{cluster_id}")
                     .route(web::get().to(query_fingerprint::get_fingerprint_patterns)),
+            )
+            .service(
+                web::resource("/top-tables/{cluster_id}")
+                    .route(web::get().to(crate::controllers::table_analytics::get_top_offending_tables)),
             ),
     );
 }

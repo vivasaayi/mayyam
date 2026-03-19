@@ -53,7 +53,8 @@ const SyncRunsDashboard = lazy(() => import("./pages/SyncRunsDashboard"));
 const CloudResources = lazy(() => import("./pages/CloudResources")); // New import for Cloud Resources
 const CostAnalytics = lazy(() => import("./pages/CostAnalytics")); // Import for Cost Analytics
 const AuroraClusters = lazy(() => import("./pages/AuroraClusters")); // Import for Aurora Clusters
-const SlowQueryAnalysis = lazy(() => import("./pages/SlowQueryAnalysis")); // Import for Slow Query Analysis
+const SlowQueryDashboard = lazy(() => import("./pages/SlowQueryDashboard")); // Updated to Dashboard
+const QueryFingerprintDetail = lazy(() => import("./pages/QueryFingerprintDetail")); // New detail page
 const QueryFingerprints = lazy(() => import("./pages/QueryFingerprints")); // Import for Query Fingerprints
 const ExplainPlans = lazy(() => import("./pages/ExplainPlans")); // Import for Explain Plans
 const AiAnalysis = lazy(() => import("./pages/AiAnalysis")); // Import for AI Analysis
@@ -104,8 +105,9 @@ const App = () => {
             <Route path="cloud-resources" element={<CloudResources />} /> {/* New route for Cloud Resources */}
             <Route path="cost-analytics" element={<CostAnalytics />} /> {/* Route for Cost Analytics */}
             <Route path="aurora-clusters" element={<AuroraClusters />} /> {/* Route for Aurora Clusters */}
-            <Route path="slow-queries" element={<SlowQueryAnalysis />} /> {/* Route for Slow Query Analysis */}
+            <Route path="slow-queries" element={<SlowQueryDashboard />} /> {/* Updated to Dashboard */}
             <Route path="query-fingerprints" element={<QueryFingerprints />} /> {/* Route for Query Fingerprints */}
+            <Route path="query-fingerprints/:id" element={<QueryFingerprintDetail />} /> {/* New detail route */}
             <Route path="explain-plans" element={<ExplainPlans />} /> {/* Route for Explain Plans */}
             <Route path="ai-analysis" element={<AiAnalysis />} /> {/* Route for AI Analysis */}
             <Route path="performance-monitoring" element={<PerformanceMonitoring />} /> {/* Route for Performance Monitoring */}

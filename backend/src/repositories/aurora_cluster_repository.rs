@@ -71,4 +71,18 @@ impl AuroraClusterRepository {
             .await
             .map_err(|e| format!("Failed to count clusters: {}", e))
     }
+
+    pub async fn update_checkpoint(&self, id: Uuid, checkpoint: chrono::NaiveDateTime) -> Result<(), String> {
+        let mut active_model = crate::models::aurora_cluster::ActiveModel {
+            id: Set(id),
+            last_event_timestamp: Set(Some(checkpoint)),
+            updated_at: Set(chrono::Utc::now().naive_utc()),
+            ..Default::default()
+        };
+        
+        active_model.update(&*self.db)
+            .await
+            .map_err(|e| format!("Failed to update checkpoint: {}", e))?;
+        Ok(())
+    }
 }

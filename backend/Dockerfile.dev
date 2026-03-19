@@ -4,7 +4,9 @@ FROM rust:1.89-slim
 WORKDIR /usr/src/app
 
 # Install build dependencies and development tools
-RUN apt-get update && \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
         pkg-config \
         libssl-dev \
@@ -16,9 +18,13 @@ RUN apt-get update && \
         cmake \
         g++ \
         libsasl2-dev \
-        # Add cargo-watch for hot reloading
-        && cargo install cargo-watch \
-        && ARCH=$(uname -m) && if [ "$ARCH" = "aarch64" ]; then NEXTEST_URL="https://get.nexte.st/latest/linux-arm"; else NEXTEST_URL="https://get.nexte.st/latest/linux"; fi \
+        # Add cargo-watch for hot reloading via pre-built binary
+        && CARGO_WATCH_VER="8.5.2" \
+        && ARCH=$(uname -m) && if [ "$ARCH" = "aarch64" ]; then CW_ARCH="aarch64-unknown-linux-musl"; else CW_ARCH="x86_64-unknown-linux-musl"; fi \
+        && curl -LsSf "https://github.com/watchexec/cargo-watch/releases/download/v${CARGO_WATCH_VER}/cargo-watch-v${CARGO_WATCH_VER}-${CW_ARCH}.tar.xz" | tar xJf - -C /tmp \
+        && mv /tmp/cargo-watch-v${CARGO_WATCH_VER}-${CW_ARCH}/cargo-watch /usr/local/cargo/bin/ \
+        && rm -rf /tmp/cargo-watch* \
+        && if [ "$ARCH" = "aarch64" ]; then NEXTEST_URL="https://get.nexte.st/latest/linux-arm"; else NEXTEST_URL="https://get.nexte.st/latest/linux"; fi \
         && curl -LsSf $NEXTEST_URL | tar zxf - -C /usr/local/cargo/bin \
         && rm -rf /var/lib/apt/lists/*
 

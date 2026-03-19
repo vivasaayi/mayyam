@@ -56,10 +56,10 @@ impl RdsControlPlane {
         debug!("Fetched {} RDS instances", response.db_instances().len());
 
         for db_instance in response.db_instances() {
-            let db_identifier = db_instance.db_instance_identifier().unwrap_or_default();
+            let db_identifier = db_instance.db_instance_identifier().unwrap_or("");
             debug!("Found RDS instance: {}", &db_identifier);
 
-            let arn = db_instance.db_instance_arn().unwrap_or_default();
+            let arn = db_instance.db_instance_arn().unwrap_or("");
 
             // Get tags for this instance
             let tags_response = client

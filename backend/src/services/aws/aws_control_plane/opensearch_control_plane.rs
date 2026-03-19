@@ -40,7 +40,6 @@ impl OpenSearchControlPlane {
             .aws_service
             .create_opensearch_client(aws_account_dto)
             .await?;
-
         let repo = &self.aws_service.aws_resource_repo;
 
         // List all OpenSearch domains from AWS

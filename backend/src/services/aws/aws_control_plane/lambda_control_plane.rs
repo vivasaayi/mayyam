@@ -67,7 +67,7 @@ impl LambdaControlPlane {
             for aws_function in response.functions() {
                 if let Some(function_name) = aws_function.function_name() {
                     // Extract function ARN
-                    let function_arn = aws_function.function_arn().unwrap_or_default();
+                    let function_arn = aws_function.function_arn().unwrap_or("");
 
                     // Get function tags
                     let tags_response = client

@@ -76,8 +76,8 @@ pub async fn run_migrations(db: &DatabaseConnection) -> Result<(), DbErr> {
         let sql = std::str::from_utf8(file.data.as_ref())
             .expect("Migration file is not valid UTF-8");
         
-        // Execute the migration script
-        match db.execute(Statement::from_string(DbBackend::Postgres, sql.to_string())).await {
+        // Execute the migration script using execute_unprepared to support multiple statements and PL/pgSQL blocks
+        match db.execute_unprepared(sql).await {
             Ok(_) => {
                 // Record the migration
                 let record_sql = format!(
