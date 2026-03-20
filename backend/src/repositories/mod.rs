@@ -33,3 +33,6 @@ pub mod query_template;
 pub mod slow_query_repository;
 pub mod sync_run;
 pub mod user;
+pub mod chaos_repository;
+pub mod chaos_audit_repository;
+pub mod chaos_metrics_repository;

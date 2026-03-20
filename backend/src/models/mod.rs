@@ -45,6 +45,14 @@ pub mod explain_plan;
 pub mod ai_analysis;
 pub mod mysql_performance_snapshot;
 
+// Chaos Engineering models
+pub mod chaos_template;
+pub mod chaos_experiment;
+pub mod chaos_experiment_run;
+pub mod chaos_experiment_result;
+pub mod chaos_audit_log;
+pub mod chaos_metrics;
+
 // Models module for data structures
 
 pub use analytics::{Insight, InsightSeverity, Recommendation, RecommendationPriority};

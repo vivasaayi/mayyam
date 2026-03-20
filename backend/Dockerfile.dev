@@ -1,5 +1,5 @@
 # Development Dockerfile for Backend with Hot Reloading
-FROM rust:1.89-slim
+FROM rust:1.94-slim
 
 WORKDIR /usr/src/app
 
@@ -20,7 +20,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         libsasl2-dev \
         # Add cargo-watch for hot reloading via pre-built binary
         && CARGO_WATCH_VER="8.5.2" \
-        && ARCH=$(uname -m) && if [ "$ARCH" = "aarch64" ]; then CW_ARCH="aarch64-unknown-linux-musl"; else CW_ARCH="x86_64-unknown-linux-musl"; fi \
+        && ARCH=$(uname -m) && if [ "$ARCH" = "aarch64" ]; then CW_ARCH="aarch64-unknown-linux-gnu"; else CW_ARCH="x86_64-unknown-linux-musl"; fi \
         && curl -LsSf "https://github.com/watchexec/cargo-watch/releases/download/v${CARGO_WATCH_VER}/cargo-watch-v${CARGO_WATCH_VER}-${CW_ARCH}.tar.xz" | tar xJf - -C /tmp \
         && mv /tmp/cargo-watch-v${CARGO_WATCH_VER}-${CW_ARCH}/cargo-watch /usr/local/cargo/bin/ \
         && rm -rf /tmp/cargo-watch* \
