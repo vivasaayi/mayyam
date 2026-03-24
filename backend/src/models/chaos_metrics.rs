@@ -19,7 +19,7 @@ use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "chaos_execution_metrics")]
-pub struct ExecutionMetricsModel {
+pub struct Model {
     #[sea_orm(primary_key)]
     pub id: Uuid,
     pub run_id: Uuid,
@@ -54,17 +54,9 @@ pub struct ExecutionMetricsModel {
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum ExecutionMetricsRelation {}
-
-impl ActiveModelBehavior for <ExecutionMetricsModel as EntityTrait>::ActiveModel {}
-
-// For SeaORM entity definition
-#[derive(DeriveEntityModel)]
-#[sea_orm(table_name = "chaos_execution_metrics")]
-pub struct Entity;
-
-#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
+
+impl ActiveModelBehavior for ActiveModel {}
 
 #[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "chaos_metrics_aggregates")]

@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::error::AppError;
+use crate::errors::AppError;
 use crate::models::chaos_metrics::{
-    ExecutionMetricsCreateDto, MetricsQuery, MetricsStats, ExecutionMetricsModel,
+    ExecutionMetricsCreateDto, MetricsQuery, MetricsStats, Model as ExecutionMetricsModel,
 };
 use sea_orm::{
     ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, DbErr,
@@ -22,7 +22,7 @@ use sea_orm::{
 use std::sync::Arc;
 use uuid::Uuid;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ChaosMetricsRepository {
     db: Arc<DatabaseConnection>,
 }
@@ -83,7 +83,7 @@ impl ChaosMetricsRepository {
         use crate::models::chaos_metrics::Entity;
 
         let metrics = Entity::find()
-            .filter(Entity::RunId.eq(run_id))
+            .filter(crate::models::chaos_metrics::Column::RunId.eq(run_id))
             .one(self.db.as_ref())
             .await
             .map_err(|e: DbErr| AppError::DatabaseError(e.to_string()))?;
@@ -98,7 +98,7 @@ impl ChaosMetricsRepository {
         use crate::models::chaos_metrics::Entity;
 
         let metrics = Entity::find()
-            .filter(Entity::ExperimentId.eq(experiment_id))
+            .filter(crate::models::chaos_metrics::Column::ExperimentId.eq(experiment_id))
             .all(self.db.as_ref())
             .await
             .map_err(|e: DbErr| AppError::DatabaseError(e.to_string()))?;
@@ -113,7 +113,7 @@ impl ChaosMetricsRepository {
         use crate::models::chaos_metrics::Entity;
 
         let metrics = Entity::find()
-            .filter(Entity::ResourceType.eq(resource_type.to_string()))
+            .filter(crate::models::chaos_metrics::Column::ResourceType.eq(resource_type.to_string()))
             .all(self.db.as_ref())
             .await
             .map_err(|e: DbErr| AppError::DatabaseError(e.to_string()))?;
@@ -130,23 +130,23 @@ impl ChaosMetricsRepository {
         let mut condition = Condition::all();
 
         if let Some(experiment_id) = query.experiment_id {
-            condition = condition.add(Entity::ExperimentId.eq(experiment_id));
+            condition = condition.add(crate::models::chaos_metrics::Column::ExperimentId.eq(experiment_id));
         }
 
         if let Some(resource_type) = &query.resource_type {
-            condition = condition.add(Entity::ResourceType.eq(resource_type.clone()));
+            condition = condition.add(crate::models::chaos_metrics::Column::ResourceType.eq(resource_type.clone()));
         }
 
         if let Some(impact_severity) = &query.impact_severity {
-            condition = condition.add(Entity::ImpactSeverity.eq(impact_severity.clone()));
+            condition = condition.add(crate::models::chaos_metrics::Column::ImpactSeverity.eq(impact_severity.clone()));
         }
 
         if let Some(start_date) = query.start_date {
-            condition = condition.add(Entity::CreatedAt.gte(start_date));
+            condition = condition.add(crate::models::chaos_metrics::Column::CreatedAt.gte(start_date));
         }
 
         if let Some(end_date) = query.end_date {
-            condition = condition.add(Entity::CreatedAt.lte(end_date));
+            condition = condition.add(crate::models::chaos_metrics::Column::CreatedAt.lte(end_date));
         }
 
         let metrics = Entity::find()

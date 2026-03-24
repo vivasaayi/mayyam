@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::error::AppError;
+use crate::errors::AppError;
 use crate::models::chaos_metrics::{
-    ExecutionMetricsCreateDto, MetricsQuery, MetricsStats, ExecutionMetricsModel,
+    ExecutionMetricsCreateDto, MetricsQuery, MetricsStats, Model as ExecutionMetricsModel,
 };
 use crate::repositories::chaos_metrics_repository::ChaosMetricsRepository;
 use std::sync::Arc;
 use uuid::Uuid;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ChaosMetricsService {
     metrics_repo: Arc<ChaosMetricsRepository>,
 }

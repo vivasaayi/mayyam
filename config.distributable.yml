@@ -1,0 +1,22 @@
+database:
+  postgres:
+    - name: app
+      host: app-db
+      port: 5432
+      username: mayyam_app
+      password: change-me-app-db-password
+      database: mayyam
+      ssl_mode: disable
+  mysql:
+    []
+  redis: []
+  opensearch: []
+
+kafka:
+  clusters:
+    []
+
+cloud:
+  aws:
+    []
+  azure: []

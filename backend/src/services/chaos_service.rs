@@ -251,6 +251,7 @@ impl ChaosService {
             dto
         };
 
+        // Create the experiment
         let experiment = self.chaos_repo.create_experiment(&final_dto).await?;
 
         // Log experiment created event
@@ -264,9 +265,9 @@ impl ChaosService {
                 None,
                 Some(experiment.target_resource_id.clone()),
                 None,
-                Some(serde_json::json!(experiment)),
                 None,
-                Some(ExperimentStatus::DRAFT),
+                Some(ExperimentStatus::DRAFT.to_string()),
+                None,
                 None,
                 None,
                 None,
@@ -327,7 +328,7 @@ impl ChaosService {
                 None,
                 Some(serde_json::json!({"template_id": template_id})),
                 None,
-                Some(ExperimentStatus::DRAFT),
+                Some(ExperimentStatus::DRAFT.to_string()),
                 None,
                 None,
                 None,
@@ -429,7 +430,7 @@ impl ChaosService {
         let _ = self
             .audit_service
             .log_action(
-                "run_started",
+                crate::models::chaos_audit_log::ChaosAuditAction::RUN_STARTED,
                 request.user_id.clone(),
                 request.triggered_by.clone(),
                 Some(experiment_id),
@@ -437,8 +438,8 @@ impl ChaosService {
                 Some(experiment.target_resource_id.clone()),
                 None,
                 None,
-                Some(ExperimentStatus::DRAFT),
-                Some(RunStatus::PENDING),
+                Some(ExperimentStatus::DRAFT.to_string()),
+                Some(RunStatus::PENDING.to_string()),
                 None,
                 request.ip_address.clone(),
                 request.user_agent.clone(),
@@ -547,8 +548,8 @@ impl ChaosService {
                         Some(experiment.target_resource_id.clone()),
                         None,
                         Some(serde_json::json!({"impact_severity": result_data.impact_severity})),
-                        Some(RunStatus::INITIALIZING),
-                        Some(RunStatus::COMPLETED),
+                        Some(RunStatus::INITIALIZING.to_string()),
+                        Some(RunStatus::COMPLETED.to_string()),
                         None,
                         request.ip_address.clone(),
                         request.user_agent.clone(),
@@ -648,8 +649,8 @@ impl ChaosService {
                         Some(experiment.target_resource_id.clone()),
                         None,
                         Some(serde_json::json!({"error": e.to_string()})),
-                        Some(RunStatus::INITIALIZING),
-                        Some(RunStatus::FAILED),
+                        Some(RunStatus::INITIALIZING.to_string()),
+                        Some(RunStatus::FAILED.to_string()),
                         None,
                         request.ip_address.clone(),
                         request.user_agent.clone(),
@@ -696,6 +697,9 @@ impl ChaosService {
             let run_request = RunExperimentRequest {
                 triggered_by: request.triggered_by.clone(),
                 parameter_overrides: None,
+                user_id: None,
+                ip_address: None,
+                user_agent: None,
             };
             match self.run_experiment(*experiment_id, run_request).await {
                 Ok(run) => runs.push(run),
@@ -1954,6 +1958,12 @@ struct ChaosResultData {
     impact_summary: Option<String>,
     impact_severity: String,
     recovery_time_ms: Option<i64>,
+    execution_duration_ms: Option<i64>,
+    rollback_duration_ms: Option<i64>,
+    rollback_success: Option<bool>,
+    api_calls_made: Option<i32>,
+    api_errors: Option<i32>,
+    custom_metrics: serde_json::Value,
     steady_state_hypothesis: Option<String>,
     hypothesis_met: Option<bool>,
     observations: serde_json::Value,
@@ -1968,6 +1978,12 @@ impl ChaosResultData {
             impact_summary: summary,
             impact_severity: severity.to_string(),
             recovery_time_ms: None,
+            execution_duration_ms: None,
+            rollback_duration_ms: None,
+            rollback_success: None,
+            api_calls_made: None,
+            api_errors: None,
+            custom_metrics: serde_json::json!({}),
             steady_state_hypothesis: None,
             hypothesis_met: None,
             observations: serde_json::json!([]),

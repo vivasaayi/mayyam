@@ -73,6 +73,9 @@ pub enum AppError {
 
     #[error("Internal server error: {0}")]
     InternalServerError(String),
+
+    #[error("Database error: {0}")]
+    DatabaseError(String),
 }
 
 impl AppError {
@@ -95,6 +98,7 @@ impl AppError {
             AppError::Internal(_) => "INTERNAL_SERVER_ERROR",
             AppError::ExternalServiceError(_) => "EXTERNAL_SERVICE_ERROR",
             AppError::InternalServerError(_) => "INTERNAL_SERVER_ERROR",
+            AppError::DatabaseError(_) => "DATABASE_ERROR",
         }
     }
 }
@@ -139,6 +143,7 @@ impl ErrorResponse {
             AppError::Internal(_) => "INTERNAL_SERVER_ERROR",
             AppError::ExternalServiceError(_) => "EXTERNAL_SERVICE_ERROR",
             AppError::InternalServerError(_) => "INTERNAL_SERVER_ERROR",
+            AppError::DatabaseError(_) => "DATABASE_ERROR",
         };
 
         Self {

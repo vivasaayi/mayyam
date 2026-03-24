@@ -45,6 +45,7 @@ services:
       - kafka
     volumes:
       - ./backend:/usr/src/app
+      - ./backend/target:/usr/src/app/target
     working_dir: /usr/src/app
     networks:
       - mayyam_network

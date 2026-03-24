@@ -28,7 +28,69 @@ Mayyam is built with:
 
 ### Running with Docker Compose
 
-The easiest way to get started is using Docker Compose with different modes:
+The easiest way to get started is using the two supported modes below.
+
+#### Local Mode
+
+Use this when you want everything local for development, manual testing, and full integration testing.
+
+```bash
+bash scripts/bootstrap.sh local up
+bash scripts/bootstrap.sh local test
+bash scripts/bootstrap.sh local down
+```
+
+This mode runs:
+- PostgreSQL
+- MySQL
+- Kafka
+- Zookeeper
+- LocalStack
+- Backend dev container
+- Frontend dev container
+- Integration test container
+
+Access points:
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8085
+- PostgreSQL: localhost:5432
+- MySQL: localhost:3306
+- Kafka: localhost:9092
+- LocalStack: localhost:4566
+
+#### Distributable Mode
+
+Use this when you want to ship Mayyam with a simple bootstrap flow, while still allowing the user to connect Mayyam to real Kafka, MySQL, PostgreSQL, and AWS.
+
+Important: Mayyam itself requires its own application database. In distributable mode, `docker-compose.distributable.yml` starts an internal PostgreSQL container just for Mayyam app state. That is separate from the real databases or Kafka clusters that Mayyam connects to as managed targets.
+
+```bash
+cp .env.distributable.example .env.distributable
+bash scripts/bootstrap.sh distributable up
+```
+
+Set these values in `.env.distributable` as needed:
+- `TARGET_POSTGRES_*`
+- `TARGET_MYSQL_*`
+- `TARGET_KAFKA_*`
+- `AWS_*`
+- `TARGET_AWS_*`
+
+The bootstrap script generates `config.distributable.yml` and mounts it into the packaged container.
+
+#### Legacy Compose Files
+
+The older profile-based compose files are still present, but the recommended entry points are now:
+
+```bash
+bash scripts/bootstrap.sh local up
+bash scripts/bootstrap.sh distributable up
+```
+
+For more detail, see `docs/DISTRIBUTION.md`.
+
+#### 🚀 Production Mode (Single Container)
+Perfect for end users who just want to run the application:
 
 #### 🚀 Production Mode (Single Container)
 Perfect for end users who just want to run the application:

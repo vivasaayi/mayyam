@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use crate::error::AppError;
+use crate::errors::AppError;
 use crate::models::chaos_audit_log::{AuditLogCreateDto, AuditLogPage, AuditLogQuery, Model};
 use crate::repositories::chaos_audit_repository::ChaosAuditRepository;
 use std::sync::Arc;
 use uuid::Uuid;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ChaosAuditService {
     audit_repo: Arc<ChaosAuditRepository>,
 }
