@@ -14,7 +14,7 @@
 
 
 use crate::controllers::kafka;
-use actix_web::{web, HttpResponse};
+use actix_web::{web};
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     let scope = web::scope("/api/kafka")

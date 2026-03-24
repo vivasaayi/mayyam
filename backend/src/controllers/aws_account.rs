@@ -16,7 +16,7 @@
 use actix_web::{web, HttpResponse, Responder};
 use serde::Deserialize;
 use std::sync::Arc;
-use tracing::{debug, info};
+use tracing::{debug};
 use uuid::Uuid;
 
 use crate::errors::AppError;

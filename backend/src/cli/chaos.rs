@@ -14,7 +14,6 @@
 
 use clap::Subcommand;
 use std::error::Error;
-use tracing::info;
 
 use crate::config::Config;
 

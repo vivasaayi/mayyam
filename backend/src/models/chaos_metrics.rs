@@ -58,10 +58,8 @@ pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}
 
-#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel, Serialize, Deserialize)]
-#[sea_orm(table_name = "chaos_metrics_aggregates")]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AggregateModel {
-    #[sea_orm(primary_key)]
     pub id: Uuid,
     pub aggregation_type: String,
     pub experiment_id: Option<Uuid>,
@@ -84,28 +82,12 @@ pub struct AggregateModel {
 
     pub rollback_success_rate_percent: Option<i32>,
 
-    #[sea_orm(column_type = "TimestampWithTimeZone", nullable)]
     pub aggregation_start_at: Option<DateTime<Utc>>,
-    #[sea_orm(column_type = "TimestampWithTimeZone", nullable)]
     pub aggregation_end_at: Option<DateTime<Utc>>,
 
-    #[sea_orm(column_type = "TimestampWithTimeZone")]
     pub created_at: DateTime<Utc>,
-    #[sea_orm(column_type = "TimestampWithTimeZone")]
     pub updated_at: DateTime<Utc>,
 }
-
-#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum AggregateRelation {}
-
-impl ActiveModelBehavior for <AggregateModel as EntityTrait>::ActiveModel {}
-
-#[derive(DeriveEntityModel)]
-#[sea_orm(table_name = "chaos_metrics_aggregates")]
-pub struct AggregateEntity;
-
-#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum AggregateEntityRelation {}
 
 // DTOs
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -16,11 +16,11 @@
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait,
-    IntoActiveModel, ModelTrait, Order, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
+    IntoActiveModel, Order, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
     QueryTrait, Set,
 };
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::{info};
 use uuid::Uuid;
 
 use crate::config::Config;
@@ -313,7 +313,7 @@ impl AwsResourceRepository {
         account_id: Option<String>,
         days_back: i64,
     ) -> Result<Vec<(String, i64)>, AppError> {
-        use chrono::{Duration, NaiveDate, Utc};
+        use chrono::{Duration, Utc};
 
         let cutoff_date = Utc::now() - Duration::days(days_back);
 
@@ -465,7 +465,7 @@ impl AwsResourceRepository {
         days_back: i64,
         granularity: String, // "daily" or "weekly"
     ) -> Result<Vec<serde_json::Value>, AppError> {
-        use chrono::{Duration, NaiveDate, Utc};
+        use chrono::{Duration, Utc};
 
         let cutoff_date = Utc::now() - Duration::days(days_back);
 

@@ -18,7 +18,6 @@ use aws_smithy_types::error::operation::BuildError;
 use sea_orm::DbErr;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::error;
 
 #[derive(Error, Debug)]
 pub enum AppError {

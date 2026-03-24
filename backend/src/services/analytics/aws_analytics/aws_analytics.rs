@@ -13,11 +13,9 @@
 // limitations under the License.
 
 
-use crate::api::routes::aws_account;
 use crate::config::Config;
 use crate::errors::AppError;
 use crate::models::aws_account::AwsAccountDto;
-use crate::models::aws_resource;
 use crate::repositories::aws_resource::AwsResourceRepository;
 use crate::services::aws::aws_types::cloud_watch;
 use crate::services::aws::{self, AwsDataPlane, AwsService};
@@ -26,7 +24,6 @@ use std::sync::Arc;
 use tracing::info;
 
 // Import the new modules
-use crate::services::analytics::aws_analytics::metrics::MetricsAnalyzer;
 use crate::services::analytics::aws_analytics::models::analytics::*;
 use crate::services::analytics::aws_analytics::models::resource_workflows::*;
 use crate::services::analytics::aws_analytics::questions::QuestionGenerator;

@@ -16,10 +16,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use uuid::Uuid;
 
 use crate::errors::AppError;
-use crate::models::llm_provider::LlmProviderModel;
 use crate::repositories::llm_provider::LlmProviderRepository;
 use crate::services::llm::formatting::{FormattedResponse, ResponseFormatter};
 use crate::services::llm::interface::{

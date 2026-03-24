@@ -17,7 +17,6 @@ use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::ActiveValue::Set;
 use serde::{Deserialize, Serialize};
-use std::str::FromStr;
 use uuid::Uuid;
 
 /// Data source configuration entity for managing different data source types

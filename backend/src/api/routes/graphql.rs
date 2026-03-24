@@ -14,9 +14,7 @@
 
 
 use actix_web::{web, HttpResponse};
-use async_graphql::http::{playground_source, GraphQLPlaygroundConfig};
 use async_graphql::{EmptySubscription, Schema};
-use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse};
 
 // We'll define our GraphQL schema later
 // For now, let's create a placeholder for the configuration

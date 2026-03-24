@@ -19,8 +19,6 @@ use std::sync::Arc;
 use crate::controllers::cost_analytics;
 use crate::repositories::aws_account::AwsAccountRepository;
 use crate::repositories::aws_resource::AwsResourceRepository;
-use crate::repositories::cost_analytics::CostAnalyticsRepository;
-use crate::services::aws_cost_analytics::AwsCostAnalyticsService;
 
 pub fn configure_routes(
     cfg: &mut web::ServiceConfig,

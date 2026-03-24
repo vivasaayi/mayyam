@@ -22,7 +22,6 @@ use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::AwsService;
 use serde_json::json;
 use std::sync::Arc;
-use uuid;
 
 // Data plane implementation for DynamoDB
 pub struct DynamoDBDataPlane {

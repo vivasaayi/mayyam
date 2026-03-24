@@ -60,8 +60,7 @@ use aws_sdk_appsync::Client as AppSyncClient;
 use aws_sdk_kinesisanalyticsv2::Client as KinesisAnalyticsClient;
 
 use crate::models::aws_account::AwsAccountDto;
-use crate::models::aws_auth::AccountAuthInfo;
-use crate::{config::AwsConfig, errors::AppError};
+use crate::{errors::AppError};
 
 // Client factory trait for AWS service clients
 #[async_trait]

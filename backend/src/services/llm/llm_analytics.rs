@@ -23,9 +23,8 @@ use crate::services::data_collection::DataCollectionService;
 use crate::services::llm::interface::UnifiedLlmRequest;
 use crate::services::llm::manager::UnifiedLlmManager;
 use chrono::{DateTime, Utc};
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{json};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

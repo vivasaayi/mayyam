@@ -30,7 +30,6 @@ use crate::controllers::{
     llm_provider::LlmProviderController, prompt_template::PromptTemplateController,
 };
 use crate::middleware::auth::AuthMiddleware;
-use crate::models::aws_account::AwsAccountDto;
 use crate::repositories::{
     aws_account::AwsAccountRepository, aws_resource::AwsResourceRepository,
     cloud_resource::CloudResourceRepository, cluster::ClusterRepository,
@@ -64,7 +63,6 @@ use crate::repositories::chaos_metrics_repository::ChaosMetricsRepository;
 use crate::services::chaos_service::ChaosService;
 use crate::services::chaos_audit_service::ChaosAuditService;
 use crate::services::chaos_metrics_service::ChaosMetricsService;
-use crate::utils::database;
 
 // Import Kubernetes Services
 use crate::services::kubernetes::authz_service::AuthorizationService;

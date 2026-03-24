@@ -19,14 +19,12 @@ use crate::models::cluster;
 use actix_web::{web, HttpResponse, Responder};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tracing::{error, info};
-use uuid::Uuid;
 
 use crate::services::kafka::{
-    ClusterUpdateRequest, ConsumeOptions, KafkaCluster, KafkaMessage, KafkaService, KafkaTopic,
-    MessageBackupRequest, MessageBackupResponse, MessageMigrationRequest, MessageMigrationResponse,
-    MessageRestoreRequest, MessageRestoreResponse, OffsetReset, PartitionAdditionRequest,
-    PartitionOffset, QueueDrainRequest, QueueDrainResponse, TopicConfigUpdateRequest,
+    ClusterUpdateRequest, ConsumeOptions, KafkaMessage, KafkaService, KafkaTopic,
+    MessageBackupRequest, MessageMigrationRequest,
+    MessageRestoreRequest, OffsetReset, PartitionAdditionRequest,
+    PartitionOffset, QueueDrainRequest, TopicConfigUpdateRequest,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
