@@ -55,7 +55,16 @@ RUN pkg-config --modversion rdkafka
 # Copy backend Cargo files
 COPY backend/Cargo.toml backend/Cargo.lock ./
 
-# Copy backend source and build
+# Create dummy src and build dependencies to cache them
+RUN mkdir -p src/bin && \
+    echo "pub fn dummy() {}" > src/lib.rs && \
+    echo "fn main() {}" > src/main.rs && \
+    echo "fn main() {}" > src/bin/hash_password.rs && \
+    echo "fn main() {}" > src/bin/temp_hash.rs && \
+    cargo build --release && \
+    rm -rf src target/release/deps/mayyam* target/release/mayyam* target/release/.fingerprint/mayyam* cargo_out.txt
+
+# Copy backend source and configs
 COPY backend/src ./src/
 COPY backend/config.default.yml backend/config.yml ./
 

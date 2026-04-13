@@ -9,14 +9,24 @@ WORKDIR /usr/src/app
 
 # Copy Cargo files first to cache dependencies
 COPY Cargo.toml Cargo.lock ./
-COPY Cargo.* ./
 
-# Copy the workspace crates to avoid recompiling all dependencies every test run
+# Create dummy src and build test dependencies
+RUN mkdir -p src/bin && \
+    echo "pub fn dummy() {}" > src/lib.rs && \
+    echo "fn main() {}" > src/main.rs && \
+    echo "fn main() {}" > src/bin/hash_password.rs && \
+    echo "fn main() {}" > src/bin/temp_hash.rs && \
+    mkdir -p tests && \
+    echo "#[test] fn dummy_test() {}" > tests/integration.rs && \
+    cargo test --no-run --workspace || true && \
+    rm -rf src tests target/debug/deps/mayyam* target/debug/mayyam* target/debug/.fingerprint/mayyam*
+
+# Now copy the workspace crates
 COPY . ./backend
 
 WORKDIR /usr/src/app/backend
 
-# Build tests (this will compile dependencies)
+# Build tests (dependencies are already cached)
 RUN cargo test --no-run --workspace || true
 
 # Install cargo-nextest for JUnit-style reports

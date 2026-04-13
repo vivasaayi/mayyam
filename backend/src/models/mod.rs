@@ -52,6 +52,7 @@ pub mod chaos_experiment_run;
 pub mod chaos_experiment_result;
 pub mod chaos_audit_log;
 pub mod chaos_metrics;
+pub mod chaos_metrics_aggregates;
 
 // Models module for data structures
 

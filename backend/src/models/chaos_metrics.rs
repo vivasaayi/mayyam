@@ -58,37 +58,6 @@ pub enum Relation {}
 
 impl ActiveModelBehavior for ActiveModel {}
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AggregateModel {
-    pub id: Uuid,
-    pub aggregation_type: String,
-    pub experiment_id: Option<Uuid>,
-    pub resource_type: Option<String>,
-
-    pub total_runs: i64,
-    pub successful_runs: i64,
-    pub failed_runs: i64,
-    pub success_rate_percent: Option<i32>,
-
-    pub avg_execution_duration_ms: Option<i64>,
-    pub max_execution_duration_ms: Option<i64>,
-    pub min_execution_duration_ms: Option<i64>,
-
-    pub avg_recovery_time_ms: Option<i64>,
-    pub max_recovery_time_ms: Option<i64>,
-
-    pub avg_impact_severity: Option<String>,
-    pub most_common_failure_reason: Option<String>,
-
-    pub rollback_success_rate_percent: Option<i32>,
-
-    pub aggregation_start_at: Option<DateTime<Utc>>,
-    pub aggregation_end_at: Option<DateTime<Utc>>,
-
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
 // DTOs
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionMetricsCreateDto {
