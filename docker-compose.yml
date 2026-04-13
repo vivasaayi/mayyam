@@ -35,6 +35,9 @@ services:
       - "8080:8085"
     environment:
       - RUST_LOG=debug
+      - RUSTC_WRAPPER=/usr/local/cargo/bin/sccache
+      - SCCACHE_DIR=/var/cache/sccache
+      - SCCACHE_CACHE_SIZE=10G
       - MODE=dev
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/mayyam
       - MYSQL_URL=mysql://mayyam_user:mayyam_password@mysql:3306/mayyam_db
@@ -46,6 +49,9 @@ services:
     volumes:
       - ./backend:/usr/src/app
       - ./backend/target:/usr/src/app/target
+      - cargo_registry:/usr/local/cargo/registry
+      - cargo_git:/usr/local/cargo/git
+      - sccache:/var/cache/sccache
     working_dir: /usr/src/app
     networks:
       - mayyam_network
@@ -260,6 +266,9 @@ services:
       context: ./backend
       dockerfile: Dockerfile.test
     environment:
+      - RUSTC_WRAPPER=/usr/local/cargo/bin/sccache
+      - SCCACHE_DIR=/var/cache/sccache
+      - SCCACHE_CACHE_SIZE=10G
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/mayyam
       - MYSQL_URL=mysql://mayyam_user:mayyam_password@mysql:3306/mayyam_db
       - KAFKA_BROKERS=kafka:29092
@@ -278,6 +287,10 @@ services:
         condition: service_started
     volumes:
       - ./backend:/usr/src/app
+      - integration_tests_target:/usr/src/app/target
+      - cargo_registry:/usr/local/cargo/registry
+      - cargo_git:/usr/local/cargo/git
+      - sccache:/var/cache/sccache
     networks:
       - mayyam_network
     command: cargo test --test integration -- --nocapture
@@ -285,6 +298,10 @@ services:
 volumes:
   postgres_data:
   mysql_data:
+  integration_tests_target:
+  cargo_registry:
+  cargo_git:
+  sccache:
 
 networks:
   mayyam_network:

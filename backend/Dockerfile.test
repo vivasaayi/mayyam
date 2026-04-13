@@ -1,24 +1,37 @@
-FROM rust:1.88-slim-bullseye
+# syntax=docker/dockerfile:1.7
 
-# Install OS dependencies needed for database drivers and libraries
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libssl-dev pkg-config libpq-dev build-essential curl git ca-certificates && \
-  rm -rf /var/lib/apt/lists/*
+ARG SCCACHE_VERSION=0.14.0
+
+FROM ghcr.io/sumitharajan/mayyam-backend-base:latest
+
+ARG TARGETARCH
+ARG SCCACHE_VERSION
+
+ENV RUSTC_WRAPPER=/usr/local/cargo/bin/sccache \
+    SCCACHE_DIR=/var/cache/sccache \
+    SCCACHE_CACHE_SIZE=10G
+
 
 WORKDIR /usr/src/app
 
 # Copy Cargo files first to cache dependencies
 COPY Cargo.toml Cargo.lock ./
+COPY .cargo ./.cargo
 
 # Create dummy src and build test dependencies
-RUN mkdir -p src/bin && \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,target=/var/cache/sccache,sharing=locked \
+    mkdir -p src/bin && \
     echo "pub fn dummy() {}" > src/lib.rs && \
     echo "fn main() {}" > src/main.rs && \
     echo "fn main() {}" > src/bin/hash_password.rs && \
     echo "fn main() {}" > src/bin/temp_hash.rs && \
     mkdir -p tests && \
     echo "#[test] fn dummy_test() {}" > tests/integration.rs && \
-    cargo test --no-run --workspace || true && \
+    sccache --zero-stats && \
+    (cargo test --no-run --workspace || true) && \
+    (sccache --show-stats || true) && \
     rm -rf src tests target/debug/deps/mayyam* target/debug/mayyam* target/debug/.fingerprint/mayyam*
 
 # Now copy the workspace crates
@@ -27,7 +40,12 @@ COPY . ./backend
 WORKDIR /usr/src/app/backend
 
 # Build tests (dependencies are already cached)
-RUN cargo test --no-run --workspace || true
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,target=/var/cache/sccache,sharing=locked \
+    sccache --zero-stats && \
+    (cargo test --no-run --workspace || true) && \
+    (sccache --show-stats || true)
 
 # Install cargo-nextest for JUnit-style reports
 RUN cargo install cargo-nextest || true

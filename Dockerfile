@@ -1,3 +1,9 @@
+# syntax=docker/dockerfile:1.7
+
+ARG RUST_VERSION=1.94
+ARG SCCACHE_VERSION=0.14.0
+ARG BACKEND_BASE_IMAGE=ghcr.io/sumitharajan/mayyam-backend-base:latest
+
 # Combined Dockerfile for Mayyam Frontend + Backend
 # Multi-stage build: Frontend (React) + Backend (Rust) + Final (Nginx + API)
 
@@ -18,13 +24,24 @@ COPY frontend/ ./
 # Build the React application
 RUN npm run build
 
-# ===== BACKEND BUILD STAGE =====
-FROM rust:1.94-slim AS backend-builder
+# ===== BACKEND BASE FALLBACK STAGE =====
+FROM rust:${RUST_VERSION}-slim AS backend-base-local
+
+ARG TARGETARCH
+ARG SCCACHE_VERSION
 
 WORKDIR /usr/src/app
 
-# Install build dependencies
-RUN apt-get update && \
+ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH \
+    LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH \
+    RUSTC_WRAPPER=/usr/local/cargo/bin/sccache \
+    SCCACHE_DIR=/var/cache/sccache \
+    SCCACHE_CACHE_SIZE=10G
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    set -eux; \
+    apt-get update; \
     apt-get install -y --no-install-recommends \
         pkg-config \
         libssl-dev \
@@ -35,10 +52,17 @@ RUN apt-get update && \
         git \
         cmake \
         g++ \
-        libsasl2-dev && \
-    rm -rf /var/lib/apt/lists/*
+        libsasl2-dev; \
+    arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
+    case "${arch}" in \
+        amd64|x86_64) sccache_arch="x86_64-unknown-linux-musl" ;; \
+        arm64|aarch64) sccache_arch="aarch64-unknown-linux-musl" ;; \
+        *) echo "Unsupported architecture: ${arch}" >&2; exit 1 ;; \
+    esac; \
+    curl -LsSf "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-${sccache_arch}.tar.gz" | tar zxf - -C /tmp; \
+    mv "/tmp/sccache-v${SCCACHE_VERSION}-${sccache_arch}/sccache" /usr/local/cargo/bin/; \
+    rm -rf /tmp/sccache* /var/lib/apt/lists/*
 
-# Build librdkafka v2.10.0 from source (required for ARM64)
 RUN git clone --depth 1 --branch v2.10.0 https://github.com/confluentinc/librdkafka.git /tmp/librdkafka && \
     cd /tmp/librdkafka && \
     ./configure --prefix=/usr/local && \
@@ -46,33 +70,42 @@ RUN git clone --depth 1 --branch v2.10.0 https://github.com/confluentinc/librdka
     make install && \
     rm -rf /tmp/librdkafka
 
-# Set PKG_CONFIG_PATH
-ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
+RUN pkg-config --modversion rdkafka && sccache --version
 
-# Verify librdkafka
-RUN pkg-config --modversion rdkafka
-
-# Copy backend Cargo files
 COPY backend/Cargo.toml backend/Cargo.lock ./
 
-# Create dummy src and build dependencies to cache them
-RUN mkdir -p src/bin && \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,target=/var/cache/sccache,sharing=locked \
+    mkdir -p src/bin && \
     echo "pub fn dummy() {}" > src/lib.rs && \
     echo "fn main() {}" > src/main.rs && \
     echo "fn main() {}" > src/bin/hash_password.rs && \
     echo "fn main() {}" > src/bin/temp_hash.rs && \
-    cargo build --release && \
-    rm -rf src target/release/deps/mayyam* target/release/mayyam* target/release/.fingerprint/mayyam* cargo_out.txt
+    sccache --zero-stats && \
+    cargo build --release --locked --bin mayyam && \
+    (sccache --show-stats || true)
 
-# Copy backend source and configs
+RUN rm -rf src \
+           target/release/deps/mayyam* \
+           target/release/mayyam* \
+           target/release/.fingerprint/mayyam*
+
+# ===== BACKEND BUILD STAGE =====
+FROM ${BACKEND_BASE_IMAGE} AS backend-builder
+
+WORKDIR /usr/src/app
+
+COPY backend/Cargo.toml backend/Cargo.lock ./
 COPY backend/src ./src/
 COPY backend/config.default.yml backend/config.yml ./
 
-RUN echo "cargo build starting"
-
-RUN cargo build --release
-
-RUN echo "cargo build complete"
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,target=/var/cache/sccache,sharing=locked \
+    sccache --zero-stats && \
+    cargo build --release --locked --bin mayyam && \
+    (sccache --show-stats || true)
 
 # Strip binary
 RUN strip target/release/mayyam

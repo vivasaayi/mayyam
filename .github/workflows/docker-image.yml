@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ "main" ]
 
+env:
+  DOCKER_BUILDKIT: 1
+  COMPOSE_DOCKER_CLI_BUILD: 1
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -77,14 +81,34 @@ jobs:
           type=sha
           type=ref,event=branch
           type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-    
+
+    - name: Compute backend base image tag
+      id: backend_base
+      run: |
+        LOCK_HASH="$(sha256sum backend/Cargo.lock | awk '{print $1}')"
+        echo "lock_hash=${LOCK_HASH}" >> "$GITHUB_OUTPUT"
+        echo "image=ghcr.io/${GITHUB_REPOSITORY}/mayyam-backend-base:${LOCK_HASH}" >> "$GITHUB_OUTPUT"
+
+    - name: Build and push backend base image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile.base
+        push: true
+        tags: ${{ steps.backend_base.outputs.image }}
+        cache-from: type=gha,scope=mayyam-backend-base
+        cache-to: type=gha,mode=max,scope=mayyam-backend-base
+
     - name: Build and push production image
       uses: docker/build-push-action@v5
       with:
         context: .
         file: ./Dockerfile
+        pull: true
         push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+        build-args: |
+          BACKEND_BASE_IMAGE=${{ steps.backend_base.outputs.image }}
+        cache-from: type=gha,scope=mayyam-production
+        cache-to: type=gha,mode=max,scope=mayyam-production
