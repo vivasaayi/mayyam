@@ -2,7 +2,7 @@
 
 ARG RUST_VERSION=1.94
 ARG SCCACHE_VERSION=0.14.0
-ARG BACKEND_BASE_IMAGE=ghcr.io/sumitharajan/mayyam-backend-base:latest
+ARG BACKEND_BASE_IMAGE=ghcr.io/sumitharajan/mayyam/mayyam-backend-base:latest
 
 # Combined Dockerfile for Mayyam Frontend + Backend
 # Multi-stage build: Frontend (React) + Backend (Rust) + Final (Nginx + API)
