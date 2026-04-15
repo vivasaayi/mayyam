@@ -36,7 +36,7 @@ jobs:
         context: .
         file: ./Dockerfile.base
         load: true
-        tags: ghcr.io/${{ github.repository }}/mayyam-backend-base:latest
+        tags: ghcr.io/${{ github.repository_owner }}/mayyam-backend-base:latest
         cache-from: type=gha,scope=mayyam-backend-base
         cache-to: type=gha,mode=max,scope=mayyam-backend-base
 
