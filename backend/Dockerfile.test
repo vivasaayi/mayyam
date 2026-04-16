@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 ARG SCCACHE_VERSION=0.14.0
-ARG BACKEND_BASE_IMAGE=ghcr.io/sumitharajan/mayyam-backend-base:latest
+ARG BACKEND_BASE_IMAGE=mayyam-backend-base:latest
 
 FROM ${BACKEND_BASE_IMAGE}
 

@@ -77,6 +77,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
+      args:
+        BACKEND_BASE_IMAGE: ${BACKEND_BASE_IMAGE:-mayyam-backend-base:latest}
     environment:
       - RUST_BACKTRACE=1
       - RUST_LOG=info

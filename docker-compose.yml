@@ -31,6 +31,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
+      args:
+        BACKEND_BASE_IMAGE: ${BACKEND_BASE_IMAGE:-mayyam-backend-base:latest}
     ports:
       - "8080:8085"
     environment:
@@ -42,10 +44,13 @@ services:
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/mayyam
       - MYSQL_URL=mysql://mayyam_user:mayyam_password@mysql:3306/mayyam_db
       - KAFKA_BROKERS=kafka:29092
+      - AWS_ENDPOINT=http://localstack:4566
+      - AWS_REGION=us-east-1
     depends_on:
       - postgres
       - mysql
       - kafka
+      - localstack
     volumes:
       - ./backend:/usr/src/app
       - ./backend/target:/usr/src/app/target
@@ -82,6 +87,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        BACKEND_BASE_IMAGE: ${BACKEND_BASE_IMAGE:-backend-base-local}
     ports:
       - "8080:8080"
     healthcheck:
