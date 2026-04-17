@@ -12,131 +12,130 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use clap::Subcommand;
 use std::error::Error;
-use tracing::{error, info};
 
 use crate::config::Config;
 
 #[derive(Subcommand)]
 pub enum ChaosCommands {
-    /// List available chaos experiments
-    List,
-
-    /// Run a network chaos experiment
-    Network {
-        /// Target hostname or IP
+    /// List available chaos experiment templates
+    ListTemplates {
+        /// Filter by resource type (e.g., EC2Instance, RdsInstance)
         #[arg(short, long)]
-        target: String,
+        resource_type: Option<String>,
 
-        /// Type of network chaos (latency, loss, corruption)
+        /// Filter by category (e.g., compute, database, networking)
         #[arg(short, long)]
-        chaos_type: String,
-
-        /// Duration of the chaos in seconds
-        #[arg(short, long, default_value_t = 60)]
-        duration: u32,
-
-        /// Intensity of the chaos (percentage or ms)
-        #[arg(short, long)]
-        intensity: String,
+        category: Option<String>,
     },
 
-    /// Run a process chaos experiment
-    Process {
-        /// Target process name or PID
+    /// List configured chaos experiments
+    ListExperiments {
+        /// Filter by AWS account ID
         #[arg(short, long)]
-        target: String,
+        account_id: Option<String>,
 
-        /// Type of process chaos (kill, stop, cpu-load)
+        /// Filter by status
         #[arg(short, long)]
-        chaos_type: String,
-
-        /// Duration of the chaos in seconds
-        #[arg(short, long, default_value_t = 60)]
-        duration: u32,
+        status: Option<String>,
     },
 
-    /// Run a disk I/O chaos experiment
-    Disk {
-        /// Target mount point or directory
+    /// Run a chaos experiment by ID
+    Run {
+        /// Experiment ID to run
         #[arg(short, long)]
-        target: String,
+        experiment_id: String,
 
-        /// Type of disk chaos (latency, error, fill)
+        /// Run as dry-run (no actual changes)
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
+    },
+
+    /// Stop a running chaos experiment
+    Stop {
+        /// Experiment ID to stop
         #[arg(short, long)]
-        chaos_type: String,
+        experiment_id: String,
+    },
 
-        /// Duration of the chaos in seconds
-        #[arg(short, long, default_value_t = 60)]
-        duration: u32,
-
-        /// Intensity of the chaos (percentage or ms)
+    /// View experiment history for a resource
+    History {
+        /// AWS resource ID
         #[arg(short, long)]
-        intensity: String,
+        resource_id: String,
     },
 }
 
 pub async fn handle_command(command: ChaosCommands, config: &Config) -> Result<(), Box<dyn Error>> {
     match command {
-        ChaosCommands::List => {
-            println!("Available chaos experiments:");
-            println!("1. Network Chaos:");
-            println!("   - latency: Add latency to network requests");
-            println!("   - loss: Drop packets");
-            println!("   - corruption: Corrupt packets");
-            println!("\n2. Process Chaos:");
-            println!("   - kill: Kill a process");
-            println!("   - stop: Stop/pause a process");
-            println!("   - cpu-load: Generate CPU load");
-            println!("\n3. Disk Chaos:");
-            println!("   - latency: Add latency to disk I/O");
-            println!("   - error: Inject disk I/O errors");
-            println!("   - fill: Fill disk space");
+        ChaosCommands::ListTemplates {
+            resource_type,
+            category,
+        } => {
+            println!("Chaos Experiment Templates");
+            println!("==========================");
+            if let Some(ref rt) = resource_type {
+                println!("Filtering by resource type: {}", rt);
+            }
+            if let Some(ref cat) = category {
+                println!("Filtering by category: {}", cat);
+            }
+            println!();
+            println!("Available templates (connect to database for full list):");
+            println!("  - EC2 Instance Stop (compute/EC2Instance)");
+            println!("  - EC2 Instance Reboot (compute/EC2Instance)");
+            println!("  - EC2 Instance Terminate (compute/EC2Instance)");
+            println!("  - RDS Failover (database/RdsInstance)");
+            println!("  - RDS Instance Reboot (database/RdsInstance)");
+            println!("  - DynamoDB Table Throttle (database/DynamoDbTable)");
+            println!("  - Lambda Function Disable (serverless/LambdaFunction)");
+            println!("  - Lambda Function Timeout (serverless/LambdaFunction)");
+            println!("  - ECS Service Scale Down (compute/EcsService)");
+            println!("  - ElastiCache Failover (database/ElasticacheCluster)");
+            println!("  - S3 Bucket Policy Deny (storage/S3Bucket)");
+            println!("  - ALB Target Deregistration (networking/Alb)");
+            println!("  - Security Group Ingress Block (networking/SecurityGroup)");
+            println!("  - SQS Queue Purge (serverless/SqsQueue)");
+            println!("  - EKS Node Group Scale Down (compute/EksCluster)");
             Ok(())
         }
 
-        ChaosCommands::Network {
-            target,
-            chaos_type,
-            duration,
-            intensity,
-        } => {
-            println!("Running network chaos experiment:");
-            println!("Target: {}", target);
-            println!("Type: {}", chaos_type);
-            println!("Duration: {} seconds", duration);
-            println!("Intensity: {}", intensity);
-            println!("\nIn a real implementation, this would run a network chaos experiment");
+        ChaosCommands::ListExperiments { account_id, status } => {
+            println!("Chaos Experiments");
+            println!("=================");
+            println!("Connect to the API server to list configured experiments.");
+            println!("Use: GET /api/chaos/experiments");
             Ok(())
         }
 
-        ChaosCommands::Process {
-            target,
-            chaos_type,
-            duration,
+        ChaosCommands::Run {
+            experiment_id,
+            dry_run,
         } => {
-            println!("Running process chaos experiment:");
-            println!("Target: {}", target);
-            println!("Type: {}", chaos_type);
-            println!("Duration: {} seconds", duration);
-            println!("\nIn a real implementation, this would run a process chaos experiment");
+            println!("Running chaos experiment: {}", experiment_id);
+            if dry_run {
+                println!("  Mode: DRY RUN (no actual changes will be made)");
+            }
+            println!("Connect to the API server to run experiments.");
+            println!("Use: POST /api/chaos/experiments/{}/run", experiment_id);
             Ok(())
         }
 
-        ChaosCommands::Disk {
-            target,
-            chaos_type,
-            duration,
-            intensity,
-        } => {
-            println!("Running disk chaos experiment:");
-            println!("Target: {}", target);
-            println!("Type: {}", chaos_type);
-            println!("Duration: {} seconds", duration);
-            println!("Intensity: {}", intensity);
-            println!("\nIn a real implementation, this would run a disk chaos experiment");
+        ChaosCommands::Stop { experiment_id } => {
+            println!("Stopping chaos experiment: {}", experiment_id);
+            println!("Connect to the API server to stop experiments.");
+            println!("Use: POST /api/chaos/experiments/{}/stop", experiment_id);
+            Ok(())
+        }
+
+        ChaosCommands::History { resource_id } => {
+            println!("Experiment history for resource: {}", resource_id);
+            println!("Connect to the API server to view history.");
+            println!(
+                "Use: GET /api/chaos/resources/{}/history",
+                resource_id
+            );
             Ok(())
         }
     }

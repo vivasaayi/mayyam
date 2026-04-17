@@ -399,7 +399,7 @@ pub async fn get_pod_logs_controller(
 }
 
 pub async fn stream_pod_logs_controller(
-    claims: web::ReqData<Claims>,
+    _claims: web::ReqData<Claims>,
     db: web::Data<Arc<DatabaseConnection>>,
     path: web::Path<(String, String, String)>,
     query: web::Query<PodLogsQuery>,

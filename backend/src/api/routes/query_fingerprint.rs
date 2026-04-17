@@ -14,7 +14,7 @@
 
 
 use crate::controllers::query_fingerprint;
-use actix_web::{web, HttpResponse};
+use actix_web::{web};
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 

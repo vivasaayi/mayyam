@@ -15,7 +15,7 @@
 
 // Root module for AWS services
 #[path = "aws_client_factory.rs"]
-mod client_factory;
+pub(crate) mod client_factory;
 mod control_plane;
 mod data_plane;
 mod service;

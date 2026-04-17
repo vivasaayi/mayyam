@@ -20,7 +20,7 @@ use tracing::{error, info};
 
 use crate::errors::AppError;
 use crate::services::llm::{
-    LlmGenerationRequest, LlmRequestBuilder, UnifiedLlmManager, UnifiedLlmRequest,
+    LlmGenerationRequest, LlmRequestBuilder, UnifiedLlmManager,
 };
 
 #[derive(Debug, Deserialize)]

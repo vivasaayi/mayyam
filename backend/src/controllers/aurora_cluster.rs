@@ -24,7 +24,6 @@ use crate::middleware::auth::Claims;
 use crate::models::aurora_cluster::{AuroraCluster, AuroraClusterDto};
 use crate::repositories::aurora_cluster_repository::AuroraClusterRepository;
 use crate::services::slow_query_ingestion_service::SlowQueryIngestionService;
-use crate::services::mysql_performance_service::MySQLPerformanceService;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]

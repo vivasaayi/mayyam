@@ -1,5 +1,10 @@
 SHELL := /bin/bash
-.PHONY: test backend frontend
+.PHONY: test backend frontend build-base
+
+build-base:
+	@echo "Building Mayyam Backend Base Image locally..."
+	docker build -t mayyam-backend-base:latest -f Dockerfile.base .
+
 integration:
 	@echo "Running integration tests via docker-compose"
 	@scripts/run-integration-tests.sh

@@ -1,0 +1,92 @@
+# syntax=docker/dockerfile:1.7
+
+# Base image containing compiled Rust dependencies to speed up backend builds.
+ARG RUST_VERSION=1.94
+ARG SCCACHE_VERSION=0.14.0
+
+FROM rust:${RUST_VERSION}-slim
+
+ARG TARGETARCH
+ARG SCCACHE_VERSION
+
+WORKDIR /usr/src/app
+
+ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH \
+    LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH \
+    RUSTC_WRAPPER=/usr/local/cargo/bin/sccache \
+    SCCACHE_DIR=/var/cache/sccache \
+    SCCACHE_CACHE_SIZE=10G
+
+# Install build dependencies and prebuilt developer tools.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        pkg-config \
+        libssl-dev \
+        build-essential \
+        zlib1g-dev \
+        curl \
+        ca-certificates \
+        git \
+        cmake \
+        g++ \
+        libsasl2-dev \
+        xz-utils; \
+    arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
+    case "${arch}" in \
+        amd64|x86_64) \
+            cargo_watch_arch="x86_64-unknown-linux-musl"; \
+            sccache_arch="x86_64-unknown-linux-musl"; \
+            nextest_url="https://get.nexte.st/latest/linux"; \
+            ;; \
+        arm64|aarch64) \
+            cargo_watch_arch="aarch64-unknown-linux-gnu"; \
+            sccache_arch="aarch64-unknown-linux-musl"; \
+            nextest_url="https://get.nexte.st/latest/linux-arm"; \
+            ;; \
+        *) \
+            echo "Unsupported architecture: ${arch}" >&2; \
+            exit 1; \
+            ;; \
+    esac; \
+    cargo_watch_ver="8.5.2"; \
+    curl -LsSf "https://github.com/watchexec/cargo-watch/releases/download/v${cargo_watch_ver}/cargo-watch-v${cargo_watch_ver}-${cargo_watch_arch}.tar.xz" | tar xJf - -C /tmp; \
+    mv "/tmp/cargo-watch-v${cargo_watch_ver}-${cargo_watch_arch}/cargo-watch" /usr/local/cargo/bin/; \
+    curl -LsSf "${nextest_url}" | tar zxf - -C /usr/local/cargo/bin; \
+    curl -LsSf "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-${sccache_arch}.tar.gz" | tar zxf - -C /tmp; \
+    mv "/tmp/sccache-v${SCCACHE_VERSION}-${sccache_arch}/sccache" /usr/local/cargo/bin/; \
+    rm -rf /tmp/cargo-watch* /tmp/sccache* /var/lib/apt/lists/*
+
+# Build librdkafka once so downstream app builds can reuse the image.
+RUN git clone --depth 1 --branch v2.10.0 https://github.com/confluentinc/librdkafka.git /tmp/librdkafka && \
+    cd /tmp/librdkafka && \
+    ./configure --prefix=/usr/local && \
+    make -j"$(nproc)" && \
+    make install && \
+    rm -rf /tmp/librdkafka
+
+RUN pkg-config --modversion rdkafka && sccache --version
+
+COPY backend/Cargo.toml backend/Cargo.lock ./
+
+# Compile the backend dependency graph, including the AWS SDK crates.
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,target=/var/cache/sccache,sharing=locked \
+    mkdir -p src/bin && \
+    echo "pub fn dummy() {}" > src/lib.rs && \
+    echo "fn main() {}" > src/main.rs && \
+    echo "fn main() {}" > src/bin/hash_password.rs && \
+    echo "fn main() {}" > src/bin/temp_hash.rs && \
+    sccache --zero-stats && \
+    cargo build --release --locked --bin mayyam && \
+    (sccache --show-stats || true)
+
+# Remove only the local crate artifacts so downstream builds can relink quickly
+# while keeping compiled third-party dependencies in the image.
+RUN rm -rf src \
+           target/release/deps/mayyam* \
+           target/release/mayyam* \
+           target/release/.fingerprint/mayyam*

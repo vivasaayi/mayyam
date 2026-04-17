@@ -16,13 +16,12 @@
 use crate::errors::AppError;
 use crate::services::analytics::aws_analytics::aws_analytics::AwsAnalyticsService;
 use crate::services::analytics::aws_analytics::models::analytics::{
-    AwsResourceAnalysisRequest, AwsResourceAnalysisResponse, ResourceRelatedQuestionRequest,
+    AwsResourceAnalysisRequest, ResourceRelatedQuestionRequest,
 };
-use crate::services::analytics::aws_analytics::models::resource_workflows::AnalysisWorkflowInfo;
 use actix_web::{web, HttpResponse, Responder};
 use serde_json;
 use std::sync::Arc;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 pub struct AwsAnalyticsController {
     aws_analytics_service: Arc<AwsAnalyticsService>,

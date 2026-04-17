@@ -14,7 +14,6 @@
 
 
 use crate::controllers::ai;
-use crate::middleware::auth::Claims;
 use actix_web::{web, HttpResponse};
 
 pub fn configure(cfg: &mut web::ServiceConfig) {

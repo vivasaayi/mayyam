@@ -13,11 +13,10 @@
 // limitations under the License.
 
 
-use actix_web::{web, HttpResponse, Responder};
 use chrono::{Duration, Utc};
 use jsonwebtoken::{encode, EncodingKey, Header};
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::{error};
 
 use crate::config::Config;
 use crate::errors::AppError;

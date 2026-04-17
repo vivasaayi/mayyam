@@ -30,7 +30,6 @@ use crate::controllers::{
     llm_provider::LlmProviderController, prompt_template::PromptTemplateController,
 };
 use crate::middleware::auth::AuthMiddleware;
-use crate::models::aws_account::AwsAccountDto;
 use crate::repositories::{
     aws_account::AwsAccountRepository, aws_resource::AwsResourceRepository,
     cloud_resource::CloudResourceRepository, cluster::ClusterRepository,
@@ -58,7 +57,12 @@ use crate::services::{
     llm_provider::LlmProviderService,
     user::UserService,
 };
-use crate::utils::database;
+use crate::repositories::chaos_repository::ChaosRepository;
+use crate::repositories::chaos_audit_repository::ChaosAuditRepository;
+use crate::repositories::chaos_metrics_repository::ChaosMetricsRepository;
+use crate::services::chaos_service::ChaosService;
+use crate::services::chaos_audit_service::ChaosAuditService;
+use crate::services::chaos_metrics_service::ChaosMetricsService;
 
 // Import Kubernetes Services
 use crate::services::kubernetes::authz_service::AuthorizationService;
@@ -137,6 +141,10 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     );
     let cost_analytics_repo = Arc::new(CostAnalyticsRepository::new(db_connection.clone()));
     let cost_budget_repo = Arc::new(crate::repositories::cost_budget_repository::CostBudgetRepository::new((*db_connection).clone()));
+    let chaos_repo = Arc::new(ChaosRepository::new(db_connection.clone()));
+    let chaos_audit_repo = Arc::new(ChaosAuditRepository::new(db_connection.clone()));
+    let chaos_metrics_repo = Arc::new(ChaosMetricsRepository::new(db_connection.clone()));
+
     let llm_provider_service = Arc::new(LlmProviderService::new(llm_provider_repo.clone()));
 
     // Initialize services
@@ -209,6 +217,19 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             db_connection.clone(),
         ))
     };
+
+    // Chaos Engineering audit and metrics services
+    let chaos_audit_service = Arc::new(ChaosAuditService::new(chaos_audit_repo.clone()));
+    let chaos_metrics_service = Arc::new(ChaosMetricsService::new(chaos_metrics_repo.clone()));
+
+    // Chaos Engineering service
+    let chaos_service = Arc::new(ChaosService::new(
+        chaos_repo.clone(),
+        aws_service.clone(),
+        aws_account_repo.clone(),
+        chaos_audit_service.clone(),
+        chaos_metrics_service.clone(),
+    ));
 
     // Initialize Kubernetes Services
     let deployments_service = Arc::new(DeploymentsService::new());
@@ -325,6 +346,10 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
             .app_data(web::Data::new(llm_analytics_service.clone()))
             .app_data(web::Data::new(unified_llm_manager.clone()))
             .app_data(web::Data::new(aws_cost_analytics_service.clone()))
+            // Chaos Engineering
+            .app_data(web::Data::new(chaos_service.clone()))
+            .app_data(web::Data::new(chaos_audit_service.clone()))
+            .app_data(web::Data::new(chaos_metrics_service.clone()))
             // Kubernetes Services
             .app_data(web::Data::new(deployments_service.clone()))
             .app_data(web::Data::new(stateful_sets_service.clone()))

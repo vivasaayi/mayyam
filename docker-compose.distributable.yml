@@ -1,0 +1,40 @@
+services:
+  app-db:
+    image: postgres:14-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${APP_DB_PASSWORD:-mayyam_app_password}
+      POSTGRES_USER: ${APP_DB_USER:-mayyam_app}
+      POSTGRES_DB: ${APP_DB_NAME:-mayyam}
+    volumes:
+      - app_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${APP_DB_USER:-mayyam_app} -d ${APP_DB_NAME:-mayyam}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mayyam:
+    image: ${MAYYAM_IMAGE:-ghcr.io/sumitharajan/mayyam:latest}
+    ports:
+      - "80:80"
+    environment:
+      RUST_LOG: ${RUST_LOG:-info}
+      MODE: ${MODE:-prod}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      AWS_PROFILE: ${AWS_PROFILE:-default}
+    volumes:
+      - ./config.distributable.yml:/app/config.yml:ro
+    depends_on:
+      app-db:
+        condition: service_healthy
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  app_db_data:

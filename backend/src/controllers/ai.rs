@@ -389,8 +389,8 @@ pub async fn analyze_logs(
 }
 
 pub async fn analyze_metrics(
-    req: web::Json<MetricAnalysisRequest>,
-    config: web::Data<crate::config::Config>,
+    _req: web::Json<MetricAnalysisRequest>,
+    _config: web::Data<crate::config::Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     // In a real implementation, we would process the metrics and call an AI API

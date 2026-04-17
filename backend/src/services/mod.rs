@@ -40,3 +40,6 @@ pub mod metric_streams_parser;
 pub use aws::AwsService;
 
 pub mod kubernetes;
+pub mod chaos_service;
+pub mod chaos_audit_service;
+pub mod chaos_metrics_service;

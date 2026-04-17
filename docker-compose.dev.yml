@@ -77,9 +77,14 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.dev
+      args:
+        BACKEND_BASE_IMAGE: ${BACKEND_BASE_IMAGE:-mayyam-backend-base:latest}
     environment:
       - RUST_BACKTRACE=1
       - RUST_LOG=info
+      - RUSTC_WRAPPER=/usr/local/cargo/bin/sccache
+      - SCCACHE_DIR=/var/cache/sccache
+      - SCCACHE_CACHE_SIZE=10G
       - MODE=dev
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/mayyam
       - MYSQL_URL=mysql://mayyam_user:mayyam_password@mysql:3306/mayyam_db
@@ -91,6 +96,7 @@ services:
       - backend_target:/usr/src/app/target
       - cargo_registry:/usr/local/cargo/registry
       - cargo_git:/usr/local/cargo/git
+      - sccache:/var/cache/sccache
     depends_on:
       postgres:
         condition: service_healthy
@@ -112,6 +118,9 @@ services:
     image: mayyam-master-backend-dev:latest
     environment:
       - RUST_LOG=info
+      - RUSTC_WRAPPER=/usr/local/cargo/bin/sccache
+      - SCCACHE_DIR=/var/cache/sccache
+      - SCCACHE_CACHE_SIZE=10G
       - DATABASE_URL=postgres://postgres:postgres@postgres:5432/mayyam
       - MYSQL_URL=mysql://mayyam_user:mayyam_password@mysql:3306/mayyam_db
       - KAFKA_BROKERS=kafka:29092
@@ -129,6 +138,7 @@ services:
       - integration_tests_target:/usr/src/app/target
       - cargo_registry:/usr/local/cargo/registry
       - cargo_git:/usr/local/cargo/git
+      - sccache:/var/cache/sccache
     working_dir: /usr/src/app
     command: ["bash", "-c", "ENABLE_KAFKA_TESTS=1 cargo test --jobs 2 --features integration-tests kafka:: -- --nocapture"]
 
@@ -137,3 +147,4 @@ volumes:
   integration_tests_target:
   cargo_registry:
   cargo_git:
+  sccache:

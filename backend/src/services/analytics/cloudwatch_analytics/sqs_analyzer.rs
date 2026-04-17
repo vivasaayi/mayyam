@@ -16,9 +16,7 @@
 use super::cloudwatch_analyzer::CloudWatchAnalyzer;
 use crate::errors::AppError;
 use crate::models::aws_resource::Model as AwsResource;
-use chrono::{DateTime, Utc};
-use serde_json::json;
-use std::sync::Arc;
+use chrono::{Utc};
 
 pub struct SqsAnalyzer;
 

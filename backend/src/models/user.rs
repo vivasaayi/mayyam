@@ -14,8 +14,7 @@
 
 
 use chrono::{DateTime, Utc};
-use sea_orm::ActiveValue::Set;
-use sea_orm::{entity::prelude::*, ActiveValue};
+use sea_orm::{entity::prelude::*};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

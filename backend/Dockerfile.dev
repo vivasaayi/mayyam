@@ -1,49 +1,29 @@
+# syntax=docker/dockerfile:1.7
+
 # Development Dockerfile for Backend with Hot Reloading
-FROM rust:1.89-slim
+ARG SCCACHE_VERSION=0.14.0
+ARG BACKEND_BASE_IMAGE=mayyam-backend-base:latest
+
+FROM ${BACKEND_BASE_IMAGE}
+
+
+ARG TARGETARCH
+ARG SCCACHE_VERSION
 
 WORKDIR /usr/src/app
 
-# Install build dependencies and development tools
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-        pkg-config \
-        libssl-dev \
-        build-essential \
-        zlib1g-dev \
-        curl \
-        ca-certificates \
-        git \
-        cmake \
-        g++ \
-        libsasl2-dev \
-        # Add cargo-watch for hot reloading via pre-built binary
-        && CARGO_WATCH_VER="8.5.2" \
-        && ARCH=$(uname -m) && if [ "$ARCH" = "aarch64" ]; then CW_ARCH="aarch64-unknown-linux-musl"; else CW_ARCH="x86_64-unknown-linux-musl"; fi \
-        && curl -LsSf "https://github.com/watchexec/cargo-watch/releases/download/v${CARGO_WATCH_VER}/cargo-watch-v${CARGO_WATCH_VER}-${CW_ARCH}.tar.xz" | tar xJf - -C /tmp \
-        && mv /tmp/cargo-watch-v${CARGO_WATCH_VER}-${CW_ARCH}/cargo-watch /usr/local/cargo/bin/ \
-        && rm -rf /tmp/cargo-watch* \
-        && if [ "$ARCH" = "aarch64" ]; then NEXTEST_URL="https://get.nexte.st/latest/linux-arm"; else NEXTEST_URL="https://get.nexte.st/latest/linux"; fi \
-        && curl -LsSf $NEXTEST_URL | tar zxf - -C /usr/local/cargo/bin \
-        && rm -rf /var/lib/apt/lists/*
-
-# Build librdkafka v2.10.0 from source (required for ARM64)
-RUN git clone --depth 1 --branch v2.10.0 https://github.com/confluentinc/librdkafka.git /tmp/librdkafka && \
-    cd /tmp/librdkafka && \
-    ./configure --prefix=/usr/local && \
-    make -j"$(nproc)" && \
-    make install && \
-    rm -rf /tmp/librdkafka
-
-# Set PKG_CONFIG_PATH
-ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH
+ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH \
+    LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH \
+    RUSTC_WRAPPER=/usr/local/cargo/bin/sccache \
+    SCCACHE_DIR=/var/cache/sccache \
+    SCCACHE_CACHE_SIZE=10G
 
 # Verify librdkafka
-RUN pkg-config --modversion rdkafka
+RUN pkg-config --modversion rdkafka && sccache --version
 
 # Copy Cargo files first for better caching
 COPY Cargo.toml Cargo.lock ./
+COPY .cargo ./.cargo
 
 # Copy source code
 COPY src ./src/
@@ -69,7 +49,7 @@ EXPOSE 8080
 # Set library path for librdkafka
 ENV LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
 
-# Default command for development with stable hot reloading
+# Default command for development with stable hot reloading and faster iterates
 CMD ["cargo", "watch", \
      "--watch", "src", \
      "--watch", "Cargo.toml", \
@@ -78,4 +58,5 @@ CMD ["cargo", "watch", \
      "--ignore", "logs", \
      "--ignore", "**/.*", \
      "--delay", "2000", \
+     "-x", "check", \
      "-x", "run -- server"]

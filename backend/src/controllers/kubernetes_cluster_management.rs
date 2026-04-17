@@ -135,7 +135,7 @@ impl KubernetesClusterManagementController {
 
     pub async fn update_kubernetes_cluster(
         &self,
-        claims: web::ReqData<Claims>, // Assuming updates should also be authenticated
+        _claims: web::ReqData<Claims>, // Assuming updates should also be authenticated
         path: web::Path<Uuid>,
         req: web::Json<UpdateKubernetesClusterRequest>,
     ) -> impl Responder {

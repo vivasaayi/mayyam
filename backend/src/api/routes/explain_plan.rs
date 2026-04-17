@@ -14,7 +14,7 @@
 
 
 use crate::controllers::explain_plan;
-use actix_web::{web, HttpResponse};
+use actix_web::{web};
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 

@@ -15,7 +15,6 @@
 
 use crate::errors::AppError;
 use crate::models::aws_cost_data::CostDataModel;
-use crate::models::aws_resource::Model as AwsResourceModel;
 use crate::repositories::aws_resource::AwsResourceRepository;
 use crate::repositories::cost_analytics::CostAnalyticsRepository;
 use bigdecimal::ToPrimitive;

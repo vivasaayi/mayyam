@@ -15,16 +15,12 @@
 
 use crate::config::Config;
 use clap::Subcommand;
-use rdkafka::admin::{AdminClient, AdminOptions, NewTopic, TopicReplication};
-use rdkafka::client::ClientContext;
+use rdkafka::admin::{AdminClient};
 use rdkafka::config::ClientConfig;
-use rdkafka::consumer::{Consumer, StreamConsumer};
-use rdkafka::message::{Header, Headers, OwnedHeaders, ToBytes};
-use rdkafka::producer::{FutureProducer, FutureRecord};
+use rdkafka::message::{Headers};
+use rdkafka::producer::{FutureProducer};
 use std::error::Error;
 use std::fs;
-use std::time::Duration;
-use tracing::{debug, error, info};
 
 #[derive(Subcommand, Debug)]
 pub enum KafkaCommands {

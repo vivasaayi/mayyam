@@ -12,107 +12,91 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use actix_web::web;
 
-use actix_web::{web, HttpResponse};
+use crate::controllers::chaos;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
-    let scope = web::scope("/api/chaos")
-        .route("/experiments", web::get().to(list_experiments))
-        .route("/experiments", web::post().to(create_experiment))
-        .route("/experiments/{id}", web::get().to(get_experiment))
-        .route("/experiments/{id}", web::delete().to(delete_experiment))
-        .route("/experiments/{id}/start", web::post().to(start_experiment))
-        .route("/experiments/{id}/stop", web::post().to(stop_experiment))
-        .route(
-            "/experiments/{id}/results",
-            web::get().to(get_experiment_results),
-        );
-
-    cfg.service(scope);
-}
-
-async fn list_experiments() -> HttpResponse {
-    HttpResponse::Ok().json(serde_json::json!({
-        "message": "This endpoint will list all chaos experiments",
-        "experiments": []
-    }))
-}
-
-async fn create_experiment() -> HttpResponse {
-    HttpResponse::Created().json(serde_json::json!({
-        "message": "This endpoint will create a new chaos experiment",
-        "id": "exp-12345",
-        "success": true
-    }))
-}
-
-async fn get_experiment(path: web::Path<String>) -> HttpResponse {
-    let id = path.into_inner();
-    HttpResponse::Ok().json(serde_json::json!({
-        "message": format!("This endpoint will fetch chaos experiment with ID: {}", id),
-        "id": id,
-        "name": "Example experiment",
-        "type": "network_delay",
-        "target": "service-a",
-        "parameters": {
-            "duration": 60,
-            "delay": "100ms"
-        },
-        "status": "ready"
-    }))
-}
-
-async fn delete_experiment(path: web::Path<String>) -> HttpResponse {
-    let id = path.into_inner();
-    HttpResponse::Ok().json(serde_json::json!({
-        "message": format!("This endpoint will delete chaos experiment with ID: {}", id),
-        "id": id,
-        "success": true
-    }))
-}
-
-async fn start_experiment(path: web::Path<String>) -> HttpResponse {
-    let id = path.into_inner();
-    HttpResponse::Ok().json(serde_json::json!({
-        "message": format!("This endpoint will start chaos experiment with ID: {}", id),
-        "id": id,
-        "status": "running",
-        "started_at": "2025-05-14T12:00:00Z"
-    }))
-}
-
-async fn stop_experiment(path: web::Path<String>) -> HttpResponse {
-    let id = path.into_inner();
-    HttpResponse::Ok().json(serde_json::json!({
-        "message": format!("This endpoint will stop chaos experiment with ID: {}", id),
-        "id": id,
-        "status": "stopped",
-        "stopped_at": "2025-05-14T12:05:00Z"
-    }))
-}
-
-async fn get_experiment_results(path: web::Path<String>) -> HttpResponse {
-    let id = path.into_inner();
-    HttpResponse::Ok().json(serde_json::json!({
-        "message": format!("This endpoint will get results for chaos experiment with ID: {}", id),
-        "id": id,
-        "status": "completed",
-        "metrics": {
-            "before": {
-                "latency_p50": 10,
-                "latency_p99": 50,
-                "error_rate": 0.001
-            },
-            "during": {
-                "latency_p50": 110,
-                "latency_p99": 500,
-                "error_rate": 0.05
-            },
-            "after": {
-                "latency_p50": 12,
-                "latency_p99": 55,
-                "error_rate": 0.002
-            }
-        }
-    }))
+    cfg.service(
+        web::scope("/api/chaos")
+            // Template endpoints
+            .route("/templates", web::get().to(chaos::list_templates))
+            .route("/templates", web::post().to(chaos::create_template))
+            .route("/templates/{id}", web::get().to(chaos::get_template))
+            .route("/templates/{id}", web::put().to(chaos::update_template))
+            .route("/templates/{id}", web::delete().to(chaos::delete_template))
+            .route(
+                "/templates/{id}/create-experiment",
+                web::post().to(chaos::create_experiment_from_template),
+            )
+            // Experiment endpoints
+            .route("/experiments", web::get().to(chaos::list_experiments))
+            .route(
+                "/experiments/with-runs",
+                web::get().to(chaos::list_experiments_with_runs),
+            )
+            .route("/experiments", web::post().to(chaos::create_experiment))
+            .route("/experiments/{id}", web::get().to(chaos::get_experiment))
+            .route("/experiments/{id}", web::put().to(chaos::update_experiment))
+            .route(
+                "/experiments/{id}",
+                web::delete().to(chaos::delete_experiment),
+            )
+            // Execution endpoints
+            .route(
+                "/experiments/{id}/run",
+                web::post().to(chaos::run_experiment),
+            )
+            .route(
+                "/experiments/{id}/stop",
+                web::post().to(chaos::stop_experiment),
+            )
+            .route(
+                "/experiments/batch-run",
+                web::post().to(chaos::batch_run_experiments),
+            )
+            // Run & Results endpoints
+            .route(
+                "/experiments/{id}/runs",
+                web::get().to(chaos::list_experiment_runs),
+            )
+            .route(
+                "/experiments/{id}/results",
+                web::get().to(chaos::get_experiment_results),
+            )
+            .route("/runs/{id}", web::get().to(chaos::get_run))
+            // Resource-centric endpoints
+            .route(
+                "/resources/{resource_id}/experiments",
+                web::get().to(chaos::get_experiments_for_resource),
+            )
+            .route(
+                "/resources/{resource_id}/history",
+                web::get().to(chaos::get_resource_experiment_history),
+            )
+            // Audit logging endpoints
+            .route("/audit/logs", web::get().to(chaos::list_audit_logs))
+            .route(
+                "/audit/experiments/{experiment_id}",
+                web::get().to(chaos::get_experiment_audit_trail),
+            )
+            .route(
+                "/audit/runs/{run_id}",
+                web::get().to(chaos::get_run_audit_trail),
+            )
+            .route(
+                "/audit/users/{user_id}",
+                web::get().to(chaos::get_user_activity),
+            )
+            // Metrics endpoints
+            .route("/metrics/stats", web::get().to(chaos::get_metrics_stats))
+            .route(
+                "/metrics/experiments/{experiment_id}",
+                web::get().to(chaos::get_experiment_metrics),
+            )
+            .route(
+                "/metrics/resource-types/{resource_type}",
+                web::get().to(chaos::get_resource_type_metrics),
+            ),
+    );
 }

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "Starting integration tests using Docker Compose (localstack + DB + Kafka)"
+echo "Starting integration tests using docker-compose.local.yml"
 
-# Build and start testing dependencies (dev services + test services)
-docker compose --profile dev --profile test up --build -d
+# Build and start testing dependencies
+docker compose -f docker-compose.local.yml up --build -d postgres mysql zookeeper kafka localstack backend
 
 echo "Waiting for services to be ready (postgres, mysql, kafka, localstack)"
 chmod +x ./scripts/wait-for-services.sh
@@ -25,17 +25,17 @@ fi
 
 echo "Running integration-tests container"
 # Run the integration-tests container and *capture* its exit code.
-docker compose --profile dev --profile test run --rm integration-tests
+docker compose -f docker-compose.local.yml run --rm integration-tests
 
 RC=$?
 
 echo "Integration tests finished with return code: $RC"
 
 echo "Tearing down docker-compose test stack"
-docker compose --profile dev --profile test down --volumes --remove-orphans
+docker compose -f docker-compose.local.yml down --volumes --remove-orphans
 
 echo "Collecting docker-compose logs"
-docker compose --profile dev --profile test logs --no-color > docker-compose.integration.log || true
+docker compose -f docker-compose.local.yml logs --no-color > docker-compose.integration.log || true
 
 # If junit results exist, print a short summary
 if [ -f backend/test-results/junit.xml ]; then

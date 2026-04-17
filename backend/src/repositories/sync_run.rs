@@ -15,7 +15,7 @@
 
 use chrono::Utc;
 use sea_orm::{
-    prelude::*, ActiveValue::Set, ColumnTrait, Condition, EntityTrait, PaginatorTrait, QueryFilter,
+    prelude::*, ActiveValue::Set, ColumnTrait, Condition, EntityTrait, QueryFilter,
     QueryOrder, QuerySelect,
 };
 use std::sync::Arc;
