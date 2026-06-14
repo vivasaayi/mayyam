@@ -20,20 +20,19 @@ use uuid::Uuid;
 
 use crate::errors::AppError;
 use crate::models::aws_account::AwsAccountDto;
-use crate::services::aws::client_factory::AwsClientFactory;
+use crate::models::chaos_experiment::Model as ExperimentModel;
 use crate::models::chaos_experiment::{
     BatchRunRequest, ChaosExperimentCreateDto, ChaosExperimentPage, ChaosExperimentQuery,
     ChaosExperimentUpdateDto, ChaosExperimentWithRuns, ExperimentStatus, RunExperimentRequest,
 };
-use crate::models::chaos_experiment_result::{ResourceExperimentHistory, Model as ResultModel};
+use crate::models::chaos_experiment_result::{Model as ResultModel, ResourceExperimentHistory};
 use crate::models::chaos_experiment_run::{Model as RunModel, RunStatus, RunWithResults};
-use crate::models::chaos_experiment::Model as ExperimentModel;
 use crate::models::chaos_template::{
-    ChaosTemplateCreateDto, ChaosTemplateQuery, ChaosTemplateUpdateDto,
-    Model as TemplateModel,
+    ChaosTemplateCreateDto, ChaosTemplateQuery, ChaosTemplateUpdateDto, Model as TemplateModel,
 };
 use crate::repositories::aws_account::AwsAccountRepository;
 use crate::repositories::chaos_repository::ChaosRepository;
+use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::aws::AwsService;
 use crate::services::chaos_audit_service::ChaosAuditService;
 use crate::services::chaos_metrics_service::ChaosMetricsService;
@@ -470,9 +469,7 @@ impl ChaosService {
             .await?;
 
         // Execute the experiment based on type
-        let execution_result = self
-            .execute_chaos_action(&experiment, &run, &request)
-            .await;
+        let execution_result = self.execute_chaos_action(&experiment, &run, &request).await;
 
         match execution_result {
             Ok(result_data) => {
@@ -725,10 +722,7 @@ impl ChaosService {
             .ok_or_else(|| AppError::NotFound(format!("Run {} not found", run_id)))
     }
 
-    pub async fn get_run_with_results(
-        &self,
-        run_id: Uuid,
-    ) -> Result<RunWithResults, AppError> {
+    pub async fn get_run_with_results(&self, run_id: Uuid) -> Result<RunWithResults, AppError> {
         self.chaos_repo
             .get_run_with_results(run_id)
             .await?
@@ -739,7 +733,9 @@ impl ChaosService {
         &self,
         experiment_id: Uuid,
     ) -> Result<Vec<RunModel>, AppError> {
-        self.chaos_repo.list_runs_for_experiment(experiment_id).await
+        self.chaos_repo
+            .list_runs_for_experiment(experiment_id)
+            .await
     }
 
     pub async fn get_results_for_experiment(
@@ -759,7 +755,9 @@ impl ChaosService {
         &self,
         resource_id: &str,
     ) -> Result<Vec<ExperimentModel>, AppError> {
-        self.chaos_repo.get_experiments_for_resource(resource_id).await
+        self.chaos_repo
+            .get_experiments_for_resource(resource_id)
+            .await
     }
 
     pub async fn get_resource_experiment_history(
@@ -807,10 +805,7 @@ impl ChaosService {
             .get_by_account_id(&experiment.account_id)
             .await?
             .ok_or_else(|| {
-                AppError::NotFound(format!(
-                    "AWS account {} not found",
-                    experiment.account_id
-                ))
+                AppError::NotFound(format!("AWS account {} not found", experiment.account_id))
             })?;
 
         let mut aws_account_dto = AwsAccountDto::from(aws_account);
@@ -843,8 +838,14 @@ impl ChaosService {
                     .await
             }
             "instance_terminate" => {
-                self.execute_ec2_terminate(experiment, &aws_account_dto, &params, is_dry_run, run.id)
-                    .await
+                self.execute_ec2_terminate(
+                    experiment,
+                    &aws_account_dto,
+                    &params,
+                    is_dry_run,
+                    run.id,
+                )
+                .await
             }
 
             // RDS Experiments
@@ -859,46 +860,94 @@ impl ChaosService {
 
             // Lambda Experiments
             "lambda_disable" => {
-                self.execute_lambda_disable(experiment, &aws_account_dto, &params, is_dry_run, run.id)
-                    .await
+                self.execute_lambda_disable(
+                    experiment,
+                    &aws_account_dto,
+                    &params,
+                    is_dry_run,
+                    run.id,
+                )
+                .await
             }
             "lambda_timeout" => {
-                self.execute_lambda_timeout(experiment, &aws_account_dto, &params, is_dry_run, run.id)
-                    .await
+                self.execute_lambda_timeout(
+                    experiment,
+                    &aws_account_dto,
+                    &params,
+                    is_dry_run,
+                    run.id,
+                )
+                .await
             }
 
             // ECS Experiments
             "ecs_scale_down" => {
-                self.execute_ecs_scale_down(experiment, &aws_account_dto, &params, is_dry_run, run.id)
-                    .await
+                self.execute_ecs_scale_down(
+                    experiment,
+                    &aws_account_dto,
+                    &params,
+                    is_dry_run,
+                    run.id,
+                )
+                .await
             }
 
             // ElastiCache Experiments
             "elasticache_failover" => {
-                self.execute_elasticache_failover(experiment, &aws_account_dto, &params, is_dry_run, run.id)
-                    .await
+                self.execute_elasticache_failover(
+                    experiment,
+                    &aws_account_dto,
+                    &params,
+                    is_dry_run,
+                    run.id,
+                )
+                .await
             }
 
             // DynamoDB Experiments
             "dynamodb_throttle" => {
-                self.execute_dynamodb_throttle(experiment, &aws_account_dto, &params, is_dry_run, run.id)
-                    .await
+                self.execute_dynamodb_throttle(
+                    experiment,
+                    &aws_account_dto,
+                    &params,
+                    is_dry_run,
+                    run.id,
+                )
+                .await
             }
 
             // S3 Experiments
             "s3_deny_access" => {
-                self.execute_s3_deny_access(experiment, &aws_account_dto, &params, is_dry_run, run.id)
-                    .await
+                self.execute_s3_deny_access(
+                    experiment,
+                    &aws_account_dto,
+                    &params,
+                    is_dry_run,
+                    run.id,
+                )
+                .await
             }
 
             // Networking Experiments
             "alb_deregister_targets" => {
-                self.execute_alb_deregister(experiment, &aws_account_dto, &params, is_dry_run, run.id)
-                    .await
+                self.execute_alb_deregister(
+                    experiment,
+                    &aws_account_dto,
+                    &params,
+                    is_dry_run,
+                    run.id,
+                )
+                .await
             }
             "sg_block_ingress" => {
-                self.execute_sg_block_ingress(experiment, &aws_account_dto, &params, is_dry_run, run.id)
-                    .await
+                self.execute_sg_block_ingress(
+                    experiment,
+                    &aws_account_dto,
+                    &params,
+                    is_dry_run,
+                    run.id,
+                )
+                .await
             }
 
             // SQS Experiments
@@ -909,8 +958,14 @@ impl ChaosService {
 
             // EKS Experiments
             "eks_scale_down" => {
-                self.execute_eks_scale_down(experiment, &aws_account_dto, &params, is_dry_run, run.id)
-                    .await
+                self.execute_eks_scale_down(
+                    experiment,
+                    &aws_account_dto,
+                    &params,
+                    is_dry_run,
+                    run.id,
+                )
+                .await
             }
 
             _ => Err(AppError::BadRequest(format!(
@@ -1034,11 +1089,8 @@ impl ChaosService {
                     AppError::CloudProvider(format!("Failed to terminate EC2 instance: {:?}", e))
                 })?;
 
-            self.log_action(
-                run_id,
-                &format!("EC2 instance {} terminated", instance_id),
-            )
-            .await?;
+            self.log_action(run_id, &format!("EC2 instance {} terminated", instance_id))
+                .await?;
         } else {
             self.log_action(run_id, "[DRY RUN] Would terminate EC2 instance")
                 .await?;
@@ -1046,7 +1098,10 @@ impl ChaosService {
 
         Ok(ChaosResultData::new(
             "critical",
-            Some(format!("EC2 instance {} terminated (irreversible)", instance_id)),
+            Some(format!(
+                "EC2 instance {} terminated (irreversible)",
+                instance_id
+            )),
         ))
     }
 
@@ -1191,10 +1246,7 @@ impl ChaosService {
                 .send()
                 .await
                 .map_err(|e| {
-                    AppError::CloudProvider(format!(
-                        "Failed to set Lambda concurrency: {:?}",
-                        e
-                    ))
+                    AppError::CloudProvider(format!("Failed to set Lambda concurrency: {:?}", e))
                 })?;
 
             self.log_action(
@@ -1255,15 +1307,15 @@ impl ChaosService {
                 .send()
                 .await
                 .map_err(|e| {
-                    AppError::CloudProvider(format!(
-                        "Failed to update Lambda timeout: {:?}",
-                        e
-                    ))
+                    AppError::CloudProvider(format!("Failed to update Lambda timeout: {:?}", e))
                 })?;
 
             self.log_action(
                 run_id,
-                &format!("Lambda {} timeout set to {}s", function_name, target_timeout),
+                &format!(
+                    "Lambda {} timeout set to {}s",
+                    function_name, target_timeout
+                ),
             )
             .await?;
         } else {
@@ -1464,7 +1516,9 @@ impl ChaosService {
                         .read_capacity_units(target_rcu)
                         .write_capacity_units(target_wcu)
                         .build()
-                        .map_err(|e| AppError::CloudProvider(format!("Failed to build throughput: {:?}", e)))?,
+                        .map_err(|e| {
+                            AppError::CloudProvider(format!("Failed to build throughput: {:?}", e))
+                        })?,
                 )
                 .send()
                 .await
@@ -1541,10 +1595,7 @@ impl ChaosService {
                 .send()
                 .await
                 .map_err(|e| {
-                    AppError::CloudProvider(format!(
-                        "Failed to apply S3 deny policy: {:?}",
-                        e
-                    ))
+                    AppError::CloudProvider(format!("Failed to apply S3 deny policy: {:?}", e))
                 })?;
 
             self.log_action(
@@ -1599,10 +1650,7 @@ impl ChaosService {
                 .send()
                 .await
                 .map_err(|e| {
-                    AppError::CloudProvider(format!(
-                        "Failed to describe target health: {:?}",
-                        e
-                    ))
+                    AppError::CloudProvider(format!("Failed to describe target health: {:?}", e))
                 })?;
 
             let target_descriptions = targets.target_health_descriptions();
@@ -1611,8 +1659,7 @@ impl ChaosService {
                 .and_then(|v| v.as_i64())
                 .unwrap_or(50) as usize;
 
-            let count_to_deregister =
-                (target_descriptions.len() * deregister_pct / 100).max(1);
+            let count_to_deregister = (target_descriptions.len() * deregister_pct / 100).max(1);
 
             let targets_to_deregister: Vec<_> = target_descriptions
                 .iter()
@@ -1628,10 +1675,7 @@ impl ChaosService {
                     .send()
                     .await
                     .map_err(|e| {
-                        AppError::CloudProvider(format!(
-                            "Failed to deregister targets: {:?}",
-                            e
-                        ))
+                        AppError::CloudProvider(format!("Failed to deregister targets: {:?}", e))
                     })?;
 
                 self.log_action(
@@ -1687,10 +1731,7 @@ impl ChaosService {
                 .send()
                 .await
                 .map_err(|e| {
-                    AppError::CloudProvider(format!(
-                        "Failed to describe security group: {:?}",
-                        e
-                    ))
+                    AppError::CloudProvider(format!("Failed to describe security group: {:?}", e))
                 })?;
 
             if let Some(sg) = sg_desc.security_groups().first() {
@@ -1748,11 +1789,8 @@ impl ChaosService {
     ) -> Result<ChaosResultData, AppError> {
         let queue_url = &experiment.target_resource_id;
 
-        self.log_action(
-            run_id,
-            &format!("Purging SQS queue: {}", queue_url),
-        )
-        .await?;
+        self.log_action(run_id, &format!("Purging SQS queue: {}", queue_url))
+            .await?;
 
         let sqs_client = self.aws_service.create_sqs_client(aws_account_dto).await?;
 
@@ -1766,11 +1804,8 @@ impl ChaosService {
                     AppError::CloudProvider(format!("Failed to purge SQS queue: {:?}", e))
                 })?;
 
-            self.log_action(
-                run_id,
-                &format!("SQS queue {} purged", queue_url),
-            )
-            .await?;
+            self.log_action(run_id, &format!("SQS queue {} purged", queue_url))
+                .await?;
         } else {
             self.log_action(run_id, "[DRY RUN] Would purge SQS queue")
                 .await?;
@@ -1804,7 +1839,9 @@ impl ChaosService {
             .get("nodegroup_name")
             .and_then(|v| v.as_str())
             .ok_or_else(|| {
-                AppError::BadRequest("nodegroup_name parameter is required for EKS scale down".to_string())
+                AppError::BadRequest(
+                    "nodegroup_name parameter is required for EKS scale down".to_string(),
+                )
             })?;
 
         self.log_action(
@@ -1831,10 +1868,7 @@ impl ChaosService {
                 .send()
                 .await
                 .map_err(|e| {
-                    AppError::CloudProvider(format!(
-                        "Failed to scale EKS node group: {:?}",
-                        e
-                    ))
+                    AppError::CloudProvider(format!("Failed to scale EKS node group: {:?}", e))
                 })?;
 
             self.log_action(
@@ -1863,10 +1897,7 @@ impl ChaosService {
     // Rollback Engine
     // ========================================================================
 
-    async fn execute_rollback(
-        &self,
-        experiment: &ExperimentModel,
-    ) -> Result<(), AppError> {
+    async fn execute_rollback(&self, experiment: &ExperimentModel) -> Result<(), AppError> {
         info!(
             "Executing rollback for experiment: {} (type: {})",
             experiment.id, experiment.experiment_type

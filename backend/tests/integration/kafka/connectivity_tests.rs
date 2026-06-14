@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 #![cfg(feature = "integration-tests")]
 
 use crate::integration::helpers::TestHarness;
@@ -47,7 +46,8 @@ async fn create_topic(harness: &TestHarness, topic_name: &str) {
     assert!(
         status.is_success(),
         "topic creation failed: {} - body: {}",
-        status, body
+        status,
+        body
     );
 
     // Give Kafka some time to propagate metadata before testing

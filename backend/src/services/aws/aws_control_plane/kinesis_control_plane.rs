@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use aws_sdk_kinesis::types::StreamDescription;
 use aws_sdk_kinesis::Client as KinesisClient;
 use std::sync::Arc;

@@ -41,7 +41,10 @@ impl GlacierControlPlane {
             &aws_account_dto.account_id, sync_id
         );
 
-        let client = self.aws_service.create_glacier_client(aws_account_dto).await?;
+        let client = self
+            .aws_service
+            .create_glacier_client(aws_account_dto)
+            .await?;
         let mut resources: Vec<AwsResourceModel> = Vec::new();
 
         let mut marker = None;
@@ -63,7 +66,7 @@ impl GlacierControlPlane {
             for vault in response.vault_list() {
                 let arn = vault.vault_arn().unwrap_or("");
                 let name = vault.vault_name().unwrap_or("");
-                
+
                 let resource_data = json!({
                     "VaultName": name,
                     "VaultARN": arn,

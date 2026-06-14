@@ -24,7 +24,9 @@ use crate::models::chaos_experiment::{
     BatchRunRequest, ChaosExperimentCreateDto, ChaosExperimentQuery, ChaosExperimentUpdateDto,
     RunExperimentRequest,
 };
-use crate::models::chaos_template::{ChaosTemplateCreateDto, ChaosTemplateQuery, ChaosTemplateUpdateDto};
+use crate::models::chaos_template::{
+    ChaosTemplateCreateDto, ChaosTemplateQuery, ChaosTemplateUpdateDto,
+};
 use crate::services::chaos_service::ChaosService;
 
 // ============================================================================
@@ -68,7 +70,9 @@ pub async fn update_template(
     dto: web::Json<ChaosTemplateUpdateDto>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let template = service.update_template(id.into_inner(), dto.into_inner()).await?;
+    let template = service
+        .update_template(id.into_inner(), dto.into_inner())
+        .await?;
     Ok(HttpResponse::Ok().json(template))
 }
 
@@ -163,7 +167,9 @@ pub async fn update_experiment(
     dto: web::Json<ChaosExperimentUpdateDto>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let experiment = service.update_experiment(id.into_inner(), dto.into_inner()).await?;
+    let experiment = service
+        .update_experiment(id.into_inner(), dto.into_inner())
+        .await?;
     Ok(HttpResponse::Ok().json(experiment))
 }
 
@@ -193,17 +199,16 @@ pub async fn run_experiment(
 
     // Extract user context from claims and request
     body.user_id = Some(claims.sub.clone());
-    body.ip_address = req
-        .connection_info()
-        .peer_addr()
-        .map(|s| s.to_string());
+    body.ip_address = req.connection_info().peer_addr().map(|s| s.to_string());
     body.user_agent = req
         .headers()
         .get("user-agent")
         .and_then(|h| h.to_str().ok())
         .map(|s| s.to_string());
 
-    let run = service.run_experiment(id.into_inner(), body.into_inner()).await?;
+    let run = service
+        .run_experiment(id.into_inner(), body.into_inner())
+        .await?;
     Ok(HttpResponse::Ok().json(run))
 }
 
@@ -323,7 +328,9 @@ pub async fn get_run_audit_trail(
     run_id: web::Path<Uuid>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let logs = audit_service.get_run_audit_trail(run_id.into_inner()).await?;
+    let logs = audit_service
+        .get_run_audit_trail(run_id.into_inner())
+        .await?;
     Ok(HttpResponse::Ok().json(logs))
 }
 
@@ -333,7 +340,9 @@ pub async fn get_user_activity(
     user_id: web::Path<String>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let logs = audit_service.get_user_activity(&user_id.into_inner()).await?;
+    let logs = audit_service
+        .get_user_activity(&user_id.into_inner())
+        .await?;
     Ok(HttpResponse::Ok().json(logs))
 }
 

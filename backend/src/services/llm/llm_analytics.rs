@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::errors::AppError;
 use crate::models::llm_provider::LlmProviderModel;
 use crate::models::{Insight, InsightSeverity, Recommendation, RecommendationPriority};
@@ -24,7 +23,7 @@ use crate::services::llm::interface::UnifiedLlmRequest;
 use crate::services::llm::manager::UnifiedLlmManager;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::{json};
+use serde_json::json;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

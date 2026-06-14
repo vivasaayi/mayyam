@@ -116,7 +116,9 @@ async fn cleanup_test_account(client: &Client, base: &str, account_id: &str) {
 #[tokio::test]
 async fn security_compliance_resources_list_flow() {
     if std::env::var("ENABLE_AWS_TESTS").unwrap_or_else(|_| "false".to_string()) != "true" {
-        println!("Skipping security_compliance_resources_list_flow because ENABLE_AWS_TESTS is not true");
+        println!(
+            "Skipping security_compliance_resources_list_flow because ENABLE_AWS_TESTS is not true"
+        );
         return;
     }
 
@@ -326,7 +328,9 @@ async fn application_integration_resources_list_flow() {
 #[tokio::test]
 async fn analytics_bigdata_resources_list_flow() {
     if std::env::var("ENABLE_AWS_TESTS").unwrap_or_else(|_| "false".to_string()) != "true" {
-        println!("Skipping analytics_bigdata_resources_list_flow because ENABLE_AWS_TESTS is not true");
+        println!(
+            "Skipping analytics_bigdata_resources_list_flow because ENABLE_AWS_TESTS is not true"
+        );
         return;
     }
 
@@ -436,7 +440,9 @@ async fn edge_dr_resources_list_flow() {
 #[tokio::test]
 async fn existing_resources_list_endpoints_flow() {
     if std::env::var("ENABLE_AWS_TESTS").unwrap_or_else(|_| "false".to_string()) != "true" {
-        println!("Skipping existing_resources_list_endpoints_flow because ENABLE_AWS_TESTS is not true");
+        println!(
+            "Skipping existing_resources_list_endpoints_flow because ENABLE_AWS_TESTS is not true"
+        );
         return;
     }
 
@@ -506,7 +512,9 @@ async fn existing_resources_list_endpoints_flow() {
 #[tokio::test]
 async fn all_aws_resource_endpoints_smoke_test() {
     if std::env::var("ENABLE_AWS_TESTS").unwrap_or_else(|_| "false".to_string()) != "true" {
-        println!("Skipping all_aws_resource_endpoints_smoke_test because ENABLE_AWS_TESTS is not true");
+        println!(
+            "Skipping all_aws_resource_endpoints_smoke_test because ENABLE_AWS_TESTS is not true"
+        );
         return;
     }
 

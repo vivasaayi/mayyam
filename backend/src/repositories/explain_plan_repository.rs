@@ -12,12 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
-use crate::models::explain_plan::{ExplainPlan, Entity as ExplainPlanEntity, Column as ExplainPlanColumn};
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, ActiveModelTrait, Set, PaginatorTrait, QueryOrder, IntoActiveModel, QuerySelect};
+use crate::models::explain_plan::{
+    Column as ExplainPlanColumn, Entity as ExplainPlanEntity, ExplainPlan,
+};
+use chrono::NaiveDateTime;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+};
 use std::sync::Arc;
 use uuid::Uuid;
-use chrono::NaiveDateTime;
 
 #[derive(Clone)]
 pub struct ExplainPlanRepository {
@@ -31,12 +35,16 @@ impl ExplainPlanRepository {
 
     pub async fn create(&self, plan: ExplainPlan) -> Result<ExplainPlan, String> {
         let active_model: crate::models::explain_plan::ActiveModel = plan.into();
-        active_model.insert(&*self.db)
+        active_model
+            .insert(&*self.db)
             .await
             .map_err(|e| format!("Failed to create explain plan: {}", e))
     }
 
-    pub async fn find_by_fingerprint(&self, fingerprint_id: Uuid) -> Result<Vec<ExplainPlan>, String> {
+    pub async fn find_by_fingerprint(
+        &self,
+        fingerprint_id: Uuid,
+    ) -> Result<Vec<ExplainPlan>, String> {
         ExplainPlanEntity::find()
             .filter(ExplainPlanColumn::FingerprintId.eq(fingerprint_id))
             .order_by_desc(ExplainPlanColumn::CapturedAt)
@@ -52,7 +60,10 @@ impl ExplainPlanRepository {
             .map_err(|e| format!("Failed to find explain plan: {}", e))
     }
 
-    pub async fn find_latest_by_fingerprint(&self, fingerprint_id: Uuid) -> Result<Option<ExplainPlan>, String> {
+    pub async fn find_latest_by_fingerprint(
+        &self,
+        fingerprint_id: Uuid,
+    ) -> Result<Option<ExplainPlan>, String> {
         ExplainPlanEntity::find()
             .filter(ExplainPlanColumn::FingerprintId.eq(fingerprint_id))
             .order_by_desc(ExplainPlanColumn::CapturedAt)
@@ -96,13 +107,18 @@ impl ExplainPlanRepository {
         active_model.has_filesort = Set(has_filesort);
         active_model.has_temp_table = Set(has_temp_table);
 
-        active_model.update(&*self.db)
+        active_model
+            .update(&*self.db)
             .await
             .map_err(|e| format!("Failed to update optimization flags: {}", e))?;
         Ok(())
     }
 
-    pub async fn compare_plans(&self, fingerprint_id: Uuid, limit: u64) -> Result<Vec<ExplainPlan>, String> {
+    pub async fn compare_plans(
+        &self,
+        fingerprint_id: Uuid,
+        limit: u64,
+    ) -> Result<Vec<ExplainPlan>, String> {
         ExplainPlanEntity::find()
             .filter(ExplainPlanColumn::FingerprintId.eq(fingerprint_id))
             .order_by_desc(ExplainPlanColumn::CapturedAt)
@@ -132,7 +148,11 @@ impl ExplainPlanRepository {
         Ok(delete_result.rows_affected)
     }
 
-    pub async fn find_by_cluster(&self, cluster_id: Uuid, limit: u64) -> Result<Vec<ExplainPlan>, String> {
+    pub async fn find_by_cluster(
+        &self,
+        cluster_id: Uuid,
+        limit: u64,
+    ) -> Result<Vec<ExplainPlan>, String> {
         ExplainPlanEntity::find()
             .filter(ExplainPlanColumn::ClusterId.eq(cluster_id))
             .order_by_desc(ExplainPlanColumn::CapturedAt)

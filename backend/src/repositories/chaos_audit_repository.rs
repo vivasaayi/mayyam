@@ -15,8 +15,8 @@
 use crate::errors::AppError;
 use crate::models::chaos_audit_log::{AuditLogCreateDto, AuditLogPage, AuditLogQuery, Model};
 use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, EntityTrait, Order, PaginatorTrait, QueryFilter,
-    QueryOrder, DbErr,
+    ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, Order, PaginatorTrait,
+    QueryFilter, QueryOrder,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -31,10 +31,7 @@ impl ChaosAuditRepository {
         Self { db }
     }
 
-    pub async fn create_audit_log(
-        &self,
-        dto: &AuditLogCreateDto,
-    ) -> Result<Model, AppError> {
+    pub async fn create_audit_log(&self, dto: &AuditLogCreateDto) -> Result<Model, AppError> {
         use crate::models::chaos_audit_log::Entity;
         use sea_orm::Set;
 
@@ -62,16 +59,14 @@ impl ChaosAuditRepository {
         Ok(audit_log)
     }
 
-    pub async fn list_audit_logs(
-        &self,
-        query: &AuditLogQuery,
-    ) -> Result<AuditLogPage, AppError> {
+    pub async fn list_audit_logs(&self, query: &AuditLogQuery) -> Result<AuditLogPage, AppError> {
         use crate::models::chaos_audit_log::Entity;
 
         let mut condition = Condition::all();
 
         if let Some(experiment_id) = query.experiment_id {
-            condition = condition.add(crate::models::chaos_audit_log::Column::ExperimentId.eq(experiment_id));
+            condition = condition
+                .add(crate::models::chaos_audit_log::Column::ExperimentId.eq(experiment_id));
         }
 
         if let Some(run_id) = query.run_id {
@@ -79,27 +74,33 @@ impl ChaosAuditRepository {
         }
 
         if let Some(action) = &query.action {
-            condition = condition.add(crate::models::chaos_audit_log::Column::Action.eq(action.clone()));
+            condition =
+                condition.add(crate::models::chaos_audit_log::Column::Action.eq(action.clone()));
         }
 
         if let Some(user_id) = &query.user_id {
-            condition = condition.add(crate::models::chaos_audit_log::Column::UserId.eq(user_id.clone()));
+            condition =
+                condition.add(crate::models::chaos_audit_log::Column::UserId.eq(user_id.clone()));
         }
 
         if let Some(resource_id) = &query.resource_id {
-            condition = condition.add(crate::models::chaos_audit_log::Column::ResourceId.eq(resource_id.clone()));
+            condition = condition
+                .add(crate::models::chaos_audit_log::Column::ResourceId.eq(resource_id.clone()));
         }
 
         if let Some(triggered_by) = &query.triggered_by {
-            condition = condition.add(crate::models::chaos_audit_log::Column::TriggeredBy.eq(triggered_by.clone()));
+            condition = condition
+                .add(crate::models::chaos_audit_log::Column::TriggeredBy.eq(triggered_by.clone()));
         }
 
         if let Some(start_date) = query.start_date {
-            condition = condition.add(crate::models::chaos_audit_log::Column::CreatedAt.gte(start_date));
+            condition =
+                condition.add(crate::models::chaos_audit_log::Column::CreatedAt.gte(start_date));
         }
 
         if let Some(end_date) = query.end_date {
-            condition = condition.add(crate::models::chaos_audit_log::Column::CreatedAt.lte(end_date));
+            condition =
+                condition.add(crate::models::chaos_audit_log::Column::CreatedAt.lte(end_date));
         }
 
         let page = query.page.unwrap_or(1);
@@ -107,7 +108,10 @@ impl ChaosAuditRepository {
 
         let paginator = Entity::find()
             .filter(condition)
-            .order_by(crate::models::chaos_audit_log::Column::CreatedAt, Order::Desc)
+            .order_by(
+                crate::models::chaos_audit_log::Column::CreatedAt,
+                Order::Desc,
+            )
             .paginate(self.db.as_ref(), page_size);
 
         let total = paginator.num_items().await.unwrap_or(0);
@@ -135,7 +139,10 @@ impl ChaosAuditRepository {
 
         let logs = Entity::find()
             .filter(crate::models::chaos_audit_log::Column::ExperimentId.eq(experiment_id))
-            .order_by(crate::models::chaos_audit_log::Column::CreatedAt, Order::Desc)
+            .order_by(
+                crate::models::chaos_audit_log::Column::CreatedAt,
+                Order::Desc,
+            )
             .all(self.db.as_ref())
             .await
             .map_err(|e: DbErr| AppError::DatabaseError(e.to_string()))?;
@@ -148,7 +155,10 @@ impl ChaosAuditRepository {
 
         let logs = Entity::find()
             .filter(crate::models::chaos_audit_log::Column::RunId.eq(run_id))
-            .order_by(crate::models::chaos_audit_log::Column::CreatedAt, Order::Desc)
+            .order_by(
+                crate::models::chaos_audit_log::Column::CreatedAt,
+                Order::Desc,
+            )
             .all(self.db.as_ref())
             .await
             .map_err(|e: DbErr| AppError::DatabaseError(e.to_string()))?;
@@ -156,15 +166,15 @@ impl ChaosAuditRepository {
         Ok(logs)
     }
 
-    pub async fn get_audit_logs_for_user(
-        &self,
-        user_id: &str,
-    ) -> Result<Vec<Model>, AppError> {
+    pub async fn get_audit_logs_for_user(&self, user_id: &str) -> Result<Vec<Model>, AppError> {
         use crate::models::chaos_audit_log::Entity;
 
         let logs = Entity::find()
             .filter(crate::models::chaos_audit_log::Column::UserId.eq(user_id.to_string()))
-            .order_by(crate::models::chaos_audit_log::Column::CreatedAt, Order::Desc)
+            .order_by(
+                crate::models::chaos_audit_log::Column::CreatedAt,
+                Order::Desc,
+            )
             .all(self.db.as_ref())
             .await
             .map_err(|e: DbErr| AppError::DatabaseError(e.to_string()))?;
@@ -180,7 +190,10 @@ impl ChaosAuditRepository {
 
         let logs = Entity::find()
             .filter(crate::models::chaos_audit_log::Column::ResourceId.eq(resource_id.to_string()))
-            .order_by(crate::models::chaos_audit_log::Column::CreatedAt, Order::Desc)
+            .order_by(
+                crate::models::chaos_audit_log::Column::CreatedAt,
+                Order::Desc,
+            )
             .all(self.db.as_ref())
             .await
             .map_err(|e: DbErr| AppError::DatabaseError(e.to_string()))?;
@@ -188,15 +201,15 @@ impl ChaosAuditRepository {
         Ok(logs)
     }
 
-    pub async fn get_audit_logs_for_action(
-        &self,
-        action: &str,
-    ) -> Result<Vec<Model>, AppError> {
+    pub async fn get_audit_logs_for_action(&self, action: &str) -> Result<Vec<Model>, AppError> {
         use crate::models::chaos_audit_log::Entity;
 
         let logs = Entity::find()
             .filter(crate::models::chaos_audit_log::Column::Action.eq(action.to_string()))
-            .order_by(crate::models::chaos_audit_log::Column::CreatedAt, Order::Desc)
+            .order_by(
+                crate::models::chaos_audit_log::Column::CreatedAt,
+                Order::Desc,
+            )
             .all(self.db.as_ref())
             .await
             .map_err(|e: DbErr| AppError::DatabaseError(e.to_string()))?;

@@ -12,10 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::errors::AppError;
 use crate::models::aws_account::AwsAccountDto;
-use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel, AwsResourceType};
+use crate::models::aws_resource::{AwsResourceDto, AwsResourceType, Model as AwsResourceModel};
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::aws::service::AwsService;
 use aws_sdk_efs::types::FileSystemDescription;
@@ -60,7 +59,10 @@ impl EfsControlPlane {
                 Ok(response) => {
                     if let Some(file_systems) = &response.file_systems {
                         for fs in file_systems {
-                            match self.create_file_system_resource(fs, aws_account_dto, sync_id).await {
+                            match self
+                                .create_file_system_resource(fs, aws_account_dto, sync_id)
+                                .await
+                            {
                                 Ok(resource) => all_resources.push(resource),
                                 Err(e) => error!("Failed to create file system resource: {}", e),
                             }

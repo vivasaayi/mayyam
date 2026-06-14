@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use aws_sdk_s3::Client as S3Client;
 use std::sync::Arc;
 use uuid::Uuid;

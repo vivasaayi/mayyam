@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -37,10 +36,7 @@ impl Default for RetryConfig {
 }
 
 /// Retry a fallible operation with exponential backoff
-pub async fn retry_with_backoff<F, Fut, T, E>(
-    config: &RetryConfig,
-    operation: F,
-) -> Result<T, E>
+pub async fn retry_with_backoff<F, Fut, T, E>(config: &RetryConfig, operation: F) -> Result<T, E>
 where
     F: Fn() -> Fut,
     Fut: std::future::Future<Output = Result<T, E>>,
@@ -60,12 +56,19 @@ where
                     return Err(error);
                 }
 
-                tracing::warn!("Operation failed (attempt {}/{}): {:?}", attempt, config.max_attempts, error);
+                tracing::warn!(
+                    "Operation failed (attempt {}/{}): {:?}",
+                    attempt,
+                    config.max_attempts,
+                    error
+                );
                 sleep(delay).await;
 
                 // Calculate next delay with exponential backoff
                 delay = std::cmp::min(
-                    Duration::from_millis((delay.as_millis() as f64 * config.backoff_multiplier) as u64),
+                    Duration::from_millis(
+                        (delay.as_millis() as f64 * config.backoff_multiplier) as u64,
+                    ),
                     config.max_delay,
                 );
             }

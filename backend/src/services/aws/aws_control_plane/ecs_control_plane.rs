@@ -62,7 +62,12 @@ impl EcsControlPlane {
             let cluster_arns = response.cluster_arns();
             if true {
                 if !cluster_arns.is_empty() {
-                    let describe_response = match client.describe_clusters().set_clusters(Some(cluster_arns.to_vec())).send().await {
+                    let describe_response = match client
+                        .describe_clusters()
+                        .set_clusters(Some(cluster_arns.to_vec()))
+                        .send()
+                        .await
+                    {
                         Ok(res) => res,
                         Err(e) => {
                             tracing::error!("Failed to describe ECS clusters: {}", e);
@@ -115,7 +120,9 @@ impl EcsControlPlane {
 
         debug!(
             "Successfully synced {} ECS clusters for account: {} with sync_id: {}",
-            resources.len(), &aws_account_dto.account_id, sync_id
+            resources.len(),
+            &aws_account_dto.account_id,
+            sync_id
         );
 
         Ok(resources)
@@ -148,8 +155,12 @@ impl EcsControlPlane {
                     cluster_arns.extend(arns.iter().map(String::from));
                 }
                 marker = res.next_token().map(String::from);
-                if marker.is_none() { break; }
-            } else { break; }
+                if marker.is_none() {
+                    break;
+                }
+            } else {
+                break;
+            }
         }
 
         for cluster_arn in cluster_arns {
@@ -163,7 +174,11 @@ impl EcsControlPlane {
                 let response = match request.send().await {
                     Ok(res) => res,
                     Err(e) => {
-                        tracing::error!("Failed to list ECS services for cluster {}: {}", cluster_arn, e);
+                        tracing::error!(
+                            "Failed to list ECS services for cluster {}: {}",
+                            cluster_arn,
+                            e
+                        );
                         break;
                     }
                 };
@@ -173,7 +188,13 @@ impl EcsControlPlane {
                     if !service_arns.is_empty() {
                         // describe_services max 10 at a time, but for simplicity assume service_arns is small chunks
                         // AWS SDK list_services returns max 10 by default
-                        let describe_response = match client.describe_services().cluster(&cluster_arn).set_services(Some(service_arns.to_vec())).send().await {
+                        let describe_response = match client
+                            .describe_services()
+                            .cluster(&cluster_arn)
+                            .set_services(Some(service_arns.to_vec()))
+                            .send()
+                            .await
+                        {
                             Ok(res) => res,
                             Err(e) => {
                                 tracing::error!("Failed to describe ECS services: {}", e);
@@ -229,7 +250,9 @@ impl EcsControlPlane {
 
         debug!(
             "Successfully synced {} ECS services for account: {} with sync_id: {}",
-            resources.len(), &aws_account_dto.account_id, sync_id
+            resources.len(),
+            &aws_account_dto.account_id,
+            sync_id
         );
 
         Ok(resources)
@@ -261,8 +284,12 @@ impl EcsControlPlane {
                     cluster_arns.extend(arns.iter().map(String::from));
                 }
                 marker = res.next_token().map(String::from);
-                if marker.is_none() { break; }
-            } else { break; }
+                if marker.is_none() {
+                    break;
+                }
+            } else {
+                break;
+            }
         }
 
         for cluster_arn in cluster_arns {
@@ -277,7 +304,11 @@ impl EcsControlPlane {
                 let response = match request.send().await {
                     Ok(res) => res,
                     Err(e) => {
-                        tracing::error!("Failed to list ECS tasks for cluster {}: {}", cluster_arn, e);
+                        tracing::error!(
+                            "Failed to list ECS tasks for cluster {}: {}",
+                            cluster_arn,
+                            e
+                        );
                         break;
                     }
                 };
@@ -285,7 +316,13 @@ impl EcsControlPlane {
                 let task_arns = response.task_arns();
                 if true {
                     if !task_arns.is_empty() {
-                        let describe_response = match client.describe_tasks().cluster(&cluster_arn).set_tasks(Some(task_arns.to_vec())).send().await {
+                        let describe_response = match client
+                            .describe_tasks()
+                            .cluster(&cluster_arn)
+                            .set_tasks(Some(task_arns.to_vec()))
+                            .send()
+                            .await
+                        {
                             Ok(res) => res,
                             Err(e) => {
                                 tracing::error!("Failed to describe ECS tasks: {}", e);
@@ -342,7 +379,9 @@ impl EcsControlPlane {
 
         debug!(
             "Successfully synced {} ECS tasks for account: {} with sync_id: {}",
-            resources.len(), &aws_account_dto.account_id, sync_id
+            resources.len(),
+            &aws_account_dto.account_id,
+            sync_id
         );
 
         Ok(resources)

@@ -45,12 +45,9 @@ impl SesControlPlane {
         let mut resources: Vec<AwsResourceModel> = Vec::new();
 
         // List SES identities from AWS
-        let response = client.list_email_identities()
-            .send()
-            .await
-            .map_err(|e| {
-                AppError::ExternalService(format!("Failed to list SES identities: {}", e))
-            })?;
+        let response = client.list_email_identities().send().await.map_err(|e| {
+            AppError::ExternalService(format!("Failed to list SES identities: {}", e))
+        })?;
 
         // Process results
         debug!(

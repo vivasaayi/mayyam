@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use chrono::Utc;
 use sea_orm::{
-    prelude::*, ActiveValue::Set, ColumnTrait, Condition, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect,
+    prelude::*, ActiveValue::Set, ColumnTrait, Condition, EntityTrait, QueryFilter, QueryOrder,
+    QuerySelect,
 };
 use std::sync::Arc;
 use tracing::debug;

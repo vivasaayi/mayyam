@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
+use chrono::{NaiveDateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::Set;
 use serde::{Deserialize, Serialize};
-use chrono::{NaiveDateTime, Utc};
 use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]

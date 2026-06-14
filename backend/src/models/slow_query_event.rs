@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
+use chrono::{NaiveDateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::Set;
 use serde::{Deserialize, Serialize};
-use chrono::{NaiveDateTime, Utc};
 use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
@@ -26,7 +25,7 @@ pub struct Model {
     pub id: Uuid,
     pub cluster_id: Uuid,
     pub event_timestamp: NaiveDateTime,
-    pub query_time: f64, // seconds
+    pub query_time: f64,        // seconds
     pub lock_time: Option<f64>, // seconds
     pub rows_sent: Option<i64>,
     pub rows_examined: Option<i64>,

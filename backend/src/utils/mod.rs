@@ -12,12 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 pub mod database;
-pub mod migrations;
 pub mod database_ext;
 pub mod encryption;
 pub mod html_generator;
 pub mod logging;
+pub mod migrations;
 pub mod retry;
 pub mod time_conversion;

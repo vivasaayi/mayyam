@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::errors::AppError;
 use crate::middleware::auth::Claims;
 use crate::models::cluster;
@@ -22,9 +21,8 @@ use std::sync::Arc;
 
 use crate::services::kafka::{
     ClusterUpdateRequest, ConsumeOptions, KafkaMessage, KafkaService, KafkaTopic,
-    MessageBackupRequest, MessageMigrationRequest,
-    MessageRestoreRequest, OffsetReset, PartitionAdditionRequest,
-    PartitionOffset, QueueDrainRequest, TopicConfigUpdateRequest,
+    MessageBackupRequest, MessageMigrationRequest, MessageRestoreRequest, OffsetReset,
+    PartitionAdditionRequest, PartitionOffset, QueueDrainRequest, TopicConfigUpdateRequest,
 };
 
 #[derive(Debug, Serialize, Deserialize)]

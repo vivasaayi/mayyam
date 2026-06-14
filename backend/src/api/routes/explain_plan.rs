@@ -12,35 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::controllers::explain_plan;
-use actix_web::{web};
+use actix_web::web;
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 
 use crate::services::llm::manager::UnifiedLlmManager;
 
-pub fn configure(cfg: &mut web::ServiceConfig, db: Arc<DatabaseConnection>, llm_manager: Arc<UnifiedLlmManager>) {
+pub fn configure(
+    cfg: &mut web::ServiceConfig,
+    db: Arc<DatabaseConnection>,
+    llm_manager: Arc<UnifiedLlmManager>,
+) {
     let explain_controller = explain_plan::ExplainPlanController::new(db.clone(), llm_manager);
 
     cfg.service(
         web::scope("/api/explain-plans")
             .app_data(web::Data::new(explain_controller))
-            .service(
-                web::resource("")
-                    .route(web::post().to(explain_plan::create_explain_plan)),
-            )
-            .service(
-                web::resource("/{id}")
-                    .route(web::get().to(explain_plan::get_explain_plan)),
-            )
+            .service(web::resource("").route(web::post().to(explain_plan::create_explain_plan)))
+            .service(web::resource("/{id}").route(web::get().to(explain_plan::get_explain_plan)))
             .service(
                 web::resource("/{id}/analysis")
                     .route(web::get().to(explain_plan::analyze_explain_plan)),
             )
             .service(
-                web::resource("/execute")
-                    .route(web::post().to(explain_plan::execute_explain_plan)),
+                web::resource("/execute").route(web::post().to(explain_plan::execute_explain_plan)),
             )
             .service(
                 web::resource("/compare")

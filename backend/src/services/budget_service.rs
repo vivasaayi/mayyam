@@ -12,12 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
-use crate::models::cost_budget::{Budget, BudgetDto, BudgetType, BudgetStatus, BudgetAlert};
+use crate::models::cost_budget::{Budget, BudgetAlert, BudgetDto, BudgetStatus, BudgetType};
 use crate::repositories::cost_budget_repository::CostBudgetRepository;
-use sea_orm::{DatabaseConnection, ActiveModelTrait, Set};
-use chrono::{Utc, NaiveDate};
 use bigdecimal::ToPrimitive;
+use chrono::{NaiveDate, Utc};
+use sea_orm::{ActiveModelTrait, DatabaseConnection, Set};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -40,7 +39,9 @@ impl BudgetService {
         self.validate_budget_dto(&dto).await?;
 
         let active_model = dto.into_active_model();
-        let budget = active_model.insert(&self.db).await
+        let budget = active_model
+            .insert(&self.db)
+            .await
             .map_err(|e| format!("Failed to create budget: {}", e))?;
 
         Ok(budget)
@@ -58,7 +59,10 @@ impl BudgetService {
 
     /// Update budget
     pub async fn update_budget(&self, budget_id: Uuid, dto: BudgetDto) -> Result<Budget, String> {
-        let existing_budget = self.repository.find_by_id(budget_id).await?
+        let existing_budget = self
+            .repository
+            .find_by_id(budget_id)
+            .await?
             .ok_or_else(|| "Budget not found".to_string())?;
 
         // Validate updated budget data
@@ -75,11 +79,14 @@ impl BudgetService {
         active_model.currency = Set(dto.currency);
         active_model.start_date = Set(dto.start_date);
         active_model.end_date = Set(dto.end_date);
-        active_model.alert_thresholds = Set(serde_json::to_value(&dto.alert_thresholds).map_err(|e| format!("Invalid alert thresholds: {}", e))?);
+        active_model.alert_thresholds = Set(serde_json::to_value(&dto.alert_thresholds)
+            .map_err(|e| format!("Invalid alert thresholds: {}", e))?);
         active_model.tags = Set(dto.tags);
         active_model.updated_at = Set(Utc::now().naive_utc());
 
-        let updated_budget = active_model.update(&self.db).await
+        let updated_budget = active_model
+            .update(&self.db)
+            .await
             .map_err(|e| format!("Failed to update budget: {}", e))?;
 
         Ok(updated_budget)
@@ -92,7 +99,10 @@ impl BudgetService {
 
     /// Get budget status with current spending
     pub async fn get_budget_status(&self, budget_id: Uuid) -> Result<BudgetStatus, String> {
-        let budget = self.repository.find_by_id(budget_id).await?
+        let budget = self
+            .repository
+            .find_by_id(budget_id)
+            .await?
             .ok_or_else(|| "Budget not found".to_string())?;
 
         // Calculate current spending based on budget type and period
@@ -131,45 +141,55 @@ impl BudgetService {
         // Query cost data based on budget type
         let total_cost = match budget.budget_type.as_str() {
             "overall" => {
-                let cost_data = cost_repo.get_cost_data_by_date_range(
-                    &budget.account_id,
-                    start_date,
-                    end_date,
-                    None,
-                ).await.map_err(|e| format!("Failed to get cost data: {}", e))?;
+                let cost_data = cost_repo
+                    .get_cost_data_by_date_range(&budget.account_id, start_date, end_date, None)
+                    .await
+                    .map_err(|e| format!("Failed to get cost data: {}", e))?;
 
-                cost_data.iter().map(|data| data.unblended_cost.to_f64().unwrap_or(0.0)).sum()
+                cost_data
+                    .iter()
+                    .map(|data| data.unblended_cost.to_f64().unwrap_or(0.0))
+                    .sum()
             }
             "service" => {
                 if let Some(service) = budget.tags.get("service").and_then(|v| v.as_str()) {
-                    let cost_data = cost_repo.get_cost_data_by_date_range(
-                        &budget.account_id,
-                        start_date,
-                        end_date,
-                        Some(service.to_string()),
-                    ).await.map_err(|e| format!("Failed to get cost data: {}", e))?;
+                    let cost_data = cost_repo
+                        .get_cost_data_by_date_range(
+                            &budget.account_id,
+                            start_date,
+                            end_date,
+                            Some(service.to_string()),
+                        )
+                        .await
+                        .map_err(|e| format!("Failed to get cost data: {}", e))?;
 
-                    cost_data.iter().map(|data| data.unblended_cost.to_f64().unwrap_or(0.0)).sum()
+                    cost_data
+                        .iter()
+                        .map(|data| data.unblended_cost.to_f64().unwrap_or(0.0))
+                        .sum()
                 } else {
                     return Err("Service budget missing service tag".to_string());
                 }
             }
             "category" => {
                 if let Some(category) = budget.tags.get("category").and_then(|v| v.as_str()) {
-                    let cost_data = cost_repo.get_cost_data_by_date_range(
-                        &budget.account_id,
-                        start_date,
-                        end_date,
-                        None,
-                    ).await.map_err(|e| format!("Failed to get cost data: {}", e))?;
+                    let cost_data = cost_repo
+                        .get_cost_data_by_date_range(&budget.account_id, start_date, end_date, None)
+                        .await
+                        .map_err(|e| format!("Failed to get cost data: {}", e))?;
 
                     // Filter by category (simplified - would need more sophisticated logic)
-                    cost_data.iter()
-                        .filter(|data| data.service_name.contains(category) || 
-                                data.tags.as_ref()
+                    cost_data
+                        .iter()
+                        .filter(|data| {
+                            data.service_name.contains(category)
+                                || data
+                                    .tags
+                                    .as_ref()
                                     .and_then(|t| serde_json::to_string(t).ok())
                                     .map(|tag_str| tag_str.contains(category))
-                                    .unwrap_or(false))
+                                    .unwrap_or(false)
+                        })
                         .map(|data| data.unblended_cost.to_f64().unwrap_or(0.0))
                         .sum()
                 } else {
@@ -177,49 +197,63 @@ impl BudgetService {
                 }
             }
             "tag_based" => {
-                let tag_key = budget.tags.get("tag_key")
+                let tag_key = budget
+                    .tags
+                    .get("tag_key")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Tag-based budget missing tag_key".to_string())?;
-                let tag_value = budget.tags.get("tag_value")
+                let tag_value = budget
+                    .tags
+                    .get("tag_value")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Tag-based budget missing tag_value".to_string())?;
 
-                let cost_data = cost_repo.get_cost_data_by_date_range(
-                    &budget.account_id,
-                    start_date,
-                    end_date,
-                    None,
-                ).await.map_err(|e| format!("Failed to get cost data: {}", e))?;
+                let cost_data = cost_repo
+                    .get_cost_data_by_date_range(&budget.account_id, start_date, end_date, None)
+                    .await
+                    .map_err(|e| format!("Failed to get cost data: {}", e))?;
 
                 // Filter by tag (simplified)
-                cost_data.iter()
+                cost_data
+                    .iter()
                     .filter(|data| {
-                        data.tags.as_ref()
+                        data.tags
+                            .as_ref()
                             .and_then(|t| serde_json::to_string(t).ok())
-                            .map(|tag_str| tag_str.contains(&format!("\"{}\":\"{}\"", tag_key, tag_value)))
+                            .map(|tag_str| {
+                                tag_str.contains(&format!("\"{}\":\"{}\"", tag_key, tag_value))
+                            })
                             .unwrap_or(false)
                     })
                     .map(|data| data.unblended_cost.to_f64().unwrap_or(0.0))
                     .sum()
             }
             "resource" => {
-                let resource_id = budget.tags.get("resource_id")
+                let resource_id = budget
+                    .tags
+                    .get("resource_id")
                     .and_then(|v| v.as_str())
                     .ok_or_else(|| "Resource budget missing resource_id".to_string())?;
 
-                let cost_data = cost_repo.get_resource_costs(
-                    &budget.account_id,
-                    start_date,
-                    end_date,
-                    Some(resource_id),
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                ).await.map_err(|e| format!("Failed to get resource costs: {}", e))?;
+                let cost_data = cost_repo
+                    .get_resource_costs(
+                        &budget.account_id,
+                        start_date,
+                        end_date,
+                        Some(resource_id),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    )
+                    .await
+                    .map_err(|e| format!("Failed to get resource costs: {}", e))?;
 
-                cost_data.iter().map(|data| data.unblended_cost.to_f64().unwrap_or(0.0)).sum()
+                cost_data
+                    .iter()
+                    .map(|data| data.unblended_cost.to_f64().unwrap_or(0.0))
+                    .sum()
             }
             _ => return Err(format!("Unknown budget type: {}", budget.budget_type)),
         };
@@ -255,8 +289,8 @@ impl BudgetService {
         let utilization = status.utilization_percentage;
 
         // Deserialize alert thresholds from JSON
-        let thresholds: Vec<crate::models::cost_budget::BudgetAlertThreshold> = serde_json::from_value(budget.alert_thresholds.clone())
-            .unwrap_or_else(|_| vec![]);
+        let thresholds: Vec<crate::models::cost_budget::BudgetAlertThreshold> =
+            serde_json::from_value(budget.alert_thresholds.clone()).unwrap_or_else(|_| vec![]);
 
         for threshold in thresholds {
             if utilization >= threshold.percentage {
@@ -279,17 +313,25 @@ impl BudgetService {
     }
 
     /// Get period dates for budget calculation
-    fn get_budget_period_dates(&self, budget: &Budget, current_date: NaiveDate) -> (NaiveDate, NaiveDate) {
+    fn get_budget_period_dates(
+        &self,
+        budget: &Budget,
+        current_date: NaiveDate,
+    ) -> (NaiveDate, NaiveDate) {
         use chrono::Datelike;
 
         match budget.budget_period.as_str() {
             "monthly" => {
-                let start = NaiveDate::from_ymd_opt(current_date.year(), current_date.month(), 1).unwrap();
+                let start =
+                    NaiveDate::from_ymd_opt(current_date.year(), current_date.month(), 1).unwrap();
                 let end = if current_date.month() == 12 {
                     NaiveDate::from_ymd_opt(current_date.year() + 1, 1, 1).unwrap()
                 } else {
-                    NaiveDate::from_ymd_opt(current_date.year(), current_date.month() + 1, 1).unwrap()
-                }.pred_opt().unwrap();
+                    NaiveDate::from_ymd_opt(current_date.year(), current_date.month() + 1, 1)
+                        .unwrap()
+                }
+                .pred_opt()
+                .unwrap();
                 (start, end)
             }
             "quarterly" => {
@@ -297,7 +339,10 @@ impl BudgetService {
                 let start_month = (quarter - 1) * 3 + 1;
                 let start = NaiveDate::from_ymd_opt(current_date.year(), start_month, 1).unwrap();
                 let end_month = quarter * 3;
-                let end = NaiveDate::from_ymd_opt(current_date.year(), end_month + 1, 1).unwrap().pred_opt().unwrap();
+                let end = NaiveDate::from_ymd_opt(current_date.year(), end_month + 1, 1)
+                    .unwrap()
+                    .pred_opt()
+                    .unwrap();
                 (start, end)
             }
             "yearly" => {
@@ -305,17 +350,22 @@ impl BudgetService {
                 let end = NaiveDate::from_ymd_opt(current_date.year(), 12, 31).unwrap();
                 (start, end)
             }
-            "custom" => {
-                (budget.start_date, budget.end_date.unwrap_or(budget.start_date))
-            }
+            "custom" => (
+                budget.start_date,
+                budget.end_date.unwrap_or(budget.start_date),
+            ),
             _ => {
                 // Default to monthly
-                let start = NaiveDate::from_ymd_opt(current_date.year(), current_date.month(), 1).unwrap();
+                let start =
+                    NaiveDate::from_ymd_opt(current_date.year(), current_date.month(), 1).unwrap();
                 let end = if current_date.month() == 12 {
                     NaiveDate::from_ymd_opt(current_date.year() + 1, 1, 1).unwrap()
                 } else {
-                    NaiveDate::from_ymd_opt(current_date.year(), current_date.month() + 1, 1).unwrap()
-                }.pred_opt().unwrap();
+                    NaiveDate::from_ymd_opt(current_date.year(), current_date.month() + 1, 1)
+                        .unwrap()
+                }
+                .pred_opt()
+                .unwrap();
                 (start, end)
             }
         }
@@ -340,7 +390,11 @@ impl BudgetService {
     }
 
     /// Determine budget health status
-    fn determine_budget_health(&self, thresholds: &[crate::models::cost_budget::BudgetAlertThreshold], utilization: f64) -> String {
+    fn determine_budget_health(
+        &self,
+        thresholds: &[crate::models::cost_budget::BudgetAlertThreshold],
+        utilization: f64,
+    ) -> String {
         // Sort thresholds by percentage descending
         let mut sorted_thresholds = thresholds.to_vec();
         sorted_thresholds.sort_by(|a, b| b.percentage.partial_cmp(&a.percentage).unwrap());
@@ -361,8 +415,8 @@ impl BudgetService {
     /// Determine budget health status
     fn determine_budget_health_from_thresholds(&self, budget: &Budget, utilization: f64) -> String {
         // Deserialize alert thresholds from JSON
-        let thresholds: Vec<crate::models::cost_budget::BudgetAlertThreshold> = serde_json::from_value(budget.alert_thresholds.clone())
-            .unwrap_or_else(|_| vec![]);
+        let thresholds: Vec<crate::models::cost_budget::BudgetAlertThreshold> =
+            serde_json::from_value(budget.alert_thresholds.clone()).unwrap_or_else(|_| vec![]);
 
         self.determine_budget_health(&thresholds, utilization)
     }
@@ -377,7 +431,11 @@ impl BudgetService {
             return Err("Budget amount must be greater than 0".to_string());
         }
 
-        if dto.start_date >= dto.end_date.unwrap_or(NaiveDate::from_ymd_opt(9999, 12, 31).unwrap()) {
+        if dto.start_date
+            >= dto
+                .end_date
+                .unwrap_or(NaiveDate::from_ymd_opt(9999, 12, 31).unwrap())
+        {
             return Err("Start date must be before end date".to_string());
         }
 

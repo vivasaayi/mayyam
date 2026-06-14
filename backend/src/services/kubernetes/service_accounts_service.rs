@@ -12,15 +12,84 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::errors::AppError;
 use crate::models::cluster::KubernetesClusterConfig;
 use crate::services::kubernetes::client::ClientFactory;
+use crate::services::kubernetes::service_account_inventory::{
+    ServiceAccountInventoryItem, ServiceAccountOwnerReferenceInventoryItem,
+};
+use chrono::{DateTime, Utc};
 use k8s_openapi::api::core::v1::ServiceAccount;
 use kube::api::{DeleteParams, ListParams, Patch, PatchParams};
-use kube::Api;
+use kube::{Api, ResourceExt};
 
 pub struct ServiceAccountsService;
+
+fn convert_kube_service_account_to_inventory(
+    item: &ServiceAccount,
+    cluster_id: &str,
+    current_namespace: &str,
+    collected_at: DateTime<Utc>,
+) -> ServiceAccountInventoryItem {
+    let namespace = item
+        .namespace()
+        .unwrap_or_else(|| current_namespace.to_string());
+    let mut image_pull_secret_names = item
+        .image_pull_secrets
+        .as_ref()
+        .map(|secrets| {
+            secrets
+                .iter()
+                .filter_map(|secret| secret.name.clone())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let mut secret_names = item
+        .secrets
+        .as_ref()
+        .map(|secrets| {
+            secrets
+                .iter()
+                .filter_map(|secret| secret.name.clone())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    image_pull_secret_names.sort();
+    secret_names.sort();
+    let owner_references = item
+        .metadata
+        .owner_references
+        .as_ref()
+        .map(|owners| {
+            owners
+                .iter()
+                .map(|owner| ServiceAccountOwnerReferenceInventoryItem {
+                    kind: Some(owner.kind.clone()),
+                    name: owner.name.clone(),
+                    controller: owner.controller,
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    ServiceAccountInventoryItem {
+        cluster_id: cluster_id.to_string(),
+        namespace,
+        name: item.name_any(),
+        labels: item.metadata.labels.clone().unwrap_or_default(),
+        annotations: item.metadata.annotations.clone().unwrap_or_default(),
+        automount_service_account_token: item.automount_service_account_token,
+        image_pull_secret_names,
+        secret_names,
+        owner_references,
+        created_at: item
+            .metadata
+            .creation_timestamp
+            .as_ref()
+            .map(|timestamp| timestamp.0),
+        collected_at,
+    }
+}
 
 impl ServiceAccountsService {
     pub fn new() -> Self {
@@ -50,6 +119,45 @@ impl ServiceAccountsService {
             .await
             .map_err(|e| AppError::Kubernetes(e.to_string()))?;
         Ok(list.items)
+    }
+
+    pub async fn list_service_account_inventory(
+        &self,
+        cluster: &KubernetesClusterConfig,
+        cluster_id: &str,
+        namespace: Option<&str>,
+    ) -> Result<Vec<ServiceAccountInventoryItem>, AppError> {
+        let namespace = namespace
+            .map(str::trim)
+            .filter(|namespace| !namespace.is_empty());
+        let namespace_arg = namespace.unwrap_or("");
+        let fallback_namespace = namespace
+            .filter(|namespace| *namespace != "all")
+            .unwrap_or("");
+        let collected_at = Utc::now();
+
+        let api = Self::api(cluster, namespace_arg).await?;
+        let list = api
+            .list(&ListParams::default())
+            .await
+            .map_err(|e| AppError::Kubernetes(e.to_string()))?;
+        let mut inventory = list
+            .items
+            .iter()
+            .map(|item| {
+                convert_kube_service_account_to_inventory(
+                    item,
+                    cluster_id,
+                    fallback_namespace,
+                    collected_at,
+                )
+            })
+            .collect::<Vec<_>>();
+        inventory.sort_by(|left, right| {
+            (left.namespace.as_str(), left.name.as_str())
+                .cmp(&(right.namespace.as_str(), right.name.as_str()))
+        });
+        Ok(inventory)
     }
 
     pub async fn get(

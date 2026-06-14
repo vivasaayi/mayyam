@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use super::client_factory::AwsClientFactory;
 use crate::config::{AwsConfig, Config};
 use crate::errors::AppError;
@@ -21,33 +20,53 @@ use crate::repositories::aws_resource::AwsResourceRepository;
 use crate::repositories::cloud_resource::CloudResourceRepository;
 use async_trait::async_trait;
 use aws_config;
-use std::str::FromStr;
 use aws_config::sts::AssumeRoleProvider;
 use aws_config::BehaviorVersion;
 use aws_credential_types::provider::SharedCredentialsProvider;
 use aws_credential_types::Credentials as StaticCredentials;
+use aws_sdk_apigateway::Client as ApiGatewayClient;
+use aws_sdk_bedrock::Client as BedrockClient;
+use aws_sdk_cloudcontrol::Client as CloudControlClient;
+use aws_sdk_cloudfront::Client as CloudFrontClient;
 use aws_sdk_cloudwatch::Client as CloudWatchClient;
 use aws_sdk_cloudwatchlogs::Client as CloudWatchLogsClient;
+use aws_sdk_computeoptimizer::Client as ComputeOptimizerClient;
+use aws_sdk_controltower::Client as ControlTowerClient;
 use aws_sdk_costexplorer::Client as CostExplorerClient;
-use aws_sdk_apigateway::Client as ApiGatewayClient;
-use aws_sdk_cloudfront::Client as CloudFrontClient;
-use aws_sdk_elasticloadbalancing::Client as ElbClient;
-use aws_sdk_elasticloadbalancingv2::Client as Elbv2Client;
+use aws_sdk_drs::Client as DrsClient;
 use aws_sdk_dynamodb::Client as DynamoDbClient;
 use aws_sdk_ec2::Client as Ec2Client;
 use aws_sdk_efs::Client as EfsClient;
 use aws_sdk_elasticache::Client as ElasticacheClient;
+use aws_sdk_elasticloadbalancing::Client as ElbClient;
+use aws_sdk_elasticloadbalancingv2::Client as Elbv2Client;
+use aws_sdk_firehose::Client as FirehoseClient;
+use aws_sdk_health::Client as HealthClient;
+use aws_sdk_iam::Client as IamClient;
+use aws_sdk_inspector2::Client as InspectorClient;
 use aws_sdk_kinesis::Client as KinesisClient;
+use aws_sdk_lakeformation::Client as LakeFormationClient;
 use aws_sdk_lambda::Client as LambdaClient;
+use aws_sdk_lightsail::Client as LightsailClient;
+use aws_sdk_macie2::Client as MacieClient;
+use aws_sdk_mgn::Client as MgnClient;
+use aws_sdk_mq::Client as AmazonMqClient;
 use aws_sdk_opensearch::Client as OpenSearchClient;
+use aws_sdk_organizations::Client as OrganizationsClient;
+use aws_sdk_quicksight::Client as QuickSightClient;
 use aws_sdk_rds::Client as RdsClient;
+use aws_sdk_resiliencehub::Client as ResilienceHubClient;
 use aws_sdk_s3::Client as S3Client;
+use aws_sdk_servicecatalog::Client as ServiceCatalogClient;
+use aws_sdk_shield::Client as ShieldClient;
 use aws_sdk_sns::Client as SnsClient;
 use aws_sdk_sqs::Client as SqsClient;
 use aws_sdk_sts::Client as StsClient;
-use aws_sdk_iam::Client as IamClient;
+use aws_sdk_timestreamwrite::Client as TimestreamWriteClient;
+use aws_sdk_trustedadvisor::Client as TrustedAdvisorClient;
 use aws_types;
 use std::fs;
+use std::str::FromStr;
 use std::sync::Arc;
 use tracing::{debug, trace};
 
@@ -351,6 +370,38 @@ impl AwsClientFactory for AwsService {
     ) -> Result<CloudWatchLogsClient, AppError> {
         let config = self.get_aws_sdk_config(aws_account_dto).await?;
         Ok(CloudWatchLogsClient::new(&config))
+    }
+
+    async fn create_cloudcontrol_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<CloudControlClient, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(CloudControlClient::new(&config))
+    }
+
+    async fn create_mgn_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<MgnClient, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(MgnClient::new(&config))
+    }
+
+    async fn create_drs_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<DrsClient, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(DrsClient::new(&config))
+    }
+
+    async fn create_bedrock_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<BedrockClient, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(BedrockClient::new(&config))
     }
 
     async fn create_cost_explorer_client(
@@ -658,6 +709,30 @@ impl AwsClientFactory for AwsService {
         Ok(aws_sdk_glacier::Client::new(&config))
     }
 
+    async fn create_autoscaling_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<aws_sdk_autoscaling::Client, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(aws_sdk_autoscaling::Client::new(&config))
+    }
+
+    async fn create_route53_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<aws_sdk_route53::Client, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(aws_sdk_route53::Client::new(&config))
+    }
+
+    async fn create_secretsmanager_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<aws_sdk_secretsmanager::Client, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(aws_sdk_secretsmanager::Client::new(&config))
+    }
+
     async fn create_storagegateway_client(
         &self,
         aws_account_dto: &AwsAccountDto,
@@ -688,5 +763,189 @@ impl AwsClientFactory for AwsService {
     ) -> Result<aws_sdk_kinesisanalyticsv2::Client, AppError> {
         let config = self.get_aws_sdk_config(aws_account_dto).await?;
         Ok(aws_sdk_kinesisanalyticsv2::Client::new(&config))
+    }
+
+    async fn create_msk_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<aws_sdk_kafka::Client, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(aws_sdk_kafka::Client::new(&config))
+    }
+
+    async fn create_guardduty_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<aws_sdk_guardduty::Client, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(aws_sdk_guardduty::Client::new(&config))
+    }
+
+    async fn create_securityhub_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<aws_sdk_securityhub::Client, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(aws_sdk_securityhub::Client::new(&config))
+    }
+
+    async fn create_inspector_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<InspectorClient, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(InspectorClient::new(&config))
+    }
+
+    async fn create_macie_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<MacieClient, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(MacieClient::new(&config))
+    }
+
+    async fn create_organizations_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<OrganizationsClient, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(OrganizationsClient::new(&config))
+    }
+
+    async fn create_controltower_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<ControlTowerClient, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(ControlTowerClient::new(&config))
+    }
+
+    async fn create_servicecatalog_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<ServiceCatalogClient, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(ServiceCatalogClient::new(&config))
+    }
+
+    async fn create_trustedadvisor_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<TrustedAdvisorClient, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(TrustedAdvisorClient::new(&config))
+    }
+
+    async fn create_computeoptimizer_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<ComputeOptimizerClient, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(ComputeOptimizerClient::new(&config))
+    }
+
+    async fn create_health_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<HealthClient, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(HealthClient::new(&config))
+    }
+
+    async fn create_resiliencehub_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<ResilienceHubClient, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(ResilienceHubClient::new(&config))
+    }
+
+    async fn create_memorydb_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<aws_sdk_memorydb::Client, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(aws_sdk_memorydb::Client::new(&config))
+    }
+
+    async fn create_elasticbeanstalk_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<aws_sdk_elasticbeanstalk::Client, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(aws_sdk_elasticbeanstalk::Client::new(&config))
+    }
+
+    async fn create_datasync_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<aws_sdk_datasync::Client, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(aws_sdk_datasync::Client::new(&config))
+    }
+
+    async fn create_fsx_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<aws_sdk_fsx::Client, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(aws_sdk_fsx::Client::new(&config))
+    }
+
+    async fn create_timestreamwrite_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<TimestreamWriteClient, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(TimestreamWriteClient::new(&config))
+    }
+
+    async fn create_firehose_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<FirehoseClient, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(FirehoseClient::new(&config))
+    }
+
+    async fn create_lakeformation_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<LakeFormationClient, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(LakeFormationClient::new(&config))
+    }
+
+    async fn create_lightsail_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<LightsailClient, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(LightsailClient::new(&config))
+    }
+
+    async fn create_quicksight_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<QuickSightClient, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(QuickSightClient::new(&config))
+    }
+
+    async fn create_amazonmq_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<AmazonMqClient, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(AmazonMqClient::new(&config))
+    }
+
+    async fn create_shield_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<ShieldClient, AppError> {
+        let config = self.get_aws_sdk_config(aws_account_dto).await?;
+        Ok(ShieldClient::new(&config))
     }
 }

@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
+use chrono::{NaiveDate, NaiveDateTime};
 use sea_orm::entity::prelude::*;
 use sea_orm::Set;
 use serde::{Deserialize, Serialize};
-use chrono::{NaiveDate, NaiveDateTime};
 use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
@@ -36,7 +35,7 @@ pub struct Model {
     pub start_date: NaiveDate,
     pub end_date: Option<NaiveDate>,
     pub alert_thresholds: Json, // JSON array of alert thresholds
-    pub tags: Json, // JSON object for additional metadata
+    pub tags: Json,             // JSON object for additional metadata
     pub created_at: NaiveDateTime,
     pub updated_at: NaiveDateTime,
 }
@@ -92,11 +91,11 @@ pub struct BudgetAlert {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum BudgetType {
-    Overall,      // Total account budget
-    Service,      // Budget for specific AWS service
-    Category,     // Budget for cost category
-    TagBased,     // Budget based on tags
-    Resource,     // Budget for specific resource
+    Overall,  // Total account budget
+    Service,  // Budget for specific AWS service
+    Category, // Budget for cost category
+    TagBased, // Budget based on tags
+    Resource, // Budget for specific resource
 }
 
 impl std::fmt::Display for BudgetType {

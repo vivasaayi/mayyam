@@ -12,15 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::controllers::kubernetes::get_cluster_config_by_id;
 use crate::errors::AppError;
 use crate::middleware::auth::Claims;
-use crate::controllers::kubernetes::get_cluster_config_by_id;
 use crate::services::kubernetes::crds_service::CrdsService;
 use actix_web::{web, HttpResponse, Responder};
 use sea_orm::DatabaseConnection;
+use serde::Deserialize;
 use std::sync::Arc;
 use tracing::debug;
-use serde::Deserialize;
 
 pub async fn list_crds_controller(
     claims: web::ReqData<Claims>,
@@ -44,7 +44,9 @@ pub async fn get_crd_controller(
     let (cluster_id, crd_name) = path.into_inner();
     debug!(target: "mayyam::controllers::crds", user_id = %claims.username, %cluster_id, %crd_name, "Attempting to get CRD details");
     let cluster_config = get_cluster_config_by_id(db.get_ref().as_ref(), &cluster_id).await?;
-    let details = crds_service.get_crd_details(&cluster_config, &crd_name).await?;
+    let details = crds_service
+        .get_crd_details(&cluster_config, &crd_name)
+        .await?;
     Ok(HttpResponse::Ok().json(details))
 }
 
@@ -63,7 +65,7 @@ pub async fn list_custom_resources_controller(
     let (cluster_id, group, version, plural) = path.into_inner();
     let query = query.into_inner();
     let ns_ref = query.namespace.as_deref();
-    
+
     debug!(
         target: "mayyam::controllers::crds",
         user_id = %claims.username,
@@ -74,8 +76,10 @@ pub async fn list_custom_resources_controller(
         namespace = ?ns_ref,
         "Attempting to list CustomResources"
     );
-    
+
     let cluster_config = get_cluster_config_by_id(db.get_ref().as_ref(), &cluster_id).await?;
-    let resources = crds_service.list_custom_resources(&cluster_config, &group, &version, &plural, ns_ref).await?;
+    let resources = crds_service
+        .list_custom_resources(&cluster_config, &group, &version, &plural, ns_ref)
+        .await?;
     Ok(HttpResponse::Ok().json(resources))
 }

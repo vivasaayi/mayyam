@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 #![cfg(feature = "integration-tests")]
 
 use crate::integration::helpers::TestHarness;
@@ -99,7 +98,7 @@ async fn test_invalid_payloads() {
 
     let harness = TestHarness::new().await;
 
-    // Try to create topic with invalid partition count (0 or negative) 
+    // Try to create topic with invalid partition count (0 or negative)
     // Wait: type is i32, maybe actix-web will parse, but kafka rejects 0 partitions
     let create_res = harness
         .client()
@@ -116,7 +115,10 @@ async fn test_invalid_payloads() {
         .expect("failed to create topic");
 
     // The backend actually defaults partitions to 1 if <= 0
-    assert!(create_res.status().is_success(), "Backend should overwrite 0 partitions to 1");
+    assert!(
+        create_res.status().is_success(),
+        "Backend should overwrite 0 partitions to 1"
+    );
 
     // Missing required field (name) should cause a 400 from Actix
     let malformed_res = harness
@@ -131,7 +133,10 @@ async fn test_invalid_payloads() {
         .await
         .expect("failed to create topic");
 
-    assert_eq!(malformed_res.status(), actix_web::http::StatusCode::BAD_REQUEST);
+    assert_eq!(
+        malformed_res.status(),
+        actix_web::http::StatusCode::BAD_REQUEST
+    );
 }
 
 #[tokio::test]
@@ -147,10 +152,7 @@ async fn test_queue_drain_endpoint() {
     // We just want to ensure the endpoint functions without crashing internally.
     let drain_res = harness
         .client()
-        .post(&harness.build_url(&format!(
-            "/api/kafka/clusters/{}/drain",
-            cluster_id()
-        )))
+        .post(&harness.build_url(&format!("/api/kafka/clusters/{}/drain", cluster_id())))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .json(&json!({
             "topics": ["some-random-topic"],

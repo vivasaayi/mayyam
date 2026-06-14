@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 pub mod cluster;
 pub mod database;
 pub mod user;
@@ -38,22 +37,22 @@ pub mod aws_monthly_cost_aggregates;
 pub mod cost_budget;
 
 // MySQL Performance Analysis models
-pub mod aurora_cluster;
-pub mod slow_query_event;
-pub mod query_fingerprint;
-pub mod explain_plan;
 pub mod ai_analysis;
+pub mod aurora_cluster;
+pub mod explain_plan;
 pub mod mysql_performance_snapshot;
 pub mod mysql_telemetry_snapshot;
+pub mod query_fingerprint;
+pub mod slow_query_event;
 
 // Chaos Engineering models
-pub mod chaos_template;
-pub mod chaos_experiment;
-pub mod chaos_experiment_run;
-pub mod chaos_experiment_result;
 pub mod chaos_audit_log;
+pub mod chaos_experiment;
+pub mod chaos_experiment_result;
+pub mod chaos_experiment_run;
 pub mod chaos_metrics;
 pub mod chaos_metrics_aggregates;
+pub mod chaos_template;
 
 // Models module for data structures
 

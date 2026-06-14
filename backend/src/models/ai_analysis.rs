@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
+use chrono::{NaiveDateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::Set;
 use serde::{Deserialize, Serialize};
-use chrono::{NaiveDateTime, Utc};
 use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
@@ -29,13 +28,13 @@ pub struct Model {
     pub slow_query_id: Option<Uuid>,
     pub ai_provider: String, // openai, local_llm, none
     pub ai_model: String,
-    pub analysis_type: String, // summary, recommendations, jira_ticket
-    pub input_data: Json, // Sanitized input sent to AI
+    pub analysis_type: String,   // summary, recommendations, jira_ticket
+    pub input_data: Json,        // Sanitized input sent to AI
     pub analysis_result: String, // AI-generated analysis
     pub confidence_score: Option<f64>, // 0.0 to 1.0
     pub suggested_indexes: Json, // Array of suggested index definitions
     pub suggested_rewrites: Json, // Array of suggested SQL rewrites
-    pub root_causes: Json, // Array of identified root causes
+    pub root_causes: Json,       // Array of identified root causes
     pub created_at: NaiveDateTime,
 }
 
@@ -86,9 +85,13 @@ impl AIAnalysisDto {
             input_data: Set(self.input_data),
             analysis_result: Set(self.analysis_result),
             confidence_score: Set(self.confidence_score),
-            suggested_indexes: Set(serde_json::to_value(&self.suggested_indexes).unwrap_or(serde_json::Value::Array(vec![]))),
-            suggested_rewrites: Set(serde_json::to_value(&self.suggested_rewrites).unwrap_or(serde_json::Value::Array(vec![]))),
-            root_causes: Set(serde_json::to_value(&self.root_causes).unwrap_or(serde_json::Value::Array(vec![]))),
+            suggested_indexes: Set(serde_json::to_value(&self.suggested_indexes)
+                .unwrap_or(serde_json::Value::Array(vec![]))),
+            suggested_rewrites: Set(serde_json::to_value(&self.suggested_rewrites)
+                .unwrap_or(serde_json::Value::Array(vec![]))),
+            root_causes: Set(
+                serde_json::to_value(&self.root_causes).unwrap_or(serde_json::Value::Array(vec![]))
+            ),
             created_at: Set(Utc::now().naive_utc()),
         }
     }

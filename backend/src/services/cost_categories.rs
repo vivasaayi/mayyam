@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::errors::AppError;
 use crate::models::aws_cost_data::CostDataModel;
 use crate::repositories::cost_analytics::CostAnalyticsRepository;
@@ -75,10 +74,7 @@ pub struct CostCategoriesService {
 }
 
 impl CostCategoriesService {
-    pub fn new(
-        db: Arc<DatabaseConnection>,
-        cost_repo: Arc<CostAnalyticsRepository>,
-    ) -> Self {
+    pub fn new(db: Arc<DatabaseConnection>, cost_repo: Arc<CostAnalyticsRepository>) -> Self {
         Self { db, cost_repo }
     }
 
@@ -88,7 +84,9 @@ impl CostCategoriesService {
             CostCategory {
                 id: "compute".to_string(),
                 name: "Compute Resources".to_string(),
-                description: Some("EC2 instances, Lambda functions, and other compute resources".to_string()),
+                description: Some(
+                    "EC2 instances, Lambda functions, and other compute resources".to_string(),
+                ),
                 rules: vec![
                     CostCategoryRule {
                         rule_type: CostCategoryRuleType::Service,
@@ -157,7 +155,9 @@ impl CostCategoriesService {
             CostCategory {
                 id: "networking".to_string(),
                 name: "Networking".to_string(),
-                description: Some("VPC, CloudFront, Route 53, and other networking services".to_string()),
+                description: Some(
+                    "VPC, CloudFront, Route 53, and other networking services".to_string(),
+                ),
                 rules: vec![
                     CostCategoryRule {
                         rule_type: CostCategoryRuleType::Service,
@@ -201,17 +201,20 @@ impl CostCategoriesService {
         );
 
         // Get all cost data for the period
-        let cost_data = self.cost_repo.get_resource_costs(
-            account_id,
-            start_date,
-            end_date,
-            None, // resource_id
-            None, // service_name
-            None, // region
-            None, // availability_zone
-            None, // instance_type
-            Some(10000), // limit - get all data
-        ).await?;
+        let cost_data = self
+            .cost_repo
+            .get_resource_costs(
+                account_id,
+                start_date,
+                end_date,
+                None,        // resource_id
+                None,        // service_name
+                None,        // region
+                None,        // availability_zone
+                None,        // instance_type
+                Some(10000), // limit - get all data
+            )
+            .await?;
 
         let mut category_results = Vec::new();
 
@@ -245,7 +248,11 @@ impl CostCategoriesService {
         }
 
         // Sort by total cost descending
-        category_results.sort_by(|a, b| b.total_cost.partial_cmp(&a.total_cost).unwrap_or(std::cmp::Ordering::Equal));
+        category_results.sort_by(|a, b| {
+            b.total_cost
+                .partial_cmp(&a.total_cost)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         Ok(category_results)
     }
@@ -267,23 +274,27 @@ impl CostCategoriesService {
             CostCategoryRuleType::Region => cost_item.region.clone(),
             CostCategoryRuleType::InstanceType => {
                 // Extract instance type from tags if available
-                cost_item.tags.as_ref()
+                cost_item
+                    .tags
+                    .as_ref()
                     .and_then(|t| t.get("instance_type"))
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string())
-            },
+            }
             CostCategoryRuleType::ResourceType => {
                 // This would need to be enriched with resource metadata
                 // For now, we'll match based on service name patterns
                 Some(cost_item.service_name.clone())
-            },
+            }
             CostCategoryRuleType::Tag => {
                 // Extract tag value from tags JSON
-                cost_item.tags.as_ref()
+                cost_item
+                    .tags
+                    .as_ref()
                     .and_then(|t| t.get(&rule.field))
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string())
-            },
+            }
         };
 
         if let Some(value) = field_value {
@@ -295,7 +306,7 @@ impl CostCategoriesService {
                 CostCategoryOperator::Regex => {
                     // Simple regex matching (could be enhanced with proper regex crate)
                     rule.value.split('|').any(|pattern| value.contains(pattern))
-                },
+                }
             }
         } else {
             false
@@ -320,7 +331,11 @@ impl CostCategoriesService {
             .collect();
 
         CostCategory {
-            id: format!("custom-{}-{}", tag_key.to_lowercase(), chrono::Utc::now().timestamp()),
+            id: format!(
+                "custom-{}-{}",
+                tag_key.to_lowercase(),
+                chrono::Utc::now().timestamp()
+            ),
             name: category_name.to_string(),
             description,
             rules,
@@ -355,12 +370,14 @@ impl CostCategoriesService {
                 end_date + chrono::Duration::days(1),
             );
 
-            let period_costs = self.categorize_costs(
-                account_id,
-                current_date,
-                period_end - chrono::Duration::days(1),
-                categories,
-            ).await?;
+            let period_costs = self
+                .categorize_costs(
+                    account_id,
+                    current_date,
+                    period_end - chrono::Duration::days(1),
+                    categories,
+                )
+                .await?;
 
             for category_result in period_costs {
                 category_trends

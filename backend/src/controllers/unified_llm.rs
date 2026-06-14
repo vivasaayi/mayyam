@@ -12,16 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use actix_web::{web, HttpResponse, Result};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info};
 
 use crate::errors::AppError;
-use crate::services::llm::{
-    LlmGenerationRequest, LlmRequestBuilder, UnifiedLlmManager,
-};
+use crate::services::llm::{LlmGenerationRequest, LlmRequestBuilder, UnifiedLlmManager};
 
 #[derive(Debug, Deserialize)]
 pub struct SimpleGenerationRequest {

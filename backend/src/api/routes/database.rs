@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::controllers::database;
 use actix_web::{web, HttpResponse};
 use serde::{Deserialize, Serialize};
@@ -65,6 +64,69 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .service(
                 web::resource("/{id}/mysql/telemetry/signals")
                     .route(web::get().to(database::get_mysql_telemetry_signals)),
+            )
+            .service(web::resource("/mysql/performance-schema/pillars").route(
+                web::get().to(database::get_mysql_performance_schema_inventory_pillar_reports),
+            ))
+            .service(
+                web::resource("/mysql/sys-schema/pillars")
+                    .route(web::get().to(database::get_mysql_sys_schema_inventory_pillar_reports)),
+            )
+            .service(
+                web::resource("/mysql/slow-query-log/pillars").route(
+                    web::get().to(database::get_mysql_slow_query_log_inventory_pillar_reports),
+                ),
+            )
+            .service(web::resource("/mysql/digest-statistics/pillars").route(
+                web::get().to(database::get_mysql_digest_statistics_inventory_pillar_reports),
+            ))
+            .service(web::resource("/mysql/innodb-buffer-pool/pillars").route(
+                web::get().to(database::get_mysql_innodb_buffer_pool_inventory_pillar_reports),
+            ))
+            .service(
+                web::resource("/mysql/binary-log/pillars")
+                    .route(web::get().to(database::get_mysql_binary_log_inventory_pillar_reports)),
+            )
+            .service(web::resource("/mysql/replication-status/pillars").route(
+                web::get().to(database::get_mysql_replication_status_inventory_pillar_reports),
+            ))
+            .service(web::resource("/mysql/group-replication/pillars").route(
+                web::get().to(database::get_mysql_group_replication_inventory_pillar_reports),
+            ))
+            .service(
+                web::resource("/mysql/aurora-mysql/pillars")
+                    .route(web::get().to(database::get_mysql_aurora_inventory_pillar_reports)),
+            )
+            .service(
+                web::resource("/mysql/rds-mysql/pillars")
+                    .route(web::get().to(database::get_mysql_rds_inventory_pillar_reports)),
+            )
+            .service(web::resource("/mysql/connection-threads/pillars").route(
+                web::get().to(database::get_mysql_connection_threads_inventory_pillar_reports),
+            ))
+            .service(
+                web::resource("/mysql/metadata-locks/pillars").route(
+                    web::get().to(database::get_mysql_metadata_locks_inventory_pillar_reports),
+                ),
+            )
+            .service(
+                web::resource("/mysql/deadlocks/pillars")
+                    .route(web::get().to(database::get_mysql_deadlocks_inventory_pillar_reports)),
+            )
+            .service(web::resource("/mysql/index-cardinality/pillars").route(
+                web::get().to(database::get_mysql_index_cardinality_inventory_pillar_reports),
+            ))
+            .service(
+                web::resource("/mysql/redo-log/pillars")
+                    .route(web::get().to(database::get_mysql_redo_log_inventory_pillar_reports)),
+            )
+            .service(
+                web::resource("/mysql/undo-log/pillars")
+                    .route(web::get().to(database::get_mysql_undo_log_inventory_pillar_reports)),
+            )
+            .service(
+                web::resource("/mysql/wait-events/pillars")
+                    .route(web::get().to(database::get_mysql_wait_events_inventory_pillar_reports)),
             )
             .service(
                 web::resource("/{id}/table/{table_name}/details")

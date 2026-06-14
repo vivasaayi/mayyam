@@ -63,10 +63,7 @@ impl ChaosAuditService {
         self.audit_repo.create_audit_log(&dto).await
     }
 
-    pub async fn list_audit_logs(
-        &self,
-        query: &AuditLogQuery,
-    ) -> Result<AuditLogPage, AppError> {
+    pub async fn list_audit_logs(&self, query: &AuditLogQuery) -> Result<AuditLogPage, AppError> {
         self.audit_repo.list_audit_logs(query).await
     }
 
@@ -91,7 +88,9 @@ impl ChaosAuditService {
         &self,
         resource_id: &str,
     ) -> Result<Vec<Model>, AppError> {
-        self.audit_repo.get_audit_logs_for_resource(resource_id).await
+        self.audit_repo
+            .get_audit_logs_for_resource(resource_id)
+            .await
     }
 
     pub async fn get_action_history(&self, action: &str) -> Result<Vec<Model>, AppError> {

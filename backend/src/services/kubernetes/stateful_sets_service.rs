@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 // filepath: /Users/rajanpanneerselvam/work/mayyam/backend/src/services/kubernetes/stateful_sets_service.rs
 use chrono::Utc;
 use k8s_openapi::api::apps::v1::StatefulSet;
@@ -27,6 +26,9 @@ use std::collections::BTreeMap;
 
 use crate::errors::AppError;
 use crate::models::cluster::KubernetesClusterConfig;
+use crate::services::kubernetes::stateful_set_inventory::{
+    StatefulSetContainerInventoryItem, StatefulSetInventoryItem,
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StatefulSetInfo {
@@ -76,6 +78,98 @@ fn label_selector_to_string(selector: &LabelSelector) -> Option<String> {
 }
 
 pub struct StatefulSetsService;
+
+fn convert_kube_statefulset_to_statefulset_inventory(
+    statefulset: &StatefulSet,
+    cluster_id: &str,
+    current_namespace: &str,
+    collected_at: chrono::DateTime<Utc>,
+) -> StatefulSetInventoryItem {
+    let namespace = statefulset
+        .namespace()
+        .unwrap_or_else(|| current_namespace.to_string());
+    let spec = statefulset.spec.as_ref();
+    let status = statefulset.status.as_ref();
+    let pod_spec = spec.and_then(|spec| spec.template.spec.as_ref());
+    let containers = pod_spec
+        .map(|pod_spec| {
+            pod_spec
+                .containers
+                .iter()
+                .map(|container| StatefulSetContainerInventoryItem {
+                    name: container.name.clone(),
+                    image: container.image.clone(),
+                    privileged: container
+                        .security_context
+                        .as_ref()
+                        .and_then(|security_context| security_context.privileged),
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let volume_claim_templates = spec
+        .and_then(|spec| spec.volume_claim_templates.as_ref())
+        .map(|claims| {
+            claims
+                .iter()
+                .filter_map(|claim| claim.metadata.name.clone())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    StatefulSetInventoryItem {
+        cluster_id: cluster_id.to_string(),
+        namespace,
+        name: statefulset.name_any(),
+        service_name: spec.map(|spec| spec.service_name.clone()),
+        desired_replicas: spec.and_then(|spec| spec.replicas).unwrap_or(0),
+        current_replicas: status
+            .and_then(|status| status.current_replicas)
+            .unwrap_or(0),
+        ready_replicas: status.and_then(|status| status.ready_replicas).unwrap_or(0),
+        available_replicas: status
+            .and_then(|status| status.available_replicas)
+            .unwrap_or(0),
+        updated_replicas: status
+            .and_then(|status| status.updated_replicas)
+            .unwrap_or(0),
+        generation: statefulset.metadata.generation,
+        observed_generation: status.and_then(|status| status.observed_generation),
+        labels: statefulset.metadata.labels.clone().unwrap_or_default(),
+        annotations: statefulset.metadata.annotations.clone().unwrap_or_default(),
+        selector: spec
+            .and_then(|spec| spec.selector.match_labels.clone())
+            .unwrap_or_default(),
+        pod_template_labels: spec
+            .and_then(|spec| {
+                spec.template
+                    .metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.labels.clone())
+            })
+            .unwrap_or_default(),
+        containers,
+        update_strategy_type: spec.and_then(|spec| {
+            spec.update_strategy
+                .as_ref()
+                .and_then(|strategy| strategy.type_.clone())
+        }),
+        pod_management_policy: spec.and_then(|spec| spec.pod_management_policy.clone()),
+        current_revision: status.and_then(|status| status.current_revision.clone()),
+        update_revision: status.and_then(|status| status.update_revision.clone()),
+        volume_claim_templates,
+        service_account_name: pod_spec.and_then(|pod_spec| pod_spec.service_account_name.clone()),
+        host_network: pod_spec
+            .and_then(|pod_spec| pod_spec.host_network)
+            .unwrap_or(false),
+        created_at: statefulset
+            .metadata
+            .creation_timestamp
+            .as_ref()
+            .map(|timestamp| timestamp.0),
+        collected_at,
+    }
+}
 
 impl StatefulSetsService {
     pub fn new() -> Self {
@@ -179,6 +273,46 @@ impl StatefulSetsService {
             });
         }
         Ok(infos)
+    }
+
+    pub async fn list_statefulset_inventory(
+        &self,
+        cluster_config: &KubernetesClusterConfig,
+        cluster_id: &str,
+        namespace: Option<&str>,
+    ) -> Result<Vec<StatefulSetInventoryItem>, AppError> {
+        let namespace = namespace
+            .map(str::trim)
+            .filter(|namespace| !namespace.is_empty());
+        let client = Self::get_kube_client(cluster_config).await?;
+        let api: Api<StatefulSet> = match namespace {
+            Some(namespace) if namespace != "all" => Api::namespaced(client, namespace),
+            _ => Api::all(client),
+        };
+        let lp = ListParams::default();
+        let collected_at = Utc::now();
+        let sts_list = api.list(&lp).await.map_err(|e| {
+            AppError::ExternalService(format!(
+                "Failed to list StatefulSet inventory in namespace '{}': {}",
+                namespace.unwrap_or("all"),
+                e
+            ))
+        })?;
+        let fallback_namespace = namespace
+            .filter(|namespace| *namespace != "all")
+            .unwrap_or("");
+
+        Ok(sts_list
+            .iter()
+            .map(|statefulset| {
+                convert_kube_statefulset_to_statefulset_inventory(
+                    statefulset,
+                    cluster_id,
+                    fallback_namespace,
+                    collected_at,
+                )
+            })
+            .collect())
     }
 
     pub async fn get_stateful_set_details(

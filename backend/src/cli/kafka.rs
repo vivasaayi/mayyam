@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::config::Config;
 use clap::Subcommand;
-use rdkafka::admin::{AdminClient};
+use rdkafka::admin::AdminClient;
 use rdkafka::config::ClientConfig;
-use rdkafka::message::{Headers};
-use rdkafka::producer::{FutureProducer};
+use rdkafka::message::Headers;
+use rdkafka::producer::FutureProducer;
 use std::error::Error;
 use std::fs;
 

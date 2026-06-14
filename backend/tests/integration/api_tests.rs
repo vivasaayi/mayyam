@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::integration::helpers::{get_aws_credentials, get_test_account_id, TestHarness};
 use base64::{engine::general_purpose, Engine as _};
 use reqwest::Client;
@@ -37,7 +36,14 @@ mod aws_account_integration_tests {
         harness.test_delay().await; // Small delay to prevent overwhelming server
 
         let (access_key, secret_key, region, _) = get_aws_credentials();
-        let test_account_id = format!("{:012}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_micros() % 1_000_000_000_000);
+        let test_account_id = format!(
+            "{:012}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_micros()
+                % 1_000_000_000_000
+        );
 
         let account_data = json!({
             "account_id": test_account_id,
@@ -114,7 +120,14 @@ mod aws_account_integration_tests {
 
         // First create an account
         let (access_key, secret_key, region, _) = get_aws_credentials();
-        let test_account_id = format!("{:012}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_micros() % 1_000_000_000_000);
+        let test_account_id = format!(
+            "{:012}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_micros()
+                % 1_000_000_000_000
+        );
 
         let account_data = json!({
             "account_id": test_account_id,
@@ -188,8 +201,18 @@ mod aws_account_integration_tests {
 
         // First create an account to update
         let (access_key, secret_key, region, _) = get_aws_credentials();
-        let test_account_id = format!("{:012}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_micros() % 1_000_000_000_000);
-        println!("DEBUG: Generating test account ID for update test: {}", test_account_id);
+        let test_account_id = format!(
+            "{:012}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_micros()
+                % 1_000_000_000_000
+        );
+        println!(
+            "DEBUG: Generating test account ID for update test: {}",
+            test_account_id
+        );
 
         let account_data = json!({
             "account_id": test_account_id,
@@ -274,7 +297,14 @@ mod aws_account_integration_tests {
 
         // First create an account
         let (access_key, secret_key, region, _) = get_aws_credentials();
-        let test_account_id = format!("{:012}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_micros() % 1_000_000_000_000);
+        let test_account_id = format!(
+            "{:012}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_micros()
+                % 1_000_000_000_000
+        );
 
         let account_data = json!({
             "account_id": test_account_id,

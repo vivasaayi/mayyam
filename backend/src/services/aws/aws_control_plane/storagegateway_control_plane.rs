@@ -41,7 +41,10 @@ impl StorageGatewayControlPlane {
             &aws_account_dto.account_id, sync_id
         );
 
-        let client = self.aws_service.create_storagegateway_client(aws_account_dto).await?;
+        let client = self
+            .aws_service
+            .create_storagegateway_client(aws_account_dto)
+            .await?;
         let mut resources: Vec<AwsResourceModel> = Vec::new();
 
         let mut marker = None;
@@ -64,7 +67,7 @@ impl StorageGatewayControlPlane {
                 let arn = gw.gateway_arn().unwrap_or("");
                 let name = gw.gateway_name().unwrap_or("");
                 let gw_id = gw.gateway_id().unwrap_or("");
-                
+
                 let resource_data = json!({
                     "GatewayId": gw_id,
                     "GatewayName": name,

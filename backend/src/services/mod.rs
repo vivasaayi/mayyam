@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 pub mod ai_analysis_service;
 pub mod aws;
 pub mod aws_account;
@@ -40,7 +39,7 @@ pub mod mysql_telemetry_poller;
 // Re-export commonly used services for backward compatibility
 pub use aws::AwsService;
 
-pub mod kubernetes;
-pub mod chaos_service;
 pub mod chaos_audit_service;
 pub mod chaos_metrics_service;
+pub mod chaos_service;
+pub mod kubernetes;

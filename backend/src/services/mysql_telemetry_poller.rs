@@ -85,8 +85,9 @@ impl MySqlTelemetryPoller {
             match connect_to_dynamic_database(&connection, &self.config).await {
                 Ok(dynamic_conn) => match MySqlTelemetryCollector::collect(&dynamic_conn).await {
                     Ok(snapshot) => {
-                        if let Err(error) =
-                            telemetry_repo.create_from_snapshot(connection.id, &snapshot).await
+                        if let Err(error) = telemetry_repo
+                            .create_from_snapshot(connection.id, &snapshot)
+                            .await
                         {
                             warn!(
                                 connection_id = %connection.id,

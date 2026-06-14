@@ -12,27 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 #![cfg(feature = "integration-tests")]
 
 // Integration tests main entry point
 mod integration {
     pub mod api_tests;
-    pub mod cost_analytics_api_tests;
-    pub mod helpers;
-    pub mod kafka;
-    pub mod llm;
-    pub mod iam_api_tests;
-    pub mod ec2_api_tests;
     pub mod aws_control_plane_api_tests;
+    pub mod aws_inventory_api_tests;
+    pub mod cost_analytics_api_tests;
+    pub mod ec2_api_tests;
+    pub mod helpers;
+    pub mod iam_api_tests;
+    pub mod kafka;
+    pub mod kubernetes_smoke_tests;
+    pub mod llm;
+    pub mod mysql_inventory_api_tests;
 }
 
 // Re-export integration tests
 pub use integration::api_tests::*;
-pub use integration::cost_analytics_api_tests::*;
-pub use integration::helpers;
-pub use integration::kafka::*;
-pub use integration::llm::*;
-pub use integration::iam_api_tests::*;
-pub use integration::ec2_api_tests::*;
 pub use integration::aws_control_plane_api_tests::*;
+pub use integration::aws_inventory_api_tests::*;
+pub use integration::cost_analytics_api_tests::*;
+pub use integration::ec2_api_tests::*;
+pub use integration::helpers;
+pub use integration::iam_api_tests::*;
+pub use integration::kafka::*;
+pub use integration::kubernetes_smoke_tests::*;
+pub use integration::llm::*;
+pub use integration::mysql_inventory_api_tests::*;

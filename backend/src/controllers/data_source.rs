@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
-use actix_web::{Result};
+use actix_web::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;

@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::errors::AppError;
 use crate::models::aws_account::AwsAccountDto;
+use crate::services::aws::aws_data_plane::cloudwatch::{
+    CloudWatchMetrics, CloudWatchMetricsRequest as DataPlaneCloudWatchMetricsRequest,
+    CloudWatchService,
+};
 use crate::services::aws::aws_types::cloud_watch::{
     CloudWatchMetricsRequest, CloudWatchMetricsResult,
 };
@@ -22,7 +25,6 @@ use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::AwsService;
 use serde_json::json;
 use std::sync::Arc;
-use uuid;
 
 // Data plane implementation for EC2
 pub struct Ec2DataPlane {
@@ -39,16 +41,45 @@ impl Ec2DataPlane {
         aws_account_dto: &AwsAccountDto,
         request: &CloudWatchMetricsRequest,
     ) -> Result<CloudWatchMetricsResult, AppError> {
-        let client = self
-            .aws_service
-            .create_cloudwatch_client(aws_account_dto)
+        let cloudwatch_service = CloudWatchService::new(self.aws_service.clone());
+        let data_plane_request = DataPlaneCloudWatchMetricsRequest {
+            resource_type: request.resource_type.clone(),
+            resource_id: request.resource_id.clone(),
+            region: request.region.clone(),
+            metrics: request.metrics.clone(),
+            start_time: request.start_time,
+            end_time: request.end_time,
+            period: request.period,
+        };
+        let result = cloudwatch_service
+            .get_metrics(aws_account_dto, &data_plane_request)
             .await?;
 
-        // Mock implementation for EC2 metrics
         Ok(CloudWatchMetricsResult {
-            resource_id: request.resource_id.clone(),
-            resource_type: request.resource_type.clone(),
-            metrics: vec![],
+            resource_id: result.resource_id,
+            resource_type: result.resource_type,
+            metrics: result
+                .metrics
+                .into_iter()
+                .map(
+                    |metric| crate::services::aws::aws_types::cloud_watch::CloudWatchMetricData {
+                        namespace: metric.namespace,
+                        metric_name: metric.metric_name,
+                        unit: metric.unit,
+                        datapoints: metric
+                            .datapoints
+                            .into_iter()
+                            .map(|datapoint| {
+                                crate::services::aws::aws_types::cloud_watch::CloudWatchDatapoint {
+                                    timestamp: datapoint.timestamp,
+                                    value: datapoint.value,
+                                    unit: datapoint.unit,
+                                }
+                            })
+                            .collect(),
+                    },
+                )
+                .collect(),
         })
     }
 

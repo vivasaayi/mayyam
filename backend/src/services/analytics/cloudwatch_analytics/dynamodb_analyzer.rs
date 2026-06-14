@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use super::cloudwatch_analyzer::CloudWatchAnalyzer;
 use crate::errors::AppError;
 use crate::models::aws_resource;

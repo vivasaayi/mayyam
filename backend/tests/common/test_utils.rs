@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use sea_orm::{ConnectOptions, Database, DatabaseConnection};
 use tempfile::TempDir;
 use tokio::sync::OnceCell;

@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::errors::AppError;
 use crate::models::aws_account::AwsAccountDto;
-use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel, AwsResourceType};
+use crate::models::aws_resource::{AwsResourceDto, AwsResourceType, Model as AwsResourceModel};
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::aws::service::AwsService;
-use aws_sdk_ec2::types::{Volume, Snapshot};
+use aws_sdk_ec2::types::{Snapshot, Volume};
 use chrono::Utc;
 use std::sync::Arc;
 use tracing::{debug, error, info};
@@ -60,7 +59,10 @@ impl EbsControlPlane {
                 Ok(response) => {
                     if let Some(volumes) = &response.volumes {
                         for volume in volumes {
-                            match self.create_volume_resource(volume, aws_account_dto, sync_id).await {
+                            match self
+                                .create_volume_resource(volume, aws_account_dto, sync_id)
+                                .await
+                            {
                                 Ok(resource) => all_resources.push(resource),
                                 Err(e) => error!("Failed to create volume resource: {}", e),
                             }
@@ -109,7 +111,10 @@ impl EbsControlPlane {
                 Ok(response) => {
                     if let Some(snapshots) = &response.snapshots {
                         for snapshot in snapshots {
-                            match self.create_snapshot_resource(snapshot, aws_account_dto, sync_id).await {
+                            match self
+                                .create_snapshot_resource(snapshot, aws_account_dto, sync_id)
+                                .await
+                            {
                                 Ok(resource) => all_resources.push(resource),
                                 Err(e) => error!("Failed to create snapshot resource: {}", e),
                             }
@@ -139,7 +144,9 @@ impl EbsControlPlane {
         aws_account_dto: &AwsAccountDto,
         sync_id: Uuid,
     ) -> Result<AwsResourceDto, AppError> {
-        let resource_id = volume.volume_id.as_ref()
+        let resource_id = volume
+            .volume_id
+            .as_ref()
             .ok_or_else(|| AppError::Validation("EBS volume ID missing".to_string()))?;
 
         let arn = format!(
@@ -151,7 +158,10 @@ impl EbsControlPlane {
         if let Some(tags) = &volume.tags {
             for tag in tags {
                 if let (Some(key), Some(value)) = (tag.key(), tag.value()) {
-                    tags_map.insert(key.to_string(), serde_json::Value::String(value.to_string()));
+                    tags_map.insert(
+                        key.to_string(),
+                        serde_json::Value::String(value.to_string()),
+                    );
                 }
             }
         }
@@ -180,7 +190,8 @@ impl EbsControlPlane {
             resource_id: resource_id.to_string(),
             arn,
             name: volume.tags.as_ref().and_then(|tags| {
-                tags.iter().find(|tag| tag.key() == Some("Name"))
+                tags.iter()
+                    .find(|tag| tag.key() == Some("Name"))
                     .and_then(|tag| tag.value())
                     .map(|s| s.to_string())
             }),
@@ -196,7 +207,9 @@ impl EbsControlPlane {
         aws_account_dto: &AwsAccountDto,
         sync_id: Uuid,
     ) -> Result<AwsResourceDto, AppError> {
-        let resource_id = snapshot.snapshot_id.as_ref()
+        let resource_id = snapshot
+            .snapshot_id
+            .as_ref()
             .ok_or_else(|| AppError::Validation("EBS snapshot ID missing".to_string()))?;
 
         let arn = format!(
@@ -208,7 +221,10 @@ impl EbsControlPlane {
         if let Some(tags) = &snapshot.tags {
             for tag in tags {
                 if let (Some(key), Some(value)) = (tag.key(), tag.value()) {
-                    tags_map.insert(key.to_string(), serde_json::Value::String(value.to_string()));
+                    tags_map.insert(
+                        key.to_string(),
+                        serde_json::Value::String(value.to_string()),
+                    );
                 }
             }
         }
@@ -236,7 +252,8 @@ impl EbsControlPlane {
             resource_id: resource_id.to_string(),
             arn,
             name: snapshot.tags.as_ref().and_then(|tags| {
-                tags.iter().find(|tag| tag.key() == Some("Name"))
+                tags.iter()
+                    .find(|tag| tag.key() == Some("Name"))
                     .and_then(|tag| tag.value())
                     .map(|s| s.to_string())
             }),

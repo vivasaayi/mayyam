@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use chrono::{DateTime, Utc};
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -110,6 +109,7 @@ pub enum AwsResourceType {
     EventBridgeRule,
     StepFunction,
     SesIdentity,
+    AmazonMqBroker,
     AppSyncApi,
     ConnectInstance,
     // Analytics & Big Data Resources
@@ -120,11 +120,66 @@ pub enum AwsResourceType {
     KinesisAnalyticsApp,
     // Edge Computing Resources
     WafWebAcl,
+    ShieldProtection,
     GlobalAccelerator,
     CloudFrontFunction,
     // Backup & DR Resources
     BackupVault,
     BackupPlan,
+    // Compute Scaling Resources
+    AutoScalingGroup,
+    // Observability Depth Resources
+    CloudWatchMetric,
+    CloudWatchLogGroup,
+    // Networking & DNS Depth Resources
+    Route53HostedZone,
+    TransitGateway,
+    VpcEndpoint,
+    // Secrets Resources
+    SecretsManagerSecret,
+    // Database Cluster Resources
+    AuroraCluster,
+    // Streaming Resources
+    MskCluster,
+    // Security Detection Resources
+    GuardDutyDetector,
+    SecurityHubHub,
+    InspectorAccountCoverage,
+    MacieAccount,
+    OrganizationsOrganization,
+    ControlTowerLandingZone,
+    ServiceCatalogPortfolio,
+    TrustedAdvisorAccount,
+    ComputeOptimizerAccount,
+    HealthAccount,
+    ResilienceHubAccount,
+    // Document Database Resources
+    DocumentDbCluster,
+    // Graph Database Resources
+    NeptuneCluster,
+    // In-Memory Database Resources
+    MemoryDbCluster,
+    // Platform, Data Movement & File System Resources
+    ElasticBeanstalkEnvironment,
+    DataSyncTask,
+    FsxFileSystem,
+    // Data, Streaming Delivery & Governance Resources
+    TimestreamTable,
+    FirehoseDeliveryStream,
+    LakeFormationDataLake,
+    // Simplified Compute Resources
+    LightsailResource,
+    // BI & Analytics Assets
+    QuickSightAsset,
+    // AI & ML Resources
+    BedrockResource,
+    SageMakerResource,
+    TextractResource,
+    ComprehendResource,
+    // Migration & DR Resources
+    DmsResource,
+    MgnResource,
+    DrsResource,
 }
 
 impl ToString for AwsResourceType {
@@ -189,6 +244,7 @@ impl ToString for AwsResourceType {
             AwsResourceType::EventBridgeRule => "EventBridgeRule".to_string(),
             AwsResourceType::StepFunction => "StepFunction".to_string(),
             AwsResourceType::SesIdentity => "SesIdentity".to_string(),
+            AwsResourceType::AmazonMqBroker => "AmazonMqBroker".to_string(),
             AwsResourceType::AppSyncApi => "AppSyncApi".to_string(),
             AwsResourceType::ConnectInstance => "ConnectInstance".to_string(),
             // Analytics & Big Data Resources
@@ -199,11 +255,67 @@ impl ToString for AwsResourceType {
             AwsResourceType::KinesisAnalyticsApp => "KinesisAnalyticsApp".to_string(),
             // Edge Computing Resources
             AwsResourceType::WafWebAcl => "WafWebAcl".to_string(),
+            AwsResourceType::ShieldProtection => "ShieldProtection".to_string(),
             AwsResourceType::GlobalAccelerator => "GlobalAccelerator".to_string(),
             AwsResourceType::CloudFrontFunction => "CloudFrontFunction".to_string(),
             // Backup & DR Resources
             AwsResourceType::BackupVault => "BackupVault".to_string(),
             AwsResourceType::BackupPlan => "BackupPlan".to_string(),
+            // Compute Scaling Resources
+            AwsResourceType::AutoScalingGroup => "AutoScalingGroup".to_string(),
+            AwsResourceType::CloudWatchMetric => "CloudWatchMetric".to_string(),
+            AwsResourceType::CloudWatchLogGroup => "CloudWatchLogGroup".to_string(),
+            // Networking & DNS Depth Resources
+            AwsResourceType::Route53HostedZone => "Route53HostedZone".to_string(),
+            AwsResourceType::TransitGateway => "TransitGateway".to_string(),
+            AwsResourceType::VpcEndpoint => "VpcEndpoint".to_string(),
+            // Secrets Resources
+            AwsResourceType::SecretsManagerSecret => "SecretsManagerSecret".to_string(),
+            // Database Cluster Resources
+            AwsResourceType::AuroraCluster => "AuroraCluster".to_string(),
+            // Streaming Resources
+            AwsResourceType::MskCluster => "MskCluster".to_string(),
+            // Security Detection Resources
+            AwsResourceType::GuardDutyDetector => "GuardDutyDetector".to_string(),
+            AwsResourceType::SecurityHubHub => "SecurityHubHub".to_string(),
+            AwsResourceType::InspectorAccountCoverage => "InspectorAccountCoverage".to_string(),
+            AwsResourceType::MacieAccount => "MacieAccount".to_string(),
+            AwsResourceType::OrganizationsOrganization => "OrganizationsOrganization".to_string(),
+            AwsResourceType::ControlTowerLandingZone => "ControlTowerLandingZone".to_string(),
+            AwsResourceType::ServiceCatalogPortfolio => "ServiceCatalogPortfolio".to_string(),
+            AwsResourceType::TrustedAdvisorAccount => "TrustedAdvisorAccount".to_string(),
+            AwsResourceType::ComputeOptimizerAccount => "ComputeOptimizerAccount".to_string(),
+            AwsResourceType::HealthAccount => "HealthAccount".to_string(),
+            AwsResourceType::ResilienceHubAccount => "ResilienceHubAccount".to_string(),
+            // Document Database Resources
+            AwsResourceType::DocumentDbCluster => "DocumentDbCluster".to_string(),
+            // Graph Database Resources
+            AwsResourceType::NeptuneCluster => "NeptuneCluster".to_string(),
+            // In-Memory Database Resources
+            AwsResourceType::MemoryDbCluster => "MemoryDbCluster".to_string(),
+            // Platform, Data Movement & File System Resources
+            AwsResourceType::ElasticBeanstalkEnvironment => {
+                "ElasticBeanstalkEnvironment".to_string()
+            }
+            AwsResourceType::DataSyncTask => "DataSyncTask".to_string(),
+            AwsResourceType::FsxFileSystem => "FsxFileSystem".to_string(),
+            // Data, Streaming Delivery & Governance Resources
+            AwsResourceType::TimestreamTable => "TimestreamTable".to_string(),
+            AwsResourceType::FirehoseDeliveryStream => "FirehoseDeliveryStream".to_string(),
+            AwsResourceType::LakeFormationDataLake => "LakeFormationDataLake".to_string(),
+            // Simplified Compute Resources
+            AwsResourceType::LightsailResource => "LightsailResource".to_string(),
+            // BI & Analytics Assets
+            AwsResourceType::QuickSightAsset => "QuickSightAsset".to_string(),
+            // AI & ML Resources
+            AwsResourceType::BedrockResource => "BedrockResource".to_string(),
+            AwsResourceType::SageMakerResource => "SageMakerResource".to_string(),
+            AwsResourceType::TextractResource => "TextractResource".to_string(),
+            AwsResourceType::ComprehendResource => "ComprehendResource".to_string(),
+            // Migration & DR Resources
+            AwsResourceType::DmsResource => "DmsResource".to_string(),
+            AwsResourceType::MgnResource => "MgnResource".to_string(),
+            AwsResourceType::DrsResource => "DrsResource".to_string(),
         }
     }
 }
@@ -270,6 +382,7 @@ impl From<&str> for AwsResourceType {
             "EventBridgeRule" => AwsResourceType::EventBridgeRule,
             "StepFunction" => AwsResourceType::StepFunction,
             "SesIdentity" => AwsResourceType::SesIdentity,
+            "AmazonMqBroker" => AwsResourceType::AmazonMqBroker,
             "AppSyncApi" => AwsResourceType::AppSyncApi,
             "ConnectInstance" => AwsResourceType::ConnectInstance,
             // Analytics & Big Data Resources
@@ -280,11 +393,65 @@ impl From<&str> for AwsResourceType {
             "KinesisAnalyticsApp" => AwsResourceType::KinesisAnalyticsApp,
             // Edge Computing Resources
             "WafWebAcl" => AwsResourceType::WafWebAcl,
+            "ShieldProtection" => AwsResourceType::ShieldProtection,
             "GlobalAccelerator" => AwsResourceType::GlobalAccelerator,
             "CloudFrontFunction" => AwsResourceType::CloudFrontFunction,
             // Backup & DR Resources
             "BackupVault" => AwsResourceType::BackupVault,
             "BackupPlan" => AwsResourceType::BackupPlan,
+            // Compute Scaling Resources
+            "AutoScalingGroup" => AwsResourceType::AutoScalingGroup,
+            "CloudWatchMetric" => AwsResourceType::CloudWatchMetric,
+            "CloudWatchLogGroup" => AwsResourceType::CloudWatchLogGroup,
+            // Networking & DNS Depth Resources
+            "Route53HostedZone" => AwsResourceType::Route53HostedZone,
+            "TransitGateway" => AwsResourceType::TransitGateway,
+            "VpcEndpoint" => AwsResourceType::VpcEndpoint,
+            // Secrets Resources
+            "SecretsManagerSecret" => AwsResourceType::SecretsManagerSecret,
+            // Database Cluster Resources
+            "AuroraCluster" => AwsResourceType::AuroraCluster,
+            // Streaming Resources
+            "MskCluster" => AwsResourceType::MskCluster,
+            // Security Detection Resources
+            "GuardDutyDetector" => AwsResourceType::GuardDutyDetector,
+            "SecurityHubHub" => AwsResourceType::SecurityHubHub,
+            "InspectorAccountCoverage" => AwsResourceType::InspectorAccountCoverage,
+            "MacieAccount" => AwsResourceType::MacieAccount,
+            "OrganizationsOrganization" => AwsResourceType::OrganizationsOrganization,
+            "ControlTowerLandingZone" => AwsResourceType::ControlTowerLandingZone,
+            "ServiceCatalogPortfolio" => AwsResourceType::ServiceCatalogPortfolio,
+            "TrustedAdvisorAccount" => AwsResourceType::TrustedAdvisorAccount,
+            "ComputeOptimizerAccount" => AwsResourceType::ComputeOptimizerAccount,
+            "HealthAccount" => AwsResourceType::HealthAccount,
+            "ResilienceHubAccount" => AwsResourceType::ResilienceHubAccount,
+            // Document Database Resources
+            "DocumentDbCluster" => AwsResourceType::DocumentDbCluster,
+            // Graph Database Resources
+            "NeptuneCluster" => AwsResourceType::NeptuneCluster,
+            // In-Memory Database Resources
+            "MemoryDbCluster" => AwsResourceType::MemoryDbCluster,
+            // Platform, Data Movement & File System Resources
+            "ElasticBeanstalkEnvironment" => AwsResourceType::ElasticBeanstalkEnvironment,
+            "DataSyncTask" => AwsResourceType::DataSyncTask,
+            "FsxFileSystem" => AwsResourceType::FsxFileSystem,
+            // Data, Streaming Delivery & Governance Resources
+            "TimestreamTable" => AwsResourceType::TimestreamTable,
+            "FirehoseDeliveryStream" => AwsResourceType::FirehoseDeliveryStream,
+            "LakeFormationDataLake" => AwsResourceType::LakeFormationDataLake,
+            // Simplified Compute Resources
+            "LightsailResource" => AwsResourceType::LightsailResource,
+            // BI & Analytics Assets
+            "QuickSightAsset" => AwsResourceType::QuickSightAsset,
+            // AI & ML Resources
+            "BedrockResource" => AwsResourceType::BedrockResource,
+            "SageMakerResource" => AwsResourceType::SageMakerResource,
+            "TextractResource" => AwsResourceType::TextractResource,
+            "ComprehendResource" => AwsResourceType::ComprehendResource,
+            // Migration & DR Resources
+            "DmsResource" => AwsResourceType::DmsResource,
+            "MgnResource" => AwsResourceType::MgnResource,
+            "DrsResource" => AwsResourceType::DrsResource,
             _ => panic!("Unknown resource type: {}", s),
         }
     }

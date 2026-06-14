@@ -12,13 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use aws_config::SdkConfig;
 use aws_sdk_costexplorer::{
     operation::get_cost_and_usage::GetCostAndUsageInput, types::*, Client as CostExplorerClient,
 };
 use chrono::{Datelike, Duration, NaiveDate, Utc};
-use sea_orm::{DatabaseConnection, prelude::Decimal, ActiveValue};
+use sea_orm::{prelude::Decimal, ActiveValue, DatabaseConnection};
 use serde::Serialize;
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
@@ -37,9 +36,9 @@ use crate::repositories::aws_resource::AwsResourceRepository;
 use crate::repositories::cost_analytics::CostAnalyticsRepository;
 use crate::repositories::llm_provider::LlmProviderRepository;
 use crate::services::aws::AwsService;
+use crate::services::cost_categories::CostCategoriesService;
 use crate::services::llm::LlmIntegrationService;
 use crate::services::resource_cost_enrichment::ResourceCostEnrichmentService;
-use crate::services::cost_categories::CostCategoriesService;
 
 #[derive(Debug, Clone)]
 pub struct CostMetrics {
@@ -420,10 +419,7 @@ impl AwsCostAnalyticsService {
             aws_resource_repo.clone(),
         );
 
-        let cost_categories = CostCategoriesService::new(
-            db,
-            repository.clone(),
-        );
+        let cost_categories = CostCategoriesService::new(db, repository.clone());
 
         Self {
             repository,
@@ -624,19 +620,23 @@ impl AwsCostAnalyticsService {
 
                                     // Add cost allocation tags if they exist
                                     if let Some(env) = &environment_tag {
-                                        tags_json["Environment"] = serde_json::Value::String(env.clone());
+                                        tags_json["Environment"] =
+                                            serde_json::Value::String(env.clone());
                                     }
                                     if let Some(proj) = &project_tag {
-                                        tags_json["Project"] = serde_json::Value::String(proj.clone());
+                                        tags_json["Project"] =
+                                            serde_json::Value::String(proj.clone());
                                     }
                                     if let Some(team) = &team_tag {
                                         tags_json["Team"] = serde_json::Value::String(team.clone());
                                     }
                                     if let Some(cc) = &cost_center_tag {
-                                        tags_json["CostCenter"] = serde_json::Value::String(cc.clone());
+                                        tags_json["CostCenter"] =
+                                            serde_json::Value::String(cc.clone());
                                     }
                                     if let Some(app) = &application_tag {
-                                        tags_json["Application"] = serde_json::Value::String(app.clone());
+                                        tags_json["Application"] =
+                                            serde_json::Value::String(app.clone());
                                     }
 
                                     tags_json
@@ -1423,7 +1423,13 @@ Respond in JSON format with the following structure:
     ) -> Result<HashMap<String, Vec<(NaiveDate, f64)>>, AppError> {
         let categories = CostCategoriesService::create_default_categories();
         self.cost_categories
-            .get_category_trends(account_id, start_date, end_date, &categories, granularity_days)
+            .get_category_trends(
+                account_id,
+                start_date,
+                end_date,
+                &categories,
+                granularity_days,
+            )
             .await
     }
 }

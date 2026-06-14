@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 #![cfg(feature = "integration-tests")]
 
 use crate::integration::helpers::TestHarness;
@@ -106,11 +105,15 @@ async fn test_batch_produce() {
         .expect("failed to batch produce messages");
 
     assert!(produce_response.status().is_success());
-    
+
     // Clean up
     let del_res = harness
         .client()
-        .delete(&harness.build_url(&format!("/api/kafka/clusters/{}/topics/{}", cluster_id(), topic_name)))
+        .delete(&harness.build_url(&format!(
+            "/api/kafka/clusters/{}/topics/{}",
+            cluster_id(),
+            topic_name
+        )))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .send()
         .await
@@ -173,7 +176,11 @@ async fn test_produce_retry() {
     // Clean up
     let del_res = harness
         .client()
-        .delete(&harness.build_url(&format!("/api/kafka/clusters/{}/topics/{}", cluster_id(), topic_name)))
+        .delete(&harness.build_url(&format!(
+            "/api/kafka/clusters/{}/topics/{}",
+            cluster_id(),
+            topic_name
+        )))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .send()
         .await

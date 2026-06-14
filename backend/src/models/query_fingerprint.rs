@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
+use chrono::{NaiveDateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::Set;
 use serde::{Deserialize, Serialize};
-use chrono::{NaiveDateTime, Utc};
 use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
@@ -26,7 +25,7 @@ pub struct Model {
     pub id: Uuid,
     pub normalized_sql: String,
     pub fingerprint_hash: String, // For fast lookups
-    pub total_query_time: f64, // Sum of all query times
+    pub total_query_time: f64,    // Sum of all query times
     pub avg_query_time: f64,
     pub p95_query_time: f64,
     pub p99_query_time: f64,
@@ -37,7 +36,7 @@ pub struct Model {
     pub cluster_count: i32, // Number of clusters this fingerprint appears in
     pub first_seen: NaiveDateTime,
     pub last_seen: NaiveDateTime,
-    pub tables_used: Json, // Array of table names
+    pub tables_used: Json,  // Array of table names
     pub columns_used: Json, // Array of column names
     pub has_full_scan: bool,
     pub has_filesort: bool,
@@ -82,8 +81,11 @@ impl QueryFingerprintDto {
             cluster_count: Set(0),
             first_seen: Set(Utc::now().naive_utc()),
             last_seen: Set(Utc::now().naive_utc()),
-            tables_used: Set(serde_json::to_value(&self.tables_used).unwrap_or(serde_json::Value::Array(vec![]))),
-            columns_used: Set(serde_json::to_value(&self.columns_used).unwrap_or(serde_json::Value::Array(vec![]))),
+            tables_used: Set(
+                serde_json::to_value(&self.tables_used).unwrap_or(serde_json::Value::Array(vec![]))
+            ),
+            columns_used: Set(serde_json::to_value(&self.columns_used)
+                .unwrap_or(serde_json::Value::Array(vec![]))),
             has_full_scan: Set(false),
             has_filesort: Set(false),
             has_temp_table: Set(false),

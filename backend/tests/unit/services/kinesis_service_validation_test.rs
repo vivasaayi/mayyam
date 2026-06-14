@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use mayyam::errors::AppError;
 use mayyam::services::aws::aws_types::kinesis::KinesisCreateStreamRequest;
 

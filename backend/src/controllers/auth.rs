@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use chrono::{Duration, Utc};
 use jsonwebtoken::{encode, EncodingKey, Header};
 use std::sync::Arc;
-use tracing::{error};
+use tracing::error;
 
 use crate::config::Config;
 use crate::errors::AppError;

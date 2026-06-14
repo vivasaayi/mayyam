@@ -41,7 +41,10 @@ impl KinesisAnalyticsControlPlane {
             &aws_account_dto.account_id, sync_id
         );
 
-        let client = self.aws_service.create_kinesisanalytics_client(aws_account_dto).await?;
+        let client = self
+            .aws_service
+            .create_kinesisanalytics_client(aws_account_dto)
+            .await?;
         let mut resources: Vec<AwsResourceModel> = Vec::new();
 
         let mut next_token = None;
@@ -63,7 +66,7 @@ impl KinesisAnalyticsControlPlane {
             for app in response.application_summaries() {
                 let arn = app.application_arn();
                 let name = app.application_name();
-                
+
                 let resource_data = json!({
                     "ApplicationName": name,
                     "ApplicationARN": arn,

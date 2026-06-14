@@ -12,10 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::errors::AppError;
 use crate::models::aws_account::AwsAccountDto;
-use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel, AwsResourceType};
+use crate::models::aws_resource::{AwsResourceDto, AwsResourceType, Model as AwsResourceModel};
 use crate::repositories::aws_resource::AwsResourceRepository;
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::aws::service::AwsService;
@@ -48,7 +47,10 @@ impl LoadBalancerControlPlane {
             &aws_account_dto.account_id, sync_id
         );
 
-        let client = self.aws_service.create_elbv2_client(aws_account_dto).await?;
+        let client = self
+            .aws_service
+            .create_elbv2_client(aws_account_dto)
+            .await?;
         let mut all_resources = Vec::new();
 
         // Get all load balancers
@@ -66,7 +68,10 @@ impl LoadBalancerControlPlane {
                             if let Some(lb_type) = &lb.r#type {
                                 // Only process Application Load Balancers
                                 if lb_type.as_str() == "application" {
-                                    match self.create_alb_resource(&lb, aws_account_dto, sync_id).await {
+                                    match self
+                                        .create_alb_resource(&lb, aws_account_dto, sync_id)
+                                        .await
+                                    {
                                         Ok(resource) => all_resources.push(resource),
                                         Err(e) => error!("Failed to create ALB resource: {}", e),
                                     }
@@ -102,7 +107,10 @@ impl LoadBalancerControlPlane {
             &aws_account_dto.account_id, sync_id
         );
 
-        let client = self.aws_service.create_elbv2_client(aws_account_dto).await?;
+        let client = self
+            .aws_service
+            .create_elbv2_client(aws_account_dto)
+            .await?;
         let mut all_resources = Vec::new();
 
         // Get all load balancers
@@ -120,7 +128,10 @@ impl LoadBalancerControlPlane {
                             if let Some(lb_type) = &lb.r#type {
                                 // Only process Network Load Balancers
                                 if lb_type.as_str() == "network" {
-                                    match self.create_nlb_resource(&lb, aws_account_dto, sync_id).await {
+                                    match self
+                                        .create_nlb_resource(&lb, aws_account_dto, sync_id)
+                                        .await
+                                    {
                                         Ok(resource) => all_resources.push(resource),
                                         Err(e) => error!("Failed to create NLB resource: {}", e),
                                     }
@@ -164,7 +175,10 @@ impl LoadBalancerControlPlane {
             Ok(response) => {
                 if let Some(load_balancers) = response.load_balancer_descriptions {
                     for lb in load_balancers {
-                        match self.create_elb_resource(&lb, aws_account_dto, sync_id).await {
+                        match self
+                            .create_elb_resource(&lb, aws_account_dto, sync_id)
+                            .await
+                        {
                             Ok(resource) => all_resources.push(resource),
                             Err(e) => error!("Failed to create ELB resource: {}", e),
                         }
@@ -187,7 +201,9 @@ impl LoadBalancerControlPlane {
         aws_account_dto: &AwsAccountDto,
         sync_id: Uuid,
     ) -> Result<AwsResourceDto, AppError> {
-        let resource_id = lb.load_balancer_arn.as_ref()
+        let resource_id = lb
+            .load_balancer_arn
+            .as_ref()
             .ok_or_else(|| AppError::Validation("ALB ARN missing".to_string()))?
             .split(':')
             .last()
@@ -196,11 +212,15 @@ impl LoadBalancerControlPlane {
             .last()
             .unwrap_or("unknown");
 
-        let name = lb.load_balancer_name.as_ref()
+        let name = lb
+            .load_balancer_name
+            .as_ref()
             .unwrap_or(&"unknown".to_string())
             .clone();
 
-        let arn = lb.load_balancer_arn.as_ref()
+        let arn = lb
+            .load_balancer_arn
+            .as_ref()
             .ok_or_else(|| AppError::Validation("ALB ARN missing".to_string()))?
             .clone();
 
@@ -247,7 +267,9 @@ impl LoadBalancerControlPlane {
         aws_account_dto: &AwsAccountDto,
         sync_id: Uuid,
     ) -> Result<AwsResourceDto, AppError> {
-        let resource_id = lb.load_balancer_arn.as_ref()
+        let resource_id = lb
+            .load_balancer_arn
+            .as_ref()
             .ok_or_else(|| AppError::Validation("NLB ARN missing".to_string()))?
             .split(':')
             .last()
@@ -256,11 +278,15 @@ impl LoadBalancerControlPlane {
             .last()
             .unwrap_or("unknown");
 
-        let name = lb.load_balancer_name.as_ref()
+        let name = lb
+            .load_balancer_name
+            .as_ref()
             .unwrap_or(&"unknown".to_string())
             .clone();
 
-        let arn = lb.load_balancer_arn.as_ref()
+        let arn = lb
+            .load_balancer_arn
+            .as_ref()
             .ok_or_else(|| AppError::Validation("NLB ARN missing".to_string()))?
             .clone();
 
@@ -302,7 +328,9 @@ impl LoadBalancerControlPlane {
         aws_account_dto: &AwsAccountDto,
         sync_id: Uuid,
     ) -> Result<AwsResourceDto, AppError> {
-        let resource_id = lb.load_balancer_name.as_ref()
+        let resource_id = lb
+            .load_balancer_name
+            .as_ref()
             .ok_or_else(|| AppError::Validation("ELB name missing".to_string()))?;
 
         let name = resource_id.clone();
@@ -310,9 +338,7 @@ impl LoadBalancerControlPlane {
         // Construct ARN for ELB (classic load balancers don't have ARNs in the same way)
         let arn = format!(
             "arn:aws:elasticloadbalancing:{}:{}:loadbalancer/{}",
-            aws_account_dto.default_region,
-            aws_account_dto.account_id,
-            resource_id
+            aws_account_dto.default_region, aws_account_dto.account_id, resource_id
         );
 
         // Extract tags (ELB tags are retrieved separately)

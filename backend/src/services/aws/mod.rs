@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 // Root module for AWS services
 #[path = "aws_client_factory.rs"]
 pub(crate) mod client_factory;
@@ -29,3 +28,4 @@ mod aws_config_service;
 pub mod aws_control_plane;
 pub mod aws_data_plane;
 pub mod aws_types;
+pub mod inventory;

@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use actix_web::{web, HttpResponse, Responder};
 use serde::Deserialize;
 use std::sync::Arc;
-use tracing::{debug};
+use tracing::debug;
 use uuid::Uuid;
 
 use crate::errors::AppError;

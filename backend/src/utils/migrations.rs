@@ -14,7 +14,7 @@
 
 use rust_embed::RustEmbed;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, DbErr, Statement};
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
 #[derive(RustEmbed)]
 #[folder = "migrations/"]
@@ -41,13 +41,15 @@ pub async fn run_migrations(db: &DatabaseConnection) -> Result<(), DbErr> {
 
     // Get list of applied migrations
     let applied_stmt = r#"SELECT filename FROM _mayyam_migrations"#;
-    
+
     // We use a raw query and simple mapping since we just need the strings
-    let applied_migrations_result = db.query_all(Statement::from_string(
-        DbBackend::Postgres,
-        applied_stmt.to_string(),
-    )).await?;
-    
+    let applied_migrations_result = db
+        .query_all(Statement::from_string(
+            DbBackend::Postgres,
+            applied_stmt.to_string(),
+        ))
+        .await?;
+
     let mut applied_files = Vec::new();
     for row in applied_migrations_result {
         if let Ok(filename) = row.try_get::<String>("", "filename") {
@@ -71,11 +73,11 @@ pub async fn run_migrations(db: &DatabaseConnection) -> Result<(), DbErr> {
         }
 
         info!("Applying migration: {}", filename);
-        
+
         let file = Asset::get(&filename).expect("Failed to get embedded migration file");
-        let sql = std::str::from_utf8(file.data.as_ref())
-            .expect("Migration file is not valid UTF-8");
-        
+        let sql =
+            std::str::from_utf8(file.data.as_ref()).expect("Migration file is not valid UTF-8");
+
         // Execute the migration script using execute_unprepared to support multiple statements and PL/pgSQL blocks
         match db.execute_unprepared(sql).await {
             Ok(_) => {
@@ -84,7 +86,8 @@ pub async fn run_migrations(db: &DatabaseConnection) -> Result<(), DbErr> {
                     "INSERT INTO _mayyam_migrations (filename) VALUES ('{}');",
                     filename
                 );
-                db.execute(Statement::from_string(DbBackend::Postgres, record_sql)).await?;
+                db.execute(Statement::from_string(DbBackend::Postgres, record_sql))
+                    .await?;
                 applied_count += 1;
                 info!("Successfully applied migration: {}", filename);
             }

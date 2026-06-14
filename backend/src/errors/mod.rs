@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use actix_web::{HttpResponse, ResponseError};
 use aws_smithy_types::error::operation::BuildError;
 use sea_orm::DbErr;

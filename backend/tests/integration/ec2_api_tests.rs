@@ -46,7 +46,10 @@ async fn vpc_resources_list_flow() {
         .await
         .expect("Failed to post AWS account");
 
-    assert!(res.status().is_success() || res.status().as_u16() == 409, "Account creation/check failed");
+    assert!(
+        res.status().is_success() || res.status().as_u16() == 409,
+        "Account creation/check failed"
+    );
 
     async fn test_endpoint(
         client: Client,
@@ -55,8 +58,11 @@ async fn vpc_resources_list_flow() {
         endpoint_path: &str,
         resource_name: &str,
     ) {
-        let url = format!("{}/api/aws/accounts/{}/regions/{}/{}", base, account_id, "us-east-1", endpoint_path);
-        
+        let url = format!(
+            "{}/api/aws/accounts/{}/regions/{}/{}",
+            base, account_id, "us-east-1", endpoint_path
+        );
+
         let res = client
             .get(&url)
             .send()
@@ -82,21 +88,78 @@ async fn vpc_resources_list_flow() {
             Value::Object(_) => {
                 // It could be a paginated response
                 let items = res_json.get("resources").and_then(|v| v.as_array());
-                assert!(items.is_some(), "Expected 'resources' array in {} response", resource_name);
-                println!("{} paginated listing returned {} items.", resource_name, items.unwrap().len());
+                assert!(
+                    items.is_some(),
+                    "Expected 'resources' array in {} response",
+                    resource_name
+                );
+                println!(
+                    "{} paginated listing returned {} items.",
+                    resource_name,
+                    items.unwrap().len()
+                );
             }
             _ => panic!("Expected array or object from list {}", resource_name),
         }
     }
 
     // 2. Test fetching VPC resources
-    test_endpoint(client.clone(), base.clone(), account_id.to_string(), "vpcs", "VPCs").await;
-    test_endpoint(client.clone(), base.clone(), account_id.to_string(), "subnets", "Subnets").await;
-    test_endpoint(client.clone(), base.clone(), account_id.to_string(), "security-groups", "Security Groups").await;
-    test_endpoint(client.clone(), base.clone(), account_id.to_string(), "route-tables", "Route Tables").await;
-    test_endpoint(client.clone(), base.clone(), account_id.to_string(), "internet-gateways", "Internet Gateways").await;
-    test_endpoint(client.clone(), base.clone(), account_id.to_string(), "nat-gateways", "NAT Gateways").await;
-    test_endpoint(client.clone(), base.clone(), account_id.to_string(), "network-acls", "Network ACLs").await;
+    test_endpoint(
+        client.clone(),
+        base.clone(),
+        account_id.to_string(),
+        "vpcs",
+        "VPCs",
+    )
+    .await;
+    test_endpoint(
+        client.clone(),
+        base.clone(),
+        account_id.to_string(),
+        "subnets",
+        "Subnets",
+    )
+    .await;
+    test_endpoint(
+        client.clone(),
+        base.clone(),
+        account_id.to_string(),
+        "security-groups",
+        "Security Groups",
+    )
+    .await;
+    test_endpoint(
+        client.clone(),
+        base.clone(),
+        account_id.to_string(),
+        "route-tables",
+        "Route Tables",
+    )
+    .await;
+    test_endpoint(
+        client.clone(),
+        base.clone(),
+        account_id.to_string(),
+        "internet-gateways",
+        "Internet Gateways",
+    )
+    .await;
+    test_endpoint(
+        client.clone(),
+        base.clone(),
+        account_id.to_string(),
+        "nat-gateways",
+        "NAT Gateways",
+    )
+    .await;
+    test_endpoint(
+        client.clone(),
+        base.clone(),
+        account_id.to_string(),
+        "network-acls",
+        "Network ACLs",
+    )
+    .await;
 
     // 3. Clean up the test account
     let del_res = client

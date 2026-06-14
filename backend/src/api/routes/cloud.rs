@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::api::routes::aws_account;
 use crate::controllers::cloud;
 use actix_web::web;

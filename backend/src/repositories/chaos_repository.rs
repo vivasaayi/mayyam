@@ -120,10 +120,7 @@ impl ChaosRepository {
                 .clone()
                 .unwrap_or_else(|| "medium".to_string())),
             estimated_duration_seconds: Set(dto.estimated_duration_seconds.unwrap_or(60)),
-            rollback_steps: Set(dto
-                .rollback_steps
-                .clone()
-                .unwrap_or(serde_json::json!([]))),
+            rollback_steps: Set(dto.rollback_steps.clone().unwrap_or(serde_json::json!([]))),
             documentation: Set(dto.documentation.clone()),
             is_built_in: Set(false),
             is_active: Set(true),
@@ -221,8 +218,8 @@ impl ChaosRepository {
             select = select.filter(ExperimentColumn::ResourceType.eq(resource_type.clone()));
         }
         if let Some(ref target_resource_id) = query.target_resource_id {
-            select = select
-                .filter(ExperimentColumn::TargetResourceId.eq(target_resource_id.clone()));
+            select =
+                select.filter(ExperimentColumn::TargetResourceId.eq(target_resource_id.clone()));
         }
         if let Some(ref experiment_type) = query.experiment_type {
             select = select.filter(ExperimentColumn::ExperimentType.eq(experiment_type.clone()));
@@ -408,13 +405,10 @@ impl ChaosRepository {
     }
 
     pub async fn get_run(&self, id: Uuid) -> Result<Option<RunModel>, AppError> {
-        RunEntity::find_by_id(id)
-            .one(&*self.db)
-            .await
-            .map_err(|e| {
-                error!("Error fetching chaos run: {:?}", e);
-                AppError::Database(e)
-            })
+        RunEntity::find_by_id(id).one(&*self.db).await.map_err(|e| {
+            error!("Error fetching chaos run: {:?}", e);
+            AppError::Database(e)
+        })
     }
 
     pub async fn get_run_with_results(&self, id: Uuid) -> Result<Option<RunWithResults>, AppError> {
@@ -471,8 +465,7 @@ impl ChaosRepository {
                 let now = Utc::now();
                 active_model.ended_at = Set(Some(now));
                 if let Some(started_time) = original_started_at {
-                    active_model.duration_ms =
-                        Set(Some((now - started_time).num_milliseconds()));
+                    active_model.duration_ms = Set(Some((now - started_time).num_milliseconds()));
                 }
             }
             _ => {}
@@ -702,10 +695,7 @@ impl ChaosRepository {
             })
     }
 
-    pub async fn get_experiment_run_count(
-        &self,
-        experiment_id: Uuid,
-    ) -> Result<u64, AppError> {
+    pub async fn get_experiment_run_count(&self, experiment_id: Uuid) -> Result<u64, AppError> {
         RunEntity::find()
             .filter(RunColumn::ExperimentId.eq(experiment_id))
             .count(&*self.db)

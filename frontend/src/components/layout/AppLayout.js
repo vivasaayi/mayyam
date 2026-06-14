@@ -68,6 +68,9 @@ const AppLayout = () => {
             <CNavLink as={Link} to="/cloud-resources">Cloud Resources</CNavLink>
           </CNavItem>
           <CNavItem>
+            <CNavLink as={Link} to="/pillar-scorecards">Pillar Scorecards</CNavLink>
+          </CNavItem>
+          <CNavItem>
             <CNavLink as={Link} to="/databases">Databases</CNavLink>
           </CNavItem>
           <CNavItem>

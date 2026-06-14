@@ -41,7 +41,10 @@ impl AppSyncControlPlane {
             &aws_account_dto.account_id, sync_id
         );
 
-        let client = self.aws_service.create_appsync_client(aws_account_dto).await?;
+        let client = self
+            .aws_service
+            .create_appsync_client(aws_account_dto)
+            .await?;
         let mut resources: Vec<AwsResourceModel> = Vec::new();
 
         let mut next_token = None;
@@ -64,7 +67,7 @@ impl AppSyncControlPlane {
                 let arn = api.arn().unwrap_or("");
                 let api_id = api.api_id().unwrap_or("");
                 let name = api.name().unwrap_or("");
-                
+
                 let resource_data = json!({
                     "ApiId": api_id,
                     "Name": name,

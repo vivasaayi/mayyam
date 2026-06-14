@@ -12,27 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::controllers::query_fingerprint;
-use actix_web::{web};
+use actix_web::web;
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 
 use crate::services::llm::manager::UnifiedLlmManager;
 
-pub fn configure(cfg: &mut web::ServiceConfig, db: Arc<DatabaseConnection>, llm_manager: Arc<UnifiedLlmManager>) {
-    let fingerprint_controller = query_fingerprint::QueryFingerprintController::new(db.clone(), llm_manager);
+pub fn configure(
+    cfg: &mut web::ServiceConfig,
+    db: Arc<DatabaseConnection>,
+    llm_manager: Arc<UnifiedLlmManager>,
+) {
+    let fingerprint_controller =
+        query_fingerprint::QueryFingerprintController::new(db.clone(), llm_manager);
 
     cfg.service(
         web::scope("/api/query-fingerprints")
             .app_data(web::Data::new(fingerprint_controller))
+            .service(web::resource("").route(web::get().to(query_fingerprint::get_fingerprints)))
             .service(
-                web::resource("")
-                    .route(web::get().to(query_fingerprint::get_fingerprints)),
-            )
-            .service(
-                web::resource("/{id}")
-                    .route(web::get().to(query_fingerprint::get_fingerprint)),
+                web::resource("/{id}").route(web::get().to(query_fingerprint::get_fingerprint)),
             )
             .service(
                 web::resource("/{id}/analysis")
@@ -42,9 +42,8 @@ pub fn configure(cfg: &mut web::ServiceConfig, db: Arc<DatabaseConnection>, llm_
                 web::resource("/patterns/{cluster_id}")
                     .route(web::get().to(query_fingerprint::get_fingerprint_patterns)),
             )
-            .service(
-                web::resource("/top-tables/{cluster_id}")
-                    .route(web::get().to(crate::controllers::table_analytics::get_top_offending_tables)),
-            ),
+            .service(web::resource("/top-tables/{cluster_id}").route(
+                web::get().to(crate::controllers::table_analytics::get_top_offending_tables),
+            )),
     );
 }

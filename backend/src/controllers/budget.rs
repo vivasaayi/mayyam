@@ -12,12 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
+use crate::models::cost_budget::{BudgetAlert, BudgetDto, BudgetStatus};
+use crate::services::budget_service::BudgetService;
 use actix_web::{web, HttpResponse, Result};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use crate::services::budget_service::BudgetService;
-use crate::models::cost_budget::{BudgetDto, BudgetStatus, BudgetAlert};
 
 #[derive(Deserialize)]
 pub struct CreateBudgetRequest {
@@ -87,8 +86,8 @@ pub struct BudgetAlertResponse {
 
 impl From<crate::models::cost_budget::Budget> for BudgetResponse {
     fn from(budget: crate::models::cost_budget::Budget) -> Self {
-        let alert_thresholds: Vec<crate::models::cost_budget::BudgetAlertThreshold> = serde_json::from_value(budget.alert_thresholds)
-            .unwrap_or_else(|_| vec![]);
+        let alert_thresholds: Vec<crate::models::cost_budget::BudgetAlertThreshold> =
+            serde_json::from_value(budget.alert_thresholds).unwrap_or_else(|_| vec![]);
 
         let tags: std::collections::HashMap<String, String> = serde_json::from_value(budget.tags)
             .unwrap_or_else(|_| std::collections::HashMap::new());
@@ -104,7 +103,8 @@ impl From<crate::models::cost_budget::Budget> for BudgetResponse {
             currency: budget.currency,
             start_date: budget.start_date.to_string(),
             end_date: budget.end_date.map(|d| d.to_string()),
-            alert_thresholds: alert_thresholds.into_iter()
+            alert_thresholds: alert_thresholds
+                .into_iter()
                 .map(|t| BudgetAlertThresholdResponse {
                     percentage: t.percentage.to_string(),
                     alert_type: t.alert_type,
@@ -149,22 +149,30 @@ impl CreateBudgetRequest {
     fn into_budget_dto(self, account_id: String) -> Result<BudgetDto, String> {
         use chrono::NaiveDate;
 
-        let amount = self.amount.parse::<f64>()
+        let amount = self
+            .amount
+            .parse::<f64>()
             .map_err(|_| "Invalid amount format")?;
 
         let start_date = NaiveDate::parse_from_str(&self.start_date, "%Y-%m-%d")
             .map_err(|_| "Invalid start_date format")?;
 
         let end_date = if let Some(end_date_str) = self.end_date {
-            Some(NaiveDate::parse_from_str(&end_date_str, "%Y-%m-%d")
-                .map_err(|_| "Invalid end_date format")?)
+            Some(
+                NaiveDate::parse_from_str(&end_date_str, "%Y-%m-%d")
+                    .map_err(|_| "Invalid end_date format")?,
+            )
         } else {
             None
         };
 
-        let alert_thresholds = self.alert_thresholds.into_iter()
+        let alert_thresholds = self
+            .alert_thresholds
+            .into_iter()
             .map(|t| {
-                let percentage = t.percentage.parse::<f64>()
+                let percentage = t
+                    .percentage
+                    .parse::<f64>()
                     .map_err(|_| "Invalid threshold percentage format")?;
                 Ok(crate::models::cost_budget::BudgetAlertThreshold {
                     percentage,
@@ -200,7 +208,8 @@ impl CreateBudgetRequest {
             start_date,
             end_date,
             alert_thresholds,
-            tags: serde_json::to_value(self.tags).unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
+            tags: serde_json::to_value(self.tags)
+                .unwrap_or(serde_json::Value::Object(serde_json::Map::new())),
         })
     }
 }
@@ -210,10 +219,14 @@ pub async fn create_budget(
     account_id: web::Path<String>,
     req: web::Json<CreateBudgetRequest>,
 ) -> Result<HttpResponse> {
-    let dto = req.into_inner().into_budget_dto(account_id.into_inner())
+    let dto = req
+        .into_inner()
+        .into_budget_dto(account_id.into_inner())
         .map_err(|e| actix_web::error::ErrorBadRequest(e))?;
 
-    let budget = service.create_budget(dto).await
+    let budget = service
+        .create_budget(dto)
+        .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
     let response = BudgetResponse::from(budget);
@@ -226,7 +239,9 @@ pub async fn get_budget(
 ) -> Result<HttpResponse> {
     let (_account_id, budget_id) = path.into_inner();
 
-    let budget = service.get_budget(budget_id).await
+    let budget = service
+        .get_budget(budget_id)
+        .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e))?
         .ok_or_else(|| actix_web::error::ErrorNotFound("Budget not found"))?;
 
@@ -238,12 +253,12 @@ pub async fn get_budgets(
     service: web::Data<BudgetService>,
     account_id: web::Path<String>,
 ) -> Result<HttpResponse> {
-    let budgets = service.get_budgets_by_account(&account_id).await
+    let budgets = service
+        .get_budgets_by_account(&account_id)
+        .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
-    let responses: Vec<BudgetResponse> = budgets.into_iter()
-        .map(BudgetResponse::from)
-        .collect();
+    let responses: Vec<BudgetResponse> = budgets.into_iter().map(BudgetResponse::from).collect();
 
     Ok(HttpResponse::Ok().json(responses))
 }
@@ -255,10 +270,14 @@ pub async fn update_budget(
 ) -> Result<HttpResponse> {
     let (_account_id, budget_id) = path.into_inner();
 
-    let dto = req.into_inner().into_budget_dto(_account_id.clone())
+    let dto = req
+        .into_inner()
+        .into_budget_dto(_account_id.clone())
         .map_err(|e| actix_web::error::ErrorBadRequest(e))?;
 
-    let budget = service.update_budget(budget_id, dto).await
+    let budget = service
+        .update_budget(budget_id, dto)
+        .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
     let response = BudgetResponse::from(budget);
@@ -271,7 +290,9 @@ pub async fn delete_budget(
 ) -> Result<HttpResponse> {
     let (_account_id, budget_id) = path.into_inner();
 
-    service.delete_budget(budget_id).await
+    service
+        .delete_budget(budget_id)
+        .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
     Ok(HttpResponse::NoContent().finish())
@@ -283,7 +304,9 @@ pub async fn get_budget_status(
 ) -> Result<HttpResponse> {
     let (_account_id, budget_id) = path.into_inner();
 
-    let status = service.get_budget_status(budget_id).await
+    let status = service
+        .get_budget_status(budget_id)
+        .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
     let response = BudgetStatusResponse::from(status);
@@ -294,12 +317,13 @@ pub async fn get_budget_alerts(
     service: web::Data<BudgetService>,
     account_id: web::Path<String>,
 ) -> Result<HttpResponse> {
-    let alerts = service.get_budget_alerts(&account_id).await
+    let alerts = service
+        .get_budget_alerts(&account_id)
+        .await
         .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
-    let responses: Vec<BudgetAlertResponse> = alerts.into_iter()
-        .map(BudgetAlertResponse::from)
-        .collect();
+    let responses: Vec<BudgetAlertResponse> =
+        alerts.into_iter().map(BudgetAlertResponse::from).collect();
 
     Ok(HttpResponse::Ok().json(responses))
 }

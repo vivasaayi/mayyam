@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 #![cfg(feature = "integration-tests")]
 
 use crate::integration::helpers::{get_aws_credentials, get_test_account_id, TestHarness};
@@ -64,7 +63,7 @@ async fn iam_resources_list_flow() {
         .send()
         .await
         .expect("failed to fetch iam users");
-    
+
     assert_eq!(users_resp.status().as_u16(), 200);
     let users: serde_json::Value = users_resp.json().await.unwrap();
     assert!(users.as_array().is_some());
@@ -77,7 +76,7 @@ async fn iam_resources_list_flow() {
         .send()
         .await
         .expect("failed to fetch iam roles");
-    
+
     assert_eq!(roles_resp.status().as_u16(), 200);
     let roles: serde_json::Value = roles_resp.json().await.unwrap();
     assert!(roles.as_array().is_some());
@@ -90,7 +89,7 @@ async fn iam_resources_list_flow() {
         .send()
         .await
         .expect("failed to fetch iam policies");
-    
+
     assert_eq!(policies_resp.status().as_u16(), 200);
     let policies: serde_json::Value = policies_resp.json().await.unwrap();
     assert!(policies.as_array().is_some());
@@ -103,7 +102,7 @@ async fn iam_resources_list_flow() {
         .send()
         .await
         .expect("failed to fetch iam groups");
-    
+
     assert_eq!(groups_resp.status().as_u16(), 200);
     let groups: serde_json::Value = groups_resp.json().await.unwrap();
     assert!(groups.as_array().is_some());
@@ -116,6 +115,6 @@ async fn iam_resources_list_flow() {
         .send()
         .await
         .expect("failed to delete account");
-    
+
     assert_eq!(delete_response.status().as_u16(), 204);
 }

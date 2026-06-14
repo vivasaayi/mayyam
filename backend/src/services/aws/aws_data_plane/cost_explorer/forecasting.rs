@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use super::base::AwsCostService;
 use crate::{errors::AppError, models::aws_account::AwsAccountDto};
 use aws_sdk_costexplorer::types::{DateInterval, Granularity};

@@ -12,11 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 pub mod ai_analysis_repository;
 pub mod aurora_cluster_repository;
 pub mod aws_account;
 pub mod aws_resource;
+pub mod chaos_audit_repository;
+pub mod chaos_metrics_repository;
+pub mod chaos_repository;
 pub mod cloud_resource;
 pub mod cluster;
 pub mod cost_analytics;
@@ -34,6 +36,3 @@ pub mod query_template;
 pub mod slow_query_repository;
 pub mod sync_run;
 pub mod user;
-pub mod chaos_repository;
-pub mod chaos_audit_repository;
-pub mod chaos_metrics_repository;

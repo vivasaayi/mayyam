@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 // Helper struct to pass authentication information when loading AWS SDK config
 use crate::services::aws::aws_types::resource_sync::ResourceSyncRequest;
 

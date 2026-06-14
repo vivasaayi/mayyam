@@ -12,9 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
-use crate::models::aurora_cluster::{AuroraCluster, Entity as AuroraClusterEntity, Column as AuroraClusterColumn};
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, ActiveModelTrait, Set, PaginatorTrait};
+use crate::models::aurora_cluster::{
+    AuroraCluster, Column as AuroraClusterColumn, Entity as AuroraClusterEntity,
+};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
+    Set,
+};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -30,7 +34,8 @@ impl AuroraClusterRepository {
 
     pub async fn create(&self, cluster: AuroraCluster) -> Result<AuroraCluster, String> {
         let active_model: crate::models::aurora_cluster::ActiveModel = cluster.into();
-        active_model.insert(&*self.db)
+        active_model
+            .insert(&*self.db)
             .await
             .map_err(|e| format!("Failed to create Aurora cluster: {}", e))
     }
@@ -52,7 +57,8 @@ impl AuroraClusterRepository {
 
     pub async fn update(&self, cluster: AuroraCluster) -> Result<AuroraCluster, String> {
         let active_model: crate::models::aurora_cluster::ActiveModel = cluster.into();
-        active_model.update(&*self.db)
+        active_model
+            .update(&*self.db)
             .await
             .map_err(|e| format!("Failed to update Aurora cluster: {}", e))
     }
@@ -72,15 +78,20 @@ impl AuroraClusterRepository {
             .map_err(|e| format!("Failed to count clusters: {}", e))
     }
 
-    pub async fn update_checkpoint(&self, id: Uuid, checkpoint: chrono::NaiveDateTime) -> Result<(), String> {
+    pub async fn update_checkpoint(
+        &self,
+        id: Uuid,
+        checkpoint: chrono::NaiveDateTime,
+    ) -> Result<(), String> {
         let mut active_model = crate::models::aurora_cluster::ActiveModel {
             id: Set(id),
             last_event_timestamp: Set(Some(checkpoint)),
             updated_at: Set(chrono::Utc::now().naive_utc()),
             ..Default::default()
         };
-        
-        active_model.update(&*self.db)
+
+        active_model
+            .update(&*self.db)
             .await
             .map_err(|e| format!("Failed to update checkpoint: {}", e))?;
         Ok(())

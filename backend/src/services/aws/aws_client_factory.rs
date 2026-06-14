@@ -12,55 +12,84 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use async_trait::async_trait;
+use aws_sdk_acm::Client as AcmClient;
 use aws_sdk_apigateway::Client as ApiGatewayClient;
+use aws_sdk_apprunner::Client as AppRunnerClient;
+use aws_sdk_appsync::Client as AppSyncClient;
+use aws_sdk_athena::Client as AthenaClient;
+use aws_sdk_autoscaling::Client as AutoScalingClient;
+use aws_sdk_backup::Client as BackupClient;
+use aws_sdk_batch::Client as BatchClient;
+use aws_sdk_bedrock::Client as BedrockClient;
+use aws_sdk_cloudcontrol::Client as CloudControlClient;
 use aws_sdk_cloudfront::Client as CloudFrontClient;
-use aws_sdk_elasticloadbalancing::Client as ElbClient;
-use aws_sdk_elasticloadbalancingv2::Client as Elbv2Client;
-use aws_sdk_dynamodb::Client as DynamoDbClient;
-use aws_sdk_ec2::Client as Ec2Client;
-use aws_sdk_efs::Client as EfsClient;
-use aws_sdk_elasticache::Client as ElasticacheClient;
-use aws_sdk_kinesis::Client as KinesisClient;
-use aws_sdk_lambda::Client as LambdaClient;
-use aws_sdk_opensearch::Client as OpenSearchClient;
-use aws_sdk_rds::Client as RdsClient;
-use aws_sdk_s3::Client as S3Client;
+use aws_sdk_cloudtrail::Client as CloudTrailClient;
 use aws_sdk_cloudwatch::Client as CloudWatchClient;
 use aws_sdk_cloudwatchlogs::Client as CloudWatchLogsClient;
+use aws_sdk_computeoptimizer::Client as ComputeOptimizerClient;
+use aws_sdk_config::Client as ConfigServiceClient;
+use aws_sdk_connect::Client as ConnectClient;
+use aws_sdk_controltower::Client as ControlTowerClient;
 use aws_sdk_costexplorer::Client as CostExplorerClient;
+use aws_sdk_datasync::Client as DataSyncClient;
+use aws_sdk_drs::Client as DrsClient;
+use aws_sdk_dynamodb::Client as DynamoDbClient;
+use aws_sdk_ec2::Client as Ec2Client;
+use aws_sdk_ecs::Client as EcsClient;
+use aws_sdk_efs::Client as EfsClient;
+use aws_sdk_eks::Client as EksClient;
+use aws_sdk_elasticache::Client as ElasticacheClient;
+use aws_sdk_elasticbeanstalk::Client as ElasticBeanstalkClient;
+use aws_sdk_elasticloadbalancing::Client as ElbClient;
+use aws_sdk_elasticloadbalancingv2::Client as Elbv2Client;
+use aws_sdk_emr::Client as EmrClient;
+use aws_sdk_eventbridge::Client as EventBridgeClient;
+use aws_sdk_firehose::Client as FirehoseClient;
+use aws_sdk_fsx::Client as FsxClient;
+use aws_sdk_glacier::Client as GlacierClient;
+use aws_sdk_globalaccelerator::Client as GlobalAcceleratorClient;
+use aws_sdk_glue::Client as GlueClient;
+use aws_sdk_guardduty::Client as GuardDutyClient;
+use aws_sdk_health::Client as HealthClient;
+use aws_sdk_iam::Client as IamClient;
+use aws_sdk_inspector2::Client as InspectorClient;
+use aws_sdk_kafka::Client as MskClient;
+use aws_sdk_kinesis::Client as KinesisClient;
+use aws_sdk_kinesisanalyticsv2::Client as KinesisAnalyticsClient;
+use aws_sdk_kms::Client as KmsClient;
+use aws_sdk_lakeformation::Client as LakeFormationClient;
+use aws_sdk_lambda::Client as LambdaClient;
+use aws_sdk_lightsail::Client as LightsailClient;
+use aws_sdk_macie2::Client as MacieClient;
+use aws_sdk_memorydb::Client as MemoryDbClient;
+use aws_sdk_mgn::Client as MgnClient;
+use aws_sdk_mq::Client as AmazonMqClient;
+use aws_sdk_opensearch::Client as OpenSearchClient;
+use aws_sdk_organizations::Client as OrganizationsClient;
+use aws_sdk_quicksight::Client as QuickSightClient;
+use aws_sdk_rds::Client as RdsClient;
+use aws_sdk_redshift::Client as RedshiftClient;
+use aws_sdk_resiliencehub::Client as ResilienceHubClient;
+use aws_sdk_route53::Client as Route53Client;
+use aws_sdk_s3::Client as S3Client;
+use aws_sdk_secretsmanager::Client as SecretsManagerClient;
+use aws_sdk_securityhub::Client as SecurityHubClient;
+use aws_sdk_servicecatalog::Client as ServiceCatalogClient;
+use aws_sdk_sesv2::Client as SesV2Client;
+use aws_sdk_sfn::Client as SfnClient;
+use aws_sdk_shield::Client as ShieldClient;
 use aws_sdk_sns::Client as SnsClient;
 use aws_sdk_sqs::Client as SqsClient;
-use aws_sdk_sts::Client as StsClient;
-use aws_sdk_iam::Client as IamClient;
-use aws_sdk_kms::Client as KmsClient;
-use aws_sdk_acm::Client as AcmClient;
-use aws_sdk_cloudtrail::Client as CloudTrailClient;
-use aws_sdk_config::Client as ConfigServiceClient;
-use aws_sdk_ecs::Client as EcsClient;
-use aws_sdk_eks::Client as EksClient;
-use aws_sdk_sfn::Client as SfnClient;
-use aws_sdk_eventbridge::Client as EventBridgeClient;
-use aws_sdk_redshift::Client as RedshiftClient;
-use aws_sdk_emr::Client as EmrClient;
-use aws_sdk_athena::Client as AthenaClient;
-use aws_sdk_glue::Client as GlueClient;
-use aws_sdk_sesv2::Client as SesV2Client;
-use aws_sdk_wafv2::Client as WafV2Client;
-use aws_sdk_backup::Client as BackupClient;
 use aws_sdk_ssm::Client as SsmClient;
-use aws_sdk_apprunner::Client as AppRunnerClient;
-use aws_sdk_globalaccelerator::Client as GlobalAcceleratorClient;
-use aws_sdk_batch::Client as BatchClient;
-use aws_sdk_glacier::Client as GlacierClient;
 use aws_sdk_storagegateway::Client as StorageGatewayClient;
-use aws_sdk_connect::Client as ConnectClient;
-use aws_sdk_appsync::Client as AppSyncClient;
-use aws_sdk_kinesisanalyticsv2::Client as KinesisAnalyticsClient;
+use aws_sdk_sts::Client as StsClient;
+use aws_sdk_timestreamwrite::Client as TimestreamWriteClient;
+use aws_sdk_trustedadvisor::Client as TrustedAdvisorClient;
+use aws_sdk_wafv2::Client as WafV2Client;
 
+use crate::errors::AppError;
 use crate::models::aws_account::AwsAccountDto;
-use crate::{errors::AppError};
 
 // Client factory trait for AWS service clients
 #[async_trait]
@@ -73,6 +102,22 @@ pub trait AwsClientFactory {
         &self,
         aws_account_dto: &AwsAccountDto,
     ) -> Result<CloudWatchLogsClient, AppError>;
+    async fn create_cloudcontrol_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<CloudControlClient, AppError>;
+    async fn create_mgn_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<MgnClient, AppError>;
+    async fn create_drs_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<DrsClient, AppError>;
+    async fn create_bedrock_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<BedrockClient, AppError>;
     async fn create_cost_explorer_client(
         &self,
         aws_account_dto: &AwsAccountDto,
@@ -223,6 +268,18 @@ pub trait AwsClientFactory {
         &self,
         aws_account_dto: &AwsAccountDto,
     ) -> Result<GlacierClient, AppError>;
+    async fn create_autoscaling_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<AutoScalingClient, AppError>;
+    async fn create_route53_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<Route53Client, AppError>;
+    async fn create_secretsmanager_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<SecretsManagerClient, AppError>;
     async fn create_storagegateway_client(
         &self,
         aws_account_dto: &AwsAccountDto,
@@ -239,4 +296,96 @@ pub trait AwsClientFactory {
         &self,
         aws_account_dto: &AwsAccountDto,
     ) -> Result<KinesisAnalyticsClient, AppError>;
+    async fn create_msk_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<MskClient, AppError>;
+    async fn create_guardduty_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<GuardDutyClient, AppError>;
+    async fn create_securityhub_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<SecurityHubClient, AppError>;
+    async fn create_inspector_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<InspectorClient, AppError>;
+    async fn create_macie_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<MacieClient, AppError>;
+    async fn create_organizations_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<OrganizationsClient, AppError>;
+    async fn create_controltower_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<ControlTowerClient, AppError>;
+    async fn create_servicecatalog_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<ServiceCatalogClient, AppError>;
+    async fn create_trustedadvisor_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<TrustedAdvisorClient, AppError>;
+    async fn create_computeoptimizer_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<ComputeOptimizerClient, AppError>;
+    async fn create_health_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<HealthClient, AppError>;
+    async fn create_resiliencehub_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<ResilienceHubClient, AppError>;
+    async fn create_memorydb_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<MemoryDbClient, AppError>;
+    async fn create_elasticbeanstalk_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<ElasticBeanstalkClient, AppError>;
+    async fn create_datasync_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<DataSyncClient, AppError>;
+    async fn create_fsx_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<FsxClient, AppError>;
+    async fn create_timestreamwrite_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<TimestreamWriteClient, AppError>;
+    async fn create_firehose_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<FirehoseClient, AppError>;
+    async fn create_lakeformation_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<LakeFormationClient, AppError>;
+    async fn create_lightsail_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<LightsailClient, AppError>;
+    async fn create_quicksight_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<QuickSightClient, AppError>;
+    async fn create_amazonmq_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<AmazonMqClient, AppError>;
+    async fn create_shield_client(
+        &self,
+        aws_account_dto: &AwsAccountDto,
+    ) -> Result<ShieldClient, AppError>;
 }

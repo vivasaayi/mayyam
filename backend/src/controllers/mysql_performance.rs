@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use actix_web::{web, HttpResponse, Responder};
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
@@ -84,18 +83,23 @@ pub async fn create_performance_snapshot(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let performance_repo = MySQLPerformanceRepository::new(db_pool.get_ref().clone());
-    let cluster_repo = crate::repositories::aurora_cluster_repository::AuroraClusterRepository::new(db_pool.get_ref().clone());
+    let cluster_repo = crate::repositories::aurora_cluster_repository::AuroraClusterRepository::new(
+        db_pool.get_ref().clone(),
+    );
     let performance_service = MySQLPerformanceService::new(performance_repo, cluster_repo);
 
-    let metrics: crate::services::mysql_performance_service::PerformanceMetrics = serde_json::from_value(req.metrics.clone())
-        .map_err(|e| AppError::BadRequest(format!("Invalid metrics format: {}", e)))?;
+    let metrics: crate::services::mysql_performance_service::PerformanceMetrics =
+        serde_json::from_value(req.metrics.clone())
+            .map_err(|e| AppError::BadRequest(format!("Invalid metrics format: {}", e)))?;
 
-    let snapshot = performance_service.create_performance_snapshot(
-        req.cluster_id,
-        metrics,
-        req.issues.clone().unwrap_or_default(),
-        req.recommendations.clone().unwrap_or_default(),
-    ).await?;
+    let snapshot = performance_service
+        .create_performance_snapshot(
+            req.cluster_id,
+            metrics,
+            req.issues.clone().unwrap_or_default(),
+            req.recommendations.clone().unwrap_or_default(),
+        )
+        .await?;
 
     let response = PerformanceSnapshotResponse { snapshot };
 
@@ -111,7 +115,10 @@ pub async fn get_performance_snapshots(
     let performance_repo = MySQLPerformanceRepository::new(db_pool.get_ref().clone());
 
     let cluster_id = if let Some(cluster_id_str) = &query.cluster_id {
-        Some(Uuid::parse_str(cluster_id_str).map_err(|e| AppError::BadRequest(format!("Invalid cluster UUID: {}", e)))?)
+        Some(
+            Uuid::parse_str(cluster_id_str)
+                .map_err(|e| AppError::BadRequest(format!("Invalid cluster UUID: {}", e)))?,
+        )
     } else {
         None
     };
@@ -122,17 +129,16 @@ pub async fn get_performance_snapshots(
     let snapshots = if let Some(cluster_id) = cluster_id {
         let end_time = chrono::Utc::now().naive_utc();
         let start_time = end_time - chrono::Duration::hours(hours);
-        performance_repo.find_by_cluster_and_time(cluster_id, start_time, end_time).await?
+        performance_repo
+            .find_by_cluster_and_time(cluster_id, start_time, end_time)
+            .await?
     } else {
         performance_repo.find_recent(limit).await?
     };
 
     let total = snapshots.len();
 
-    let response = PerformanceSnapshotsResponse {
-        snapshots,
-        total,
-    };
+    let response = PerformanceSnapshotsResponse { snapshots, total };
 
     Ok(HttpResponse::Ok().json(response))
 }
@@ -143,11 +149,16 @@ pub async fn get_performance_snapshot(
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let snapshot_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let snapshot_id =
+        Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
     let performance_repo = MySQLPerformanceRepository::new(db_pool.get_ref().clone());
 
-    let snapshot = performance_repo.find_by_id(snapshot_id).await?
-        .ok_or_else(|| AppError::NotFound(format!("Performance snapshot not found: {}", snapshot_id)))?;
+    let snapshot = performance_repo
+        .find_by_id(snapshot_id)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(format!("Performance snapshot not found: {}", snapshot_id))
+        })?;
 
     let response = PerformanceSnapshotResponse { snapshot };
 
@@ -160,18 +171,27 @@ pub async fn perform_health_check(
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let cluster_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid cluster UUID: {}", e)))?;
+    let cluster_id = Uuid::parse_str(&path)
+        .map_err(|e| AppError::BadRequest(format!("Invalid cluster UUID: {}", e)))?;
     let performance_repo = MySQLPerformanceRepository::new(db_pool.get_ref().clone());
-    let cluster_repo = crate::repositories::aurora_cluster_repository::AuroraClusterRepository::new(db_pool.get_ref().clone());
+    let cluster_repo = crate::repositories::aurora_cluster_repository::AuroraClusterRepository::new(
+        db_pool.get_ref().clone(),
+    );
     let performance_service = MySQLPerformanceService::new(performance_repo, cluster_repo);
 
-    let health_check = performance_service.get_latest_health_check(cluster_id).await?
+    let health_check = performance_service
+        .get_latest_health_check(cluster_id)
+        .await?
         .ok_or_else(|| AppError::NotFound("No health check found for cluster".to_string()))?;
 
     let response = HealthCheckResponse {
         cluster_id,
         health_score: health_check.overall_score,
-        status: if health_check.critical_issues.is_empty() { "healthy".to_string() } else { "critical".to_string() },
+        status: if health_check.critical_issues.is_empty() {
+            "healthy".to_string()
+        } else {
+            "critical".to_string()
+        },
         issues: health_check.issues,
         recommendations: health_check.recommendations,
         metrics: serde_json::json!({}),
@@ -188,16 +208,22 @@ pub async fn get_performance_trends(
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let cluster_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid cluster UUID: {}", e)))?;
-    let hours = query.get("hours")
+    let cluster_id = Uuid::parse_str(&path)
+        .map_err(|e| AppError::BadRequest(format!("Invalid cluster UUID: {}", e)))?;
+    let hours = query
+        .get("hours")
         .and_then(|h| h.parse::<i64>().ok())
         .unwrap_or(24);
 
     let performance_repo = MySQLPerformanceRepository::new(db_pool.get_ref().clone());
-    let cluster_repo = crate::repositories::aurora_cluster_repository::AuroraClusterRepository::new(db_pool.get_ref().clone());
+    let cluster_repo = crate::repositories::aurora_cluster_repository::AuroraClusterRepository::new(
+        db_pool.get_ref().clone(),
+    );
     let performance_service = MySQLPerformanceService::new(performance_repo, cluster_repo);
 
-    let trends = performance_service.get_performance_trends(cluster_id, hours).await?;
+    let trends = performance_service
+        .get_performance_trends(cluster_id, hours)
+        .await?;
     let trends_json = serde_json::to_value(&trends)
         .map_err(|e| AppError::InternalServerError(format!("Failed to serialize trends: {}", e)))?;
 
@@ -217,17 +243,24 @@ pub async fn detect_performance_anomalies(
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let cluster_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid cluster UUID: {}", e)))?;
-    let hours = query.get("hours")
+    let cluster_id = Uuid::parse_str(&path)
+        .map_err(|e| AppError::BadRequest(format!("Invalid cluster UUID: {}", e)))?;
+    let hours = query
+        .get("hours")
         .and_then(|h| h.parse::<i64>().ok())
         .unwrap_or(24);
 
     let performance_repo = MySQLPerformanceRepository::new(db_pool.get_ref().clone());
-    let cluster_repo = crate::repositories::aurora_cluster_repository::AuroraClusterRepository::new(db_pool.get_ref().clone());
+    let cluster_repo = crate::repositories::aurora_cluster_repository::AuroraClusterRepository::new(
+        db_pool.get_ref().clone(),
+    );
     let performance_service = MySQLPerformanceService::new(performance_repo, cluster_repo);
 
-    let anomalies = performance_service.detect_performance_anomalies(cluster_id).await?;
-    let anomalies_json: Vec<serde_json::Value> = anomalies.into_iter()
+    let anomalies = performance_service
+        .detect_performance_anomalies(cluster_id)
+        .await?;
+    let anomalies_json: Vec<serde_json::Value> = anomalies
+        .into_iter()
         .map(|s| serde_json::Value::String(s))
         .collect();
 
@@ -249,7 +282,10 @@ pub async fn get_performance_stats(
     let performance_repo = MySQLPerformanceRepository::new(db_pool.get_ref().clone());
 
     let cluster_id = if let Some(cluster_id_str) = &query.cluster_id {
-        Some(Uuid::parse_str(cluster_id_str).map_err(|e| AppError::BadRequest(format!("Invalid cluster UUID: {}", e)))?)
+        Some(
+            Uuid::parse_str(cluster_id_str)
+                .map_err(|e| AppError::BadRequest(format!("Invalid cluster UUID: {}", e)))?,
+        )
     } else {
         None
     };
@@ -281,7 +317,8 @@ pub async fn delete_performance_snapshot(
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let snapshot_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let snapshot_id =
+        Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
     let performance_repo = MySQLPerformanceRepository::new(db_pool.get_ref().clone());
 
     performance_repo.delete(snapshot_id).await?;
@@ -298,7 +335,8 @@ pub async fn cleanup_old_snapshots(
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let days = query.get("days")
+    let days = query
+        .get("days")
         .and_then(|d| d.parse::<i64>().ok())
         .unwrap_or(30); // Default 30 days
 

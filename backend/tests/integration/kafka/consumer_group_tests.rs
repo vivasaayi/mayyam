@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 #![cfg(feature = "integration-tests")]
 
 use crate::integration::helpers::TestHarness;
@@ -92,7 +91,7 @@ async fn test_consumer_groups_api() {
         .send()
         .await
         .expect("failed to consume message");
-    
+
     assert!(consume_res.status().is_success());
 
     // Allow some time for consumer group state to propagate in Kafka
@@ -112,9 +111,9 @@ async fn test_consumer_groups_api() {
 
     assert!(list_res.status().is_success());
     let groups: Vec<Value> = list_res.json().await.expect("invalid list response");
-    
+
     // We should be able to find our group (or at least get a successful array response)
-    // Note: the test cluster might have many groups or none if state propagates slow. 
+    // Note: the test cluster might have many groups or none if state propagates slow.
     // We just ensure the endpoint doesn't fail.
 
     // 5. Get consumer group details
@@ -130,7 +129,10 @@ async fn test_consumer_groups_api() {
         .await
         .expect("failed to get group details");
 
-    assert!(details_res.status().is_success() || details_res.status() == actix_web::http::StatusCode::NOT_FOUND); 
+    assert!(
+        details_res.status().is_success()
+            || details_res.status() == actix_web::http::StatusCode::NOT_FOUND
+    );
     // It's possible the group is transient or empty, but the API endpoint contract must be honored.
 
     // 6. Reset offsets
@@ -157,13 +159,20 @@ async fn test_consumer_groups_api() {
         .await
         .expect("failed to reset offsets");
 
-    assert!(reset_res.status().is_success() || reset_res.status() == actix_web::http::StatusCode::INTERNAL_SERVER_ERROR); 
+    assert!(
+        reset_res.status().is_success()
+            || reset_res.status() == actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
+    );
     // Consumer groups can be tricky to reset if active, but mostly testing the routing is healthy
 
     // Clean up
     let _del_res = harness
         .client()
-        .delete(&harness.build_url(&format!("/api/kafka/clusters/{}/topics/{}", cluster_id(), topic_name)))
+        .delete(&harness.build_url(&format!(
+            "/api/kafka/clusters/{}/topics/{}",
+            cluster_id(),
+            topic_name
+        )))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .send()
         .await

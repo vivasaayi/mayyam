@@ -132,10 +132,7 @@ pub async fn handle_command(command: ChaosCommands, config: &Config) -> Result<(
         ChaosCommands::History { resource_id } => {
             println!("Experiment history for resource: {}", resource_id);
             println!("Connect to the API server to view history.");
-            println!(
-                "Use: GET /api/chaos/resources/{}/history",
-                resource_id
-            );
+            println!("Use: GET /api/chaos/resources/{}/history", resource_id);
             Ok(())
         }
     }

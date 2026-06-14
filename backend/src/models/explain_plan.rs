@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
+use chrono::{NaiveDateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::Set;
 use serde::{Deserialize, Serialize};
-use chrono::{NaiveDateTime, Utc};
 use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
@@ -28,7 +27,7 @@ pub struct Model {
     pub cluster_id: Uuid,
     pub sql_text: String,
     pub plan_format: String, // json, text
-    pub plan_data: String, // The actual EXPLAIN output
+    pub plan_data: String,   // The actual EXPLAIN output
     pub engine_version: String,
     pub captured_at: NaiveDateTime,
     pub is_before_optimization: bool, // For before/after comparisons

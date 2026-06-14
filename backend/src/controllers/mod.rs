@@ -12,22 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 pub mod ai;
+pub mod ai_analysis;
+pub mod aurora_cluster;
 pub mod auth;
 pub mod authz;
-pub mod replica_sets;
-pub mod storage_classes;
-pub mod crds;
-pub mod aurora_cluster;
-pub mod ai_analysis;
 pub mod aws_account;
 pub mod aws_analytics;
+pub mod aws_inventory;
 pub mod budget;
 pub mod chaos;
 pub mod cloud;
 pub mod configmaps;
 pub mod cost_analytics;
+pub mod crds;
 pub mod cronjobs;
 pub mod data_source;
 pub mod database;
@@ -51,10 +49,12 @@ pub mod prompt_template;
 pub mod query_fingerprint;
 pub mod query_template;
 pub mod rbac;
+pub mod replica_sets;
 pub mod resource_quotas;
 pub mod secrets;
 pub mod service_accounts;
 pub mod slow_query;
+pub mod storage_classes;
 pub mod sync_run;
-pub mod unified_llm;
 pub mod table_analytics;
+pub mod unified_llm;

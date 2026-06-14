@@ -16,9 +16,7 @@ use crate::errors::AppError;
 use crate::models::chaos_metrics::{
     ExecutionMetricsCreateDto, MetricsQuery, MetricsStats, Model as ExecutionMetricsModel,
 };
-use sea_orm::{
-    ColumnTrait, Condition, DatabaseConnection, EntityTrait, QueryFilter, DbErr,
-};
+use sea_orm::{ColumnTrait, Condition, DatabaseConnection, DbErr, EntityTrait, QueryFilter};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -113,7 +111,9 @@ impl ChaosMetricsRepository {
         use crate::models::chaos_metrics::Entity;
 
         let metrics = Entity::find()
-            .filter(crate::models::chaos_metrics::Column::ResourceType.eq(resource_type.to_string()))
+            .filter(
+                crate::models::chaos_metrics::Column::ResourceType.eq(resource_type.to_string()),
+            )
             .all(self.db.as_ref())
             .await
             .map_err(|e: DbErr| AppError::DatabaseError(e.to_string()))?;
@@ -121,32 +121,35 @@ impl ChaosMetricsRepository {
         Ok(metrics)
     }
 
-    pub async fn get_metrics_stats(
-        &self,
-        query: &MetricsQuery,
-    ) -> Result<MetricsStats, AppError> {
+    pub async fn get_metrics_stats(&self, query: &MetricsQuery) -> Result<MetricsStats, AppError> {
         use crate::models::chaos_metrics::Entity;
 
         let mut condition = Condition::all();
 
         if let Some(experiment_id) = query.experiment_id {
-            condition = condition.add(crate::models::chaos_metrics::Column::ExperimentId.eq(experiment_id));
+            condition =
+                condition.add(crate::models::chaos_metrics::Column::ExperimentId.eq(experiment_id));
         }
 
         if let Some(resource_type) = &query.resource_type {
-            condition = condition.add(crate::models::chaos_metrics::Column::ResourceType.eq(resource_type.clone()));
+            condition = condition
+                .add(crate::models::chaos_metrics::Column::ResourceType.eq(resource_type.clone()));
         }
 
         if let Some(impact_severity) = &query.impact_severity {
-            condition = condition.add(crate::models::chaos_metrics::Column::ImpactSeverity.eq(impact_severity.clone()));
+            condition = condition.add(
+                crate::models::chaos_metrics::Column::ImpactSeverity.eq(impact_severity.clone()),
+            );
         }
 
         if let Some(start_date) = query.start_date {
-            condition = condition.add(crate::models::chaos_metrics::Column::CreatedAt.gte(start_date));
+            condition =
+                condition.add(crate::models::chaos_metrics::Column::CreatedAt.gte(start_date));
         }
 
         if let Some(end_date) = query.end_date {
-            condition = condition.add(crate::models::chaos_metrics::Column::CreatedAt.lte(end_date));
+            condition =
+                condition.add(crate::models::chaos_metrics::Column::CreatedAt.lte(end_date));
         }
 
         let metrics = Entity::find()
@@ -168,20 +171,15 @@ impl ChaosMetricsRepository {
             0.0
         };
 
-        let total_execution_time: i64 = metrics
-            .iter()
-            .filter_map(|m| m.execution_duration_ms)
-            .sum();
+        let total_execution_time: i64 =
+            metrics.iter().filter_map(|m| m.execution_duration_ms).sum();
         let avg_execution_duration = if total_experiments > 0 {
             total_execution_time as f64 / total_experiments as f64
         } else {
             0.0
         };
 
-        let total_recovery_time: i64 = metrics
-            .iter()
-            .filter_map(|m| m.time_to_recovery_ms)
-            .sum();
+        let total_recovery_time: i64 = metrics.iter().filter_map(|m| m.time_to_recovery_ms).sum();
         let recovery_count = metrics
             .iter()
             .filter(|m| m.time_to_recovery_ms.is_some())
@@ -232,10 +230,7 @@ impl ChaosMetricsRepository {
             0.0
         };
 
-        let total_rollback_time: i64 = metrics
-            .iter()
-            .filter_map(|m| m.rollback_duration_ms)
-            .sum();
+        let total_rollback_time: i64 = metrics.iter().filter_map(|m| m.rollback_duration_ms).sum();
         let rollback_count = metrics
             .iter()
             .filter(|m| m.rollback_duration_ms.is_some())

@@ -12,17 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use chrono::Utc;
 use k8s_openapi::api::core::v1::Node;
 use kube::api::ListParams;
 use kube::config::{Config as KubeConfig, KubeConfigOptions, Kubeconfig};
 use kube::{Api, Client, ResourceExt};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 
 use crate::errors::AppError;
 use crate::models::cluster::KubernetesClusterConfig;
+use crate::services::kubernetes::node_inventory::NodeInventoryItem;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NodeCondition {
@@ -209,6 +208,76 @@ impl NodesService {
             });
         }
         Ok(infos)
+    }
+
+    pub async fn list_node_inventory(
+        &self,
+        cluster_config: &KubernetesClusterConfig,
+        cluster_id: &str,
+    ) -> Result<Vec<NodeInventoryItem>, AppError> {
+        let client = Self::get_kube_client(cluster_config).await?;
+        let api: Api<Node> = Api::all(client);
+        let lp = ListParams::default();
+        let collected_at = Utc::now();
+        let node_list = api
+            .list(&lp)
+            .await
+            .map_err(|e| AppError::ExternalService(format!("Failed to list nodes: {}", e)))?;
+
+        Ok(node_list
+            .into_iter()
+            .map(|node| {
+                let name = node.name_any();
+                let ready_status = Some(Self::get_node_status(&node));
+                let roles = Self::get_node_roles(&node);
+                let labels = node.metadata.labels.clone().unwrap_or_default();
+                let annotations = node.metadata.annotations.clone().unwrap_or_default();
+                let created_at = node
+                    .metadata
+                    .creation_timestamp
+                    .as_ref()
+                    .map(|timestamp| timestamp.0);
+
+                let mut internal_ip = None;
+                let mut external_ip = None;
+                if let Some(addresses) = node
+                    .status
+                    .as_ref()
+                    .and_then(|status| status.addresses.as_ref())
+                {
+                    for address in addresses {
+                        if address.type_ == "InternalIP" {
+                            internal_ip = Some(address.address.clone());
+                        }
+                        if address.type_ == "ExternalIP" {
+                            external_ip = Some(address.address.clone());
+                        }
+                    }
+                }
+
+                let node_info = node
+                    .status
+                    .as_ref()
+                    .and_then(|status| status.node_info.as_ref());
+                NodeInventoryItem {
+                    cluster_id: cluster_id.to_string(),
+                    name,
+                    ready_status,
+                    roles,
+                    labels,
+                    annotations,
+                    internal_ip,
+                    external_ip,
+                    kubelet_version: node_info.map(|info| info.kubelet_version.clone()),
+                    os_image: node_info.map(|info| info.os_image.clone()),
+                    kernel_version: node_info.map(|info| info.kernel_version.clone()),
+                    container_runtime_version: node_info
+                        .map(|info| info.container_runtime_version.clone()),
+                    created_at,
+                    collected_at,
+                }
+            })
+            .collect())
     }
 
     pub async fn get_node_details(

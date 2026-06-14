@@ -12,22 +12,26 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::services::kubernetes::client::ClientFactory;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use k8s_openapi::api::core::v1::Namespace;
 use kube::api::{DeleteParams, ListParams, PostParams};
 use kube::{Api, Client, ResourceExt};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 use crate::errors::AppError;
 use crate::models::cluster::KubernetesClusterConfig;
+use crate::services::kubernetes::namespace_inventory::NamespaceInventoryItem;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NamespaceInfo {
     pub name: String,
     pub status: String,
     pub age: String,
+    pub labels: BTreeMap<String, String>,
+    pub annotations: BTreeMap<String, String>,
+    pub created_at: Option<DateTime<Utc>>,
 }
 
 pub struct NamespacesService;
@@ -61,12 +65,18 @@ impl NamespacesService {
                 .as_ref()
                 .and_then(|s| s.phase.clone())
                 .unwrap_or_else(|| "Unknown".to_string());
+            let labels = ns.metadata.labels.clone().unwrap_or_default();
+            let annotations = ns.metadata.annotations.clone().unwrap_or_default();
+            let created_at = ns
+                .metadata
+                .creation_timestamp
+                .as_ref()
+                .map(|timestamp| timestamp.0);
 
-            let age = ns.metadata.creation_timestamp.as_ref().map_or_else(
+            let age = created_at.as_ref().map_or_else(
                 || "Unknown".to_string(),
-                |ts| {
-                    let creation_time = ts.0;
-                    let duration = Utc::now().signed_duration_since(creation_time);
+                |creation_time| {
+                    let duration = Utc::now().signed_duration_since(*creation_time);
                     if duration.num_days() > 0 {
                         format!("{}d", duration.num_days())
                     } else if duration.num_hours() > 0 {
@@ -79,9 +89,53 @@ impl NamespacesService {
                 },
             );
 
-            infos.push(NamespaceInfo { name, status, age });
+            infos.push(NamespaceInfo {
+                name,
+                status,
+                age,
+                labels,
+                annotations,
+                created_at,
+            });
         }
         Ok(infos)
+    }
+
+    pub async fn list_namespace_inventory(
+        &self,
+        cluster_config: &KubernetesClusterConfig,
+        cluster_id: &str,
+    ) -> Result<Vec<NamespaceInventoryItem>, AppError> {
+        let client = Self::get_kube_client(cluster_config).await?;
+        let api: Api<Namespace> = Api::all(client);
+        let lp = ListParams::default();
+        let collected_at = Utc::now();
+        let ns_list = api
+            .list(&lp)
+            .await
+            .map_err(|e| AppError::ExternalService(format!("Failed to list namespaces: {}", e)))?;
+
+        Ok(ns_list
+            .into_iter()
+            .map(|ns| {
+                let name = ns.name_any();
+                let status = ns.status.as_ref().and_then(|s| s.phase.clone());
+                let created_at = ns
+                    .metadata
+                    .creation_timestamp
+                    .as_ref()
+                    .map(|timestamp| timestamp.0);
+                NamespaceInventoryItem {
+                    cluster_id: cluster_id.to_string(),
+                    name,
+                    status,
+                    labels: ns.metadata.labels.unwrap_or_default(),
+                    annotations: ns.metadata.annotations.unwrap_or_default(),
+                    created_at,
+                    collected_at,
+                }
+            })
+            .collect())
     }
 
     pub async fn get_namespace_details(

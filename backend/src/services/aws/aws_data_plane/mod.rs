@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 pub mod dynamodb_data_plane;
 pub mod ec2_data_plane;
 pub mod elasticache_data_plane;

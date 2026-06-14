@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use aws_sdk_ec2::Client as Ec2Client;
+use chrono::{Duration, Utc};
 use std::sync::Arc;
 use tracing::{debug, error, info};
 use uuid::Uuid;
@@ -22,6 +22,9 @@ use crate::errors::AppError;
 use crate::models::aws_account::AwsAccountDto;
 use crate::models::aws_auth::AccountAuthInfo;
 use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel};
+use crate::services::aws::aws_data_plane::cloudwatch::{
+    CloudWatchMetrics, CloudWatchMetricsRequest, CloudWatchService,
+};
 use crate::services::aws::aws_types::ec2::{
     Ec2InstanceInfo, Ec2InstanceVolumeModification, Ec2LaunchInstanceRequest,
     Ec2SecurityGroupRequest, Ec2VolumeRequest, Tag,
@@ -29,7 +32,7 @@ use crate::services::aws::aws_types::ec2::{
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::AwsService;
 use base64;
-use serde_json::json;
+use serde_json::{json, Value};
 
 // Control plane implementation for EC2
 pub struct Ec2ControlPlane {
@@ -57,6 +60,7 @@ impl Ec2ControlPlane {
             AppError::ExternalService(format!("Failed to describe EC2 instances: {}", 11))
         })?;
 
+        let cloudwatch_service = CloudWatchService::new(self.aws_service.clone());
         let mut instances = Vec::new();
 
         // Process each reservation and its instances
@@ -142,6 +146,22 @@ impl Ec2ControlPlane {
                     resource_data.insert("subnet_id".to_string(), json!(subnet_id));
                 }
 
+                if let Some(monitoring_state) = ec2_instance
+                    .monitoring()
+                    .and_then(|monitoring| monitoring.state())
+                    .map(|state| state.as_str())
+                {
+                    resource_data.insert("monitoring_state".to_string(), json!(monitoring_state));
+                }
+
+                self.attach_cloudwatch_telemetry(
+                    &cloudwatch_service,
+                    aws_account_dto,
+                    &instance_id,
+                    &mut resource_data,
+                )
+                .await;
+
                 // Create resource DTO
                 let instance = AwsResourceDto {
                     id: None,
@@ -162,6 +182,173 @@ impl Ec2ControlPlane {
         }
 
         Ok(instances.into_iter().map(|i| i.into()).collect())
+    }
+
+    async fn attach_cloudwatch_telemetry(
+        &self,
+        cloudwatch_service: &CloudWatchService,
+        aws_account_dto: &AwsAccountDto,
+        instance_id: &str,
+        resource_data: &mut serde_json::Map<String, Value>,
+    ) {
+        let collection_started_at = Utc::now();
+        let telemetry_result = self
+            .collect_cloudwatch_metric_sample(cloudwatch_service, aws_account_dto, instance_id)
+            .await;
+        let collection_completed_at = Utc::now();
+        let duration_ms = (collection_completed_at - collection_started_at).num_milliseconds();
+
+        resource_data.insert(
+            "telemetry_collection_started_at".to_string(),
+            json!(collection_started_at.to_rfc3339()),
+        );
+        resource_data.insert(
+            "telemetry_collection_completed_at".to_string(),
+            json!(collection_completed_at.to_rfc3339()),
+        );
+        resource_data.insert(
+            "telemetry_collection_duration_ms".to_string(),
+            json!(duration_ms.max(0)),
+        );
+
+        match telemetry_result {
+            Ok(cloudwatch_metrics) => {
+                let metric_names: Vec<String> = cloudwatch_metrics
+                    .get("metrics")
+                    .and_then(|metrics| metrics.as_array())
+                    .map(|metrics| {
+                        metrics
+                            .iter()
+                            .filter_map(|metric| {
+                                metric
+                                    .get("metric_name")
+                                    .and_then(|name| name.as_str())
+                                    .map(|name| name.to_string())
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let metric_count = metric_names.len();
+
+                resource_data.insert("cloudwatch_metrics".to_string(), cloudwatch_metrics);
+                resource_data.insert("cloudwatch_metric_names".to_string(), json!(metric_names));
+                resource_data.insert("cloudwatch_metric_count".to_string(), json!(metric_count));
+                resource_data.insert(
+                    "cpu_metric_observed".to_string(),
+                    json!(has_metric(resource_data, "CPUUtilization")),
+                );
+                resource_data.insert(
+                    "network_metrics_observed".to_string(),
+                    json!(
+                        has_metric(resource_data, "NetworkIn")
+                            && has_metric(resource_data, "NetworkOut")
+                    ),
+                );
+                resource_data.insert(
+                    "status_check_metric_observed".to_string(),
+                    json!(has_metric(resource_data, "StatusCheckFailed")),
+                );
+                resource_data.insert(
+                    "packet_metrics_observed".to_string(),
+                    json!(
+                        has_metric(resource_data, "NetworkPacketsIn")
+                            && has_metric(resource_data, "NetworkPacketsOut")
+                    ),
+                );
+                resource_data.insert(
+                    "recovery_point_telemetry_observed".to_string(),
+                    json!(recovery_point_age_hours(resource_data).is_some()),
+                );
+                resource_data.insert("telemetry_collection_success_count".to_string(), json!(1));
+                resource_data.insert("telemetry_collection_failure_count".to_string(), json!(0));
+                resource_data.insert("telemetry_collection_error_count".to_string(), json!(0));
+                resource_data.insert("telemetry_collection_errors".to_string(), json!([]));
+            }
+            Err(error) => {
+                resource_data.insert("cloudwatch_metrics".to_string(), json!({ "metrics": [] }));
+                resource_data.insert("cloudwatch_metric_names".to_string(), json!([]));
+                resource_data.insert("cloudwatch_metric_count".to_string(), json!(0));
+                resource_data.insert("cpu_metric_observed".to_string(), json!(false));
+                resource_data.insert("network_metrics_observed".to_string(), json!(false));
+                resource_data.insert("status_check_metric_observed".to_string(), json!(false));
+                resource_data.insert("packet_metrics_observed".to_string(), json!(false));
+                resource_data.insert(
+                    "recovery_point_telemetry_observed".to_string(),
+                    json!(recovery_point_age_hours(resource_data).is_some()),
+                );
+                resource_data.insert("telemetry_collection_success_count".to_string(), json!(0));
+                resource_data.insert("telemetry_collection_failure_count".to_string(), json!(1));
+                resource_data.insert("telemetry_collection_error_count".to_string(), json!(1));
+                resource_data.insert(
+                    "telemetry_collection_errors".to_string(),
+                    json!([{
+                        "source": "cloudwatch",
+                        "operation": "GetMetricData",
+                        "error": error.to_string(),
+                    }]),
+                );
+            }
+        }
+    }
+
+    async fn collect_cloudwatch_metric_sample(
+        &self,
+        cloudwatch_service: &CloudWatchService,
+        aws_account_dto: &AwsAccountDto,
+        instance_id: &str,
+    ) -> Result<Value, AppError> {
+        let end_time = Utc::now();
+        let start_time = end_time - Duration::hours(3);
+        let metrics = ec2_core_metric_names()
+            .iter()
+            .map(|metric| metric.to_string())
+            .collect::<Vec<_>>();
+        let request = CloudWatchMetricsRequest {
+            resource_type: "EC2Instance".to_string(),
+            resource_id: instance_id.to_string(),
+            region: aws_account_dto.default_region.clone(),
+            metrics: metrics.clone(),
+            start_time,
+            end_time,
+            period: 300,
+        };
+
+        let result = cloudwatch_service
+            .get_metrics(aws_account_dto, &request)
+            .await?;
+        let metric_samples = result
+            .metrics
+            .into_iter()
+            .map(|metric| {
+                json!({
+                    "namespace": metric.namespace,
+                    "metric_name": metric.metric_name,
+                    "unit": metric.unit,
+                    "datapoints": metric
+                        .datapoints
+                        .into_iter()
+                        .map(|datapoint| {
+                            json!({
+                                "timestamp": datapoint.timestamp.to_rfc3339(),
+                                "value": datapoint.value,
+                                "unit": datapoint.unit,
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect::<Vec<_>>();
+
+        Ok(json!({
+            "source": "CloudWatch",
+            "namespace": "AWS/EC2",
+            "resource_id": instance_id,
+            "lookback_hours": 3,
+            "period_seconds": 300,
+            "requested_metrics": metrics,
+            "metrics": metric_samples,
+            "collected_at": end_time.to_rfc3339(),
+        }))
     }
 
     pub async fn launch_instances(
@@ -766,4 +953,63 @@ impl Ec2ControlPlane {
 
         Ok(())
     }
+}
+
+fn ec2_core_metric_names() -> [&'static str; 10] {
+    [
+        "CPUUtilization",
+        "NetworkIn",
+        "NetworkOut",
+        "NetworkPacketsIn",
+        "NetworkPacketsOut",
+        "DiskReadOps",
+        "DiskWriteOps",
+        "StatusCheckFailed",
+        "StatusCheckFailed_Instance",
+        "StatusCheckFailed_System",
+    ]
+}
+
+fn has_metric(resource_data: &serde_json::Map<String, Value>, metric_name: &str) -> bool {
+    resource_data
+        .get("cloudwatch_metrics")
+        .and_then(|cloudwatch| cloudwatch.get("metrics"))
+        .and_then(|metrics| metrics.as_array())
+        .map(|metrics| {
+            metrics.iter().any(|metric| {
+                metric
+                    .get("metric_name")
+                    .or_else(|| metric.get("MetricName"))
+                    .and_then(|name| name.as_str())
+                    .map(|name| name == metric_name)
+                    .unwrap_or(false)
+                    && metric
+                        .get("datapoints")
+                        .or_else(|| metric.get("Datapoints"))
+                        .and_then(|datapoints| datapoints.as_array())
+                        .map(|datapoints| !datapoints.is_empty())
+                        .unwrap_or(false)
+            })
+        })
+        .unwrap_or(false)
+}
+
+fn recovery_point_age_hours(resource_data: &serde_json::Map<String, Value>) -> Option<f64> {
+    for key in [
+        "latest_recovery_point_age_hours",
+        "recovery_point_age_hours",
+        "backup_age_hours",
+    ] {
+        if let Some(value) = resource_data
+            .get(key)
+            .and_then(|value| value.as_f64().or_else(|| value.as_i64().map(|n| n as f64)))
+        {
+            return Some(value);
+        }
+    }
+
+    resource_data
+        .get("disaster_recovery")
+        .and_then(|value| value.get("latest_recovery_point_age_hours"))
+        .and_then(|value| value.as_f64().or_else(|| value.as_i64().map(|n| n as f64)))
 }

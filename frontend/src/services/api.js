@@ -702,3 +702,19 @@ export const getPerformanceAlerts = async (clusterId) => {
     throw error;
   }
 };
+
+// Fetch deterministic inventory pillar reports (cost/security/resilience)
+// for one AWS service. `service` is one of: ec2, lambda, s3, rds, ebs, efs.
+export const getInventoryPillarReports = async (service, accountId, pillar = null) => {
+  try {
+    const params = { account_id: accountId };
+    if (pillar) {
+      params.pillar = pillar;
+    }
+    const response = await api.get(`/api/aws/inventory/${service}/pillars`, { params });
+    return response.data;
+  } catch (error) {
+    console.error(`Error fetching ${service} pillar reports:`, error);
+    throw error;
+  }
+};

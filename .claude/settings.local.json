@@ -2,7 +2,16 @@
   "permissions": {
     "allow": [
       "Bash(cargo check:*)",
-      "Bash(npx react-scripts:*)"
+      "Bash(npx react-scripts:*)",
+      "Bash(mkdir -p .claude/checkpoints/roadmap-run)",
+      "Bash(sqlite3 .claude/checkpoints/roadmap-run/checkpoint.sqlite ' *)",
+      "Bash(shasum -a 256)",
+      "Bash(awk -F',' 'NR==1 || $1 ~ /^01-AWS-CLOUD-00001$|^01-AWS-CLOUD-00010$|^01-AWS-CLOUD-00037$/' docs/product-roadmap/01-aws-cloud/feature-backlog.csv)",
+      "Bash(grep -E \"\\\\.rs$\")",
+      "Bash(cargo test *)",
+      "Bash(sed -n 16,17p backend/src/controllers/mod.rs)",
+      "Bash(sed -n 16,20p backend/src/api/routes/mod.rs)",
+      "Bash(python3 *)"
     ]
   }
 }

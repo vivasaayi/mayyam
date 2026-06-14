@@ -51,6 +51,7 @@ const Configurations = lazy(() => import("./pages/Configurations")); // Import f
 const KinesisDashboard = lazy(() => import("./components/Kinesis/KinesisDashboard")); // Import for Kinesis Dashboard
 const SyncRunsDashboard = lazy(() => import("./pages/SyncRunsDashboard"));
 const CloudResources = lazy(() => import("./pages/CloudResources")); // New import for Cloud Resources
+const PillarScorecards = lazy(() => import("./pages/PillarScorecards"));
 const CostAnalytics = lazy(() => import("./pages/CostAnalytics")); // Import for Cost Analytics
 const AuroraClusters = lazy(() => import("./pages/AuroraClusters")); // Import for Aurora Clusters
 const SlowQueryDashboard = lazy(() => import("./pages/SlowQueryDashboard")); // Updated to Dashboard
@@ -103,6 +104,7 @@ const App = () => {
             <Route path="kinesis" element={<KinesisDashboard />} /> {/* Route for Kinesis Dashboard */}
             <Route path="sync-runs" element={<SyncRunsDashboard />} />
             <Route path="cloud-resources" element={<CloudResources />} /> {/* New route for Cloud Resources */}
+            <Route path="pillar-scorecards" element={<PillarScorecards />} />
             <Route path="cost-analytics" element={<CostAnalytics />} /> {/* Route for Cost Analytics */}
             <Route path="aurora-clusters" element={<AuroraClusters />} /> {/* Route for Aurora Clusters */}
             <Route path="slow-queries" element={<SlowQueryDashboard />} /> {/* Updated to Dashboard */}

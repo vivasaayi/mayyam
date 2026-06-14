@@ -12,8 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
-use actix_web::{web};
+use actix_web::web;
 use std::sync::Arc;
 
 use crate::controllers::kubernetes_cluster_management::KubernetesClusterManagementController; // Renamed controller

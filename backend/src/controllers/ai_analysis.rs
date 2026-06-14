@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use actix_web::{web, HttpResponse, Responder};
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
@@ -72,9 +71,16 @@ pub async fn create_ai_analysis(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let ai_repo = AIAnalysisRepository::new(db_pool.get_ref().clone());
-    let fingerprint_repo = crate::repositories::query_fingerprint_repository::QueryFingerprintRepository::new(db_pool.get_ref().clone());
-    let slow_query_repo = crate::repositories::slow_query_repository::SlowQueryRepository::new(db_pool.get_ref().clone());
-    let explain_repo = crate::repositories::explain_plan_repository::ExplainPlanRepository::new(db_pool.get_ref().clone());
+    let fingerprint_repo =
+        crate::repositories::query_fingerprint_repository::QueryFingerprintRepository::new(
+            db_pool.get_ref().clone(),
+        );
+    let slow_query_repo = crate::repositories::slow_query_repository::SlowQueryRepository::new(
+        db_pool.get_ref().clone(),
+    );
+    let explain_repo = crate::repositories::explain_plan_repository::ExplainPlanRepository::new(
+        db_pool.get_ref().clone(),
+    );
 
     let ai_service = AIAnalysisService::new(
         ai_repo,
@@ -116,13 +122,19 @@ pub async fn get_ai_analyses(
     let ai_repo = AIAnalysisRepository::new(db_pool.get_ref().clone());
 
     let fingerprint_id = if let Some(fingerprint_id_str) = &query.fingerprint_id {
-        Some(Uuid::parse_str(fingerprint_id_str).map_err(|e| AppError::BadRequest(format!("Invalid fingerprint UUID: {}", e)))?)
+        Some(
+            Uuid::parse_str(fingerprint_id_str)
+                .map_err(|e| AppError::BadRequest(format!("Invalid fingerprint UUID: {}", e)))?,
+        )
     } else {
         None
     };
 
     let cluster_id = if let Some(cluster_id_str) = &query.cluster_id {
-        Some(Uuid::parse_str(cluster_id_str).map_err(|e| AppError::BadRequest(format!("Invalid cluster UUID: {}", e)))?)
+        Some(
+            Uuid::parse_str(cluster_id_str)
+                .map_err(|e| AppError::BadRequest(format!("Invalid cluster UUID: {}", e)))?,
+        )
     } else {
         None
     };
@@ -130,21 +142,22 @@ pub async fn get_ai_analyses(
     let limit = query.limit.unwrap_or(50).min(200); // Max 200 records
 
     let analyses = if let Some(fingerprint_id) = fingerprint_id {
-        ai_repo.find_by_fingerprint(fingerprint_id, Some(limit)).await?
+        ai_repo
+            .find_by_fingerprint(fingerprint_id, Some(limit))
+            .await?
     } else if let Some(cluster_id) = cluster_id {
         ai_repo.find_by_cluster(cluster_id, limit).await?
     } else if let Some(analysis_type) = &query.analysis_type {
-        ai_repo.find_by_analysis_type_with_limit(analysis_type.clone(), limit).await?
+        ai_repo
+            .find_by_analysis_type_with_limit(analysis_type.clone(), limit)
+            .await?
     } else {
         ai_repo.find_recent(limit).await?
     };
 
     let total = analyses.len();
 
-    let response = AIAnalysesResponse {
-        analyses,
-        total,
-    };
+    let response = AIAnalysesResponse { analyses, total };
 
     Ok(HttpResponse::Ok().json(response))
 }
@@ -155,10 +168,13 @@ pub async fn get_ai_analysis(
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let analysis_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let analysis_id =
+        Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
     let ai_repo = AIAnalysisRepository::new(db_pool.get_ref().clone());
 
-    let analysis = ai_repo.find_by_id(analysis_id).await?
+    let analysis = ai_repo
+        .find_by_id(analysis_id)
+        .await?
         .ok_or_else(|| AppError::NotFound(format!("AI analysis not found: {}", analysis_id)))?;
 
     let response = AIAnalysisResponse { analysis };
@@ -174,13 +190,21 @@ pub async fn get_analysis_history(
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let fingerprint_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid fingerprint UUID: {}", e)))?;
+    let fingerprint_id = Uuid::parse_str(&path)
+        .map_err(|e| AppError::BadRequest(format!("Invalid fingerprint UUID: {}", e)))?;
     let analysis_type = query.get("analysis_type");
 
     let ai_repo = AIAnalysisRepository::new(db_pool.get_ref().clone());
-    let fingerprint_repo = crate::repositories::query_fingerprint_repository::QueryFingerprintRepository::new(db_pool.get_ref().clone());
-    let slow_query_repo = crate::repositories::slow_query_repository::SlowQueryRepository::new(db_pool.get_ref().clone());
-    let explain_repo = crate::repositories::explain_plan_repository::ExplainPlanRepository::new(db_pool.get_ref().clone());
+    let fingerprint_repo =
+        crate::repositories::query_fingerprint_repository::QueryFingerprintRepository::new(
+            db_pool.get_ref().clone(),
+        );
+    let slow_query_repo = crate::repositories::slow_query_repository::SlowQueryRepository::new(
+        db_pool.get_ref().clone(),
+    );
+    let explain_repo = crate::repositories::explain_plan_repository::ExplainPlanRepository::new(
+        db_pool.get_ref().clone(),
+    );
 
     let ai_service = AIAnalysisService::new(
         ai_repo,
@@ -191,9 +215,13 @@ pub async fn get_analysis_history(
     );
 
     let analyses = if let Some(analysis_type) = analysis_type {
-        ai_service.get_analysis_history(fingerprint_id, Some(analysis_type.clone())).await?
+        ai_service
+            .get_analysis_history(fingerprint_id, Some(analysis_type.clone()))
+            .await?
     } else {
-        ai_service.get_analysis_history(fingerprint_id, None).await?
+        ai_service
+            .get_analysis_history(fingerprint_id, None)
+            .await?
     };
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
@@ -210,7 +238,8 @@ pub async fn update_analysis_confidence(
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let analysis_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let analysis_id =
+        Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
     let ai_repo = AIAnalysisRepository::new(db_pool.get_ref().clone());
 
     ai_repo.update_confidence_score(analysis_id, *req).await?;
@@ -231,7 +260,10 @@ pub async fn get_analysis_stats(
     let ai_repo = AIAnalysisRepository::new(db_pool.get_ref().clone());
 
     let cluster_id = if let Some(cluster_id_str) = &query.cluster_id {
-        Some(Uuid::parse_str(cluster_id_str).map_err(|e| AppError::BadRequest(format!("Invalid cluster UUID: {}", e)))?)
+        Some(
+            Uuid::parse_str(cluster_id_str)
+                .map_err(|e| AppError::BadRequest(format!("Invalid cluster UUID: {}", e)))?,
+        )
     } else {
         None
     };
@@ -259,7 +291,8 @@ pub async fn delete_ai_analysis(
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let analysis_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let analysis_id =
+        Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
     let ai_repo = AIAnalysisRepository::new(db_pool.get_ref().clone());
 
     ai_repo.delete(analysis_id).await?;

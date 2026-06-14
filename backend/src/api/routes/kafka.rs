@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::controllers::kafka;
-use actix_web::{web};
+use actix_web::web;
 
 pub fn configure(cfg: &mut web::ServiceConfig) {
     let scope = web::scope("/api/kafka")

@@ -12,19 +12,18 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::models::ai_analysis::AIAnalysis;
 use crate::repositories::ai_analysis_repository::AIAnalysisRepository;
+use crate::repositories::explain_plan_repository::ExplainPlanRepository;
 use crate::repositories::query_fingerprint_repository::QueryFingerprintRepository;
 use crate::repositories::slow_query_repository::SlowQueryRepository;
-use crate::repositories::explain_plan_repository::ExplainPlanRepository;
-use crate::services::llm::manager::UnifiedLlmManager;
 use crate::services::llm::interface::UnifiedLlmRequest;
-use uuid::Uuid;
-use serde_json;
+use crate::services::llm::manager::UnifiedLlmManager;
 use serde::Serialize;
+use serde_json;
 use std::collections::HashMap;
 use std::sync::Arc;
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct AIAnalysisService {
@@ -70,33 +69,57 @@ impl AIAnalysisService {
         }
     }
 
-    pub async fn generate_analysis(&self, request: AnalysisRequest) -> Result<AnalysisResult, String> {
-        let fingerprint = self.fingerprint_repo.find_by_id(request.fingerprint_id).await?
+    pub async fn generate_analysis(
+        &self,
+        request: AnalysisRequest,
+    ) -> Result<AnalysisResult, String> {
+        let fingerprint = self
+            .fingerprint_repo
+            .find_by_id(request.fingerprint_id)
+            .await?
             .ok_or_else(|| "Query fingerprint not found".to_string())?;
 
-        let recent_events = self.slow_query_repo.find_top_by_total_time(
-            None,
-            24,
-            10,
-        ).await?;
+        let recent_events = self
+            .slow_query_repo
+            .find_top_by_total_time(None, 24, 10)
+            .await?;
 
-        let latest_plan = self.explain_repo.find_latest_by_fingerprint(request.fingerprint_id).await?;
+        let latest_plan = self
+            .explain_repo
+            .find_latest_by_fingerprint(request.fingerprint_id)
+            .await?;
 
         let mut analysis_result = match request.analysis_type.as_str() {
-            "performance" => self.analyze_performance(&fingerprint, &recent_events, latest_plan.as_ref()).await?,
-            "indexing" => self.analyze_indexing(&fingerprint, &recent_events, latest_plan.as_ref()).await?,
-            "query_structure" => self.analyze_query_structure(&fingerprint, &recent_events).await?,
-            "workload_pattern" => self.analyze_workload_pattern(&fingerprint, &recent_events).await?,
+            "performance" => {
+                self.analyze_performance(&fingerprint, &recent_events, latest_plan.as_ref())
+                    .await?
+            }
+            "indexing" => {
+                self.analyze_indexing(&fingerprint, &recent_events, latest_plan.as_ref())
+                    .await?
+            }
+            "query_structure" => {
+                self.analyze_query_structure(&fingerprint, &recent_events)
+                    .await?
+            }
+            "workload_pattern" => {
+                self.analyze_workload_pattern(&fingerprint, &recent_events)
+                    .await?
+            }
             _ => return Err(format!("Unknown analysis type: {}", request.analysis_type)),
         };
 
         // If an LLM provider is specified, use it for deeper insights
         if let Some(provider) = request.llm_provider.as_ref() {
-            match self.generate_llm_insights(provider, &fingerprint, latest_plan.as_ref()).await {
+            match self
+                .generate_llm_insights(provider, &fingerprint, latest_plan.as_ref())
+                .await
+            {
                 Ok((llm_recs, rewrite)) => {
                     analysis_result.recommendations.extend(llm_recs);
                     analysis_result.rewritten_sql = rewrite;
-                    analysis_result.confidence_score = (analysis_result.confidence_score + 0.2).min(1.0);
+                    analysis_result.confidence_score =
+                        (analysis_result.confidence_score + 0.2).min(1.0);
                 }
                 Err(e) => tracing::warn!("LLM analysis failed: {}", e),
             }
@@ -109,15 +132,33 @@ impl AIAnalysisService {
             cluster_id: sea_orm::Set(Uuid::nil()),
             fingerprint_id: sea_orm::Set(Some(request.fingerprint_id)),
             slow_query_id: sea_orm::Set(None),
-            ai_provider: sea_orm::Set(request.llm_provider.clone().unwrap_or_else(|| "heuristic".to_string())),
+            ai_provider: sea_orm::Set(
+                request
+                    .llm_provider
+                    .clone()
+                    .unwrap_or_else(|| "heuristic".to_string()),
+            ),
             ai_model: sea_orm::Set("heuristic".to_string()),
             analysis_type: sea_orm::Set(request.analysis_type.clone()),
-            input_data: sea_orm::Set(serde_json::to_value(&analysis_result).unwrap_or(serde_json::Value::Null)),
-            analysis_result: sea_orm::Set(serde_json::to_string(&analysis_result.recommendations).unwrap_or_default()),
+            input_data: sea_orm::Set(
+                serde_json::to_value(&analysis_result).unwrap_or(serde_json::Value::Null),
+            ),
+            analysis_result: sea_orm::Set(
+                serde_json::to_string(&analysis_result.recommendations).unwrap_or_default(),
+            ),
             confidence_score: sea_orm::Set(Some(analysis_result.confidence_score)),
-            suggested_indexes: sea_orm::Set(serde_json::to_value(&analysis_result.suggestions).unwrap_or(serde_json::Value::Null)),
-            suggested_rewrites: sea_orm::Set(serde_json::to_value(&analysis_result.rewritten_sql).unwrap_or(serde_json::Value::Null)),
-            root_causes: sea_orm::Set(serde_json::to_value(&analysis_result.root_causes).unwrap_or(serde_json::Value::Null)),
+            suggested_indexes: sea_orm::Set(
+                serde_json::to_value(&analysis_result.suggestions)
+                    .unwrap_or(serde_json::Value::Null),
+            ),
+            suggested_rewrites: sea_orm::Set(
+                serde_json::to_value(&analysis_result.rewritten_sql)
+                    .unwrap_or(serde_json::Value::Null),
+            ),
+            root_causes: sea_orm::Set(
+                serde_json::to_value(&analysis_result.root_causes)
+                    .unwrap_or(serde_json::Value::Null),
+            ),
             created_at: sea_orm::Set(chrono::Utc::now().naive_utc()),
         };
 
@@ -138,12 +179,19 @@ impl AIAnalysisService {
             plan.map(|p| p.plan_data.as_str()).unwrap_or("No plan available")
         );
 
-        let response = self.llm_manager.quick_generate(provider, &prompt).await
+        let response = self
+            .llm_manager
+            .quick_generate(provider, &prompt)
+            .await
             .map_err(|e| format!("LLM Error: {}", e))?;
 
         // Simple parsing of LLM response (this would be more sophisticated in production)
         let recommendations = vec![response.clone()];
-        let rewrite = if response.contains("SELECT") { Some(response) } else { None };
+        let rewrite = if response.contains("SELECT") {
+            Some(response)
+        } else {
+            None
+        };
 
         Ok((recommendations, rewrite))
     }
@@ -242,9 +290,15 @@ impl AIAnalysisService {
         })
     }
 
-    pub async fn get_analysis_history(&self, fingerprint_id: Uuid, analysis_type: Option<String>) -> Result<Vec<AIAnalysis>, String> {
+    pub async fn get_analysis_history(
+        &self,
+        fingerprint_id: Uuid,
+        analysis_type: Option<String>,
+    ) -> Result<Vec<AIAnalysis>, String> {
         if let Some(at) = analysis_type {
-            self.ai_repo.find_by_analysis_type(fingerprint_id, &at).await
+            self.ai_repo
+                .find_by_analysis_type(fingerprint_id, &at)
+                .await
         } else {
             self.ai_repo.find_by_fingerprint(fingerprint_id, None).await
         }

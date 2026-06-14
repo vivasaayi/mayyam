@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
-use crate::models::cost_budget::{Budget, Entity as BudgetEntity, Column as BudgetColumn};
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, ActiveModelTrait};
+use crate::models::cost_budget::{Budget, Column as BudgetColumn, Entity as BudgetEntity};
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -49,7 +48,11 @@ impl CostBudgetRepository {
     }
 
     /// Find budgets by type
-    pub async fn find_by_type(&self, account_id: &str, budget_type: &str) -> Result<Vec<Budget>, String> {
+    pub async fn find_by_type(
+        &self,
+        account_id: &str,
+        budget_type: &str,
+    ) -> Result<Vec<Budget>, String> {
         BudgetEntity::find()
             .filter(BudgetColumn::AccountId.eq(account_id))
             .filter(BudgetColumn::BudgetType.eq(budget_type))
@@ -61,7 +64,8 @@ impl CostBudgetRepository {
     /// Create a new budget
     pub async fn create(&self, budget: Budget) -> Result<Budget, String> {
         let active_model: crate::models::cost_budget::ActiveModel = budget.into();
-        active_model.insert(&self.db)
+        active_model
+            .insert(&self.db)
             .await
             .map_err(|e| format!("Failed to create budget: {}", e))
     }
@@ -69,7 +73,8 @@ impl CostBudgetRepository {
     /// Update an existing budget
     pub async fn update(&self, budget: Budget) -> Result<Budget, String> {
         let active_model: crate::models::cost_budget::ActiveModel = budget.into();
-        active_model.update(&self.db)
+        active_model
+            .update(&self.db)
             .await
             .map_err(|e| format!("Failed to update budget: {}", e))
     }
@@ -85,7 +90,11 @@ impl CostBudgetRepository {
     }
 
     /// Find budgets that are close to exceeding thresholds
-    pub async fn find_budgets_near_threshold(&self, account_id: &str, _threshold_percentage: f64) -> Result<Vec<Budget>, String> {
+    pub async fn find_budgets_near_threshold(
+        &self,
+        account_id: &str,
+        _threshold_percentage: f64,
+    ) -> Result<Vec<Budget>, String> {
         // This would require calculating current spending vs budget
         // For now, return all budgets - the service layer will filter
         BudgetEntity::find()

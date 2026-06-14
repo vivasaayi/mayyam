@@ -12,11 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 pub mod ai;
 pub mod auth;
 pub mod aws_account;
 pub mod aws_analytics;
+pub mod aws_inventory;
 pub mod budget;
 pub mod chaos;
 pub mod cloud;
@@ -45,7 +45,11 @@ use std::sync::Arc; // Ensure this is imported
 use crate::services::llm::manager::UnifiedLlmManager;
 
 // Modified signature to accept db connection and llm manager
-pub fn configure(cfg: &mut web::ServiceConfig, db: Arc<DatabaseConnection>, llm_manager: Arc<UnifiedLlmManager>) {
+pub fn configure(
+    cfg: &mut web::ServiceConfig,
+    db: Arc<DatabaseConnection>,
+    llm_manager: Arc<UnifiedLlmManager>,
+) {
     auth::configure(cfg);
     database::configure(cfg); // This might also need the db if it configures routes needing it directly
     slow_query::configure(cfg, db.clone());

@@ -12,14 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::models::mysql_performance_snapshot::MySQLPerformanceSnapshot;
-use crate::repositories::mysql_performance_repository::MySQLPerformanceRepository;
 use crate::repositories::aurora_cluster_repository::AuroraClusterRepository;
-use uuid::Uuid;
-use chrono::{NaiveDateTime, Duration};
+use crate::repositories::mysql_performance_repository::MySQLPerformanceRepository;
+use chrono::{Duration, NaiveDateTime};
 use serde_json;
 use std::collections::HashMap;
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct MySQLPerformanceService {
@@ -96,7 +95,10 @@ impl MySQLPerformanceService {
         metrics: PerformanceMetrics,
     ) -> Result<MySQLPerformanceSnapshot, String> {
         // Verify cluster exists
-        let _cluster = self.cluster_repo.find_by_id(cluster_id).await?
+        let _cluster = self
+            .cluster_repo
+            .find_by_id(cluster_id)
+            .await?
             .ok_or_else(|| "Aurora cluster not found".to_string())?;
 
         let health_check = self.perform_health_check(&metrics);
@@ -112,12 +114,12 @@ impl MySQLPerformanceService {
             connections_used: 0.0, // TODO: calculate percentage
             slow_queries_total: metrics.workload.slow_queries as i64,
             slow_query_time_total: 0.0, // TODO: calculate
-            slow_query_p95: 0.0, // TODO: calculate
+            slow_query_p95: 0.0,        // TODO: calculate
             innodb_buffer_pool_usage: metrics.innodb.buffer_pool_hit_rate,
             innodb_log_file_usage: 0.0, // TODO: calculate
             innodb_history_length: metrics.innodb.lock_waits as i64,
-            innodb_flushes: 0, // TODO: calculate
-            temp_tables_disk: 0, // TODO: calculate
+            innodb_flushes: 0,     // TODO: calculate
+            temp_tables_disk: 0,   // TODO: calculate
             temp_tables_memory: 0, // TODO: calculate
             replication_lag: metrics.replication.seconds_behind_master.map(|x| x as f64),
             health_score: health_check.overall_score.to_string(),
@@ -137,20 +139,29 @@ impl MySQLPerformanceService {
         recommendations: Vec<String>,
     ) -> Result<MySQLPerformanceSnapshot, String> {
         // Use the existing capture_performance_snapshot but override issues/recommendations
-        let mut snapshot = self.capture_performance_snapshot(cluster_id, metrics).await?;
-        
+        let mut snapshot = self
+            .capture_performance_snapshot(cluster_id, metrics)
+            .await?;
+
         // Override the issues and recommendations with the provided ones
         snapshot.top_issues = serde_json::to_value(issues)
             .map_err(|e| format!("Failed to serialize issues: {}", e))?;
-        
+
         // Note: The MySQLPerformanceSnapshot model might not have recommendations field
         // For now, we'll just use the issues
-        
+
         Ok(snapshot)
     }
 
-    pub async fn get_latest_health_check(&self, cluster_id: Uuid) -> Result<Option<HealthCheckResult>, String> {
-        if let Some(snapshot) = self.performance_repo.find_latest_by_cluster(cluster_id).await? {
+    pub async fn get_latest_health_check(
+        &self,
+        cluster_id: Uuid,
+    ) -> Result<Option<HealthCheckResult>, String> {
+        if let Some(snapshot) = self
+            .performance_repo
+            .find_latest_by_cluster(cluster_id)
+            .await?
+        {
             let issues: Vec<String> = serde_json::from_value(snapshot.top_issues)
                 .map_err(|e| format!("Failed to deserialize issues: {}", e))?;
 
@@ -171,11 +182,10 @@ impl MySQLPerformanceService {
         hours: i64,
     ) -> Result<HashMap<String, Vec<(NaiveDateTime, f64)>>, String> {
         let cutoff_time = chrono::Utc::now().naive_utc() - Duration::hours(hours);
-        let snapshots = self.performance_repo.find_by_time_range(
-            cluster_id,
-            cutoff_time,
-            chrono::Utc::now().naive_utc(),
-        ).await?;
+        let snapshots = self
+            .performance_repo
+            .find_by_time_range(cluster_id, cutoff_time, chrono::Utc::now().naive_utc())
+            .await?;
 
         let mut trends = HashMap::new();
 
@@ -185,7 +195,10 @@ impl MySQLPerformanceService {
         let mut buffer_pool_hit_rates = Vec::new();
 
         for snapshot in snapshots {
-            health_scores.push((snapshot.snapshot_time, snapshot.health_score.parse().unwrap_or(0.0)));
+            health_scores.push((
+                snapshot.snapshot_time,
+                snapshot.health_score.parse().unwrap_or(0.0),
+            ));
             qps_trends.push((snapshot.snapshot_time, snapshot.qps));
             connection_trends.push((snapshot.snapshot_time, snapshot.threads_connected as f64));
             buffer_pool_hit_rates.push((snapshot.snapshot_time, snapshot.innodb_buffer_pool_usage));
@@ -199,16 +212,18 @@ impl MySQLPerformanceService {
         Ok(trends)
     }
 
-    pub async fn detect_performance_anomalies(&self, cluster_id: Uuid) -> Result<Vec<String>, String> {
+    pub async fn detect_performance_anomalies(
+        &self,
+        cluster_id: Uuid,
+    ) -> Result<Vec<String>, String> {
         let mut anomalies = Vec::new();
 
         // Get recent snapshots (last 24 hours)
         let cutoff_time = chrono::Utc::now().naive_utc() - Duration::hours(24);
-        let snapshots = self.performance_repo.find_by_time_range(
-            cluster_id,
-            cutoff_time,
-            chrono::Utc::now().naive_utc(),
-        ).await?;
+        let snapshots = self
+            .performance_repo
+            .find_by_time_range(cluster_id, cutoff_time, chrono::Utc::now().naive_utc())
+            .await?;
 
         if snapshots.len() < 2 {
             return Ok(vec!["Insufficient data for anomaly detection".to_string()]);
@@ -216,7 +231,8 @@ impl MySQLPerformanceService {
 
         // Check for sudden drops in health score
         let recent_snapshots: Vec<_> = snapshots.iter().rev().take(5).collect();
-        if let (Some(latest), Some(previous)) = (recent_snapshots.first(), recent_snapshots.get(1)) {
+        if let (Some(latest), Some(previous)) = (recent_snapshots.first(), recent_snapshots.get(1))
+        {
             // TODO: Compare health scores when we have historical data
             // let health_drop = previous.health_score - latest.health_score;
             // if health_drop > 0.2 { // 20% drop
@@ -225,7 +241,11 @@ impl MySQLPerformanceService {
         }
 
         // Check for high connection usage
-        let avg_connections: f64 = snapshots.iter().map(|s| s.threads_connected as f64).sum::<f64>() / snapshots.len() as f64;
+        let avg_connections: f64 = snapshots
+            .iter()
+            .map(|s| s.threads_connected as f64)
+            .sum::<f64>()
+            / snapshots.len() as f64;
         // TODO: Calculate max connections from metrics
         let estimated_max_connections = avg_connections * 1.5; // Rough estimate
 
@@ -234,9 +254,16 @@ impl MySQLPerformanceService {
         }
 
         // Check for low buffer pool hit rate
-        let avg_hit_rate: f64 = snapshots.iter().map(|s| s.innodb_buffer_pool_usage).sum::<f64>() / snapshots.len() as f64;
+        let avg_hit_rate: f64 = snapshots
+            .iter()
+            .map(|s| s.innodb_buffer_pool_usage)
+            .sum::<f64>()
+            / snapshots.len() as f64;
         if avg_hit_rate < 0.95 {
-            anomalies.push(format!("Buffer pool hit rate is low: {:.1}%", avg_hit_rate * 100.0));
+            anomalies.push(format!(
+                "Buffer pool hit rate is low: {:.1}%",
+                avg_hit_rate * 100.0
+            ));
         }
 
         // Check for increasing slow queries
@@ -264,11 +291,14 @@ impl MySQLPerformanceService {
         let mut critical_issues = Vec::new();
 
         // Connection health checks
-        let connection_usage = metrics.connections.threads_connected as f64 / metrics.connections.max_connections as f64;
+        let connection_usage = metrics.connections.threads_connected as f64
+            / metrics.connections.max_connections as f64;
         if connection_usage > 0.9 {
             score -= 0.3;
             issues.push("Connection usage is very high".to_string());
-            recommendations.push("Consider increasing max_connections or optimizing connection pooling".to_string());
+            recommendations.push(
+                "Consider increasing max_connections or optimizing connection pooling".to_string(),
+            );
             critical_issues.push("High connection usage".to_string());
         } else if connection_usage > 0.7 {
             score -= 0.1;
@@ -293,7 +323,10 @@ impl MySQLPerformanceService {
         // InnoDB health checks
         if metrics.innodb.buffer_pool_hit_rate < 0.95 {
             score -= 0.25;
-            issues.push(format!("Buffer pool hit rate is low: {:.1}%", metrics.innodb.buffer_pool_hit_rate * 100.0));
+            issues.push(format!(
+                "Buffer pool hit rate is low: {:.1}%",
+                metrics.innodb.buffer_pool_hit_rate * 100.0
+            ));
             recommendations.push("Consider increasing innodb_buffer_pool_size".to_string());
             critical_issues.push("Low buffer pool hit rate".to_string());
         }
@@ -301,13 +334,16 @@ impl MySQLPerformanceService {
         if metrics.innodb.log_waits > 10 {
             score -= 0.15;
             issues.push("InnoDB log waits detected".to_string());
-            recommendations.push("Consider increasing innodb_log_file_size or optimizing write patterns".to_string());
+            recommendations.push(
+                "Consider increasing innodb_log_file_size or optimizing write patterns".to_string(),
+            );
         }
 
         if metrics.innodb.lock_waits > 50 {
             score -= 0.2;
             issues.push("High InnoDB lock waits".to_string());
-            recommendations.push("Investigate lock contention and long-running transactions".to_string());
+            recommendations
+                .push("Investigate lock contention and long-running transactions".to_string());
             critical_issues.push("Lock contention".to_string());
         }
 
@@ -315,26 +351,36 @@ impl MySQLPerformanceService {
         if !metrics.replication.slave_io_running {
             score -= 0.5;
             issues.push("Slave IO thread is not running".to_string());
-            recommendations.push("Check replication configuration and network connectivity".to_string());
+            recommendations
+                .push("Check replication configuration and network connectivity".to_string());
             critical_issues.push("Replication IO failure".to_string());
         }
 
         if !metrics.replication.slave_sql_running {
             score -= 0.5;
             issues.push("Slave SQL thread is not running".to_string());
-            recommendations.push("Check for replication errors and resolve SQL thread issues".to_string());
+            recommendations
+                .push("Check for replication errors and resolve SQL thread issues".to_string());
             critical_issues.push("Replication SQL failure".to_string());
         }
 
         if let Some(seconds_behind) = metrics.replication.seconds_behind_master {
-            if seconds_behind > 300 { // 5 minutes
+            if seconds_behind > 300 {
+                // 5 minutes
                 score -= 0.3;
-                issues.push(format!("Replication lag is high: {} seconds", seconds_behind));
-                recommendations.push("Investigate replication performance and network issues".to_string());
+                issues.push(format!(
+                    "Replication lag is high: {} seconds",
+                    seconds_behind
+                ));
+                recommendations
+                    .push("Investigate replication performance and network issues".to_string());
                 critical_issues.push("High replication lag".to_string());
             } else if seconds_behind > 60 {
                 score -= 0.1;
-                issues.push(format!("Replication lag detected: {} seconds", seconds_behind));
+                issues.push(format!(
+                    "Replication lag detected: {} seconds",
+                    seconds_behind
+                ));
                 recommendations.push("Monitor replication lag trends".to_string());
             }
         }
@@ -350,13 +396,16 @@ impl MySQLPerformanceService {
         }
     }
 
-    pub async fn get_performance_summary(&self, cluster_id: Uuid, hours: i64) -> Result<HashMap<String, serde_json::Value>, String> {
+    pub async fn get_performance_summary(
+        &self,
+        cluster_id: Uuid,
+        hours: i64,
+    ) -> Result<HashMap<String, serde_json::Value>, String> {
         let cutoff_time = chrono::Utc::now().naive_utc() - Duration::hours(hours);
-        let snapshots = self.performance_repo.find_by_time_range(
-            cluster_id,
-            cutoff_time,
-            chrono::Utc::now().naive_utc(),
-        ).await?;
+        let snapshots = self
+            .performance_repo
+            .find_by_time_range(cluster_id, cutoff_time, chrono::Utc::now().naive_utc())
+            .await?;
 
         if snapshots.is_empty() {
             return Ok(HashMap::new());
@@ -365,10 +414,22 @@ impl MySQLPerformanceService {
         let mut summary = HashMap::new();
 
         // Calculate averages
-        let avg_health_score = snapshots.iter().map(|s| s.health_score.parse::<f64>().unwrap_or(0.0)).sum::<f64>() / snapshots.len() as f64;
+        let avg_health_score = snapshots
+            .iter()
+            .map(|s| s.health_score.parse::<f64>().unwrap_or(0.0))
+            .sum::<f64>()
+            / snapshots.len() as f64;
         let avg_qps = snapshots.iter().map(|s| s.qps).sum::<f64>() / snapshots.len() as f64;
-        let avg_connections = snapshots.iter().map(|s| s.threads_connected as i64).sum::<i64>() / snapshots.len() as i64;
-        let avg_buffer_hit_rate = snapshots.iter().map(|s| s.innodb_buffer_pool_usage).sum::<f64>() / snapshots.len() as f64;
+        let avg_connections = snapshots
+            .iter()
+            .map(|s| s.threads_connected as i64)
+            .sum::<i64>()
+            / snapshots.len() as i64;
+        let avg_buffer_hit_rate = snapshots
+            .iter()
+            .map(|s| s.innodb_buffer_pool_usage)
+            .sum::<f64>()
+            / snapshots.len() as f64;
 
         // Get latest values
         let latest = snapshots.last().unwrap();
@@ -376,13 +437,34 @@ impl MySQLPerformanceService {
         let estimated_max_connections = (avg_connections as f64 * 1.5) as i64;
 
         summary.insert("period_hours".to_string(), serde_json::json!(hours));
-        summary.insert("snapshots_count".to_string(), serde_json::json!(snapshots.len()));
-        summary.insert("average_health_score".to_string(), serde_json::json!(avg_health_score));
-        summary.insert("average_queries_per_second".to_string(), serde_json::json!(avg_qps));
-        summary.insert("average_connections".to_string(), serde_json::json!(avg_connections));
-        summary.insert("max_connections".to_string(), serde_json::json!(estimated_max_connections));
-        summary.insert("average_buffer_pool_hit_rate".to_string(), serde_json::json!(avg_buffer_hit_rate));
-        summary.insert("latest_health_score".to_string(), serde_json::json!(latest.health_score));
+        summary.insert(
+            "snapshots_count".to_string(),
+            serde_json::json!(snapshots.len()),
+        );
+        summary.insert(
+            "average_health_score".to_string(),
+            serde_json::json!(avg_health_score),
+        );
+        summary.insert(
+            "average_queries_per_second".to_string(),
+            serde_json::json!(avg_qps),
+        );
+        summary.insert(
+            "average_connections".to_string(),
+            serde_json::json!(avg_connections),
+        );
+        summary.insert(
+            "max_connections".to_string(),
+            serde_json::json!(estimated_max_connections),
+        );
+        summary.insert(
+            "average_buffer_pool_hit_rate".to_string(),
+            serde_json::json!(avg_buffer_hit_rate),
+        );
+        summary.insert(
+            "latest_health_score".to_string(),
+            serde_json::json!(latest.health_score),
+        );
 
         Ok(summary)
     }

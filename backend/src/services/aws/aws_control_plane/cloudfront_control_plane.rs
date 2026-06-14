@@ -12,10 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::errors::AppError;
 use crate::models::aws_account::AwsAccountDto;
-use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel, AwsResourceType};
+use crate::models::aws_resource::{AwsResourceDto, AwsResourceType, Model as AwsResourceModel};
 use crate::repositories::aws_resource::AwsResourceRepository;
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::aws::service::AwsService;
@@ -47,7 +46,10 @@ impl CloudFrontControlPlane {
             &aws_account_dto.account_id, sync_id
         );
 
-        let client = self.aws_service.create_cloudfront_client(aws_account_dto).await?;
+        let client = self
+            .aws_service
+            .create_cloudfront_client(aws_account_dto)
+            .await?;
         let mut all_resources = Vec::new();
 
         // Get all distributions
@@ -63,22 +65,28 @@ impl CloudFrontControlPlane {
                     if let Some(distribution_list) = &response.distribution_list {
                         if let Some(items) = &distribution_list.items {
                             for dist in items {
-                                match self.create_distribution_resource(dist, aws_account_dto, sync_id).await {
+                                match self
+                                    .create_distribution_resource(dist, aws_account_dto, sync_id)
+                                    .await
+                                {
                                     Ok(resource) => all_resources.push(resource),
-                                    Err(e) => error!("Failed to create CloudFront distribution resource: {}", e),
+                                    Err(e) => error!(
+                                        "Failed to create CloudFront distribution resource: {}",
+                                        e
+                                    ),
                                 }
                             }
                         }
 
-        // Check if there are more pages
-        if distribution_list.is_truncated {
-            marker = distribution_list.next_marker.clone();
-            if marker.is_none() {
-                break;
-            }
-        } else {
-            break;
-        }
+                        // Check if there are more pages
+                        if distribution_list.is_truncated {
+                            marker = distribution_list.next_marker.clone();
+                            if marker.is_none() {
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
                     } else {
                         break;
                     }
@@ -105,12 +113,15 @@ impl CloudFrontControlPlane {
 
         let arn = format!(
             "arn:aws:cloudfront::{}:distribution/{}",
-            aws_account_dto.account_id,
-            resource_id
+            aws_account_dto.account_id, resource_id
         );
 
         // Get distribution comment as name, or use ID if not available
-        let name = if dist.comment.is_empty() { resource_id.clone() } else { dist.comment.clone() };
+        let name = if dist.comment.is_empty() {
+            resource_id.clone()
+        } else {
+            dist.comment.clone()
+        };
 
         // Extract tags (CloudFront tags are retrieved separately)
         let tags = serde_json::json!({});
@@ -249,7 +260,10 @@ impl CloudFrontControlPlane {
             &aws_account_dto.account_id, sync_id
         );
 
-        let client = self.aws_service.create_cloudfront_client(aws_account_dto).await?;
+        let client = self
+            .aws_service
+            .create_cloudfront_client(aws_account_dto)
+            .await?;
         let mut resources: Vec<AwsResourceModel> = Vec::new();
 
         let mut marker = None;
@@ -273,8 +287,11 @@ impl CloudFrontControlPlane {
                 if true {
                     for function in items {
                         let name = function.name();
-                        let arn = function.function_metadata().map(|m| m.function_arn()).unwrap_or("");
-                        
+                        let arn = function
+                            .function_metadata()
+                            .map(|m| m.function_arn())
+                            .unwrap_or("");
+
                         let resource_data = serde_json::json!({
                             "Name": name,
                             "FunctionARN": arn,

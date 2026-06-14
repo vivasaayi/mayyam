@@ -12,12 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
-use crate::models::slow_query_event::{SlowQueryEvent, Entity as SlowQueryEntity, Column as SlowQueryColumn};
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, ActiveModelTrait, Set, PaginatorTrait, QueryOrder, IntoActiveModel, QuerySelect};
+use crate::models::slow_query_event::{
+    Column as SlowQueryColumn, Entity as SlowQueryEntity, SlowQueryEvent,
+};
+use chrono::{DateTime, Duration, NaiveDateTime, Utc};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+};
 use std::sync::Arc;
 use uuid::Uuid;
-use chrono::{DateTime, Utc, NaiveDateTime, Duration};
 
 #[derive(Clone)]
 pub struct SlowQueryRepository {
@@ -31,7 +35,8 @@ impl SlowQueryRepository {
 
     pub async fn create(&self, event: SlowQueryEvent) -> Result<SlowQueryEvent, String> {
         let active_model: crate::models::slow_query_event::ActiveModel = event.into();
-        active_model.insert(&*self.db)
+        active_model
+            .insert(&*self.db)
             .await
             .map_err(|e| format!("Failed to create slow query event: {}", e))
     }
@@ -71,8 +76,8 @@ impl SlowQueryRepository {
     ) -> Result<Vec<SlowQueryEvent>, String> {
         let cutoff_time = chrono::Utc::now().naive_utc() - Duration::hours(hours);
 
-        let mut query = SlowQueryEntity::find()
-            .filter(SlowQueryColumn::EventTimestamp.gte(cutoff_time));
+        let mut query =
+            SlowQueryEntity::find().filter(SlowQueryColumn::EventTimestamp.gte(cutoff_time));
 
         if let Some(cluster) = cluster_id {
             query = query.filter(SlowQueryColumn::ClusterId.eq(cluster));
@@ -86,7 +91,11 @@ impl SlowQueryRepository {
             .map_err(|e| format!("Failed to find top slow queries: {}", e))
     }
 
-    pub async fn update_fingerprint(&self, event_id: Uuid, fingerprint_id: Uuid) -> Result<(), String> {
+    pub async fn update_fingerprint(
+        &self,
+        event_id: Uuid,
+        fingerprint_id: Uuid,
+    ) -> Result<(), String> {
         let mut active_model = SlowQueryEntity::find_by_id(event_id)
             .one(&*self.db)
             .await
@@ -95,7 +104,8 @@ impl SlowQueryRepository {
             .into_active_model();
 
         active_model.fingerprint_id = Set(Some(fingerprint_id));
-        active_model.update(&*self.db)
+        active_model
+            .update(&*self.db)
             .await
             .map_err(|e| format!("Failed to update fingerprint: {}", e))?;
         Ok(())
@@ -121,7 +131,11 @@ impl SlowQueryRepository {
         Ok(delete_result.rows_affected)
     }
 
-    pub async fn find_by_fingerprint(&self, fingerprint_id: Uuid, limit: u64) -> Result<Vec<SlowQueryEvent>, String> {
+    pub async fn find_by_fingerprint(
+        &self,
+        fingerprint_id: Uuid,
+        limit: u64,
+    ) -> Result<Vec<SlowQueryEvent>, String> {
         SlowQueryEntity::find()
             .filter(SlowQueryColumn::FingerprintId.eq(Some(fingerprint_id)))
             .order_by_desc(SlowQueryColumn::EventTimestamp)

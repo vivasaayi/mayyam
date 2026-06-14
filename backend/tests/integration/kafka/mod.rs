@@ -12,10 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
+pub mod advanced_operations_tests;
 pub mod backup_restore_tests;
 pub mod connectivity_tests;
-pub mod topic_management_tests;
-pub mod advanced_operations_tests;
 pub mod consumer_group_tests;
 pub mod error_handling_tests;
+pub mod topic_management_tests;

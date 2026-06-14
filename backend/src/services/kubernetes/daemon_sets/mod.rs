@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 // filepath: /Users/rajanpanneerselvam/work/mayyam/backend/src/services/kubernetes/daemon_sets/mod.rs
 use chrono::Utc;
 use k8s_openapi::api::apps::v1::DaemonSet;
@@ -27,6 +26,9 @@ use std::collections::BTreeMap;
 
 use crate::errors::AppError;
 use crate::models::cluster::KubernetesClusterConfig;
+use crate::services::kubernetes::daemon_set_inventory::{
+    DaemonSetContainerInventoryItem, DaemonSetInventoryItem,
+};
 // Use the PodInfo and convert_kube_pod_to_pod_info from the pods module
 use crate::services::kubernetes::pod::{convert_kube_pod_to_pod_info, PodInfo};
 
@@ -44,6 +46,86 @@ pub struct DaemonSetInfo {
 }
 
 pub struct DaemonSetsService;
+
+fn convert_kube_daemonset_to_daemonset_inventory(
+    daemonset: &DaemonSet,
+    cluster_id: &str,
+    current_namespace: &str,
+    collected_at: chrono::DateTime<Utc>,
+) -> DaemonSetInventoryItem {
+    let namespace = daemonset
+        .namespace()
+        .unwrap_or_else(|| current_namespace.to_string());
+    let spec = daemonset.spec.as_ref();
+    let status = daemonset.status.as_ref();
+    let pod_spec = spec.and_then(|spec| spec.template.spec.as_ref());
+    let containers = pod_spec
+        .map(|pod_spec| {
+            pod_spec
+                .containers
+                .iter()
+                .map(|container| DaemonSetContainerInventoryItem {
+                    name: container.name.clone(),
+                    image: container.image.clone(),
+                    privileged: container
+                        .security_context
+                        .as_ref()
+                        .and_then(|security_context| security_context.privileged),
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    DaemonSetInventoryItem {
+        cluster_id: cluster_id.to_string(),
+        namespace,
+        name: daemonset.name_any(),
+        desired_number_scheduled: status.map_or(0, |status| status.desired_number_scheduled),
+        current_number_scheduled: status.map_or(0, |status| status.current_number_scheduled),
+        number_ready: status.map_or(0, |status| status.number_ready),
+        number_available: status
+            .and_then(|status| status.number_available)
+            .unwrap_or(0),
+        number_unavailable: status
+            .and_then(|status| status.number_unavailable)
+            .unwrap_or(0),
+        number_misscheduled: status.map_or(0, |status| status.number_misscheduled),
+        updated_number_scheduled: status
+            .and_then(|status| status.updated_number_scheduled)
+            .unwrap_or(0),
+        generation: daemonset.metadata.generation,
+        observed_generation: status.and_then(|status| status.observed_generation),
+        labels: daemonset.metadata.labels.clone().unwrap_or_default(),
+        annotations: daemonset.metadata.annotations.clone().unwrap_or_default(),
+        selector: spec
+            .and_then(|spec| spec.selector.match_labels.clone())
+            .unwrap_or_default(),
+        pod_template_labels: spec
+            .and_then(|spec| {
+                spec.template
+                    .metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.labels.clone())
+            })
+            .unwrap_or_default(),
+        containers,
+        update_strategy_type: spec.and_then(|spec| {
+            spec.update_strategy
+                .as_ref()
+                .and_then(|strategy| strategy.type_.clone())
+        }),
+        service_account_name: pod_spec.and_then(|pod_spec| pod_spec.service_account_name.clone()),
+        host_network: pod_spec
+            .and_then(|pod_spec| pod_spec.host_network)
+            .unwrap_or(false),
+        created_at: daemonset
+            .metadata
+            .creation_timestamp
+            .as_ref()
+            .map(|timestamp| timestamp.0),
+        collected_at,
+    }
+}
 
 fn label_selector_to_string(selector: &LabelSelector) -> Option<String> {
     let mut parts = Vec::new();
@@ -182,6 +264,46 @@ impl DaemonSetsService {
             });
         }
         Ok(infos)
+    }
+
+    pub async fn list_daemonset_inventory(
+        &self,
+        cluster_config: &KubernetesClusterConfig,
+        cluster_id: &str,
+        namespace: Option<&str>,
+    ) -> Result<Vec<DaemonSetInventoryItem>, AppError> {
+        let namespace = namespace
+            .map(str::trim)
+            .filter(|namespace| !namespace.is_empty());
+        let client = Self::get_kube_client(cluster_config).await?;
+        let api: Api<DaemonSet> = match namespace {
+            Some(namespace) if namespace != "all" => Api::namespaced(client, namespace),
+            _ => Api::all(client),
+        };
+        let lp = ListParams::default();
+        let collected_at = Utc::now();
+        let ds_list = api.list(&lp).await.map_err(|e| {
+            AppError::ExternalService(format!(
+                "Failed to list DaemonSet inventory in namespace '{}': {}",
+                namespace.unwrap_or("all"),
+                e
+            ))
+        })?;
+        let fallback_namespace = namespace
+            .filter(|namespace| *namespace != "all")
+            .unwrap_or("");
+
+        Ok(ds_list
+            .iter()
+            .map(|daemonset| {
+                convert_kube_daemonset_to_daemonset_inventory(
+                    daemonset,
+                    cluster_id,
+                    fallback_namespace,
+                    collected_at,
+                )
+            })
+            .collect())
     }
 
     pub async fn get_daemon_set_details(

@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use clap::Subcommand;
 use std::error::Error;
 
@@ -389,28 +388,36 @@ pub async fn handle_command(command: CloudCommands, config: &Config) -> Result<(
                 AwsCommands::IamUsers => {
                     println!("Fetching IAM Users...");
                     println!("Connecting to AWS IAM service...");
-                    println!("Note: IAM User listing requires proper AWS credentials and permissions.");
+                    println!(
+                        "Note: IAM User listing requires proper AWS credentials and permissions."
+                    );
                     Ok(())
                 }
 
                 AwsCommands::IamRoles => {
                     println!("Fetching IAM Roles...");
                     println!("Connecting to AWS IAM service...");
-                    println!("Note: IAM Role listing requires proper AWS credentials and permissions.");
+                    println!(
+                        "Note: IAM Role listing requires proper AWS credentials and permissions."
+                    );
                     Ok(())
                 }
 
                 AwsCommands::IamPolicies => {
                     println!("Fetching IAM Policies...");
                     println!("Connecting to AWS IAM service...");
-                    println!("Note: IAM Policy listing requires proper AWS credentials and permissions.");
+                    println!(
+                        "Note: IAM Policy listing requires proper AWS credentials and permissions."
+                    );
                     Ok(())
                 }
 
                 AwsCommands::IamGroups => {
                     println!("Fetching IAM Groups...");
                     println!("Connecting to AWS IAM service...");
-                    println!("Note: IAM Group listing requires proper AWS credentials and permissions.");
+                    println!(
+                        "Note: IAM Group listing requires proper AWS credentials and permissions."
+                    );
                     Ok(())
                 }
 
@@ -424,7 +431,9 @@ pub async fn handle_command(command: CloudCommands, config: &Config) -> Result<(
                 AwsCommands::Subnets { region } => {
                     println!("Fetching Subnets in region {}...", region);
                     println!("Connecting to AWS EC2 service in region: {}", region);
-                    println!("Note: Subnet listing requires proper AWS credentials and permissions.");
+                    println!(
+                        "Note: Subnet listing requires proper AWS credentials and permissions."
+                    );
                     Ok(())
                 }
 
@@ -473,7 +482,9 @@ pub async fn handle_command(command: CloudCommands, config: &Config) -> Result<(
                 AwsCommands::Sqs { region } => {
                     println!("Fetching SQS queues in region {}...", region);
                     println!("Connecting to AWS SQS service in region: {}", region);
-                    println!("Note: SQS queue listing requires proper AWS credentials and permissions.");
+                    println!(
+                        "Note: SQS queue listing requires proper AWS credentials and permissions."
+                    );
                     Ok(())
                 }
 
@@ -486,7 +497,10 @@ pub async fn handle_command(command: CloudCommands, config: &Config) -> Result<(
 
                 AwsCommands::ElastiCache { region } => {
                     println!("Fetching ElastiCache clusters in region {}...", region);
-                    println!("Connecting to AWS ElastiCache service in region: {}", region);
+                    println!(
+                        "Connecting to AWS ElastiCache service in region: {}",
+                        region
+                    );
                     println!("Note: ElastiCache cluster listing requires proper AWS credentials and permissions.");
                     Ok(())
                 }
@@ -494,7 +508,9 @@ pub async fn handle_command(command: CloudCommands, config: &Config) -> Result<(
                 AwsCommands::Sns { region } => {
                     println!("Fetching SNS topics in region {}...", region);
                     println!("Connecting to AWS SNS service in region: {}", region);
-                    println!("Note: SNS topic listing requires proper AWS credentials and permissions.");
+                    println!(
+                        "Note: SNS topic listing requires proper AWS credentials and permissions."
+                    );
                     Ok(())
                 }
 
@@ -513,7 +529,10 @@ pub async fn handle_command(command: CloudCommands, config: &Config) -> Result<(
                 }
 
                 AwsCommands::Albs { region } => {
-                    println!("Fetching Application Load Balancers in region {}...", region);
+                    println!(
+                        "Fetching Application Load Balancers in region {}...",
+                        region
+                    );
                     println!("Connecting to AWS ELBv2 service in region: {}", region);
                     println!("Note: ALB listing requires proper AWS credentials and permissions.");
                     Ok(())
@@ -542,7 +561,10 @@ pub async fn handle_command(command: CloudCommands, config: &Config) -> Result<(
 
                 AwsCommands::ApiGateway { region } => {
                     println!("Fetching API Gateway REST APIs in region {}...", region);
-                    println!("Connecting to AWS API Gateway service in region: {}", region);
+                    println!(
+                        "Connecting to AWS API Gateway service in region: {}",
+                        region
+                    );
                     println!("Note: API Gateway listing requires proper AWS credentials and permissions.");
                     Ok(())
                 }
@@ -550,7 +572,9 @@ pub async fn handle_command(command: CloudCommands, config: &Config) -> Result<(
                 AwsCommands::EbsVolumes { region } => {
                     println!("Fetching EBS volumes in region {}...", region);
                     println!("Connecting to AWS EC2 service in region: {}", region);
-                    println!("Note: EBS volume listing requires proper AWS credentials and permissions.");
+                    println!(
+                        "Note: EBS volume listing requires proper AWS credentials and permissions."
+                    );
                     Ok(())
                 }
 
@@ -577,7 +601,10 @@ pub async fn handle_command(command: CloudCommands, config: &Config) -> Result<(
 
                 AwsCommands::StorageGateway { region } => {
                     println!("Fetching Storage Gateways in region {}...", region);
-                    println!("Connecting to AWS Storage Gateway service in region: {}", region);
+                    println!(
+                        "Connecting to AWS Storage Gateway service in region: {}",
+                        region
+                    );
                     println!("Note: Storage Gateway listing requires proper AWS credentials and permissions.");
                     Ok(())
                 }
@@ -604,8 +631,14 @@ pub async fn handle_command(command: CloudCommands, config: &Config) -> Result<(
                 }
 
                 AwsCommands::KinesisAnalytics { region } => {
-                    println!("Fetching Kinesis Analytics applications in region {}...", region);
-                    println!("Connecting to AWS Kinesis Analytics service in region: {}", region);
+                    println!(
+                        "Fetching Kinesis Analytics applications in region {}...",
+                        region
+                    );
+                    println!(
+                        "Connecting to AWS Kinesis Analytics service in region: {}",
+                        region
+                    );
                     println!("Note: Kinesis Analytics application listing requires proper AWS credentials and permissions.");
                     Ok(())
                 }
@@ -627,7 +660,9 @@ pub async fn handle_command(command: CloudCommands, config: &Config) -> Result<(
                 AwsCommands::EcsTasks { region } => {
                     println!("Fetching ECS Tasks in region {}...", region);
                     println!("Connecting to AWS ECS service in region: {}", region);
-                    println!("Note: ECS Task listing requires proper AWS credentials and permissions.");
+                    println!(
+                        "Note: ECS Task listing requires proper AWS credentials and permissions."
+                    );
                     Ok(())
                 }
 

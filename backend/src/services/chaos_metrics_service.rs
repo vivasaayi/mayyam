@@ -90,10 +90,7 @@ impl ChaosMetricsService {
             .await
     }
 
-    pub async fn get_metrics_stats(
-        &self,
-        query: &MetricsQuery,
-    ) -> Result<MetricsStats, AppError> {
+    pub async fn get_metrics_stats(&self, query: &MetricsQuery) -> Result<MetricsStats, AppError> {
         self.metrics_repo.get_metrics_stats(query).await
     }
 

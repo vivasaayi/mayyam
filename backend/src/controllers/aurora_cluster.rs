@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use actix_web::{web, HttpResponse, Responder};
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
@@ -126,10 +125,13 @@ pub async fn get_cluster(
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let cluster_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let cluster_id =
+        Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
     let cluster_repo = AuroraClusterRepository::new(db_pool.get_ref().clone());
 
-    let cluster = cluster_repo.find_by_id(cluster_id).await?
+    let cluster = cluster_repo
+        .find_by_id(cluster_id)
+        .await?
         .ok_or_else(|| AppError::NotFound(format!("Cluster not found: {}", cluster_id)))?;
 
     let response = AuroraClusterResponse {
@@ -146,10 +148,13 @@ pub async fn update_cluster(
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let cluster_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let cluster_id =
+        Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
     let cluster_repo = AuroraClusterRepository::new(db_pool.get_ref().clone());
 
-    let mut existing_cluster = cluster_repo.find_by_id(cluster_id).await?
+    let mut existing_cluster = cluster_repo
+        .find_by_id(cluster_id)
+        .await?
         .ok_or_else(|| AppError::NotFound(format!("Cluster not found: {}", cluster_id)))?;
 
     // Update fields if provided
@@ -190,7 +195,8 @@ pub async fn delete_cluster(
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let cluster_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let cluster_id =
+        Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
     let cluster_repo = AuroraClusterRepository::new(db_pool.get_ref().clone());
 
     cluster_repo.delete(cluster_id).await?;
@@ -205,19 +211,31 @@ pub async fn ingest_slow_queries(
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let cluster_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let cluster_id =
+        Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
 
     let cluster_repo = AuroraClusterRepository::new(db_pool.get_ref().clone());
-    let slow_query_repo = crate::repositories::slow_query_repository::SlowQueryRepository::new(db_pool.get_ref().clone());
-    let fingerprint_repo = crate::repositories::query_fingerprint_repository::QueryFingerprintRepository::new(db_pool.get_ref().clone());
-
-    let ingestion_service = SlowQueryIngestionService::new(
-        slow_query_repo,
-        fingerprint_repo,
-        cluster_repo,
+    let slow_query_repo = crate::repositories::slow_query_repository::SlowQueryRepository::new(
+        db_pool.get_ref().clone(),
     );
+    let fingerprint_repo =
+        crate::repositories::query_fingerprint_repository::QueryFingerprintRepository::new(
+            db_pool.get_ref().clone(),
+        );
 
-    ingestion_service.ingest_logs(cluster_id, &req.log_content.lines().map(|s| s.to_string()).collect::<Vec<_>>(), "mysql").await?;
+    let ingestion_service =
+        SlowQueryIngestionService::new(slow_query_repo, fingerprint_repo, cluster_repo);
+
+    ingestion_service
+        .ingest_logs(
+            cluster_id,
+            &req.log_content
+                .lines()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+            "mysql",
+        )
+        .await?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": "Slow query logs ingested successfully",
@@ -231,11 +249,20 @@ pub async fn get_cluster_stats(
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let cluster_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let cluster_id =
+        Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
 
-    let slow_query_repo = crate::repositories::slow_query_repository::SlowQueryRepository::new(db_pool.get_ref().clone());
-    let fingerprint_repo = crate::repositories::query_fingerprint_repository::QueryFingerprintRepository::new(db_pool.get_ref().clone());
-    let performance_repo = crate::repositories::mysql_performance_repository::MySQLPerformanceRepository::new(db_pool.get_ref().clone());
+    let slow_query_repo = crate::repositories::slow_query_repository::SlowQueryRepository::new(
+        db_pool.get_ref().clone(),
+    );
+    let fingerprint_repo =
+        crate::repositories::query_fingerprint_repository::QueryFingerprintRepository::new(
+            db_pool.get_ref().clone(),
+        );
+    let performance_repo =
+        crate::repositories::mysql_performance_repository::MySQLPerformanceRepository::new(
+            db_pool.get_ref().clone(),
+        );
 
     let slow_query_count = slow_query_repo.count_by_cluster(cluster_id).await?;
     let fingerprint_count = fingerprint_repo.count_by_cluster(cluster_id).await?;

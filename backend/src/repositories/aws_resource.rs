@@ -12,15 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, Condition, ConnectionTrait, DatabaseConnection, EntityTrait,
-    IntoActiveModel, Order, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
-    QueryTrait, Set,
+    IntoActiveModel, Order, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, QueryTrait, Set,
 };
 use std::sync::Arc;
-use tracing::{info};
+use tracing::info;
 use uuid::Uuid;
 
 use crate::config::Config;

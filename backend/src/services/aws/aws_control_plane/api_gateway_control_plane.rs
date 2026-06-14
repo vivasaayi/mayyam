@@ -12,15 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::errors::AppError;
 use crate::models::aws_account::AwsAccountDto;
-use crate::models::aws_resource::{AwsResourceDto, Model as AwsResourceModel, AwsResourceType};
+use crate::models::aws_resource::{AwsResourceDto, AwsResourceType, Model as AwsResourceModel};
 use crate::repositories::aws_resource::AwsResourceRepository;
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::aws::service::AwsService;
 use crate::utils::time_conversion::AwsDateTimeExt;
-use aws_sdk_apigateway::types::{RestApi, Stage, Resource, Method};
+use aws_sdk_apigateway::types::{Method, Resource, RestApi, Stage};
 use chrono::Utc;
 use std::sync::Arc;
 use tracing::{debug, error, info};
@@ -47,7 +46,10 @@ impl ApiGatewayControlPlane {
             &aws_account_dto.account_id, sync_id
         );
 
-        let client = self.aws_service.create_api_gateway_client(aws_account_dto).await?;
+        let client = self
+            .aws_service
+            .create_api_gateway_client(aws_account_dto)
+            .await?;
         let mut all_resources = Vec::new();
 
         // Get all REST APIs
@@ -55,7 +57,10 @@ impl ApiGatewayControlPlane {
             Ok(response) => {
                 if let Some(items) = response.items {
                     for api in items {
-                        match self.create_rest_api_resource(&api, aws_account_dto, sync_id).await {
+                        match self
+                            .create_rest_api_resource(&api, aws_account_dto, sync_id)
+                            .await
+                        {
                             Ok(resource) => all_resources.push(resource),
                             Err(e) => error!("Failed to create REST API resource: {}", e),
                         }
@@ -82,7 +87,10 @@ impl ApiGatewayControlPlane {
             &aws_account_dto.account_id, sync_id
         );
 
-        let client = self.aws_service.create_api_gateway_client(aws_account_dto).await?;
+        let client = self
+            .aws_service
+            .create_api_gateway_client(aws_account_dto)
+            .await?;
         let mut all_resources = Vec::new();
 
         // First get all REST APIs to iterate through their stages
@@ -96,9 +104,19 @@ impl ApiGatewayControlPlane {
                                 Ok(stages_response) => {
                                     if let Some(items) = stages_response.item {
                                         for stage in items {
-                                            match self.create_stage_resource(&stage, &api, aws_account_dto, sync_id).await {
+                                            match self
+                                                .create_stage_resource(
+                                                    &stage,
+                                                    &api,
+                                                    aws_account_dto,
+                                                    sync_id,
+                                                )
+                                                .await
+                                            {
                                                 Ok(resource) => all_resources.push(resource),
-                                                Err(e) => error!("Failed to create stage resource: {}", e),
+                                                Err(e) => {
+                                                    error!("Failed to create stage resource: {}", e)
+                                                }
                                             }
                                         }
                                     }
@@ -131,7 +149,10 @@ impl ApiGatewayControlPlane {
             &aws_account_dto.account_id, sync_id
         );
 
-        let client = self.aws_service.create_api_gateway_client(aws_account_dto).await?;
+        let client = self
+            .aws_service
+            .create_api_gateway_client(aws_account_dto)
+            .await?;
         let mut all_resources = Vec::new();
 
         // First get all REST APIs
@@ -145,9 +166,22 @@ impl ApiGatewayControlPlane {
                                 Ok(resources_response) => {
                                     if let Some(items) = resources_response.items {
                                         for resource in items {
-                                            match self.create_resource_resource(&resource, &api, aws_account_dto, sync_id).await {
-                                                Ok(resource_model) => all_resources.push(resource_model),
-                                                Err(e) => error!("Failed to create resource resource: {}", e),
+                                            match self
+                                                .create_resource_resource(
+                                                    &resource,
+                                                    &api,
+                                                    aws_account_dto,
+                                                    sync_id,
+                                                )
+                                                .await
+                                            {
+                                                Ok(resource_model) => {
+                                                    all_resources.push(resource_model)
+                                                }
+                                                Err(e) => error!(
+                                                    "Failed to create resource resource: {}",
+                                                    e
+                                                ),
                                             }
                                         }
                                     }
@@ -180,7 +214,10 @@ impl ApiGatewayControlPlane {
             &aws_account_dto.account_id, sync_id
         );
 
-        let client = self.aws_service.create_api_gateway_client(aws_account_dto).await?;
+        let client = self
+            .aws_service
+            .create_api_gateway_client(aws_account_dto)
+            .await?;
         let mut all_resources = Vec::new();
 
         // First get all REST APIs
@@ -196,9 +233,17 @@ impl ApiGatewayControlPlane {
                                         for resource in resources {
                                             if let Some(resource_id) = &resource.id {
                                                 // Get methods for this resource
-                                                match client.get_resource().rest_api_id(api_id).resource_id(resource_id).send().await {
+                                                match client
+                                                    .get_resource()
+                                                    .rest_api_id(api_id)
+                                                    .resource_id(resource_id)
+                                                    .send()
+                                                    .await
+                                                {
                                                     Ok(resource_detail) => {
-                                                        if let Some(methods) = &resource_detail.resource_methods {
+                                                        if let Some(methods) =
+                                                            &resource_detail.resource_methods
+                                                        {
                                                             for (method_name, method) in methods {
                                                                 match self.create_method_resource(method_name, method, &resource, &api, aws_account_dto, sync_id).await {
                                                                     Ok(method_resource) => all_resources.push(method_resource),
@@ -239,18 +284,17 @@ impl ApiGatewayControlPlane {
         aws_account_dto: &AwsAccountDto,
         sync_id: Uuid,
     ) -> Result<AwsResourceDto, AppError> {
-        let resource_id = api.id.as_ref()
+        let resource_id = api
+            .id
+            .as_ref()
             .ok_or_else(|| AppError::Validation("API Gateway REST API ID missing".to_string()))?;
 
         let arn = format!(
             "arn:aws:apigateway:{}::/restapis/{}",
-            aws_account_dto.default_region,
-            resource_id
+            aws_account_dto.default_region, resource_id
         );
 
-        let name = api.name.as_ref()
-            .unwrap_or(&"unknown".to_string())
-            .clone();
+        let name = api.name.as_ref().unwrap_or(&"unknown".to_string()).clone();
 
         // Extract tags
         let tags = serde_json::json!({});
@@ -300,19 +344,21 @@ impl ApiGatewayControlPlane {
         aws_account_dto: &AwsAccountDto,
         sync_id: Uuid,
     ) -> Result<AwsResourceDto, AppError> {
-        let api_id = api.id.as_ref()
+        let api_id = api
+            .id
+            .as_ref()
             .ok_or_else(|| AppError::Validation("API ID missing for stage".to_string()))?;
 
-        let stage_name = stage.stage_name.as_ref()
+        let stage_name = stage
+            .stage_name
+            .as_ref()
             .ok_or_else(|| AppError::Validation("Stage name missing".to_string()))?;
 
         let resource_id = format!("{}/{}", api_id, stage_name);
 
         let arn = format!(
             "arn:aws:apigateway:{}::/restapis/{}/stages/{}",
-            aws_account_dto.default_region,
-            api_id,
-            stage_name
+            aws_account_dto.default_region, api_id, stage_name
         );
 
         let name = stage_name.clone();
@@ -376,22 +422,26 @@ impl ApiGatewayControlPlane {
         aws_account_dto: &AwsAccountDto,
         sync_id: Uuid,
     ) -> Result<AwsResourceDto, AppError> {
-        let api_id = api.id.as_ref()
+        let api_id = api
+            .id
+            .as_ref()
             .ok_or_else(|| AppError::Validation("API ID missing for resource".to_string()))?;
 
-        let resource_id = resource.id.as_ref()
+        let resource_id = resource
+            .id
+            .as_ref()
             .ok_or_else(|| AppError::Validation("Resource ID missing".to_string()))?;
 
         let full_resource_id = format!("{}/{}", api_id, resource_id);
 
         let arn = format!(
             "arn:aws:apigateway:{}::/restapis/{}/resources/{}",
-            aws_account_dto.default_region,
-            api_id,
-            resource_id
+            aws_account_dto.default_region, api_id, resource_id
         );
 
-        let name = resource.path_part.as_ref()
+        let name = resource
+            .path_part
+            .as_ref()
             .unwrap_or(&"unknown".to_string())
             .clone();
 
@@ -436,23 +486,28 @@ impl ApiGatewayControlPlane {
         aws_account_dto: &AwsAccountDto,
         sync_id: Uuid,
     ) -> Result<AwsResourceDto, AppError> {
-        let api_id = api.id.as_ref()
+        let api_id = api
+            .id
+            .as_ref()
             .ok_or_else(|| AppError::Validation("API ID missing for method".to_string()))?;
 
-        let resource_id = resource.id.as_ref()
+        let resource_id = resource
+            .id
+            .as_ref()
             .ok_or_else(|| AppError::Validation("Resource ID missing for method".to_string()))?;
 
         let full_method_id = format!("{}/{}/{}/{}", api_id, resource_id, method_name, method_name);
 
         let arn = format!(
             "arn:aws:apigateway:{}::/restapis/{}/resources/{}/methods/{}",
-            aws_account_dto.default_region,
-            api_id,
-            resource_id,
-            method_name
+            aws_account_dto.default_region, api_id, resource_id, method_name
         );
 
-        let name = format!("{}/{}", resource.path.as_ref().unwrap_or(&"unknown".to_string()), method_name);
+        let name = format!(
+            "{}/{}",
+            resource.path.as_ref().unwrap_or(&"unknown".to_string()),
+            method_name
+        );
 
         // Extract tags
         let tags = serde_json::json!({});

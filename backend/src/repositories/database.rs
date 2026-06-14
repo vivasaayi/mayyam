@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,

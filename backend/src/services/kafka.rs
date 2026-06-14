@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::errors::AppError;
 use crate::models::cluster::CreateKafkaClusterRequest;
 use crate::models::cluster::KafkaClusterConfig;
@@ -50,25 +49,26 @@ lazy_static! {
         "kafka_messages_produced_total",
         "Total number of Kafka messages produced",
         &["cluster_id", "topic"]
-    ).unwrap();
-
+    )
+    .unwrap();
     pub static ref KAFKA_MESSAGES_CONSUMED: IntCounterVec = register_int_counter_vec!(
         "kafka_messages_consumed_total",
         "Total number of Kafka messages consumed",
         &["cluster_id", "topic"]
-    ).unwrap();
-
+    )
+    .unwrap();
     pub static ref KAFKA_OPERATION_ERRORS: IntCounterVec = register_int_counter_vec!(
         "kafka_operation_errors_total",
         "Total number of Kafka operation errors",
         &["cluster_id", "operation"]
-    ).unwrap();
-
+    )
+    .unwrap();
     pub static ref KAFKA_ACTIVE_CONNECTIONS: IntGaugeVec = register_int_gauge_vec!(
         "kafka_active_connections",
         "Number of active connections",
         &["cluster_id"]
-    ).unwrap();
+    )
+    .unwrap();
 }
 
 // ===== FILESYSTEM STORAGE STRUCTURES =====
@@ -803,18 +803,18 @@ impl KafkaService {
             let stored_cluster = self.cluster_repository.find_by_id(cluster_id).await?;
             if let Some(cluster) = stored_cluster {
                 // Convert from stored cluster to KafkaClusterConfig
-                let mut kafka_config: KafkaClusterConfig =
-                    serde_json::from_value(cluster.config).map_err(|e| {
-                        AppError::Validation(format!("Invalid cluster configuration: {}", e))
-                    })?;
-                    
+                let mut kafka_config: KafkaClusterConfig = serde_json::from_value(cluster.config)
+                    .map_err(|e| {
+                    AppError::Validation(format!("Invalid cluster configuration: {}", e))
+                })?;
+
                 // Decrypt password if it exists
                 if let Some(pwd) = &kafka_config.sasl_password {
                     if !pwd.is_empty() {
                         kafka_config.sasl_password = Some(crate::utils::encryption::decrypt(pwd)?);
                     }
                 }
-                    
+
                 return Ok(kafka_config);
             }
         }
@@ -993,7 +993,9 @@ impl KafkaService {
         // Get topic metadata with timeout
         let timeout = Duration::from_secs(30);
         let metadata = admin.inner().fetch_metadata(None, timeout).map_err(|e| {
-            KAFKA_OPERATION_ERRORS.with_label_values(&[cluster_id, "list_topics"]).inc();
+            KAFKA_OPERATION_ERRORS
+                .with_label_values(&[cluster_id, "list_topics"])
+                .inc();
             AppError::ExternalService(format!("Failed to fetch topic metadata: {}", e))
         })?;
 
@@ -1029,7 +1031,11 @@ impl KafkaService {
         })?;
 
         // Create a NewTopic specification
-        let partitions = if topic.partitions <= 0 { 1 } else { topic.partitions };
+        let partitions = if topic.partitions <= 0 {
+            1
+        } else {
+            topic.partitions
+        };
         let new_topic = NewTopic::new(
             &topic.name,
             partitions,
@@ -1048,10 +1054,13 @@ impl KafkaService {
         };
 
         let opts = AdminOptions::new().operation_timeout(Some(Duration::from_secs(10)));
-        let results = admin.create_topics(vec![&new_topic], &opts).await.map_err(|e| {
-            error!("Failed to execute create topics request: {}", e);
-            AppError::ExternalService(format!("Failed to execute create topics request: {}", e))
-        })?;
+        let results = admin
+            .create_topics(vec![&new_topic], &opts)
+            .await
+            .map_err(|e| {
+                error!("Failed to execute create topics request: {}", e);
+                AppError::ExternalService(format!("Failed to execute create topics request: {}", e))
+            })?;
 
         // Check for individual topic errors
         if let Some(result) = results.first() {
@@ -1195,11 +1204,15 @@ impl KafkaService {
             .send(record, Duration::from_secs(10))
             .await
             .map_err(|e| {
-                KAFKA_OPERATION_ERRORS.with_label_values(&[cluster_id, "produce"]).inc();
+                KAFKA_OPERATION_ERRORS
+                    .with_label_values(&[cluster_id, "produce"])
+                    .inc();
                 AppError::ExternalService(format!("Failed to send message: {:?}", e))
             })?;
 
-        KAFKA_MESSAGES_PRODUCED.with_label_values(&[cluster_id, topic_name]).inc();
+        KAFKA_MESSAGES_PRODUCED
+            .with_label_values(&[cluster_id, topic_name])
+            .inc();
 
         let response = serde_json::json!({
             "message": "Message produced successfully",
@@ -1297,7 +1310,9 @@ impl KafkaService {
                     });
 
                     messages.push(msg_json);
-                    KAFKA_MESSAGES_CONSUMED.with_label_values(&[cluster_id, topic_name]).inc();
+                    KAFKA_MESSAGES_CONSUMED
+                        .with_label_values(&[cluster_id, topic_name])
+                        .inc();
 
                     // Manually commit the offset
                     if let Err(e) = consumer.commit_message(&message, CommitMode::Async) {
@@ -1305,7 +1320,9 @@ impl KafkaService {
                     }
                 }
                 Ok(Err(e)) => {
-                    KAFKA_OPERATION_ERRORS.with_label_values(&[cluster_id, "consume"]).inc();
+                    KAFKA_OPERATION_ERRORS
+                        .with_label_values(&[cluster_id, "consume"])
+                        .inc();
                     error!("Error while consuming message: {:?}", e);
                     break;
                 }
@@ -1872,7 +1889,11 @@ impl KafkaService {
             .assign(&tpl)
             .map_err(|e| AppError::Kafka(format!("Failed to assign partitions: {}", e)))?;
 
-        info!("Backing up {} partitions for topic {}", partitions_to_backup.len(), request.topic);
+        info!(
+            "Backing up {} partitions for topic {}",
+            partitions_to_backup.len(),
+            request.topic
+        );
 
         // Seek each partition to the starting offset
         for &partition in &partitions_to_backup {
@@ -1896,14 +1917,21 @@ impl KafkaService {
         let max_messages = request.max_messages.unwrap_or(u64::MAX);
         let silence_timeout = Duration::from_secs(5);
 
-        info!("Starting consumption loop with silence timeout {:?}", silence_timeout);
+        info!(
+            "Starting consumption loop with silence timeout {:?}",
+            silence_timeout
+        );
 
         // Consume all messages until silence timeout or limit reached
         while total_messages < max_messages {
             match tokio::time::timeout(silence_timeout, consumer.recv()).await {
                 Ok(Ok(msg)) => {
                     let partition = msg.partition();
-                    info!("Received message from partition {} at offset {}", partition, msg.offset());
+                    info!(
+                        "Received message from partition {} at offset {}",
+                        partition,
+                        msg.offset()
+                    );
                     if !partitions_to_backup.contains(&partition) {
                         info!("Skipping message from unrequested partition {}", partition);
                         continue;

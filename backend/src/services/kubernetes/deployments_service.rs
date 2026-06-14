@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 // filepath: /Users/rajanpanneerselvam/work/mayyam/backend/src/services/kubernetes/deployments_service.rs
 use chrono::Utc;
 use k8s_openapi::api::apps::v1::Deployment;
@@ -27,6 +26,9 @@ use crate::errors::AppError;
 use crate::models::cluster::KubernetesClusterConfig;
 // Use the PodInfo and convert_kube_pod_to_pod_info from the pod module
 use crate::services::kubernetes::client::ClientFactory;
+use crate::services::kubernetes::deployment_inventory::{
+    DeploymentContainerInventoryItem, DeploymentInventoryItem,
+};
 use crate::services::kubernetes::pod::PodInfo;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -41,6 +43,83 @@ pub struct DeploymentInfo {
 }
 
 pub struct DeploymentsService;
+
+fn convert_kube_deployment_to_deployment_inventory(
+    deployment: &Deployment,
+    cluster_id: &str,
+    current_namespace: &str,
+    collected_at: chrono::DateTime<Utc>,
+) -> DeploymentInventoryItem {
+    let namespace = deployment
+        .namespace()
+        .unwrap_or_else(|| current_namespace.to_string());
+    let spec = deployment.spec.as_ref();
+    let status = deployment.status.as_ref();
+    let pod_spec = spec.and_then(|spec| spec.template.spec.as_ref());
+    let containers = pod_spec
+        .map(|pod_spec| {
+            pod_spec
+                .containers
+                .iter()
+                .map(|container| DeploymentContainerInventoryItem {
+                    name: container.name.clone(),
+                    image: container.image.clone(),
+                    privileged: container
+                        .security_context
+                        .as_ref()
+                        .and_then(|security_context| security_context.privileged),
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    DeploymentInventoryItem {
+        cluster_id: cluster_id.to_string(),
+        namespace,
+        name: deployment.name_any(),
+        desired_replicas: spec.and_then(|spec| spec.replicas).unwrap_or(0),
+        available_replicas: status
+            .and_then(|status| status.available_replicas)
+            .unwrap_or(0),
+        updated_replicas: status
+            .and_then(|status| status.updated_replicas)
+            .unwrap_or(0),
+        ready_replicas: status.and_then(|status| status.ready_replicas).unwrap_or(0),
+        unavailable_replicas: status
+            .and_then(|status| status.unavailable_replicas)
+            .unwrap_or(0),
+        labels: deployment.metadata.labels.clone().unwrap_or_default(),
+        annotations: deployment.metadata.annotations.clone().unwrap_or_default(),
+        selector: spec
+            .and_then(|spec| spec.selector.match_labels.clone())
+            .unwrap_or_default(),
+        pod_template_labels: spec
+            .and_then(|spec| {
+                spec.template
+                    .metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.labels.clone())
+            })
+            .unwrap_or_default(),
+        containers,
+        strategy_type: spec.and_then(|spec| {
+            spec.strategy
+                .as_ref()
+                .and_then(|strategy| strategy.type_.clone())
+        }),
+        service_account_name: pod_spec.and_then(|pod_spec| pod_spec.service_account_name.clone()),
+        host_network: pod_spec
+            .and_then(|pod_spec| pod_spec.host_network)
+            .unwrap_or(false),
+        paused: spec.and_then(|spec| spec.paused).unwrap_or(false),
+        created_at: deployment
+            .metadata
+            .creation_timestamp
+            .as_ref()
+            .map(|timestamp| timestamp.0),
+        collected_at,
+    }
+}
 
 impl DeploymentsService {
     pub fn new() -> Self {
@@ -122,6 +201,46 @@ impl DeploymentsService {
             });
         }
         Ok(infos)
+    }
+
+    pub async fn list_deployment_inventory(
+        &self,
+        cluster_config: &KubernetesClusterConfig,
+        cluster_id: &str,
+        namespace: Option<&str>,
+    ) -> Result<Vec<DeploymentInventoryItem>, AppError> {
+        let namespace = namespace
+            .map(str::trim)
+            .filter(|namespace| !namespace.is_empty());
+        let client = Self::get_kube_client(cluster_config).await?;
+        let api: Api<Deployment> = match namespace {
+            Some(namespace) if namespace != "all" => Api::namespaced(client, namespace),
+            _ => Api::all(client),
+        };
+        let lp = ListParams::default();
+        let collected_at = Utc::now();
+        let deployment_list = api.list(&lp).await.map_err(|e| {
+            AppError::ExternalService(format!(
+                "Failed to list deployment inventory in namespace '{}': {}",
+                namespace.unwrap_or("all"),
+                e
+            ))
+        })?;
+        let fallback_namespace = namespace
+            .filter(|namespace| *namespace != "all")
+            .unwrap_or("");
+
+        Ok(deployment_list
+            .iter()
+            .map(|deployment| {
+                convert_kube_deployment_to_deployment_inventory(
+                    deployment,
+                    cluster_id,
+                    fallback_namespace,
+                    collected_at,
+                )
+            })
+            .collect())
     }
 
     pub async fn get_deployment_details(

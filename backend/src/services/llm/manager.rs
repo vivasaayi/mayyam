@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::errors::AppError;
+use crate::repositories::llm_model::LlmProviderModelRepository;
 use crate::repositories::llm_provider::LlmProviderRepository;
 use crate::services::llm::formatting::{FormattedResponse, ResponseFormatter};
 use crate::services::llm::interface::{
@@ -26,7 +26,6 @@ use crate::services::llm::interface::{
 use crate::services::llm::providers::{
     AnthropicProvider, DeepSeekProvider, LocalChatGptProvider, OpenAIProvider,
 };
-use crate::repositories::llm_model::LlmProviderModelRepository;
 
 /// Unified LLM Manager - The main interface for all LLM operations
 #[derive(Debug)]
@@ -78,7 +77,10 @@ pub struct ProviderInfo {
 }
 
 impl UnifiedLlmManager {
-    pub fn new(provider_repo: Arc<LlmProviderRepository>, model_repo: Arc<LlmProviderModelRepository>) -> Self {
+    pub fn new(
+        provider_repo: Arc<LlmProviderRepository>,
+        model_repo: Arc<LlmProviderModelRepository>,
+    ) -> Self {
         Self {
             providers: HashMap::new(),
             provider_repo,
@@ -104,12 +106,16 @@ impl UnifiedLlmManager {
 
             // Get all models for this provider
             let db_models = self.model_repo.list_by_provider(db_provider.id).await?;
-            
+
             // If no models registered in the models table, use the default model from provider table
             let models_to_register = if db_models.is_empty() {
                 vec![db_provider.model_name.clone()]
             } else {
-                db_models.into_iter().filter(|m| m.enabled).map(|m| m.model_name).collect()
+                db_models
+                    .into_iter()
+                    .filter(|m| m.enabled)
+                    .map(|m| m.model_name)
+                    .collect()
             };
 
             for model_name in models_to_register {
@@ -120,13 +126,15 @@ impl UnifiedLlmManager {
                             .get_decrypted_api_key(&db_provider)
                             .await?
                         {
-                            let mut provider =
-                                OpenAIProvider::new(api_key, model_name.clone());
+                            let mut provider = OpenAIProvider::new(api_key, model_name.clone());
                             if let Some(base_url) = &db_provider.base_url {
                                 provider = provider.with_base_url(base_url.clone());
                             }
                             // Key by provider_id:model_name to support multiple models from same provider
-                            self.register_provider(format!("{}:{}", db_provider.id, model_name), Arc::new(provider));
+                            self.register_provider(
+                                format!("{}:{}", db_provider.id, model_name),
+                                Arc::new(provider),
+                            );
                         }
                     }
                     "anthropic" => {
@@ -135,12 +143,14 @@ impl UnifiedLlmManager {
                             .get_decrypted_api_key(&db_provider)
                             .await?
                         {
-                            let mut provider =
-                                AnthropicProvider::new(api_key, model_name.clone());
+                            let mut provider = AnthropicProvider::new(api_key, model_name.clone());
                             if let Some(base_url) = &db_provider.base_url {
                                 provider = provider.with_base_url(base_url.clone());
                             }
-                            self.register_provider(format!("{}:{}", db_provider.id, model_name), Arc::new(provider));
+                            self.register_provider(
+                                format!("{}:{}", db_provider.id, model_name),
+                                Arc::new(provider),
+                            );
                         }
                     }
                     "deepseek" => {
@@ -149,12 +159,14 @@ impl UnifiedLlmManager {
                             .get_decrypted_api_key(&db_provider)
                             .await?
                         {
-                            let mut provider =
-                                DeepSeekProvider::new(api_key, model_name.clone());
+                            let mut provider = DeepSeekProvider::new(api_key, model_name.clone());
                             if let Some(base_url) = &db_provider.base_url {
                                 provider = provider.with_base_url(base_url.clone());
                             }
-                            self.register_provider(format!("{}:{}", db_provider.id, model_name), Arc::new(provider));
+                            self.register_provider(
+                                format!("{}:{}", db_provider.id, model_name),
+                                Arc::new(provider),
+                            );
                         }
                     }
                     "local" | "ollama" => {
@@ -169,9 +181,11 @@ impl UnifiedLlmManager {
                                 "http://localhost:11434".to_string()
                             });
 
-                        let provider =
-                            LocalChatGptProvider::new(base_url, model_name.clone());
-                        self.register_provider(format!("{}:{}", db_provider.id, model_name), Arc::new(provider));
+                        let provider = LocalChatGptProvider::new(base_url, model_name.clone());
+                        self.register_provider(
+                            format!("{}:{}", db_provider.id, model_name),
+                            Arc::new(provider),
+                        );
                     }
                     _ => {
                         // Skip unsupported provider types

@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use aws_sdk_ec2::Client as Ec2Client;
 use std::sync::Arc;
 use tracing::{debug, error, info};
@@ -198,10 +197,14 @@ impl VpcControlPlane {
         debug!("Syncing Security Groups with sync_id: {}.", sync_id);
         let client = self.aws_service.create_ec2_client(aws_account_dto).await?;
 
-        let response = client.describe_security_groups().send().await.map_err(|e| {
-            error!("Failed to describe security groups: {}", &e);
-            AppError::ExternalService(format!("Failed to describe security groups: {}", e))
-        })?;
+        let response = client
+            .describe_security_groups()
+            .send()
+            .await
+            .map_err(|e| {
+                error!("Failed to describe security groups: {}", &e);
+                AppError::ExternalService(format!("Failed to describe security groups: {}", e))
+            })?;
 
         let mut security_groups = Vec::new();
 
@@ -274,10 +277,14 @@ impl VpcControlPlane {
         debug!("Syncing Internet Gateways with sync_id: {}.", sync_id);
         let client = self.aws_service.create_ec2_client(aws_account_dto).await?;
 
-        let response = client.describe_internet_gateways().send().await.map_err(|e| {
-            error!("Failed to describe internet gateways: {}", &e);
-            AppError::ExternalService(format!("Failed to describe internet gateways: {}", e))
-        })?;
+        let response = client
+            .describe_internet_gateways()
+            .send()
+            .await
+            .map_err(|e| {
+                error!("Failed to describe internet gateways: {}", &e);
+                AppError::ExternalService(format!("Failed to describe internet gateways: {}", e))
+            })?;
 
         let mut internet_gateways = Vec::new();
 
@@ -323,7 +330,10 @@ impl VpcControlPlane {
             internet_gateways.push(igw_resource);
         }
 
-        Ok(internet_gateways.into_iter().map(|igw| igw.into()).collect())
+        Ok(internet_gateways
+            .into_iter()
+            .map(|igw| igw.into())
+            .collect())
     }
 
     /// Sync NAT Gateways from AWS

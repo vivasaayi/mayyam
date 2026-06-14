@@ -12,5 +12,8 @@ async fn test_health_endpoint() {
         .await
         .expect("Request failed");
 
-    assert!(res.status().is_success(), "Health endpoint should return 200");
+    assert!(
+        res.status().is_success(),
+        "Health endpoint should return 200"
+    );
 }

@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 #![cfg(feature = "integration-tests")]
 
 use crate::integration::helpers::TestHarness;
@@ -89,9 +88,14 @@ async fn produce_messages(harness: &TestHarness, topic_name: &str, messages: Vec
 
         let status = produce_response.status();
         let body = produce_response.text().await.unwrap_or_default();
-        assert!(status.is_success(), "failed to produce message: [{}] {}", status, body);
+        assert!(
+            status.is_success(),
+            "failed to produce message: [{}] {}",
+            status,
+            body
+        );
 
-        // Add a small delay so we don't spam the backend and exhaust tokio threads 
+        // Add a small delay so we don't spam the backend and exhaust tokio threads
         // because the backend creates/drops a producer on every request.
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     }
@@ -153,10 +157,14 @@ async fn test_backup_topic_messages() {
 
     let status = backup_response.status();
     let body = backup_response.text().await.unwrap_or_default();
-    assert!(status.is_success(), "failed to backup topic: [{}] {}", status, body);
+    assert!(
+        status.is_success(),
+        "failed to backup topic: [{}] {}",
+        status,
+        body
+    );
 
-    let backup_result: Value = serde_json::from_str(&body)
-        .expect("invalid backup response");
+    let backup_result: Value = serde_json::from_str(&body).expect("invalid backup response");
 
     // Verify backup response structure
     assert_eq!(backup_result["topic"], topic_name);

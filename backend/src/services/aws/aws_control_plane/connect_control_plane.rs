@@ -41,7 +41,10 @@ impl ConnectControlPlane {
             &aws_account_dto.account_id, sync_id
         );
 
-        let client = self.aws_service.create_connect_client(aws_account_dto).await?;
+        let client = self
+            .aws_service
+            .create_connect_client(aws_account_dto)
+            .await?;
         let mut resources: Vec<AwsResourceModel> = Vec::new();
 
         let mut next_token = None;
@@ -64,7 +67,7 @@ impl ConnectControlPlane {
                 let arn = instance.arn().unwrap_or("");
                 let id = instance.id().unwrap_or("");
                 let name = instance.instance_alias().unwrap_or("");
-                
+
                 let resource_data = json!({
                     "Id": id,
                     "Arn": arn,

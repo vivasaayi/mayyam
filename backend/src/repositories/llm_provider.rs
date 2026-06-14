@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
@@ -236,13 +235,16 @@ impl LlmProviderRepository {
             .ok_or_else(|| AppError::NotFound("LLM provider not found".to_string()))?;
 
         let provider_type = LlmProviderType::from(provider.provider_type);
-        let base_url = provider.base_url.as_deref().unwrap_or_else(|| match provider_type {
-            LlmProviderType::OpenAI => "https://api.openai.com/v1",
-            LlmProviderType::Anthropic => "https://api.anthropic.com/v1",
-            LlmProviderType::DeepSeek => "https://api.deepseek.com/v1",
-            LlmProviderType::Ollama => "http://localhost:11434",
-            _ => "http://localhost",
-        });
+        let base_url = provider
+            .base_url
+            .as_deref()
+            .unwrap_or_else(|| match provider_type {
+                LlmProviderType::OpenAI => "https://api.openai.com/v1",
+                LlmProviderType::Anthropic => "https://api.anthropic.com/v1",
+                LlmProviderType::DeepSeek => "https://api.deepseek.com/v1",
+                LlmProviderType::Ollama => "http://localhost:11434",
+                _ => "http://localhost",
+            });
 
         // Use a simple health check or model list call to test connection
         let client = reqwest::Client::builder()
@@ -263,7 +265,7 @@ impl LlmProviderRepository {
 
         match response {
             Ok(resp) => {
-                // We consider it a success if we get a response, even if it's 401/403 
+                // We consider it a success if we get a response, even if it's 401/403
                 // which would mean the endpoint is reachable but key is invalid.
                 // However, for a "connection test", reachable is the first step.
                 // Re-validate based on status code if needed.

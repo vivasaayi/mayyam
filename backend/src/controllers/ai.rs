@@ -12,11 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
+use crate::config::Config;
 use crate::errors::AppError;
 use crate::middleware::auth::Claims;
+use crate::repositories::database::DatabaseRepository;
+use crate::repositories::prompt_template::PromptTemplateRepository;
+use crate::services::analytics::mysql_analytics::MySqlAnalyticsService;
+use crate::services::analytics::postgres_analytics::postgres_analytics_service::PostgresAnalyticsService;
 use crate::services::llm::interface::LlmRequestBuilder;
 use crate::services::llm::manager::{LlmGenerationRequest, UnifiedLlmManager};
+use crate::utils::database::connect_to_dynamic_database;
 use actix_web::web::Bytes;
 use actix_web::{web, HttpResponse, Responder};
 use futures::{stream, StreamExt};
@@ -24,12 +29,6 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::info;
-use crate::repositories::database::DatabaseRepository;
-use crate::repositories::prompt_template::PromptTemplateRepository;
-use crate::services::analytics::mysql_analytics::MySqlAnalyticsService;
-use crate::services::analytics::postgres_analytics::postgres_analytics_service::PostgresAnalyticsService;
-use crate::utils::database::connect_to_dynamic_database;
-use crate::config::Config;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChatRequest {
@@ -856,18 +855,19 @@ pub async fn analyze_database_triage(
     _claims: web::ReqData<Claims>,
 ) -> Result<HttpResponse, AppError> {
     let (connection_id_str, workflow) = path.into_inner();
-    
+
     let connection_id = uuid::Uuid::parse_str(&connection_id_str)
         .map_err(|_| AppError::BadRequest(format!("Invalid UUID: {}", connection_id_str)))?;
 
     // 1. Get database connection details
-    let db_model = db_repo
-        .find_by_id(connection_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("Database connection {} not found", connection_id)))?;
+    let db_model = db_repo.find_by_id(connection_id).await?.ok_or_else(|| {
+        AppError::NotFound(format!("Database connection {} not found", connection_id))
+    })?;
 
     if db_model.connection_type != "mysql" && db_model.connection_type != "postgres" {
-        return Err(AppError::BadRequest("Only MySQL and PostgreSQL triaging is supported at this time".to_string()));
+        return Err(AppError::BadRequest(
+            "Only MySQL and PostgreSQL triaging is supported at this time".to_string(),
+        ));
     }
 
     // 2. Connect to the dynamic database
@@ -884,7 +884,12 @@ pub async fn analyze_database_triage(
         "performance" => "performance_triage",
         "connection" => "connection_triage",
         "index" => "index_advisor",
-        _ => return Err(AppError::BadRequest(format!("Unsupported workflow: {}", workflow))),
+        _ => {
+            return Err(AppError::BadRequest(format!(
+                "Unsupported workflow: {}",
+                workflow
+            )))
+        }
     };
 
     let template_name = format!("{}_{}", template_prefix, template_suffix);
@@ -895,7 +900,9 @@ pub async fn analyze_database_triage(
         .await?
         .into_iter()
         .next()
-        .ok_or_else(|| AppError::NotFound(format!("Prompt template '{}' not found", template_name)))?;
+        .ok_or_else(|| {
+            AppError::NotFound(format!("Prompt template '{}' not found", template_name))
+        })?;
 
     // 5. Get triage context (metrics)
     let metrics_json = match db_model.connection_type.as_str() {

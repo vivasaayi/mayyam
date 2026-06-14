@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
+use chrono::{NaiveDateTime, Utc};
 use sea_orm::entity::prelude::*;
 use sea_orm::Set;
 use serde::{Deserialize, Serialize};
-use chrono::{NaiveDateTime, Utc};
 use uuid::Uuid;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
@@ -54,7 +53,7 @@ pub struct Model {
 
     // Health score
     pub health_score: String, // A, B, C, D, F
-    pub top_issues: Json, // Array of top issues
+    pub top_issues: Json,     // Array of top issues
 
     pub created_at: NaiveDateTime,
 }
@@ -115,7 +114,9 @@ impl MySQLPerformanceSnapshotDto {
             temp_tables_memory: Set(self.temp_tables_memory),
             replication_lag: Set(self.replication_lag),
             health_score: Set(self.health_score),
-            top_issues: Set(serde_json::to_value(&self.top_issues).unwrap_or(serde_json::Value::Array(vec![]))),
+            top_issues: Set(
+                serde_json::to_value(&self.top_issues).unwrap_or(serde_json::Value::Array(vec![]))
+            ),
             created_at: Set(Utc::now().naive_utc()),
         }
     }

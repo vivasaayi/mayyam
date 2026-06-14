@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use chrono::{DateTime, Duration, Utc};
 use serde_json::{json, Value};
 use tracing::{debug, error};

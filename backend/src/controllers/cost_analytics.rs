@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use actix_web::{web, HttpResponse, Result as ActixResult};
 use chrono::NaiveDate;
 use csv::Writer;
@@ -349,8 +348,8 @@ pub struct CostCategoriesQuery {
 #[derive(Debug, Deserialize)]
 pub struct CategoryTrendsQuery {
     pub account_id: String,
-    pub start_date: String, // YYYY-MM-DD format
-    pub end_date: String,   // YYYY-MM-DD format
+    pub start_date: String,            // YYYY-MM-DD format
+    pub end_date: String,              // YYYY-MM-DD format
     pub granularity_days: Option<i64>, // Granularity in days, default 30
 }
 
@@ -1053,7 +1052,10 @@ pub async fn get_enriched_cost_data(
     query: web::Query<EnrichedCostQuery>,
     _claims: web::ReqData<Claims>,
 ) -> ActixResult<HttpResponse> {
-    tracing::info!("Getting enriched cost data for account {}", query.account_id);
+    tracing::info!(
+        "Getting enriched cost data for account {}",
+        query.account_id
+    );
 
     // Parse dates
     let start_date = NaiveDate::parse_from_str(&query.start_date, "%Y-%m-%d").map_err(|e| {
@@ -1125,7 +1127,11 @@ pub async fn get_cost_by_allocation_tag(
     _claims: web::ReqData<Claims>,
 ) -> ActixResult<HttpResponse> {
     let tag_key = path.into_inner();
-    tracing::info!("Getting cost breakdown by tag '{}' for account {}", tag_key, query.account_id);
+    tracing::info!(
+        "Getting cost breakdown by tag '{}' for account {}",
+        tag_key,
+        query.account_id
+    );
 
     // Parse dates
     let start_date = NaiveDate::parse_from_str(&query.start_date, "%Y-%m-%d").map_err(|e| {
@@ -1167,7 +1173,11 @@ pub async fn get_top_cost_resources_with_metadata(
     query: web::Query<TopResourcesQuery>,
     _claims: web::ReqData<Claims>,
 ) -> ActixResult<HttpResponse> {
-    tracing::info!("Getting top {} cost resources with metadata for account {}", query.limit.unwrap_or(10), query.account_id);
+    tracing::info!(
+        "Getting top {} cost resources with metadata for account {}",
+        query.limit.unwrap_or(10),
+        query.account_id
+    );
 
     // Parse dates
     let start_date = NaiveDate::parse_from_str(&query.start_date, "%Y-%m-%d").map_err(|e| {

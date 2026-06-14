@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use actix_web::{web, HttpResponse, Responder};
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
@@ -22,11 +21,11 @@ use crate::config::Config;
 use crate::errors::AppError;
 use crate::middleware::auth::Claims;
 use crate::models::explain_plan::ExplainPlan;
+use crate::repositories::aurora_cluster_repository::AuroraClusterRepository;
 use crate::repositories::explain_plan_repository::ExplainPlanRepository;
 use crate::repositories::query_fingerprint_repository::QueryFingerprintRepository;
-use crate::repositories::aurora_cluster_repository::AuroraClusterRepository;
-use crate::services::explain_plan_service::ExplainPlanService;
 use crate::services::ai_analysis_service::AIAnalysisService;
+use crate::services::explain_plan_service::ExplainPlanService;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
@@ -102,8 +101,10 @@ impl ExplainPlanController {
             cluster_repo.clone(),
         );
 
-        let ai_repo = crate::repositories::ai_analysis_repository::AIAnalysisRepository::new(db.clone());
-        let slow_query_repo = crate::repositories::slow_query_repository::SlowQueryRepository::new(db.clone());
+        let ai_repo =
+            crate::repositories::ai_analysis_repository::AIAnalysisRepository::new(db.clone());
+        let slow_query_repo =
+            crate::repositories::slow_query_repository::SlowQueryRepository::new(db.clone());
         let ai_service = AIAnalysisService::new(
             ai_repo,
             fingerprint_repo.clone(),
@@ -134,10 +135,10 @@ pub async fn execute_explain_plan(
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let plan = controller.explain_service.execute_explain_plan(
-        req.cluster_id,
-        req.fingerprint_id,
-    ).await?;
+    let plan = controller
+        .explain_service
+        .execute_explain_plan(req.cluster_id, req.fingerprint_id)
+        .await?;
 
     let response = ExplainPlanResponse { plan };
 
@@ -150,14 +151,17 @@ pub async fn create_explain_plan(
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let plan = controller.explain_service.create_explain_plan(
-        req.fingerprint_id,
-        req.cluster_id,
-        req.plan_data.clone(),
-        req.plan_format.clone(),
-        req.execution_time_ms,
-        req.total_cost,
-    ).await?;
+    let plan = controller
+        .explain_service
+        .create_explain_plan(
+            req.fingerprint_id,
+            req.cluster_id,
+            req.plan_data.clone(),
+            req.plan_format.clone(),
+            req.execution_time_ms,
+            req.total_cost,
+        )
+        .await?;
 
     let response = ExplainPlanResponse { plan };
 
@@ -171,13 +175,19 @@ pub async fn get_explain_plans(
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
     let fingerprint_id = if let Some(fingerprint_id_str) = &query.fingerprint_id {
-        Some(Uuid::parse_str(fingerprint_id_str).map_err(|e| AppError::BadRequest(format!("Invalid fingerprint UUID: {}", e)))?)
+        Some(
+            Uuid::parse_str(fingerprint_id_str)
+                .map_err(|e| AppError::BadRequest(format!("Invalid fingerprint UUID: {}", e)))?,
+        )
     } else {
         None
     };
 
     let cluster_id = if let Some(cluster_id_str) = &query.cluster_id {
-        Some(Uuid::parse_str(cluster_id_str).map_err(|e| AppError::BadRequest(format!("Invalid cluster UUID: {}", e)))?)
+        Some(
+            Uuid::parse_str(cluster_id_str)
+                .map_err(|e| AppError::BadRequest(format!("Invalid cluster UUID: {}", e)))?,
+        )
     } else {
         None
     };
@@ -185,19 +195,22 @@ pub async fn get_explain_plans(
     let limit = query.limit.unwrap_or(50).min(200); // Max 200 records
 
     let plans = if let Some(fingerprint_id) = fingerprint_id {
-        controller.explain_repo.find_by_fingerprint(fingerprint_id).await?
+        controller
+            .explain_repo
+            .find_by_fingerprint(fingerprint_id)
+            .await?
     } else if let Some(cluster_id) = cluster_id {
-        controller.explain_repo.find_by_cluster(cluster_id, limit).await?
+        controller
+            .explain_repo
+            .find_by_cluster(cluster_id, limit)
+            .await?
     } else {
         controller.explain_repo.find_recent(limit).await?
     };
 
     let total = plans.len();
 
-    let response = ExplainPlansResponse {
-        plans,
-        total,
-    };
+    let response = ExplainPlansResponse { plans, total };
 
     Ok(HttpResponse::Ok().json(response))
 }
@@ -208,9 +221,13 @@ pub async fn get_explain_plan(
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let plan_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid plan UUID: {}", e)))?;
+    let plan_id = Uuid::parse_str(&path)
+        .map_err(|e| AppError::BadRequest(format!("Invalid plan UUID: {}", e)))?;
 
-    let plan = controller.explain_repo.find_by_id(plan_id).await?
+    let plan = controller
+        .explain_repo
+        .find_by_id(plan_id)
+        .await?
         .ok_or_else(|| AppError::NotFound(format!("Explain plan not found: {}", plan_id)))?;
 
     let response = ExplainPlanResponse { plan };
@@ -224,9 +241,13 @@ pub async fn analyze_explain_plan(
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let plan_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let plan_id =
+        Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
 
-    let analysis = controller.explain_service.get_plan_analysis(plan_id).await?;
+    let analysis = controller
+        .explain_service
+        .get_plan_analysis(plan_id)
+        .await?;
 
     let response = PlanAnalysisResponse {
         plan_id,
@@ -244,7 +265,10 @@ pub async fn compare_explain_plans(
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let comparison = controller.explain_service.compare_explain_plans(req.plan_id_1, req.plan_id_2).await?;
+    let comparison = controller
+        .explain_service
+        .compare_explain_plans(req.plan_id_1, req.plan_id_2)
+        .await?;
 
     let response = PlanComparisonResponse {
         plan_1: comparison.plan_1,
@@ -262,10 +286,19 @@ pub async fn get_latest_explain_plan(
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let fingerprint_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid fingerprint UUID: {}", e)))?;
+    let fingerprint_id = Uuid::parse_str(&path)
+        .map_err(|e| AppError::BadRequest(format!("Invalid fingerprint UUID: {}", e)))?;
 
-    let plan = controller.explain_repo.find_latest_by_fingerprint(fingerprint_id).await?
-        .ok_or_else(|| AppError::NotFound(format!("No explain plan found for fingerprint: {}", fingerprint_id)))?;
+    let plan = controller
+        .explain_repo
+        .find_latest_by_fingerprint(fingerprint_id)
+        .await?
+        .ok_or_else(|| {
+            AppError::NotFound(format!(
+                "No explain plan found for fingerprint: {}",
+                fingerprint_id
+            ))
+        })?;
 
     let response = ExplainPlanResponse { plan };
 
@@ -279,9 +312,13 @@ pub async fn update_optimization_flags(
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let plan_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let plan_id =
+        Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
 
-    controller.explain_service.update_optimization_flags(plan_id, req.into_inner()).await?;
+    controller
+        .explain_service
+        .update_optimization_flags(plan_id, req.into_inner())
+        .await?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": "Optimization flags updated successfully",
@@ -295,7 +332,8 @@ pub async fn delete_explain_plan(
     _config: web::Data<Config>,
     _claims: web::ReqData<Claims>,
 ) -> Result<impl Responder, AppError> {
-    let plan_id = Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+    let plan_id =
+        Uuid::parse_str(&path).map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
 
     controller.explain_repo.delete(plan_id).await?;
 

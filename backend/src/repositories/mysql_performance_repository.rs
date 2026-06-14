@@ -12,12 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
-use crate::models::mysql_performance_snapshot::{MySQLPerformanceSnapshot, Entity as MySQLPerformanceEntity, Column as MySQLPerformanceColumn};
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, ActiveModelTrait, Set, PaginatorTrait, QueryOrder, IntoActiveModel, QuerySelect};
+use crate::models::mysql_performance_snapshot::{
+    Column as MySQLPerformanceColumn, Entity as MySQLPerformanceEntity, MySQLPerformanceSnapshot,
+};
+use chrono::{Duration, NaiveDateTime};
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+};
 use std::sync::Arc;
 use uuid::Uuid;
-use chrono::{NaiveDateTime, Duration};
 
 #[derive(Clone)]
 pub struct MySQLPerformanceRepository {
@@ -29,14 +33,21 @@ impl MySQLPerformanceRepository {
         Self { db }
     }
 
-    pub async fn create(&self, snapshot: MySQLPerformanceSnapshot) -> Result<MySQLPerformanceSnapshot, String> {
+    pub async fn create(
+        &self,
+        snapshot: MySQLPerformanceSnapshot,
+    ) -> Result<MySQLPerformanceSnapshot, String> {
         let active_model: crate::models::mysql_performance_snapshot::ActiveModel = snapshot.into();
-        active_model.insert(self.db.as_ref())
+        active_model
+            .insert(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to create performance snapshot: {}", e))
     }
 
-    pub async fn find_by_cluster(&self, cluster_id: Uuid) -> Result<Vec<MySQLPerformanceSnapshot>, String> {
+    pub async fn find_by_cluster(
+        &self,
+        cluster_id: Uuid,
+    ) -> Result<Vec<MySQLPerformanceSnapshot>, String> {
         MySQLPerformanceEntity::find()
             .filter(MySQLPerformanceColumn::ClusterId.eq(cluster_id))
             .order_by_desc(MySQLPerformanceColumn::SnapshotTime)
@@ -45,14 +56,20 @@ impl MySQLPerformanceRepository {
             .map_err(|e| format!("Failed to find performance snapshots: {}", e))
     }
 
-    pub async fn find_by_id(&self, snapshot_id: Uuid) -> Result<Option<MySQLPerformanceSnapshot>, String> {
+    pub async fn find_by_id(
+        &self,
+        snapshot_id: Uuid,
+    ) -> Result<Option<MySQLPerformanceSnapshot>, String> {
         MySQLPerformanceEntity::find_by_id(snapshot_id)
             .one(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to find performance snapshot: {}", e))
     }
 
-    pub async fn find_latest_by_cluster(&self, cluster_id: Uuid) -> Result<Option<MySQLPerformanceSnapshot>, String> {
+    pub async fn find_latest_by_cluster(
+        &self,
+        cluster_id: Uuid,
+    ) -> Result<Option<MySQLPerformanceSnapshot>, String> {
         MySQLPerformanceEntity::find()
             .filter(MySQLPerformanceColumn::ClusterId.eq(cluster_id))
             .order_by_desc(MySQLPerformanceColumn::SnapshotTime)
@@ -104,7 +121,8 @@ impl MySQLPerformanceRepository {
             .into_active_model();
 
         active_model.health_score = Set(score.to_string());
-        active_model.update(self.db.as_ref())
+        active_model
+            .update(self.db.as_ref())
             .await
             .map_err(|e| format!("Failed to update health score: {}", e))?;
         Ok(())
@@ -136,7 +154,8 @@ impl MySQLPerformanceRepository {
         start_time: NaiveDateTime,
         end_time: NaiveDateTime,
     ) -> Result<Vec<MySQLPerformanceSnapshot>, String> {
-        self.find_by_time_range(cluster_id, start_time, end_time).await
+        self.find_by_time_range(cluster_id, start_time, end_time)
+            .await
     }
 
     pub async fn find_recent(&self, limit: u64) -> Result<Vec<MySQLPerformanceSnapshot>, String> {

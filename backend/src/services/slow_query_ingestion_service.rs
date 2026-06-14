@@ -12,17 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
-use crate::models::slow_query_event::SlowQueryEvent;
 use crate::models::query_fingerprint::QueryFingerprint;
-use crate::repositories::slow_query_repository::SlowQueryRepository;
-use crate::repositories::query_fingerprint_repository::QueryFingerprintRepository;
+use crate::models::slow_query_event::SlowQueryEvent;
 use crate::repositories::aurora_cluster_repository::AuroraClusterRepository;
-use crate::utils::retry::{retry_with_backoff, db_retry_config};
-use uuid::Uuid;
+use crate::repositories::query_fingerprint_repository::QueryFingerprintRepository;
+use crate::repositories::slow_query_repository::SlowQueryRepository;
+use crate::utils::retry::{db_retry_config, retry_with_backoff};
 use chrono::{NaiveDateTime, Utc};
 use regex::Regex;
 use serde_json;
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct SlowQueryIngestionService {
@@ -64,11 +63,11 @@ impl SlowQueryIngestionService {
         logs: &[String],
         engine: &str,
     ) -> Result<(), String> {
-        let cluster = retry_with_backoff(
-            &db_retry_config(),
-            || self.cluster_repo.find_by_id(cluster_id),
-        ).await?
-            .ok_or_else(|| "Aurora cluster not found".to_string())?;
+        let cluster = retry_with_backoff(&db_retry_config(), || {
+            self.cluster_repo.find_by_id(cluster_id)
+        })
+        .await?
+        .ok_or_else(|| "Aurora cluster not found".to_string())?;
 
         if !cluster.is_active {
             return Ok(());
@@ -92,7 +91,11 @@ impl SlowQueryIngestionService {
         Ok(())
     }
 
-    fn parse_mysql_logs(&self, logs: &[String], cluster_id: Uuid) -> Result<Vec<ParsedSlowQueryEvent>, String> {
+    fn parse_mysql_logs(
+        &self,
+        logs: &[String],
+        cluster_id: Uuid,
+    ) -> Result<Vec<ParsedSlowQueryEvent>, String> {
         let log_content = logs.join("\n");
         let mut events = Vec::new();
         let lines: Vec<&str> = log_content.lines().collect();
@@ -114,20 +117,28 @@ impl SlowQueryIngestionService {
         Ok(events)
     }
 
-    fn parse_postgresql_logs(&self, logs: &[String], cluster_id: Uuid) -> Result<Vec<ParsedSlowQueryEvent>, String> {
-        let re = Regex::new(r"(?x)
+    fn parse_postgresql_logs(
+        &self,
+        logs: &[String],
+        cluster_id: Uuid,
+    ) -> Result<Vec<ParsedSlowQueryEvent>, String> {
+        let re = Regex::new(
+            r"(?x)
             ^(?P<ts>\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}:\d{2}\.\d{3}\s\w+)\s
             \[(?P<pid>\d+)\]\s
             (?P<user>[\w-]+)@(?P<db>[\w-]+)\s
             LOG:\s+duration:\s+(?P<dur>\d+\.?\d*)\sms\s+
-            statement:\s+(?P<sql>.*)$").map_err(|e| e.to_string())?;
+            statement:\s+(?P<sql>.*)$",
+        )
+        .map_err(|e| e.to_string())?;
 
         let mut events = Vec::new();
         for log in logs {
             if let Some(caps) = re.captures(log) {
                 let timestamp_str = &caps["ts"];
-                let event_timestamp = NaiveDateTime::parse_from_str(&timestamp_str[..23], "%Y-%m-%d %H:%M:%S.%3f")
-                    .unwrap_or_else(|_| Utc::now().naive_utc());
+                let event_timestamp =
+                    NaiveDateTime::parse_from_str(&timestamp_str[..23], "%Y-%m-%d %H:%M:%S.%3f")
+                        .unwrap_or_else(|_| Utc::now().naive_utc());
 
                 events.push(ParsedSlowQueryEvent {
                     cluster_id,
@@ -146,16 +157,24 @@ impl SlowQueryIngestionService {
         Ok(events)
     }
 
-    async fn process_slow_query_event_batch(&self, events: &[ParsedSlowQueryEvent], engine: &str) -> Result<(), String> {
+    async fn process_slow_query_event_batch(
+        &self,
+        events: &[ParsedSlowQueryEvent],
+        engine: &str,
+    ) -> Result<(), String> {
         let mut fingerprint_records = Vec::new();
         for event in events {
             let hash = self.generate_query_hash(&event.sql_text)?;
-            let record = self.find_or_create_fingerprint(event.cluster_id, &hash, &event.sql_text, engine).await?;
+            let record = self
+                .find_or_create_fingerprint(event.cluster_id, &hash, &event.sql_text, engine)
+                .await?;
             fingerprint_records.push(record);
         }
 
-        let slow_query_events: Vec<SlowQueryEvent> = events.iter().enumerate().map(|(i, event)| {
-            SlowQueryEvent {
+        let slow_query_events: Vec<SlowQueryEvent> = events
+            .iter()
+            .enumerate()
+            .map(|(i, event)| SlowQueryEvent {
                 id: Uuid::new_v4(),
                 cluster_id: event.cluster_id,
                 event_timestamp: event.event_timestamp,
@@ -170,10 +189,13 @@ impl SlowQueryIngestionService {
                 fingerprint_id: Some(fingerprint_records[i].id),
                 parsed_at: Utc::now().naive_utc(),
                 created_at: Utc::now().naive_utc(),
-            }
-        }).collect();
+            })
+            .collect();
 
-        retry_with_backoff(&db_retry_config(), || self.slow_query_repo.create_many(slow_query_events.clone())).await?;
+        retry_with_backoff(&db_retry_config(), || {
+            self.slow_query_repo.create_many(slow_query_events.clone())
+        })
+        .await?;
 
         let mut stats_updates = Vec::new();
         for (i, record) in fingerprint_records.iter().enumerate() {
@@ -191,12 +213,16 @@ impl SlowQueryIngestionService {
                 new_avg_time,
                 new_rows_ex,
                 new_rows_sent,
-                Utc::now().naive_utc()
+                Utc::now().naive_utc(),
             ));
         }
 
         if !stats_updates.is_empty() {
-            retry_with_backoff(&db_retry_config(), || self.fingerprint_repo.update_stats_batch(stats_updates.clone())).await?;
+            retry_with_backoff(&db_retry_config(), || {
+                self.fingerprint_repo
+                    .update_stats_batch(stats_updates.clone())
+            })
+            .await?;
         }
         Ok(())
     }
@@ -220,9 +246,9 @@ impl SlowQueryIngestionService {
     }
 
     fn extract_catalog_metadata(&self, sql: &str, engine: &str) -> (Vec<String>, Vec<String>) {
-        use sqlparser::dialect::{MySqlDialect, PostgreSqlDialect, Dialect};
-        use sqlparser::parser::Parser;
         use sqlparser::ast::Statement;
+        use sqlparser::dialect::{Dialect, MySqlDialect, PostgreSqlDialect};
+        use sqlparser::parser::Parser;
 
         let dialect: Box<dyn Dialect> = match engine.to_lowercase().as_str() {
             "mysql" | "aurora-mysql" => Box::new(MySqlDialect {}),
@@ -242,7 +268,7 @@ impl SlowQueryIngestionService {
                 }
             }
         }
-        
+
         let table_re = Regex::new(r"(?i)FROM\s+([\w\.]+)").unwrap();
         for cap in table_re.captures_iter(sql) {
             tables.push(cap[1].to_string());
@@ -257,14 +283,24 @@ impl SlowQueryIngestionService {
         (tables, columns)
     }
 
-    async fn find_or_create_fingerprint(&self, cluster_id: Uuid, hash: &str, raw_sql: &str, engine: &str) -> Result<QueryFingerprint, String> {
-        if let Some(existing) = retry_with_backoff(&db_retry_config(), || self.fingerprint_repo.find_by_hash(cluster_id, hash)).await? {
+    async fn find_or_create_fingerprint(
+        &self,
+        cluster_id: Uuid,
+        hash: &str,
+        raw_sql: &str,
+        engine: &str,
+    ) -> Result<QueryFingerprint, String> {
+        if let Some(existing) = retry_with_backoff(&db_retry_config(), || {
+            self.fingerprint_repo.find_by_hash(cluster_id, hash)
+        })
+        .await?
+        {
             return Ok(existing);
         }
 
         let normalized = self.normalize_sql(raw_sql)?;
         let (tables, columns) = self.extract_catalog_metadata(raw_sql, engine);
-        
+
         let fingerprint = QueryFingerprint {
             id: Uuid::new_v4(),
             normalized_sql: normalized,
@@ -289,10 +325,16 @@ impl SlowQueryIngestionService {
             updated_at: Utc::now().naive_utc(),
         };
 
-        retry_with_backoff(&db_retry_config(), || self.fingerprint_repo.create(fingerprint.clone())).await
+        retry_with_backoff(&db_retry_config(), || {
+            self.fingerprint_repo.create(fingerprint.clone())
+        })
+        .await
     }
 
-    fn parse_single_mysql_event(&self, lines: &[&str]) -> Result<Option<ParsedSlowQueryEvent>, String> {
+    fn parse_single_mysql_event(
+        &self,
+        lines: &[&str],
+    ) -> Result<Option<ParsedSlowQueryEvent>, String> {
         if lines.is_empty() || !lines[0].starts_with("# Time:") {
             return Ok(None);
         }
@@ -313,22 +355,42 @@ impl SlowQueryIngestionService {
         for line in lines {
             if line.starts_with("# Time:") {
                 let ts = line.split(": ").nth(1).unwrap_or("");
-                if let Ok(parsed) = NaiveDateTime::parse_from_str(ts, "%y%m%d %H:%M:%S") { event.event_timestamp = parsed; }
-            } else if line.starts_with("# User@Host:") { event.user_host = line.split(": ").nth(1).unwrap_or("").to_string(); }
-            else if line.starts_with("# Query_time:") {
+                if let Ok(parsed) = NaiveDateTime::parse_from_str(ts, "%y%m%d %H:%M:%S") {
+                    event.event_timestamp = parsed;
+                }
+            } else if line.starts_with("# User@Host:") {
+                event.user_host = line.split(": ").nth(1).unwrap_or("").to_string();
+            } else if line.starts_with("# Query_time:") {
                 let parts: Vec<&str> = line.split_whitespace().collect();
                 for i in 0..parts.len() {
                     match parts[i] {
-                        "Query_time:" => event.query_time = parts.get(i + 1).and_then(|v| v.parse().ok()).unwrap_or(0.0),
-                        "Lock_time:" => event.lock_time = parts.get(i + 1).and_then(|v| v.parse().ok()).unwrap_or(0.0),
-                        "Rows_sent:" => event.rows_sent = parts.get(i + 1).and_then(|v| v.parse().ok()).unwrap_or(0),
-                        "Rows_examined:" => event.rows_examined = parts.get(i + 1).and_then(|v| v.parse().ok()).unwrap_or(0),
+                        "Query_time:" => {
+                            event.query_time =
+                                parts.get(i + 1).and_then(|v| v.parse().ok()).unwrap_or(0.0)
+                        }
+                        "Lock_time:" => {
+                            event.lock_time =
+                                parts.get(i + 1).and_then(|v| v.parse().ok()).unwrap_or(0.0)
+                        }
+                        "Rows_sent:" => {
+                            event.rows_sent =
+                                parts.get(i + 1).and_then(|v| v.parse().ok()).unwrap_or(0)
+                        }
+                        "Rows_examined:" => {
+                            event.rows_examined =
+                                parts.get(i + 1).and_then(|v| v.parse().ok()).unwrap_or(0)
+                        }
                         _ => {}
                     }
                 }
-            } else if line.starts_with("# Schema:") { event.schema_name = Some(line.split(": ").nth(1).unwrap_or("").to_string()); }
-            else if !line.starts_with("#") && !line.trim().is_empty() { sql_lines.push(line.to_string()); in_sql = true; }
-            else if in_sql && line.trim().is_empty() { break; }
+            } else if line.starts_with("# Schema:") {
+                event.schema_name = Some(line.split(": ").nth(1).unwrap_or("").to_string());
+            } else if !line.starts_with("#") && !line.trim().is_empty() {
+                sql_lines.push(line.to_string());
+                in_sql = true;
+            } else if in_sql && line.trim().is_empty() {
+                break;
+            }
         }
         event.sql_text = sql_lines.join("\n");
         Ok(Some(event))
@@ -339,9 +401,14 @@ impl SlowQueryIngestionService {
         let mut in_sql = false;
         for line in lines {
             count += 1;
-            if line.starts_with("# Time:") { continue; }
-            if !line.starts_with("#") && !line.trim().is_empty() { in_sql = true; }
-            else if in_sql && line.trim().is_empty() { break; }
+            if line.starts_with("# Time:") {
+                continue;
+            }
+            if !line.starts_with("#") && !line.trim().is_empty() {
+                in_sql = true;
+            } else if in_sql && line.trim().is_empty() {
+                break;
+            }
         }
         count
     }

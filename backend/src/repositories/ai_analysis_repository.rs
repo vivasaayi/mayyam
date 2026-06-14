@@ -12,12 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
-use crate::models::ai_analysis::{AIAnalysis, Entity as AIAnalysisEntity, Column as AIAnalysisColumn};
-use sea_orm::{DatabaseConnection, EntityTrait, QueryFilter, ColumnTrait, ActiveModelTrait, Set, PaginatorTrait, QueryOrder, QuerySelect, IntoActiveModel};
+use crate::models::ai_analysis::{
+    AIAnalysis, Column as AIAnalysisColumn, Entity as AIAnalysisEntity,
+};
+use chrono::NaiveDateTime;
+use sea_orm::{
+    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, IntoActiveModel,
+    PaginatorTrait, QueryFilter, QueryOrder, QuerySelect, Set,
+};
 use std::sync::Arc;
 use uuid::Uuid;
-use chrono::NaiveDateTime;
 
 #[derive(Clone)]
 pub struct AIAnalysisRepository {
@@ -31,27 +35,37 @@ impl AIAnalysisRepository {
 
     pub async fn create(&self, analysis: AIAnalysis) -> Result<AIAnalysis, String> {
         let active_model: crate::models::ai_analysis::ActiveModel = analysis.into();
-        active_model.insert(&*self.db)
+        active_model
+            .insert(&*self.db)
             .await
             .map_err(|e| format!("Failed to create AI analysis: {}", e))
     }
 
-    pub async fn create_from_active_model(&self, active_model: crate::models::ai_analysis::ActiveModel) -> Result<AIAnalysis, String> {
-        active_model.insert(&*self.db)
+    pub async fn create_from_active_model(
+        &self,
+        active_model: crate::models::ai_analysis::ActiveModel,
+    ) -> Result<AIAnalysis, String> {
+        active_model
+            .insert(&*self.db)
             .await
             .map_err(|e| format!("Failed to create AI analysis: {}", e))
     }
 
-    pub async fn find_by_fingerprint(&self, fingerprint_id: Uuid, limit: Option<u64>) -> Result<Vec<AIAnalysis>, String> {
+    pub async fn find_by_fingerprint(
+        &self,
+        fingerprint_id: Uuid,
+        limit: Option<u64>,
+    ) -> Result<Vec<AIAnalysis>, String> {
         let mut query = AIAnalysisEntity::find()
             .filter(AIAnalysisColumn::FingerprintId.eq(fingerprint_id))
             .order_by_desc(AIAnalysisColumn::CreatedAt);
-        
+
         if let Some(limit) = limit {
             query = query.limit(limit);
         }
-        
-        query.all(&*self.db)
+
+        query
+            .all(&*self.db)
             .await
             .map_err(|e| format!("Failed to find AI analyses: {}", e))
     }
@@ -63,7 +77,10 @@ impl AIAnalysisRepository {
             .map_err(|e| format!("Failed to find AI analysis: {}", e))
     }
 
-    pub async fn find_latest_by_fingerprint(&self, fingerprint_id: Uuid) -> Result<Option<AIAnalysis>, String> {
+    pub async fn find_latest_by_fingerprint(
+        &self,
+        fingerprint_id: Uuid,
+    ) -> Result<Option<AIAnalysis>, String> {
         AIAnalysisEntity::find()
             .filter(AIAnalysisColumn::FingerprintId.eq(fingerprint_id))
             .order_by_desc(AIAnalysisColumn::CreatedAt)
@@ -102,7 +119,11 @@ impl AIAnalysisRepository {
             .map_err(|e| format!("Failed to find AI analyses by type: {}", e))
     }
 
-    pub async fn update_confidence_score(&self, analysis_id: Uuid, confidence: f64) -> Result<(), String> {
+    pub async fn update_confidence_score(
+        &self,
+        analysis_id: Uuid,
+        confidence: f64,
+    ) -> Result<(), String> {
         let mut active_model = AIAnalysisEntity::find_by_id(analysis_id)
             .one(&*self.db)
             .await
@@ -111,7 +132,8 @@ impl AIAnalysisRepository {
             .into_active_model();
 
         active_model.confidence_score = Set(Some(confidence));
-        active_model.update(&*self.db)
+        active_model
+            .update(&*self.db)
             .await
             .map_err(|e| format!("Failed to update confidence score: {}", e))?;
         Ok(())
@@ -145,7 +167,11 @@ impl AIAnalysisRepository {
         Ok(delete_result.rows_affected)
     }
 
-    pub async fn find_by_cluster(&self, cluster_id: Uuid, limit: u64) -> Result<Vec<AIAnalysis>, String> {
+    pub async fn find_by_cluster(
+        &self,
+        cluster_id: Uuid,
+        limit: u64,
+    ) -> Result<Vec<AIAnalysis>, String> {
         AIAnalysisEntity::find()
             .filter(AIAnalysisColumn::ClusterId.eq(cluster_id))
             .order_by_desc(AIAnalysisColumn::CreatedAt)
@@ -164,7 +190,11 @@ impl AIAnalysisRepository {
             .map_err(|e| format!("Failed to find recent AI analyses: {}", e))
     }
 
-    pub async fn find_by_analysis_type_with_limit(&self, analysis_type: String, limit: u64) -> Result<Vec<AIAnalysis>, String> {
+    pub async fn find_by_analysis_type_with_limit(
+        &self,
+        analysis_type: String,
+        limit: u64,
+    ) -> Result<Vec<AIAnalysis>, String> {
         AIAnalysisEntity::find()
             .filter(AIAnalysisColumn::AnalysisType.eq(analysis_type))
             .order_by_desc(AIAnalysisColumn::CreatedAt)

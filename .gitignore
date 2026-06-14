@@ -88,3 +88,5 @@ frontend/playwright-report
 /backend/backups
 
 /docs/product-roadmap
+*.sqlite-shm
+*.sqlite-wal

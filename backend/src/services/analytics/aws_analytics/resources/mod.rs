@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 pub mod dynamodb;
 pub mod ec2;
 pub mod elasticache;

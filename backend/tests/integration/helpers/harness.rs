@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::integration::helpers::auth::get_auth_token;
 use crate::integration::helpers::server::{ensure_server, try_ensure_server};
 use reqwest::Client;

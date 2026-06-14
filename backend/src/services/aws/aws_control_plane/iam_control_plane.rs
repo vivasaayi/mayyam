@@ -56,10 +56,7 @@ impl IamControlPlane {
                         let tags = user.tags();
                         let mut tags_json = serde_json::Map::new();
                         for tag in tags {
-                            tags_json.insert(
-                                tag.key().to_string(),
-                                json!(tag.value()),
-                            );
+                            tags_json.insert(tag.key().to_string(), json!(tag.value()));
                         }
 
                         let resource_data = json!({
@@ -94,7 +91,10 @@ impl IamControlPlane {
                 }
                 Err(e) => {
                     error!("Error fetching IAM users: {:?}", e);
-                    return Err(AppError::CloudProvider(format!("Failed to fetch IAM users: {}", e)));
+                    return Err(AppError::CloudProvider(format!(
+                        "Failed to fetch IAM users: {}",
+                        e
+                    )));
                 }
             }
         }
@@ -128,10 +128,7 @@ impl IamControlPlane {
                         let tags = role.tags();
                         let mut tags_json = serde_json::Map::new();
                         for tag in tags {
-                            tags_json.insert(
-                                tag.key().to_string(),
-                                json!(tag.value()),
-                            );
+                            tags_json.insert(tag.key().to_string(), json!(tag.value()));
                         }
 
                         let resource_data = json!({
@@ -168,7 +165,10 @@ impl IamControlPlane {
                 }
                 Err(e) => {
                     error!("Error fetching IAM roles: {:?}", e);
-                    return Err(AppError::CloudProvider(format!("Failed to fetch IAM roles: {}", e)));
+                    return Err(AppError::CloudProvider(format!(
+                        "Failed to fetch IAM roles: {}",
+                        e
+                    )));
                 }
             }
         }
@@ -202,10 +202,7 @@ impl IamControlPlane {
                         let tags = policy.tags();
                         let mut tags_json = serde_json::Map::new();
                         for tag in tags {
-                            tags_json.insert(
-                                tag.key().to_string(),
-                                json!(tag.value()),
-                            );
+                            tags_json.insert(tag.key().to_string(), json!(tag.value()));
                         }
 
                         let resource_data = json!({
@@ -241,7 +238,10 @@ impl IamControlPlane {
                 }
                 Err(e) => {
                     error!("Error fetching IAM policies: {:?}", e);
-                    return Err(AppError::CloudProvider(format!("Failed to fetch IAM policies: {}", e)));
+                    return Err(AppError::CloudProvider(format!(
+                        "Failed to fetch IAM policies: {}",
+                        e
+                    )));
                 }
             }
         }
@@ -299,7 +299,10 @@ impl IamControlPlane {
                 }
                 Err(e) => {
                     error!("Error fetching IAM groups: {:?}", e);
-                    return Err(AppError::CloudProvider(format!("Failed to fetch IAM groups: {}", e)));
+                    return Err(AppError::CloudProvider(format!(
+                        "Failed to fetch IAM groups: {}",
+                        e
+                    )));
                 }
             }
         }

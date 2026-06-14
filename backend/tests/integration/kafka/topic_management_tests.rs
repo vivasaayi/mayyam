@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 #![cfg(feature = "integration-tests")]
 
 use crate::integration::helpers::TestHarness;
@@ -65,24 +64,35 @@ async fn test_topic_creation_with_partition_count() {
 
     assert!(list_response.status().is_success());
     let topics: Vec<Value> = list_response.json().await.expect("invalid topics response");
-    
+
     // We can verify partitions by fetching the specific topic details
     let details_response = harness
         .client()
-        .get(&harness.build_url(&format!("/api/kafka/clusters/{}/topics/{}", cluster_id(), topic_name)))
+        .get(&harness.build_url(&format!(
+            "/api/kafka/clusters/{}/topics/{}",
+            cluster_id(),
+            topic_name
+        )))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .send()
         .await
         .expect("failed to get topic details");
 
     assert!(details_response.status().is_success());
-    let topic_details: Value = details_response.json().await.expect("invalid topic details response");
+    let topic_details: Value = details_response
+        .json()
+        .await
+        .expect("invalid topic details response");
     assert_eq!(topic_details["partitions"].as_array().unwrap().len(), 2);
 
     // Clean up
     let del_res = harness
         .client()
-        .delete(&harness.build_url(&format!("/api/kafka/clusters/{}/topics/{}", cluster_id(), topic_name)))
+        .delete(&harness.build_url(&format!(
+            "/api/kafka/clusters/{}/topics/{}",
+            cluster_id(),
+            topic_name
+        )))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .send()
         .await
@@ -119,7 +129,11 @@ async fn test_update_topic_config() {
     // Update the config: e.g., retention.ms
     let update_res = harness
         .client()
-        .put(&harness.build_url(&format!("/api/kafka/clusters/{}/topics/{}/config", cluster_id(), topic_name)))
+        .put(&harness.build_url(&format!(
+            "/api/kafka/clusters/{}/topics/{}/config",
+            cluster_id(),
+            topic_name
+        )))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .json(&json!({
             "configs": [
@@ -130,13 +144,17 @@ async fn test_update_topic_config() {
         .send()
         .await
         .expect("failed to update config");
-    
+
     assert!(update_res.status().is_success());
 
     // Delete
     let del_res = harness
         .client()
-        .delete(&harness.build_url(&format!("/api/kafka/clusters/{}/topics/{}", cluster_id(), topic_name)))
+        .delete(&harness.build_url(&format!(
+            "/api/kafka/clusters/{}/topics/{}",
+            cluster_id(),
+            topic_name
+        )))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .send()
         .await
@@ -173,7 +191,11 @@ async fn test_add_partitions() {
     // Add partitions (total count becomes 2)
     let add_res = harness
         .client()
-        .post(&harness.build_url(&format!("/api/kafka/clusters/{}/topics/{}/partitions", cluster_id(), topic_name)))
+        .post(&harness.build_url(&format!(
+            "/api/kafka/clusters/{}/topics/{}/partitions",
+            cluster_id(),
+            topic_name
+        )))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .json(&json!({
             "count": 2,
@@ -182,26 +204,37 @@ async fn test_add_partitions() {
         .send()
         .await
         .expect("failed to add partitions");
-    
+
     assert!(add_res.status().is_success());
 
     // Verify
     let details_response = harness
         .client()
-        .get(&harness.build_url(&format!("/api/kafka/clusters/{}/topics/{}", cluster_id(), topic_name)))
+        .get(&harness.build_url(&format!(
+            "/api/kafka/clusters/{}/topics/{}",
+            cluster_id(),
+            topic_name
+        )))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .send()
         .await
         .expect("failed to get topic details");
 
     assert!(details_response.status().is_success());
-    let topic_details: Value = details_response.json().await.expect("invalid topic details response");
+    let topic_details: Value = details_response
+        .json()
+        .await
+        .expect("invalid topic details response");
     assert_eq!(topic_details["partitions"].as_array().unwrap().len(), 2);
 
     // Delete
     let del_res = harness
         .client()
-        .delete(&harness.build_url(&format!("/api/kafka/clusters/{}/topics/{}", cluster_id(), topic_name)))
+        .delete(&harness.build_url(&format!(
+            "/api/kafka/clusters/{}/topics/{}",
+            cluster_id(),
+            topic_name
+        )))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .send()
         .await

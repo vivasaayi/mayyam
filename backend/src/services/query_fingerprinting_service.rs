@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::repositories::query_fingerprint_repository::QueryFingerprintRepository;
-use uuid::Uuid;
 use regex::Regex;
 use std::collections::HashSet;
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct QueryFingerprintingService {
@@ -44,14 +43,13 @@ impl QueryFingerprintingService {
         let result = self.generate_fingerprint(sql)?;
 
         // Update the normalized query
-        self.update_normalized_query(fingerprint_id, &result.normalized_query).await?;
+        self.update_normalized_query(fingerprint_id, &result.normalized_query)
+            .await?;
 
         // Update catalog data
-        self.fingerprint_repo.update_catalog_data(
-            fingerprint_id,
-            result.tables,
-            result.columns,
-        ).await?;
+        self.fingerprint_repo
+            .update_catalog_data(fingerprint_id, result.tables, result.columns)
+            .await?;
 
         Ok(())
     }
@@ -90,8 +88,11 @@ impl QueryFingerprintingService {
         normalized = string_regex.replace_all(&normalized, "?").to_string();
 
         // Normalize IN clauses with multiple values
-        let in_clause_regex = Regex::new(r"\bIN\s*\(\s*\?(\s*,\s*\?)+\s*\)").map_err(|e| e.to_string())?;
-        normalized = in_clause_regex.replace_all(&normalized, "IN (?)").to_string();
+        let in_clause_regex =
+            Regex::new(r"\bIN\s*\(\s*\?(\s*,\s*\?)+\s*\)").map_err(|e| e.to_string())?;
+        normalized = in_clause_regex
+            .replace_all(&normalized, "IN (?)")
+            .to_string();
 
         // Remove extra spaces around operators
         let operator_regex = Regex::new(r"\s*([=<>!]+)\s*").map_err(|e| e.to_string())?;
@@ -103,11 +104,15 @@ impl QueryFingerprintingService {
 
         // Normalize ORDER BY
         let order_by_regex = Regex::new(r"\bORDER\s+BY\s+[^)]+").map_err(|e| e.to_string())?;
-        normalized = order_by_regex.replace_all(&normalized, "ORDER BY ...").to_string();
+        normalized = order_by_regex
+            .replace_all(&normalized, "ORDER BY ...")
+            .to_string();
 
         // Normalize GROUP BY
         let group_by_regex = Regex::new(r"\bGROUP\s+BY\s+[^)]+").map_err(|e| e.to_string())?;
-        normalized = group_by_regex.replace_all(&normalized, "GROUP BY ...").to_string();
+        normalized = group_by_regex
+            .replace_all(&normalized, "GROUP BY ...")
+            .to_string();
 
         Ok(normalized.trim().to_string())
     }
@@ -120,7 +125,10 @@ impl QueryFingerprintingService {
         let mut tables = HashSet::new();
 
         // Match FROM clause tables
-        let from_regex = Regex::new(r"(?i)\bFROM\s+([`\w\.-]+(?:\s+AS\s+[`\w]+)?(?:\s*,\s*[`\w\.-]+(?:\s+AS\s+[`\w]+)?)*)").map_err(|e| e.to_string())?;
+        let from_regex = Regex::new(
+            r"(?i)\bFROM\s+([`\w\.-]+(?:\s+AS\s+[`\w]+)?(?:\s*,\s*[`\w\.-]+(?:\s+AS\s+[`\w]+)?)*)",
+        )
+        .map_err(|e| e.to_string())?;
         if let Some(captures) = from_regex.captures(sql) {
             if let Some(from_clause) = captures.get(1) {
                 let table_list: Vec<&str> = from_clause.as_str().split(',').collect();
@@ -134,7 +142,9 @@ impl QueryFingerprintingService {
         }
 
         // Match JOIN tables
-        let join_regex = Regex::new(r"(?i)\b(?:INNER\s+|LEFT\s+|RIGHT\s+|FULL\s+)?JOIN\s+([`\w\.-]+)").map_err(|e| e.to_string())?;
+        let join_regex =
+            Regex::new(r"(?i)\b(?:INNER\s+|LEFT\s+|RIGHT\s+|FULL\s+)?JOIN\s+([`\w\.-]+)")
+                .map_err(|e| e.to_string())?;
         for capture in join_regex.captures_iter(sql) {
             if let Some(table_match) = capture.get(1) {
                 let table_name = self.extract_table_name(table_match.as_str())?;
@@ -156,7 +166,8 @@ impl QueryFingerprintingService {
         }
 
         // Match INSERT INTO tables
-        let insert_regex = Regex::new(r"(?i)\bINSERT\s+INTO\s+([`\w\.-]+)").map_err(|e| e.to_string())?;
+        let insert_regex =
+            Regex::new(r"(?i)\bINSERT\s+INTO\s+([`\w\.-]+)").map_err(|e| e.to_string())?;
         if let Some(captures) = insert_regex.captures(sql) {
             if let Some(table_match) = captures.get(1) {
                 let table_name = self.extract_table_name(table_match.as_str())?;
@@ -175,7 +186,8 @@ impl QueryFingerprintingService {
         let mut columns = HashSet::new();
 
         // Match SELECT columns
-        let select_regex = Regex::new(r"(?i)\bSELECT\s+(.+?)\bFROM\b").map_err(|e| e.to_string())?;
+        let select_regex =
+            Regex::new(r"(?i)\bSELECT\s+(.+?)\bFROM\b").map_err(|e| e.to_string())?;
         if let Some(captures) = select_regex.captures(sql) {
             if let Some(select_clause) = captures.get(1) {
                 let column_list: Vec<&str> = select_clause.as_str().split(',').collect();
@@ -189,7 +201,8 @@ impl QueryFingerprintingService {
         }
 
         // Match WHERE clause columns
-        let where_regex = Regex::new(r"(?i)\bWHERE\s+(.+?)(?:\bGROUP\b|\bORDER\b|\bLIMIT\b|$)").map_err(|e| e.to_string())?;
+        let where_regex = Regex::new(r"(?i)\bWHERE\s+(.+?)(?:\bGROUP\b|\bORDER\b|\bLIMIT\b|$)")
+            .map_err(|e| e.to_string())?;
         if let Some(captures) = where_regex.captures(sql) {
             if let Some(where_clause) = captures.get(1) {
                 self.extract_columns_from_expression(where_clause.as_str(), &mut columns)?;
@@ -197,7 +210,8 @@ impl QueryFingerprintingService {
         }
 
         // Match ORDER BY columns
-        let order_regex = Regex::new(r"(?i)\bORDER\s+BY\s+(.+?)(?:\bLIMIT\b|$)").map_err(|e| e.to_string())?;
+        let order_regex =
+            Regex::new(r"(?i)\bORDER\s+BY\s+(.+?)(?:\bLIMIT\b|$)").map_err(|e| e.to_string())?;
         if let Some(captures) = order_regex.captures(sql) {
             if let Some(order_clause) = captures.get(1) {
                 let order_cols: Vec<&str> = order_clause.as_str().split(',').collect();
@@ -211,7 +225,8 @@ impl QueryFingerprintingService {
         }
 
         // Match GROUP BY columns
-        let group_regex = Regex::new(r"(?i)\bGROUP\s+BY\s+(.+?)(?:\bORDER\b|\bLIMIT\b|$)").map_err(|e| e.to_string())?;
+        let group_regex = Regex::new(r"(?i)\bGROUP\s+BY\s+(.+?)(?:\bORDER\b|\bLIMIT\b|$)")
+            .map_err(|e| e.to_string())?;
         if let Some(captures) = group_regex.captures(sql) {
             if let Some(group_clause) = captures.get(1) {
                 let group_cols: Vec<&str> = group_clause.as_str().split(',').collect();
@@ -229,9 +244,14 @@ impl QueryFingerprintingService {
         Ok(result)
     }
 
-    fn extract_columns_from_expression(&self, expr: &str, columns: &mut HashSet<String>) -> Result<(), String> {
+    fn extract_columns_from_expression(
+        &self,
+        expr: &str,
+        columns: &mut HashSet<String>,
+    ) -> Result<(), String> {
         // Simple column extraction from expressions like "column = value", "column > value", etc.
-        let col_regex = Regex::new(r"([`\w\.-]+)\s*[=<>!]+\s*[^,\s]+").map_err(|e| e.to_string())?;
+        let col_regex =
+            Regex::new(r"([`\w\.-]+)\s*[=<>!]+\s*[^,\s]+").map_err(|e| e.to_string())?;
         for capture in col_regex.captures_iter(expr) {
             if let Some(col_match) = capture.get(1) {
                 let col_name = self.extract_column_name(col_match.as_str())?;
@@ -264,8 +284,11 @@ impl QueryFingerprintingService {
         let col_spec = col_spec.trim();
 
         // Skip if it's a literal or function call
-        if col_spec.starts_with('\'') || col_spec.starts_with('"') ||
-           col_spec.contains('(') || col_spec.chars().all(|c| c.is_numeric()) {
+        if col_spec.starts_with('\'')
+            || col_spec.starts_with('"')
+            || col_spec.contains('(')
+            || col_spec.chars().all(|c| c.is_numeric())
+        {
             return Ok(String::new());
         }
 
@@ -290,7 +313,11 @@ impl QueryFingerprintingService {
         Ok(col_name.to_string())
     }
 
-    async fn update_normalized_query(&self, fingerprint_id: Uuid, normalized_query: &str) -> Result<(), String> {
+    async fn update_normalized_query(
+        &self,
+        fingerprint_id: Uuid,
+        normalized_query: &str,
+    ) -> Result<(), String> {
         // This would require adding a method to the repository to update just the normalized query
         // For now, we'll skip this as it's not critical for the initial implementation
         Ok(())

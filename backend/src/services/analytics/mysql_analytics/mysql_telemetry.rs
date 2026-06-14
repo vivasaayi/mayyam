@@ -38,6 +38,8 @@ pub struct MySqlServerContext {
     pub version: Option<String>,
     pub uptime_seconds: i64,
     pub performance_schema_enabled: Option<String>,
+    pub slow_query_log_enabled: Option<String>,
+    pub long_query_time_seconds: Option<f64>,
     pub sys_schema_available: bool,
 }
 
@@ -306,6 +308,10 @@ impl MySqlTelemetryCollector {
             version: variables.get("version").cloned(),
             uptime_seconds: get_i64(status, "Uptime"),
             performance_schema_enabled: variables.get("performance_schema").cloned(),
+            slow_query_log_enabled: variables.get("slow_query_log").cloned(),
+            long_query_time_seconds: variables
+                .get("long_query_time")
+                .and_then(|value| value.parse::<f64>().ok()),
             sys_schema_available,
         }
     }
@@ -943,6 +949,8 @@ mod tests {
                 version: Some("8.0".to_string()),
                 uptime_seconds: 3600,
                 performance_schema_enabled: Some("ON".to_string()),
+                slow_query_log_enabled: Some("ON".to_string()),
+                long_query_time_seconds: Some(2.0),
                 sys_schema_available: true,
             },
             workload: MySqlWorkloadSnapshot {

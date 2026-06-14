@@ -62,13 +62,18 @@ impl EksControlPlane {
             let clusters = response.clusters();
             if true {
                 for cluster_name in clusters {
-                    let describe_response = match client.describe_cluster().name(cluster_name).send().await {
-                        Ok(res) => res,
-                        Err(e) => {
-                            tracing::error!("Failed to describe EKS cluster {}: {}", cluster_name, e);
-                            continue;
-                        }
-                    };
+                    let describe_response =
+                        match client.describe_cluster().name(cluster_name).send().await {
+                            Ok(res) => res,
+                            Err(e) => {
+                                tracing::error!(
+                                    "Failed to describe EKS cluster {}: {}",
+                                    cluster_name,
+                                    e
+                                );
+                                continue;
+                            }
+                        };
 
                     if let Some(cluster_info) = describe_response.cluster() {
                         let name = cluster_info.name().unwrap_or_default();
@@ -111,7 +116,9 @@ impl EksControlPlane {
 
         debug!(
             "Successfully synced {} EKS clusters for account: {} with sync_id: {}",
-            resources.len(), &aws_account_dto.account_id, sync_id
+            resources.len(),
+            &aws_account_dto.account_id,
+            sync_id
         );
 
         Ok(resources)
@@ -162,7 +169,11 @@ impl EksControlPlane {
                 let response = match request.send().await {
                     Ok(res) => res,
                     Err(e) => {
-                        tracing::error!("Failed to list Fargate Profiles for cluster {}: {}", cluster_name, e);
+                        tracing::error!(
+                            "Failed to list Fargate Profiles for cluster {}: {}",
+                            cluster_name,
+                            e
+                        );
                         break;
                     }
                 };
@@ -170,13 +181,20 @@ impl EksControlPlane {
                 let profiles = response.fargate_profile_names();
                 if true {
                     for profile_name in profiles {
-                        let describe_response = match client.describe_fargate_profile()
+                        let describe_response = match client
+                            .describe_fargate_profile()
                             .cluster_name(&cluster_name)
                             .fargate_profile_name(profile_name)
-                            .send().await {
+                            .send()
+                            .await
+                        {
                             Ok(res) => res,
                             Err(e) => {
-                                tracing::error!("Failed to describe Fargate Profile {}: {}", profile_name, e);
+                                tracing::error!(
+                                    "Failed to describe Fargate Profile {}: {}",
+                                    profile_name,
+                                    e
+                                );
                                 continue;
                             }
                         };
@@ -222,7 +240,9 @@ impl EksControlPlane {
 
         debug!(
             "Successfully synced {} EKS Fargate Profiles for account: {} with sync_id: {}",
-            resources.len(), &aws_account_dto.account_id, sync_id
+            resources.len(),
+            &aws_account_dto.account_id,
+            sync_id
         );
 
         Ok(resources)

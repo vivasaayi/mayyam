@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::services::aws::aws_types::cloud_watch;
 
 pub struct MetricsAnalyzer;

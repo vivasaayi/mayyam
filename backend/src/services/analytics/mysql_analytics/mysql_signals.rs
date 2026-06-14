@@ -204,13 +204,16 @@ impl MySqlSignalEvaluator {
         rules: &MySqlSignalRules,
         signals: &mut Vec<MySqlPerformanceSignal>,
     ) {
-        let latest = snapshots
-            .iter()
-            .find_map(|snapshot| snapshot.buffer_pool_hit_ratio.map(|ratio| (snapshot, ratio)));
-        let oldest = snapshots
-            .iter()
-            .rev()
-            .find_map(|snapshot| snapshot.buffer_pool_hit_ratio.map(|ratio| (snapshot, ratio)));
+        let latest = snapshots.iter().find_map(|snapshot| {
+            snapshot
+                .buffer_pool_hit_ratio
+                .map(|ratio| (snapshot, ratio))
+        });
+        let oldest = snapshots.iter().rev().find_map(|snapshot| {
+            snapshot
+                .buffer_pool_hit_ratio
+                .map(|ratio| (snapshot, ratio))
+        });
 
         let (Some((latest_snapshot, latest_ratio)), Some((oldest_snapshot, oldest_ratio))) =
             (latest, oldest)
@@ -219,7 +222,8 @@ impl MySqlSignalEvaluator {
         };
 
         let drop_points = (oldest_ratio - latest_ratio) * 100.0;
-        if latest_ratio >= rules.buffer_pool_low_ratio || drop_points < rules.buffer_pool_drop_points
+        if latest_ratio >= rules.buffer_pool_low_ratio
+            || drop_points < rules.buffer_pool_drop_points
         {
             return;
         }

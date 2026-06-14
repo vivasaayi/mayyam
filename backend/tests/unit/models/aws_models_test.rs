@@ -202,7 +202,7 @@ mod aws_resource_model_tests {
             "ec2", "s3", "rds", "lambda", "dynamodb", "kinesis",
             "sqs", "sns", "elasticache", "opensearch", "cloudwatch",
             // Networking
-            "Vpc", "Subnet", "SecurityGroup", "RouteTable", "InternetGateway", 
+            "Vpc", "Subnet", "SecurityGroup", "RouteTable", "InternetGateway",
             "NatGateway", "NetworkAcl",
             // Load Balancers & Edge
             "Alb", "Nlb", "Elb", "CloudFrontDistribution", "ApiGatewayRestApi",
@@ -216,10 +216,41 @@ mod aws_resource_model_tests {
             "CloudWatchAlarm", "SsmDocument",
             // Application Integration
             "EventBridgeRule", "StepFunction", "SesIdentity",
+            "AmazonMqBroker",
             // Analytics & Big Data
             "RedshiftCluster", "EmrCluster", "AthenaWorkgroup", "GlueDatabase",
             // Edge & DR
-            "WafWebAcl", "GlobalAccelerator", "BackupVault", "BackupPlan"
+            "WafWebAcl", "ShieldProtection", "GlobalAccelerator", "BackupVault", "BackupPlan",
+            // Compute Scaling
+            "AutoScalingGroup",
+            // Networking, DNS & Secrets
+            "Route53HostedZone", "TransitGateway", "VpcEndpoint", "SecretsManagerSecret",
+            // Database Clusters, Streaming & Security Detection
+            "AuroraCluster", "MskCluster", "GuardDutyDetector", "SecurityHubHub",
+            "InspectorAccountCoverage", "MacieAccount", "OrganizationsOrganization",
+            "ControlTowerLandingZone", "ServiceCatalogPortfolio", "TrustedAdvisorAccount",
+            "ComputeOptimizerAccount", "HealthAccount", "ResilienceHubAccount",
+            // Document DB, Graph DB & In-Memory DB
+            "DocumentDbCluster", "NeptuneCluster", "MemoryDbCluster",
+            // Platform, Data Movement & File Systems
+            "ElasticBeanstalkEnvironment", "DataSyncTask", "FsxFileSystem",
+            // Data, Streaming Delivery & Governance
+            "TimestreamTable",
+            "FirehoseDeliveryStream",
+            "LakeFormationDataLake",
+            // Simplified Compute
+            "LightsailResource",
+            // BI & Analytics Assets
+            "QuickSightAsset",
+            // AI & ML
+            "BedrockResource",
+            "SageMakerResource",
+            "TextractResource",
+            "ComprehendResource",
+            // Migration & DR
+            "DmsResource",
+            "MgnResource",
+            "DrsResource",
         ];
 
         for resource_type in valid_types {

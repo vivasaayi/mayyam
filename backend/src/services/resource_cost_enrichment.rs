@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 use crate::errors::AppError;
 use crate::models::aws_cost_data::CostDataModel;
 use crate::repositories::aws_resource::AwsResourceRepository;
@@ -78,23 +77,27 @@ impl ResourceCostEnrichmentService {
         );
 
         // Get cost data
-        let cost_data = self.cost_repo.get_resource_costs(
-            account_id,
-            start_date,
-            end_date,
-            resource_id_filter,
-            None, // service_name
-            None, // region
-            None, // availability_zone
-            None, // instance_type
-            Some(1000), // limit
-        ).await?;
+        let cost_data = self
+            .cost_repo
+            .get_resource_costs(
+                account_id,
+                start_date,
+                end_date,
+                resource_id_filter,
+                None,       // service_name
+                None,       // region
+                None,       // availability_zone
+                None,       // instance_type
+                Some(1000), // limit
+            )
+            .await?;
 
         // Extract unique resource IDs from cost data
         let resource_ids: Vec<String> = cost_data
             .iter()
             .filter_map(|cost| {
-                cost.tags.as_ref()
+                cost.tags
+                    .as_ref()
                     .and_then(|t| t.get("resource_id"))
                     .and_then(|rid| rid.as_str())
                     .map(|s| s.to_string())
@@ -119,13 +122,16 @@ impl ResourceCostEnrichmentService {
         let enriched_data = cost_data
             .into_iter()
             .map(|cost| {
-                let resource_metadata = cost.tags.as_ref()
+                let resource_metadata = cost
+                    .tags
+                    .as_ref()
                     .and_then(|t| t.get("resource_id"))
                     .and_then(|rid| rid.as_str())
                     .and_then(|rid| resource_metadata.get(rid))
                     .map(|resource| {
                         // Extract cost allocation tags from resource tags
-                        let cost_allocation_tags = self.extract_cost_allocation_tags(&resource.tags);
+                        let cost_allocation_tags =
+                            self.extract_cost_allocation_tags(&resource.tags);
 
                         ResourceMetadata {
                             resource_id: resource.resource_id.clone(),
@@ -150,14 +156,25 @@ impl ResourceCostEnrichmentService {
     }
 
     /// Extract cost allocation tags from resource tags
-    fn extract_cost_allocation_tags(&self, resource_tags: &serde_json::Value) -> HashMap<String, String> {
+    fn extract_cost_allocation_tags(
+        &self,
+        resource_tags: &serde_json::Value,
+    ) -> HashMap<String, String> {
         let mut cost_tags = HashMap::new();
 
         if let Some(tags_obj) = resource_tags.as_object() {
             // Common cost allocation tag keys
             let cost_tag_keys = [
-                "Environment", "Project", "Team", "CostCenter", "Application",
-                "Owner", "Department", "BusinessUnit", "Product", "Service"
+                "Environment",
+                "Project",
+                "Team",
+                "CostCenter",
+                "Application",
+                "Owner",
+                "Department",
+                "BusinessUnit",
+                "Product",
+                "Service",
             ];
 
             for key in &cost_tag_keys {
@@ -186,7 +203,9 @@ impl ResourceCostEnrichmentService {
             end_date
         );
 
-        let enriched_data = self.enrich_cost_data(account_id, start_date, end_date, None).await?;
+        let enriched_data = self
+            .enrich_cost_data(account_id, start_date, end_date, None)
+            .await?;
 
         let mut cost_by_tag = HashMap::new();
 
@@ -218,13 +237,17 @@ impl ResourceCostEnrichmentService {
             end_date
         );
 
-        let mut enriched_data = self.enrich_cost_data(account_id, start_date, end_date, None).await?;
+        let mut enriched_data = self
+            .enrich_cost_data(account_id, start_date, end_date, None)
+            .await?;
 
         // Sort by cost descending
         enriched_data.sort_by(|a, b| {
             let cost_a = a.cost_data.unblended_cost.to_f64().unwrap_or(0.0);
             let cost_b = b.cost_data.unblended_cost.to_f64().unwrap_or(0.0);
-            cost_b.partial_cmp(&cost_a).unwrap_or(std::cmp::Ordering::Equal)
+            cost_b
+                .partial_cmp(&cost_a)
+                .unwrap_or(std::cmp::Ordering::Equal)
         });
 
         // Take top N

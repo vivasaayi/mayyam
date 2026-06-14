@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use crate::controllers::kubernetes::get_cluster_config_by_id;
 use crate::errors::AppError;
 use crate::middleware::auth::Claims;
-use crate::controllers::kubernetes::get_cluster_config_by_id;
 use crate::services::kubernetes::storage_classes_service::StorageClassesService;
 use actix_web::{web, HttpResponse, Responder};
 use sea_orm::DatabaseConnection;
@@ -43,6 +43,8 @@ pub async fn get_storage_class_controller(
     let (cluster_id, sc_name) = path.into_inner();
     debug!(target: "mayyam::controllers::storage_classes", user_id = %claims.username, %cluster_id, %sc_name, "Attempting to get StorageClass details");
     let cluster_config = get_cluster_config_by_id(db.get_ref().as_ref(), &cluster_id).await?;
-    let details = sc_service.get_storage_class_details(&cluster_config, &sc_name).await?;
+    let details = sc_service
+        .get_storage_class_details(&cluster_config, &sc_name)
+        .await?;
     Ok(HttpResponse::Ok().json(details))
 }

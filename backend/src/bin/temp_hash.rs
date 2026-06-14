@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-
 // This is a temporary file to generate a bcrypt hash
 use bcrypt::hash;
 
