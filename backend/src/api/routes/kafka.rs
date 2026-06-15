@@ -119,6 +119,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             "/inventory/tiered-storage/pillars",
             web::get().to(kafka::get_kafka_tiered_storage_inventory_pillar_reports),
         )
+        .route(
+            "/inventory/kraft/pillars",
+            web::get().to(kafka::get_kafka_kraft_inventory_pillar_reports),
+        )
         .route("/clusters/{id}", web::get().to(kafka::get_cluster))
         .route("/clusters/{id}/health", web::get().to(kafka::health_check))
         .route("/metrics", web::get().to(kafka::get_metrics))
