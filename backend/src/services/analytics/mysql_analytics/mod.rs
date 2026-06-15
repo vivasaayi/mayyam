@@ -15,6 +15,7 @@
 pub mod ai_prompt_templates_inventory;
 pub mod aurora_mysql_inventory;
 pub mod backup_posture_inventory;
+pub mod binary_log_health;
 pub mod binary_log_inventory;
 pub mod connection_threads_inventory;
 pub mod cost_attribution_inventory;
