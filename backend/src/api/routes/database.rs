@@ -111,6 +111,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                     .route(web::get().to(database::get_mysql_binary_log_inventory_pillar_reports)),
             )
             .service(
+                web::resource("/mysql/redo-log/health/pillars")
+                    .route(web::get().to(database::get_mysql_redo_log_health_pillar_reports)),
+            )
+            .service(
                 web::resource("/mysql/backup-posture/pillars").route(
                     web::get().to(database::get_mysql_backup_posture_inventory_pillar_reports),
                 ),

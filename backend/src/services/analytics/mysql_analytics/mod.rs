@@ -38,6 +38,7 @@ pub mod performance_schema_inventory;
 pub mod privilege_audit_inventory;
 pub mod query_plans_inventory;
 pub mod rds_mysql_inventory;
+pub mod redo_log_health;
 pub mod redo_log_inventory;
 pub mod replication_status_inventory;
 pub mod restore_drills_inventory;
