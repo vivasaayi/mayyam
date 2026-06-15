@@ -91,6 +91,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             "/inventory/retention-policies/pillars",
             web::get().to(kafka::get_kafka_retention_policy_inventory_pillar_reports),
         )
+        .route(
+            "/inventory/compaction-policies/pillars",
+            web::get().to(kafka::get_kafka_compaction_policy_inventory_pillar_reports),
+        )
         .route("/clusters/{id}", web::get().to(kafka::get_cluster))
         .route("/clusters/{id}/health", web::get().to(kafka::health_check))
         .route("/metrics", web::get().to(kafka::get_metrics))
