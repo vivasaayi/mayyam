@@ -123,6 +123,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             "/inventory/kraft/pillars",
             web::get().to(kafka::get_kafka_kraft_inventory_pillar_reports),
         )
+        .route(
+            "/inventory/zookeeper-migration/pillars",
+            web::get().to(kafka::get_kafka_zookeeper_migration_inventory_pillar_reports),
+        )
         .route("/clusters/{id}", web::get().to(kafka::get_cluster))
         .route("/clusters/{id}/health", web::get().to(kafka::health_check))
         .route("/metrics", web::get().to(kafka::get_metrics))
