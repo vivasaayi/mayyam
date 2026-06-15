@@ -125,6 +125,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 ),
             )
             .service(
+                web::resource("/mysql/undo-log/health/pillars")
+                    .route(web::get().to(database::get_mysql_undo_log_health_pillar_reports)),
+            )
+            .service(
                 web::resource("/mysql/parameter-drift/pillars").route(
                     web::get().to(database::get_mysql_parameter_drift_inventory_pillar_reports),
                 ),

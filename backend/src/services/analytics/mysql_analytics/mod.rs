@@ -51,6 +51,7 @@ pub mod sys_schema_inventory;
 pub mod table_bloat_inventory;
 pub mod temporary_tables_inventory;
 pub mod tls_configuration_inventory;
+pub mod undo_log_health;
 pub mod undo_log_inventory;
 pub mod unused_indexes_inventory;
 pub mod wait_events_health;
