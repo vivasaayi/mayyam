@@ -50,6 +50,10 @@ pub fn configure(
                 web::get().to(model_inventory_pillar_reports),
             )
             .route(
+                "/model-cost-inventory/pillars",
+                web::get().to(model_cost_inventory_pillar_reports),
+            )
+            .route(
                 "/token-usage-inventory/pillars",
                 web::get().to(token_usage_inventory_pillar_reports),
             )
@@ -195,4 +199,11 @@ async fn token_usage_inventory_pillar_reports(
     query: web::Query<std::collections::HashMap<String, String>>,
 ) -> Result<HttpResponse> {
     LlmModelController::token_usage_inventory_pillar_reports(model_controller, query).await
+}
+
+async fn model_cost_inventory_pillar_reports(
+    model_controller: web::Data<LlmModelController>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    LlmModelController::model_cost_inventory_pillar_reports(model_controller, query).await
 }

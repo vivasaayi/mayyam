@@ -15,6 +15,7 @@
 pub mod agent_inventory;
 pub mod error_rate_inventory;
 pub mod latency_inventory;
+pub mod model_cost_inventory;
 pub mod model_inventory;
 pub mod prompt_inventory;
 pub mod token_usage_inventory;
