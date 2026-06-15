@@ -43,6 +43,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             "/inventory/replicas/pillars",
             web::get().to(kafka::get_kafka_replica_inventory_pillar_reports),
         )
+        .route(
+            "/inventory/isr-health/pillars",
+            web::get().to(kafka::get_kafka_isr_health_inventory_pillar_reports),
+        )
         .route("/clusters/{id}", web::get().to(kafka::get_cluster))
         .route("/clusters/{id}/health", web::get().to(kafka::health_check))
         .route("/metrics", web::get().to(kafka::get_metrics))
