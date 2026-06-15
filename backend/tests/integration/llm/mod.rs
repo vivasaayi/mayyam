@@ -18,3 +18,4 @@ mod latency_inventory_api;
 mod model_inventory_api;
 mod prompt_inventory_api;
 mod provider_and_models_crud;
+mod token_usage_inventory_api;
