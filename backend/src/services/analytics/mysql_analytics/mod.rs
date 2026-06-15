@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod ai_prompt_templates_inventory;
 pub mod aurora_mysql_inventory;
 pub mod backup_posture_inventory;
 pub mod binary_log_inventory;

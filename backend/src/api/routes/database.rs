@@ -105,6 +105,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .service(web::resource("/mysql/cost-attribution/pillars").route(
                 web::get().to(database::get_mysql_cost_attribution_inventory_pillar_reports),
             ))
+            .service(web::resource("/mysql/ai-prompt-templates/pillars").route(
+                web::get().to(database::get_mysql_ai_prompt_templates_inventory_pillar_reports),
+            ))
             .service(web::resource("/mysql/replication-status/pillars").route(
                 web::get().to(database::get_mysql_replication_status_inventory_pillar_reports),
             ))
