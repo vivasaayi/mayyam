@@ -78,6 +78,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                     .route(web::get().to(database::get_mysql_sys_schema_inventory_pillar_reports)),
             )
             .service(
+                web::resource("/mysql/sys-schema/health/pillars")
+                    .route(web::get().to(database::get_mysql_sys_schema_health_pillar_reports)),
+            )
+            .service(
                 web::resource("/mysql/slow-query-log/pillars").route(
                     web::get().to(database::get_mysql_slow_query_log_inventory_pillar_reports),
                 ),
