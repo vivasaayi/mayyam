@@ -13,6 +13,7 @@
 // limitations under the License.
 
 mod agent_inventory_api;
+mod latency_inventory_api;
 mod model_inventory_api;
 mod prompt_inventory_api;
 mod provider_and_models_crud;

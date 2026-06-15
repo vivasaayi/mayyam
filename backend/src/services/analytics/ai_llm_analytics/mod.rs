@@ -13,5 +13,6 @@
 // limitations under the License.
 
 pub mod agent_inventory;
+pub mod latency_inventory;
 pub mod model_inventory;
 pub mod prompt_inventory;
