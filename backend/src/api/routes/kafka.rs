@@ -139,6 +139,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             "/inventory/topic-migrations/pillars",
             web::get().to(kafka::get_kafka_topic_migration_inventory_pillar_reports),
         )
+        .route(
+            "/inventory/message-replay/pillars",
+            web::get().to(kafka::get_kafka_message_replay_inventory_pillar_reports),
+        )
         .route("/clusters/{id}", web::get().to(kafka::get_cluster))
         .route("/clusters/{id}/health", web::get().to(kafka::health_check))
         .route("/metrics", web::get().to(kafka::get_metrics))
