@@ -18,8 +18,13 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::repositories::llm_model::LlmProviderModelRepository;
+use crate::repositories::prompt_template::PromptTemplateRepository;
+use crate::services::analytics::ai_llm_analytics::agent_inventory::{
+    agent_inventory_items_from_models, evaluate_agent_inventory,
+    RESOURCE_TYPE as AGENT_RESOURCE_TYPE,
+};
 use crate::services::analytics::ai_llm_analytics::model_inventory::{
-    evaluate_model_inventory, model_inventory_item_from_model, RESOURCE_TYPE,
+    evaluate_model_inventory, model_inventory_item_from_model, RESOURCE_TYPE as MODEL_RESOURCE_TYPE,
 };
 use crate::services::aws::inventory::types::{Pillar, DEFAULT_STALE_AFTER_HOURS};
 
@@ -45,11 +50,25 @@ pub struct ModelListResponse<T> {
 
 pub struct LlmModelController {
     repo: Arc<LlmProviderModelRepository>,
+    prompt_template_repo: Option<Arc<PromptTemplateRepository>>,
 }
 
 impl LlmModelController {
     pub fn new(repo: Arc<LlmProviderModelRepository>) -> Self {
-        Self { repo }
+        Self {
+            repo,
+            prompt_template_repo: None,
+        }
+    }
+
+    pub fn with_prompt_template_repository(
+        repo: Arc<LlmProviderModelRepository>,
+        prompt_template_repo: Arc<PromptTemplateRepository>,
+    ) -> Self {
+        Self {
+            repo,
+            prompt_template_repo: Some(prompt_template_repo),
+        }
     }
 
     pub async fn list(
@@ -153,7 +172,41 @@ impl LlmModelController {
             .collect();
 
         Ok(HttpResponse::Ok().json(serde_json::json!({
-            "resource_type": RESOURCE_TYPE,
+            "resource_type": MODEL_RESOURCE_TYPE,
+            "evaluated_at": now,
+            "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
+            "resources_evaluated": items.len(),
+            "reports": reports,
+        })))
+    }
+
+    pub async fn agent_inventory_pillar_reports(
+        controller: web::Data<LlmModelController>,
+        query: web::Query<std::collections::HashMap<String, String>>,
+    ) -> ActixResult<HttpResponse> {
+        let pillars = parse_agent_inventory_pillars(query.get("pillar"))
+            .map_err(actix_web::error::ErrorBadRequest)?;
+        let models = controller
+            .repo
+            .list_all()
+            .await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+        let prompts = match &controller.prompt_template_repo {
+            Some(repo) => repo
+                .find_all()
+                .await
+                .map_err(|e| actix_web::error::ErrorInternalServerError(e))?,
+            None => Vec::new(),
+        };
+        let items = agent_inventory_items_from_models(&models, &prompts);
+        let now = chrono::Utc::now();
+        let reports: Vec<_> = pillars
+            .into_iter()
+            .map(|pillar| evaluate_agent_inventory(&items, pillar, now))
+            .collect();
+
+        Ok(HttpResponse::Ok().json(serde_json::json!({
+            "resource_type": AGENT_RESOURCE_TYPE,
             "evaluated_at": now,
             "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
             "resources_evaluated": items.len(),
@@ -182,6 +235,35 @@ fn parse_model_inventory_pillars(pillar: Option<&String>) -> Result<Vec<Pillar>,
             if pillars.is_empty() {
                 return Err(
                     "At least one pillar must be provided for AI/LLM model inventory".to_string(),
+                );
+            }
+
+            Ok(pillars)
+        }
+        None => Ok(vec![Pillar::Cost, Pillar::Resilience, Pillar::Security]),
+    }
+}
+
+fn parse_agent_inventory_pillars(pillar: Option<&String>) -> Result<Vec<Pillar>, String> {
+    match pillar {
+        Some(value) => {
+            let pillars = value
+                .split(',')
+                .map(str::trim)
+                .filter(|part| !part.is_empty())
+                .map(|part| {
+                    Pillar::parse(part).ok_or_else(|| {
+                        format!(
+                            "Unsupported pillar '{}' for AI/LLM agent inventory; supported pillars are cost, resilience, and security",
+                            part
+                        )
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+
+            if pillars.is_empty() {
+                return Err(
+                    "At least one pillar must be provided for AI/LLM agent inventory".to_string(),
                 );
             }
 

@@ -33,6 +33,14 @@ pub fn configure(
             .app_data(web::Data::from(model_controller))
             .route("", web::get().to(list_llm_providers))
             .route("", web::post().to(create_llm_provider))
+            .route(
+                "/agent-inventory/pillars",
+                web::get().to(agent_inventory_pillar_reports),
+            )
+            .route(
+                "/model-inventory/pillars",
+                web::get().to(model_inventory_pillar_reports),
+            )
             .route("/{id}", web::get().to(get_llm_provider))
             .route("/{id}", web::put().to(update_llm_provider))
             .route("/{id}", web::delete().to(delete_llm_provider))
@@ -44,10 +52,6 @@ pub fn configure(
                     .route("/{model_id}", web::put().to(update_model))
                     .route("/{model_id}", web::delete().to(delete_model))
                     .route("/{model_id}/toggle", web::post().to(toggle_model)),
-            )
-            .route(
-                "/model-inventory/pillars",
-                web::get().to(model_inventory_pillar_reports),
             )
             .route("/search", web::get().to(search_llm_providers)),
     );
@@ -151,4 +155,11 @@ async fn model_inventory_pillar_reports(
     query: web::Query<std::collections::HashMap<String, String>>,
 ) -> Result<HttpResponse> {
     LlmModelController::model_inventory_pillar_reports(model_controller, query).await
+}
+
+async fn agent_inventory_pillar_reports(
+    model_controller: web::Data<LlmModelController>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    LlmModelController::agent_inventory_pillar_reports(model_controller, query).await
 }

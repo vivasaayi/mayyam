@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+mod agent_inventory_api;
 mod model_inventory_api;
 mod prompt_inventory_api;
 mod provider_and_models_crud;
