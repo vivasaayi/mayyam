@@ -42,6 +42,10 @@ pub fn configure(
                 web::get().to(error_rate_inventory_pillar_reports),
             )
             .route(
+                "/evaluation-dataset-inventory/pillars",
+                web::get().to(evaluation_dataset_inventory_pillar_reports),
+            )
+            .route(
                 "/latency-inventory/pillars",
                 web::get().to(latency_inventory_pillar_reports),
             )
@@ -210,6 +214,13 @@ async fn model_cost_inventory_pillar_reports(
     query: web::Query<std::collections::HashMap<String, String>>,
 ) -> Result<HttpResponse> {
     LlmModelController::model_cost_inventory_pillar_reports(model_controller, query).await
+}
+
+async fn evaluation_dataset_inventory_pillar_reports(
+    model_controller: web::Data<LlmModelController>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    LlmModelController::evaluation_dataset_inventory_pillar_reports(model_controller, query).await
 }
 
 async fn tool_call_trace_inventory_pillar_reports(

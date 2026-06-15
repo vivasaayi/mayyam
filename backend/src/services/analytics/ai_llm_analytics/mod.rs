@@ -14,6 +14,7 @@
 
 pub mod agent_inventory;
 pub mod error_rate_inventory;
+pub mod evaluation_dataset_inventory;
 pub mod latency_inventory;
 pub mod model_cost_inventory;
 pub mod model_inventory;

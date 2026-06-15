@@ -14,6 +14,7 @@
 
 mod agent_inventory_api;
 mod error_rate_inventory_api;
+mod evaluation_dataset_inventory_api;
 mod latency_inventory_api;
 mod model_cost_inventory_api;
 mod model_inventory_api;
