@@ -42,6 +42,10 @@ use crate::services::analytics::ai_llm_analytics::model_cost_inventory::{
 use crate::services::analytics::ai_llm_analytics::model_inventory::{
     evaluate_model_inventory, model_inventory_item_from_model, RESOURCE_TYPE as MODEL_RESOURCE_TYPE,
 };
+use crate::services::analytics::ai_llm_analytics::response_quality_score_inventory::{
+    evaluate_response_quality_score_inventory, response_quality_score_inventory_item_from_model,
+    RESOURCE_TYPE as RESPONSE_QUALITY_SCORE_RESOURCE_TYPE,
+};
 use crate::services::analytics::ai_llm_analytics::token_usage_inventory::{
     evaluate_token_usage_inventory, token_usage_inventory_item_from_model,
     RESOURCE_TYPE as TOKEN_USAGE_RESOURCE_TYPE,
@@ -417,6 +421,36 @@ impl LlmModelController {
             "reports": reports,
         })))
     }
+
+    pub async fn response_quality_score_inventory_pillar_reports(
+        controller: web::Data<LlmModelController>,
+        query: web::Query<std::collections::HashMap<String, String>>,
+    ) -> ActixResult<HttpResponse> {
+        let pillars = parse_response_quality_score_inventory_pillars(query.get("pillar"))
+            .map_err(actix_web::error::ErrorBadRequest)?;
+        let models = controller
+            .repo
+            .list_all()
+            .await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+        let items: Vec<_> = models
+            .iter()
+            .map(response_quality_score_inventory_item_from_model)
+            .collect();
+        let now = chrono::Utc::now();
+        let reports: Vec<_> = pillars
+            .into_iter()
+            .map(|pillar| evaluate_response_quality_score_inventory(&items, pillar, now))
+            .collect();
+
+        Ok(HttpResponse::Ok().json(serde_json::json!({
+            "resource_type": RESPONSE_QUALITY_SCORE_RESOURCE_TYPE,
+            "evaluated_at": now,
+            "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
+            "resources_evaluated": items.len(),
+            "reports": reports,
+        })))
+    }
 }
 
 fn parse_model_inventory_pillars(pillar: Option<&String>) -> Result<Vec<Pillar>, String> {
@@ -560,6 +594,38 @@ fn parse_evaluation_dataset_inventory_pillars(
             if pillars.is_empty() {
                 return Err(
                     "At least one pillar must be provided for AI/LLM evaluation dataset inventory"
+                        .to_string(),
+                );
+            }
+
+            Ok(pillars)
+        }
+        None => Ok(vec![Pillar::Cost, Pillar::Resilience, Pillar::Security]),
+    }
+}
+
+fn parse_response_quality_score_inventory_pillars(
+    pillar: Option<&String>,
+) -> Result<Vec<Pillar>, String> {
+    match pillar {
+        Some(value) => {
+            let pillars = value
+                .split(',')
+                .map(str::trim)
+                .filter(|part| !part.is_empty())
+                .map(|part| {
+                    Pillar::parse(part).ok_or_else(|| {
+                        format!(
+                            "Unsupported pillar '{}' for AI/LLM response quality score inventory; supported pillars are cost, resilience, and security",
+                            part
+                        )
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+
+            if pillars.is_empty() {
+                return Err(
+                    "At least one pillar must be provided for AI/LLM response quality score inventory"
                         .to_string(),
                 );
             }

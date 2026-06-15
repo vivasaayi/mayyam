@@ -58,6 +58,10 @@ pub fn configure(
                 web::get().to(model_cost_inventory_pillar_reports),
             )
             .route(
+                "/response-quality-score-inventory/pillars",
+                web::get().to(response_quality_score_inventory_pillar_reports),
+            )
+            .route(
                 "/token-usage-inventory/pillars",
                 web::get().to(token_usage_inventory_pillar_reports),
             )
@@ -221,6 +225,14 @@ async fn evaluation_dataset_inventory_pillar_reports(
     query: web::Query<std::collections::HashMap<String, String>>,
 ) -> Result<HttpResponse> {
     LlmModelController::evaluation_dataset_inventory_pillar_reports(model_controller, query).await
+}
+
+async fn response_quality_score_inventory_pillar_reports(
+    model_controller: web::Data<LlmModelController>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    LlmModelController::response_quality_score_inventory_pillar_reports(model_controller, query)
+        .await
 }
 
 async fn tool_call_trace_inventory_pillar_reports(

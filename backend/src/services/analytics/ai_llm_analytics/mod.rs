@@ -19,5 +19,6 @@ pub mod latency_inventory;
 pub mod model_cost_inventory;
 pub mod model_inventory;
 pub mod prompt_inventory;
+pub mod response_quality_score_inventory;
 pub mod token_usage_inventory;
 pub mod tool_call_trace_inventory;
