@@ -19,6 +19,7 @@ pub mod binary_log_inventory;
 pub mod connection_threads_inventory;
 pub mod cost_attribution_inventory;
 pub mod deadlocks_inventory;
+pub mod digest_statistics_health;
 pub mod digest_statistics_inventory;
 pub mod group_replication_inventory;
 pub mod index_cardinality_inventory;

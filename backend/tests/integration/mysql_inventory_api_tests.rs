@@ -23,6 +23,7 @@ use mayyam::controllers::database::{
     get_mysql_connection_threads_inventory_pillar_reports,
     get_mysql_cost_attribution_inventory_pillar_reports,
     get_mysql_deadlocks_inventory_pillar_reports,
+    get_mysql_digest_statistics_health_pillar_reports,
     get_mysql_digest_statistics_inventory_pillar_reports,
     get_mysql_group_replication_inventory_pillar_reports,
     get_mysql_index_cardinality_inventory_pillar_reports,
@@ -100,6 +101,10 @@ async fn mysql_performance_schema_inventory_pillar_reports_contract() {
             .route(
                 "/api/databases/mysql/digest-statistics/pillars",
                 web::get().to(get_mysql_digest_statistics_inventory_pillar_reports),
+            )
+            .route(
+                "/api/databases/mysql/digest-statistics/health/pillars",
+                web::get().to(get_mysql_digest_statistics_health_pillar_reports),
             )
             .route(
                 "/api/databases/mysql/innodb-buffer-pool/pillars",
@@ -384,6 +389,27 @@ async fn mysql_performance_schema_inventory_pillar_reports_contract() {
     assert_eq!(reports.len(), 2);
     assert_eq!(reports[0]["pillar"], "cost");
     assert_eq!(reports[1]["pillar"], "security");
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/digest-statistics/health/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlDigestStatisticsHealth");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/digest-statistics/health/pillars?pillar=resilience")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0]["pillar"], "resilience");
 
     let request = test::TestRequest::get()
         .uri("/api/databases/mysql/innodb-buffer-pool/pillars")
