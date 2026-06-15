@@ -46,6 +46,10 @@ pub fn configure(
                 web::get().to(evaluation_dataset_inventory_pillar_reports),
             )
             .route(
+                "/grounding-score-inventory/pillars",
+                web::get().to(grounding_score_inventory_pillar_reports),
+            )
+            .route(
                 "/latency-inventory/pillars",
                 web::get().to(latency_inventory_pillar_reports),
             )
@@ -233,6 +237,13 @@ async fn response_quality_score_inventory_pillar_reports(
 ) -> Result<HttpResponse> {
     LlmModelController::response_quality_score_inventory_pillar_reports(model_controller, query)
         .await
+}
+
+async fn grounding_score_inventory_pillar_reports(
+    model_controller: web::Data<LlmModelController>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    LlmModelController::grounding_score_inventory_pillar_reports(model_controller, query).await
 }
 
 async fn tool_call_trace_inventory_pillar_reports(
