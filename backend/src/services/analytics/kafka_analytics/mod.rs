@@ -15,6 +15,7 @@
 pub mod broker_inventory;
 pub mod cluster_inventory;
 pub mod consumer_group_inventory;
+pub mod consumer_inventory;
 pub mod controller_quorum_inventory;
 pub mod isr_health_inventory;
 pub mod lag_inventory;
