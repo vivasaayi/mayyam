@@ -44,6 +44,10 @@ use crate::services::analytics::kafka_analytics::connect_inventory::{
     connect_inventory_item_from_config, evaluate_kafka_connect_inventory,
     RESOURCE_TYPE as KAFKA_CONNECT_RESOURCE_TYPE,
 };
+use crate::services::analytics::kafka_analytics::connector_inventory::{
+    connector_inventory_item_from_config, evaluate_kafka_connector_inventory,
+    RESOURCE_TYPE as KAFKA_CONNECTOR_RESOURCE_TYPE,
+};
 use crate::services::analytics::kafka_analytics::consumer_group_inventory::{
     consumer_group_inventory_item_from_config, evaluate_kafka_consumer_group_inventory,
     RESOURCE_TYPE as KAFKA_CONSUMER_GROUP_RESOURCE_TYPE,
@@ -935,6 +939,36 @@ pub async fn get_kafka_connect_inventory_pillar_reports(
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "resource_type": KAFKA_CONNECT_RESOURCE_TYPE,
+        "evaluated_at": now,
+        "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
+        "resources_evaluated": items.len(),
+        "oldest_refresh": oldest_refresh,
+        "reports": reports,
+    })))
+}
+
+pub async fn get_kafka_connector_inventory_pillar_reports(
+    query: web::Query<KafkaInventoryQuery>,
+    config: web::Data<crate::config::Config>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let query = query.into_inner();
+    let pillars = parse_kafka_inventory_pillars(&query.pillar, "Kafka connector inventory")?;
+    let now = Utc::now();
+    let items = config
+        .kafka
+        .clusters
+        .iter()
+        .map(|cluster| connector_inventory_item_from_config(cluster, now))
+        .collect::<Vec<_>>();
+    let reports = pillars
+        .iter()
+        .map(|pillar| evaluate_kafka_connector_inventory(&items, *pillar, now))
+        .collect::<Vec<_>>();
+    let oldest_refresh = items.iter().map(|item| item.collected_at).min();
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "resource_type": KAFKA_CONNECTOR_RESOURCE_TYPE,
         "evaluated_at": now,
         "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
         "resources_evaluated": items.len(),
