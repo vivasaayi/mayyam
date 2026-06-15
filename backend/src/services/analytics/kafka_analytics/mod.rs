@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod admin_api_inventory;
 pub mod broker_inventory;
 pub mod cluster_inventory;
 pub mod consumer_group_inventory;
