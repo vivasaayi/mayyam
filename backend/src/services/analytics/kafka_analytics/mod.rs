@@ -32,6 +32,7 @@ pub mod partition_inventory;
 pub mod producer_inventory;
 pub mod quota_inventory;
 pub mod replica_inventory;
+pub mod restore_inventory;
 pub mod retention_policy_inventory;
 pub mod sasl_inventory;
 pub mod schema_registry_inventory;
