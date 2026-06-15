@@ -20,5 +20,6 @@ pub mod isr_health_inventory;
 pub mod lag_inventory;
 pub mod offset_inventory;
 pub mod partition_inventory;
+pub mod producer_inventory;
 pub mod replica_inventory;
 pub mod topic_inventory;

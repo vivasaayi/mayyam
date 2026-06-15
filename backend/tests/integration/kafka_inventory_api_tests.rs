@@ -22,7 +22,8 @@ use mayyam::controllers::kafka::{
     get_kafka_controller_quorum_inventory_pillar_reports,
     get_kafka_isr_health_inventory_pillar_reports, get_kafka_lag_inventory_pillar_reports,
     get_kafka_offset_inventory_pillar_reports, get_kafka_partition_inventory_pillar_reports,
-    get_kafka_replica_inventory_pillar_reports, get_kafka_topic_inventory_pillar_reports,
+    get_kafka_producer_inventory_pillar_reports, get_kafka_replica_inventory_pillar_reports,
+    get_kafka_topic_inventory_pillar_reports,
 };
 use mayyam::middleware::auth::Claims;
 use serde_json::Value;
@@ -93,6 +94,10 @@ async fn kafka_cluster_inventory_pillar_reports_contract() {
             .route(
                 "/api/kafka/inventory/lag/pillars",
                 web::get().to(get_kafka_lag_inventory_pillar_reports),
+            )
+            .route(
+                "/api/kafka/inventory/producers/pillars",
+                web::get().to(get_kafka_producer_inventory_pillar_reports),
             ),
     )
     .await;
@@ -413,6 +418,38 @@ async fn kafka_cluster_inventory_pillar_reports_contract() {
 
     let request = test::TestRequest::get()
         .uri("/api/kafka/inventory/lag/pillars?pillar=bogus")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let request = test::TestRequest::get()
+        .uri("/api/kafka/inventory/producers/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "KafkaProducer");
+    assert_eq!(body["resources_evaluated"], 1);
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "resilience");
+    assert_eq!(reports[2]["pillar"], "security");
+
+    let request = test::TestRequest::get()
+        .uri("/api/kafka/inventory/producers/pillars?pillar=cost,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "security");
+
+    let request = test::TestRequest::get()
+        .uri("/api/kafka/inventory/producers/pillars?pillar=bogus")
         .to_request();
     let response = test::call_service(&app, request).await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
