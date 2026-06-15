@@ -100,6 +100,10 @@ use crate::services::analytics::kafka_analytics::schema_registry_inventory::{
     evaluate_kafka_schema_registry_inventory, schema_registry_inventory_item_from_config,
     RESOURCE_TYPE as KAFKA_SCHEMA_REGISTRY_RESOURCE_TYPE,
 };
+use crate::services::analytics::kafka_analytics::streams_inventory::{
+    evaluate_kafka_streams_inventory, streams_inventory_item_from_config,
+    RESOURCE_TYPE as KAFKA_STREAMS_RESOURCE_TYPE,
+};
 use crate::services::analytics::kafka_analytics::tls_inventory::{
     evaluate_kafka_tls_inventory, tls_inventory_item_from_config,
     RESOURCE_TYPE as KAFKA_TLS_RESOURCE_TYPE,
@@ -969,6 +973,36 @@ pub async fn get_kafka_connector_inventory_pillar_reports(
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "resource_type": KAFKA_CONNECTOR_RESOURCE_TYPE,
+        "evaluated_at": now,
+        "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
+        "resources_evaluated": items.len(),
+        "oldest_refresh": oldest_refresh,
+        "reports": reports,
+    })))
+}
+
+pub async fn get_kafka_streams_inventory_pillar_reports(
+    query: web::Query<KafkaInventoryQuery>,
+    config: web::Data<crate::config::Config>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let query = query.into_inner();
+    let pillars = parse_kafka_inventory_pillars(&query.pillar, "Kafka Streams inventory")?;
+    let now = Utc::now();
+    let items = config
+        .kafka
+        .clusters
+        .iter()
+        .map(|cluster| streams_inventory_item_from_config(cluster, now))
+        .collect::<Vec<_>>();
+    let reports = pillars
+        .iter()
+        .map(|pillar| evaluate_kafka_streams_inventory(&items, *pillar, now))
+        .collect::<Vec<_>>();
+    let oldest_refresh = items.iter().map(|item| item.collected_at).min();
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "resource_type": KAFKA_STREAMS_RESOURCE_TYPE,
         "evaluated_at": now,
         "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
         "resources_evaluated": items.len(),

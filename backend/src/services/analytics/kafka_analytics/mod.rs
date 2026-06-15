@@ -32,5 +32,6 @@ pub mod replica_inventory;
 pub mod retention_policy_inventory;
 pub mod sasl_inventory;
 pub mod schema_registry_inventory;
+pub mod streams_inventory;
 pub mod tls_inventory;
 pub mod topic_inventory;
