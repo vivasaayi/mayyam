@@ -13,4 +13,5 @@
 // limitations under the License.
 
 mod model_inventory_api;
+mod prompt_inventory_api;
 mod provider_and_models_crud;

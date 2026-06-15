@@ -23,6 +23,10 @@ use crate::models::prompt_template::{
     UpdatePromptTemplateDto,
 };
 use crate::repositories::prompt_template::PromptTemplateRepository;
+use crate::services::analytics::ai_llm_analytics::prompt_inventory::{
+    evaluate_prompt_inventory, prompt_inventory_item_from_model, RESOURCE_TYPE,
+};
+use crate::services::aws::inventory::types::{Pillar, DEFAULT_STALE_AFTER_HOURS};
 
 #[derive(Debug, Deserialize)]
 pub struct CreatePromptTemplateRequest {
@@ -311,6 +315,36 @@ impl PromptTemplateController {
         Ok(HttpResponse::Ok().json(prompt_types))
     }
 
+    pub async fn prompt_inventory_pillar_reports(
+        controller: web::Data<PromptTemplateController>,
+        query: web::Query<std::collections::HashMap<String, String>>,
+    ) -> ActixResult<HttpResponse> {
+        let pillars = parse_prompt_inventory_pillars(query.get("pillar"))
+            .map_err(actix_web::error::ErrorBadRequest)?;
+        let templates = controller
+            .prompt_template_repo
+            .find_all()
+            .await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+        let items: Vec<_> = templates
+            .iter()
+            .map(prompt_inventory_item_from_model)
+            .collect();
+        let now = chrono::Utc::now();
+        let reports: Vec<_> = pillars
+            .into_iter()
+            .map(|pillar| evaluate_prompt_inventory(&items, pillar, now))
+            .collect();
+
+        Ok(HttpResponse::Ok().json(serde_json::json!({
+            "resource_type": RESOURCE_TYPE,
+            "evaluated_at": now,
+            "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
+            "resources_evaluated": items.len(),
+            "reports": reports,
+        })))
+    }
+
     fn extract_variables(template_content: &str) -> Vec<String> {
         // Simple regex-like extraction of {{variable}} patterns
         let mut variables = Vec::new();
@@ -336,5 +370,34 @@ impl PromptTemplateController {
         }
 
         variables
+    }
+}
+
+fn parse_prompt_inventory_pillars(pillar: Option<&String>) -> Result<Vec<Pillar>, String> {
+    match pillar {
+        Some(value) => {
+            let pillars = value
+                .split(',')
+                .map(str::trim)
+                .filter(|part| !part.is_empty())
+                .map(|part| {
+                    Pillar::parse(part).ok_or_else(|| {
+                        format!(
+                            "Unsupported pillar '{}' for AI/LLM prompt inventory; supported pillars are cost, resilience, and security",
+                            part
+                        )
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+
+            if pillars.is_empty() {
+                return Err(
+                    "At least one pillar must be provided for AI/LLM prompt inventory".to_string(),
+                );
+            }
+
+            Ok(pillars)
+        }
+        None => Ok(vec![Pillar::Cost, Pillar::Resilience, Pillar::Security]),
     }
 }

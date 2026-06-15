@@ -27,6 +27,10 @@ pub fn configure(cfg: &mut web::ServiceConfig, controller: Arc<PromptTemplateCon
             .app_data(web::Data::new(controller))
             .route("", web::get().to(list_prompt_templates))
             .route("", web::post().to(create_prompt_template))
+            .route(
+                "/inventory/pillars",
+                web::get().to(prompt_inventory_pillar_reports),
+            )
             .route("/{id}", web::get().to(get_prompt_template))
             .route("/{id}", web::put().to(update_prompt_template))
             .route("/{id}", web::delete().to(delete_prompt_template))
@@ -77,4 +81,11 @@ async fn get_categories(controller: web::Data<PromptTemplateController>) -> Resu
 
 async fn get_prompt_types(controller: web::Data<PromptTemplateController>) -> Result<HttpResponse> {
     PromptTemplateController::get_prompt_types(controller).await
+}
+
+async fn prompt_inventory_pillar_reports(
+    controller: web::Data<PromptTemplateController>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    PromptTemplateController::prompt_inventory_pillar_reports(controller, query).await
 }

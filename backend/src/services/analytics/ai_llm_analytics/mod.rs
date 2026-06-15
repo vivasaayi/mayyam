@@ -13,3 +13,4 @@
 // limitations under the License.
 
 pub mod model_inventory;
+pub mod prompt_inventory;
