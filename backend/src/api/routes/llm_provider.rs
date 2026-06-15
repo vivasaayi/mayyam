@@ -38,6 +38,10 @@ pub fn configure(
                 web::get().to(agent_inventory_pillar_reports),
             )
             .route(
+                "/error-rate-inventory/pillars",
+                web::get().to(error_rate_inventory_pillar_reports),
+            )
+            .route(
                 "/latency-inventory/pillars",
                 web::get().to(latency_inventory_pillar_reports),
             )
@@ -173,4 +177,11 @@ async fn latency_inventory_pillar_reports(
     query: web::Query<std::collections::HashMap<String, String>>,
 ) -> Result<HttpResponse> {
     LlmModelController::latency_inventory_pillar_reports(model_controller, query).await
+}
+
+async fn error_rate_inventory_pillar_reports(
+    model_controller: web::Data<LlmModelController>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    LlmModelController::error_rate_inventory_pillar_reports(model_controller, query).await
 }
