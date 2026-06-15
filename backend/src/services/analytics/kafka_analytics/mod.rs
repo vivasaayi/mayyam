@@ -40,4 +40,5 @@ pub mod streams_inventory;
 pub mod tiered_storage_inventory;
 pub mod tls_inventory;
 pub mod topic_inventory;
+pub mod topic_migration_inventory;
 pub mod zookeeper_migration_inventory;
