@@ -24,6 +24,7 @@ pub mod cost_analytics_api_tests;
 pub mod database_api_tests;
 pub mod helpers;
 pub mod kafka;
+pub mod kafka_inventory_api_tests;
 pub mod kinesis_api_tests;
 pub mod llm;
 pub mod llm_integration_tests;

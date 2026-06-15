@@ -12,8 +12,4 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-pub mod aws_analytics;
-pub mod cloudwatch_analytics;
-pub mod kafka_analytics;
-pub mod mysql_analytics;
-pub mod postgres_analytics;
+pub mod cluster_inventory;

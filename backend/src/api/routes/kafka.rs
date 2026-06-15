@@ -19,6 +19,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     let scope = web::scope("/api/kafka")
         .route("/clusters", web::get().to(kafka::list_clusters))
         .route("/clusters", web::post().to(kafka::create_cluster))
+        .route(
+            "/inventory/clusters/pillars",
+            web::get().to(kafka::get_kafka_cluster_inventory_pillar_reports),
+        )
         .route("/clusters/{id}", web::get().to(kafka::get_cluster))
         .route("/clusters/{id}/health", web::get().to(kafka::health_check))
         .route("/metrics", web::get().to(kafka::get_metrics))
