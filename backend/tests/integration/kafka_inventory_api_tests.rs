@@ -18,7 +18,8 @@ use actix_web::{dev::Service as _, http::StatusCode, test, web, App, HttpMessage
 use mayyam::config::{Config, KafkaClusterConfig};
 use mayyam::controllers::kafka::{
     get_kafka_acl_inventory_pillar_reports, get_kafka_admin_api_inventory_pillar_reports,
-    get_kafka_broker_inventory_pillar_reports, get_kafka_cluster_inventory_pillar_reports,
+    get_kafka_backup_inventory_pillar_reports, get_kafka_broker_inventory_pillar_reports,
+    get_kafka_cluster_inventory_pillar_reports,
     get_kafka_compaction_policy_inventory_pillar_reports,
     get_kafka_connect_inventory_pillar_reports, get_kafka_connector_inventory_pillar_reports,
     get_kafka_consumer_group_inventory_pillar_reports, get_kafka_consumer_inventory_pillar_reports,
@@ -171,6 +172,10 @@ async fn kafka_cluster_inventory_pillar_reports_contract() {
             .route(
                 "/api/kafka/inventory/zookeeper-migration/pillars",
                 web::get().to(get_kafka_zookeeper_migration_inventory_pillar_reports),
+            )
+            .route(
+                "/api/kafka/inventory/backups/pillars",
+                web::get().to(get_kafka_backup_inventory_pillar_reports),
             ),
     )
     .await;
@@ -1035,6 +1040,38 @@ async fn kafka_cluster_inventory_pillar_reports_contract() {
 
     let request = test::TestRequest::get()
         .uri("/api/kafka/inventory/zookeeper-migration/pillars?pillar=bogus")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let request = test::TestRequest::get()
+        .uri("/api/kafka/inventory/backups/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "KafkaBackup");
+    assert_eq!(body["resources_evaluated"], 1);
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "resilience");
+    assert_eq!(reports[2]["pillar"], "security");
+
+    let request = test::TestRequest::get()
+        .uri("/api/kafka/inventory/backups/pillars?pillar=resilience,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "resilience");
+    assert_eq!(reports[1]["pillar"], "security");
+
+    let request = test::TestRequest::get()
+        .uri("/api/kafka/inventory/backups/pillars?pillar=bogus")
         .to_request();
     let response = test::call_service(&app, request).await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);

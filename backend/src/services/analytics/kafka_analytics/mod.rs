@@ -14,6 +14,7 @@
 
 pub mod acl_inventory;
 pub mod admin_api_inventory;
+pub mod backup_inventory;
 pub mod broker_inventory;
 pub mod cluster_inventory;
 pub mod compaction_policy_inventory;
