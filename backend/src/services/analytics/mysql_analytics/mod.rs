@@ -31,6 +31,7 @@ pub mod mysql_signals;
 pub mod mysql_telemetry;
 pub mod parameter_drift_inventory;
 pub mod partitioning_inventory;
+pub mod performance_schema_health;
 pub mod performance_schema_inventory;
 pub mod privilege_audit_inventory;
 pub mod query_plans_inventory;

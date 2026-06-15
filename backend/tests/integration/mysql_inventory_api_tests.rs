@@ -32,6 +32,7 @@ use mayyam::controllers::database::{
     get_mysql_missing_indexes_inventory_pillar_reports,
     get_mysql_parameter_drift_inventory_pillar_reports,
     get_mysql_partitioning_inventory_pillar_reports,
+    get_mysql_performance_schema_health_pillar_reports,
     get_mysql_performance_schema_inventory_pillar_reports,
     get_mysql_privilege_audit_inventory_pillar_reports,
     get_mysql_query_plans_inventory_pillar_reports, get_mysql_rds_inventory_pillar_reports,
@@ -74,6 +75,10 @@ async fn mysql_performance_schema_inventory_pillar_reports_contract() {
             .route(
                 "/api/databases/mysql/performance-schema/pillars",
                 web::get().to(get_mysql_performance_schema_inventory_pillar_reports),
+            )
+            .route(
+                "/api/databases/mysql/performance-schema/health/pillars",
+                web::get().to(get_mysql_performance_schema_health_pillar_reports),
             )
             .route(
                 "/api/databases/mysql/sys-schema/pillars",
@@ -240,6 +245,28 @@ async fn mysql_performance_schema_inventory_pillar_reports_contract() {
         .to_request();
     let response = test::call_service(&app, request).await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/performance-schema/health/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlPerformanceSchemaHealth");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/performance-schema/health/pillars?pillar=cost,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "security");
 
     let request = test::TestRequest::get()
         .uri("/api/databases/mysql/sys-schema/pillars")
