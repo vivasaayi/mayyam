@@ -15,4 +15,5 @@
 pub mod broker_inventory;
 pub mod cluster_inventory;
 pub mod controller_quorum_inventory;
+pub mod partition_inventory;
 pub mod topic_inventory;
