@@ -31,6 +31,7 @@ pub mod message_replay_inventory;
 pub mod mirror_maker_inventory;
 pub mod offset_inventory;
 pub mod partition_inventory;
+pub mod poison_message_inventory;
 pub mod producer_inventory;
 pub mod quota_inventory;
 pub mod replica_inventory;

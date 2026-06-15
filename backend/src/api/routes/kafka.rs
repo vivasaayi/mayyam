@@ -147,6 +147,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             "/inventory/dead-letter-topics/pillars",
             web::get().to(kafka::get_kafka_dead_letter_topic_inventory_pillar_reports),
         )
+        .route(
+            "/inventory/poison-messages/pillars",
+            web::get().to(kafka::get_kafka_poison_message_inventory_pillar_reports),
+        )
         .route("/clusters/{id}", web::get().to(kafka::get_cluster))
         .route("/clusters/{id}/health", web::get().to(kafka::health_check))
         .route("/metrics", web::get().to(kafka::get_metrics))
