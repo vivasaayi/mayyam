@@ -83,7 +83,9 @@ async fn provider_and_models_crud_roundtrip() {
         .post(&harness.build_url(&format!("/api/v1/llm-providers/{}/models", provider_id)))
         .header("Authorization", format!("Bearer {}", harness.auth_token()))
         .json(&json!({"model_name":"deepseek-chat", "model_config": {"temperature": 0.5}, "enabled": true}))
-        .send().await.expect("create model1 failed");
+        .send()
+        .await
+        .expect("create model1 failed");
     assert!(m1.status().is_success());
 
     let m2 = client

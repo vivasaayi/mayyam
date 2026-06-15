@@ -45,6 +45,10 @@ pub fn configure(
                     .route("/{model_id}", web::delete().to(delete_model))
                     .route("/{model_id}/toggle", web::post().to(toggle_model)),
             )
+            .route(
+                "/model-inventory/pillars",
+                web::get().to(model_inventory_pillar_reports),
+            )
             .route("/search", web::get().to(search_llm_providers)),
     );
 }
@@ -140,4 +144,11 @@ async fn search_llm_providers(
 ) -> Result<HttpResponse> {
     // Use the list function for now as search functionality
     LlmProviderController::list_llm_providers(controller, query).await
+}
+
+async fn model_inventory_pillar_reports(
+    model_controller: web::Data<LlmModelController>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    LlmModelController::model_inventory_pillar_reports(model_controller, query).await
 }
