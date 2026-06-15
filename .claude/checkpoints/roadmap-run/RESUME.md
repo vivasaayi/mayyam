@@ -2,14 +2,14 @@
 
 - Run ID: run-001
 - Roadmap hash: ab4059db94762a3e
-- Last batch commit: 6fbc99a (batch-168: Kafka dead-letter topic inventory pillar reports)
+- Last batch commit: a9cbc71 (batch-169: Kafka poison message inventory pillar reports)
 - Current batch: none
 - Current batch rows: none
 - Current batch status: none
-- Completed feature rows: 633 committed
+- Completed feature rows: 636 committed
 - Current blocker: none
 - Changed files in current batch: none
-- Latest verification: batch-168 passed `CARGO_INCREMENTAL=0 cargo test --lib dead_letter_topic_inventory --message-format short`, `CARGO_INCREMENTAL=0 cargo test -q --features integration-tests --test integration_tests kafka_cluster_inventory_pillar_reports_contract`, `cargo fmt -- --check`, `git diff --check`, and `CARGO_INCREMENTAL=0 cargo check --lib --message-format short`.
-- Exact next action: select-batch-169.
-- Verification before continuing: `runs.last_commit=6fbc99a`, `runs.current_batch_id` is null, `runs.next_action=select-batch-169`, and batch-168 rows are committed.
+- Latest verification: batch-169 passed `CARGO_INCREMENTAL=0 cargo test --lib poison_message_inventory --message-format short`, `CARGO_INCREMENTAL=0 cargo test -q --features integration-tests --test integration_tests kafka_cluster_inventory_pillar_reports_contract`, `cargo fmt -- --check`, `git diff --check`, and `CARGO_INCREMENTAL=0 cargo check --lib --message-format short`.
+- Exact next action: select-batch-170.
+- Verification before continuing: `runs.last_commit=a9cbc71`, `runs.current_batch_id` is null, `runs.next_action=select-batch-170`, and batch-169 rows are committed.
 - Known pre-existing issue: `cargo test --test unit_tests` has failures in `aws_account_service_test`; do not chase unless scoped.
