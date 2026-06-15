@@ -51,6 +51,7 @@ pub mod temporary_tables_inventory;
 pub mod tls_configuration_inventory;
 pub mod undo_log_inventory;
 pub mod unused_indexes_inventory;
+pub mod wait_events_health;
 pub mod wait_events_inventory;
 pub use mysql_analytics_service::MySqlAnalyticsService;
 pub use mysql_telemetry::{MySqlTelemetryCollector, MySqlTelemetrySnapshot};
