@@ -26,4 +26,5 @@ pub mod partition_inventory;
 pub mod producer_inventory;
 pub mod replica_inventory;
 pub mod sasl_inventory;
+pub mod tls_inventory;
 pub mod topic_inventory;
