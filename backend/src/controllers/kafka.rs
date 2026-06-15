@@ -68,6 +68,10 @@ use crate::services::analytics::kafka_analytics::producer_inventory::{
     evaluate_kafka_producer_inventory, producer_inventory_item_from_config,
     RESOURCE_TYPE as KAFKA_PRODUCER_RESOURCE_TYPE,
 };
+use crate::services::analytics::kafka_analytics::quota_inventory::{
+    evaluate_kafka_quota_inventory, quota_inventory_item_from_config,
+    RESOURCE_TYPE as KAFKA_QUOTA_RESOURCE_TYPE,
+};
 use crate::services::analytics::kafka_analytics::replica_inventory::{
     evaluate_kafka_replica_inventory, replica_inventory_item_from_config,
     RESOURCE_TYPE as KAFKA_REPLICA_RESOURCE_TYPE,
@@ -764,6 +768,36 @@ pub async fn get_kafka_tls_inventory_pillar_reports(
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "resource_type": KAFKA_TLS_RESOURCE_TYPE,
+        "evaluated_at": now,
+        "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
+        "resources_evaluated": items.len(),
+        "oldest_refresh": oldest_refresh,
+        "reports": reports,
+    })))
+}
+
+pub async fn get_kafka_quota_inventory_pillar_reports(
+    query: web::Query<KafkaInventoryQuery>,
+    config: web::Data<crate::config::Config>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let query = query.into_inner();
+    let pillars = parse_kafka_inventory_pillars(&query.pillar, "Kafka quota inventory")?;
+    let now = Utc::now();
+    let items = config
+        .kafka
+        .clusters
+        .iter()
+        .map(|cluster| quota_inventory_item_from_config(cluster, now))
+        .collect::<Vec<_>>();
+    let reports = pillars
+        .iter()
+        .map(|pillar| evaluate_kafka_quota_inventory(&items, *pillar, now))
+        .collect::<Vec<_>>();
+    let oldest_refresh = items.iter().map(|item| item.collected_at).min();
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "resource_type": KAFKA_QUOTA_RESOURCE_TYPE,
         "evaluated_at": now,
         "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
         "resources_evaluated": items.len(),
