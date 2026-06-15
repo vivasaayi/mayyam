@@ -102,6 +102,11 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 web::get().to(database::get_mysql_innodb_buffer_pool_inventory_pillar_reports),
             ))
             .service(
+                web::resource("/mysql/innodb-buffer-pool/health/pillars").route(
+                    web::get().to(database::get_mysql_innodb_buffer_pool_health_pillar_reports),
+                ),
+            )
+            .service(
                 web::resource("/mysql/binary-log/pillars")
                     .route(web::get().to(database::get_mysql_binary_log_inventory_pillar_reports)),
             )

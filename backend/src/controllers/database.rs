@@ -72,6 +72,10 @@ use crate::services::analytics::mysql_analytics::index_cardinality_inventory::{
     evaluate_mysql_index_cardinality_inventory, index_cardinality_item_from_telemetry,
     RESOURCE_TYPE as MYSQL_INDEX_CARDINALITY_RESOURCE_TYPE,
 };
+use crate::services::analytics::mysql_analytics::innodb_buffer_pool_health::{
+    evaluate_mysql_innodb_buffer_pool_health, innodb_buffer_pool_health_item_from_telemetry,
+    RESOURCE_TYPE as MYSQL_INNODB_BUFFER_POOL_HEALTH_RESOURCE_TYPE,
+};
 use crate::services::analytics::mysql_analytics::innodb_buffer_pool_inventory::{
     evaluate_mysql_innodb_buffer_pool_inventory, innodb_buffer_pool_item_from_telemetry,
     RESOURCE_TYPE as MYSQL_INNODB_BUFFER_POOL_RESOURCE_TYPE,
@@ -1159,6 +1163,75 @@ pub async fn get_mysql_redo_log_inventory_pillar_reports(
 
     Ok(HttpResponse::Ok().json(json!({
         "resource_type": MYSQL_REDO_LOG_RESOURCE_TYPE,
+        "evaluated_at": now,
+        "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
+        "connection_id": query.connection_id,
+        "resources_evaluated": items.len(),
+        "oldest_refresh": oldest_refresh,
+        "reports": reports,
+    })))
+}
+
+pub async fn get_mysql_innodb_buffer_pool_health_pillar_reports(
+    query: web::Query<MySqlInventoryQuery>,
+    db_pool: web::Data<Arc<DatabaseConnection>>,
+    config: web::Data<Config>,
+    claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let query = query.into_inner();
+    let pillars = parse_mysql_inventory_pillars(&query.pillar, "MySQL InnoDB buffer pool health")?;
+    let connection_id = query
+        .connection_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|connection_id| !connection_id.is_empty());
+
+    let items = if let Some(connection_id) = connection_id {
+        let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
+        let conn_id = uuid::Uuid::parse_str(connection_id)
+            .map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+        let conn_model = db_repo
+            .find_by_id(conn_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Database connection not found".to_string()))?;
+
+        let user_id = uuid::Uuid::parse_str(&claims.sub)
+            .map_err(|e| AppError::BadRequest(format!("Invalid user UUID: {}", e)))?;
+        let is_admin = claims.roles.iter().any(|role| role == "admin");
+        if conn_model.created_by != user_id && !is_admin {
+            return Err(AppError::Auth(
+                "You do not have access to this database connection".to_string(),
+            ));
+        }
+
+        let connection_type = conn_model.connection_type.to_lowercase();
+        if connection_type != "mysql" && connection_type != "aurora-mysql" {
+            return Err(AppError::BadRequest(
+                "MySQL InnoDB buffer pool health is only supported for mysql connections"
+                    .to_string(),
+            ));
+        }
+
+        let dynamic_conn = connect_to_dynamic_database(&conn_model, config.get_ref()).await?;
+        let telemetry = MySqlTelemetryCollector::collect(&dynamic_conn).await?;
+        vec![innodb_buffer_pool_health_item_from_telemetry(
+            &conn_model.id.to_string(),
+            &conn_model.name,
+            &telemetry,
+        )]
+    } else {
+        Vec::new()
+    };
+
+    let now = Utc::now();
+    let reports = pillars
+        .iter()
+        .map(|pillar| evaluate_mysql_innodb_buffer_pool_health(&items, *pillar, now))
+        .collect::<Vec<_>>();
+    let oldest_refresh = items.iter().map(|item| item.collected_at).min();
+
+    Ok(HttpResponse::Ok().json(json!({
+        "resource_type": MYSQL_INNODB_BUFFER_POOL_HEALTH_RESOURCE_TYPE,
         "evaluated_at": now,
         "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
         "connection_id": query.connection_id,
