@@ -57,6 +57,10 @@ pub fn configure(
                 "/token-usage-inventory/pillars",
                 web::get().to(token_usage_inventory_pillar_reports),
             )
+            .route(
+                "/tool-call-trace-inventory/pillars",
+                web::get().to(tool_call_trace_inventory_pillar_reports),
+            )
             .route("/{id}", web::get().to(get_llm_provider))
             .route("/{id}", web::put().to(update_llm_provider))
             .route("/{id}", web::delete().to(delete_llm_provider))
@@ -206,4 +210,11 @@ async fn model_cost_inventory_pillar_reports(
     query: web::Query<std::collections::HashMap<String, String>>,
 ) -> Result<HttpResponse> {
     LlmModelController::model_cost_inventory_pillar_reports(model_controller, query).await
+}
+
+async fn tool_call_trace_inventory_pillar_reports(
+    model_controller: web::Data<LlmModelController>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    LlmModelController::tool_call_trace_inventory_pillar_reports(model_controller, query).await
 }

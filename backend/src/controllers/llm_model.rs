@@ -42,6 +42,10 @@ use crate::services::analytics::ai_llm_analytics::token_usage_inventory::{
     evaluate_token_usage_inventory, token_usage_inventory_item_from_model,
     RESOURCE_TYPE as TOKEN_USAGE_RESOURCE_TYPE,
 };
+use crate::services::analytics::ai_llm_analytics::tool_call_trace_inventory::{
+    evaluate_tool_call_trace_inventory, tool_call_trace_inventory_item_from_model,
+    RESOURCE_TYPE as TOOL_CALL_TRACE_RESOURCE_TYPE,
+};
 use crate::services::aws::inventory::types::{Pillar, DEFAULT_STALE_AFTER_HOURS};
 
 #[derive(Debug, Deserialize)]
@@ -349,6 +353,36 @@ impl LlmModelController {
             "reports": reports,
         })))
     }
+
+    pub async fn tool_call_trace_inventory_pillar_reports(
+        controller: web::Data<LlmModelController>,
+        query: web::Query<std::collections::HashMap<String, String>>,
+    ) -> ActixResult<HttpResponse> {
+        let pillars = parse_tool_call_trace_inventory_pillars(query.get("pillar"))
+            .map_err(actix_web::error::ErrorBadRequest)?;
+        let models = controller
+            .repo
+            .list_all()
+            .await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+        let items: Vec<_> = models
+            .iter()
+            .map(tool_call_trace_inventory_item_from_model)
+            .collect();
+        let now = chrono::Utc::now();
+        let reports: Vec<_> = pillars
+            .into_iter()
+            .map(|pillar| evaluate_tool_call_trace_inventory(&items, pillar, now))
+            .collect();
+
+        Ok(HttpResponse::Ok().json(serde_json::json!({
+            "resource_type": TOOL_CALL_TRACE_RESOURCE_TYPE,
+            "evaluated_at": now,
+            "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
+            "resources_evaluated": items.len(),
+            "reports": reports,
+        })))
+    }
 }
 
 fn parse_model_inventory_pillars(pillar: Option<&String>) -> Result<Vec<Pillar>, String> {
@@ -430,6 +464,36 @@ fn parse_model_cost_inventory_pillars(pillar: Option<&String>) -> Result<Vec<Pil
             if pillars.is_empty() {
                 return Err(
                     "At least one pillar must be provided for AI/LLM model cost inventory"
+                        .to_string(),
+                );
+            }
+
+            Ok(pillars)
+        }
+        None => Ok(vec![Pillar::Cost, Pillar::Resilience, Pillar::Security]),
+    }
+}
+
+fn parse_tool_call_trace_inventory_pillars(pillar: Option<&String>) -> Result<Vec<Pillar>, String> {
+    match pillar {
+        Some(value) => {
+            let pillars = value
+                .split(',')
+                .map(str::trim)
+                .filter(|part| !part.is_empty())
+                .map(|part| {
+                    Pillar::parse(part).ok_or_else(|| {
+                        format!(
+                            "Unsupported pillar '{}' for AI/LLM tool call trace inventory; supported pillars are cost, resilience, and security",
+                            part
+                        )
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+
+            if pillars.is_empty() {
+                return Err(
+                    "At least one pillar must be provided for AI/LLM tool call trace inventory"
                         .to_string(),
                 );
             }
