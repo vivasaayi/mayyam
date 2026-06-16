@@ -30,6 +30,7 @@ pub mod kraft_inventory;
 pub mod lag_inventory;
 pub mod message_replay_inventory;
 pub mod mirror_maker_inventory;
+pub mod network_throughput_inventory;
 pub mod offset_inventory;
 pub mod partition_inventory;
 pub mod poison_message_inventory;

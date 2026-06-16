@@ -14,7 +14,7 @@
 
 use actix_web::{web, HttpResponse, Responder};
 use chrono::{DateTime, Utc};
-use sea_orm::DatabaseConnection;
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -200,6 +200,10 @@ use crate::services::analytics::mysql_analytics::wait_events_health::{
 use crate::services::analytics::mysql_analytics::wait_events_inventory::{
     evaluate_mysql_wait_events_inventory, wait_events_item_from_telemetry,
     RESOURCE_TYPE as MYSQL_WAIT_EVENTS_RESOURCE_TYPE,
+};
+use crate::services::analytics::postgres_analytics::pg_stat_activity_inventory::{
+    evaluate_postgres_pg_stat_activity_inventory, PgStatActivityInventoryItem,
+    RESOURCE_TYPE as POSTGRES_PG_STAT_ACTIVITY_RESOURCE_TYPE,
 };
 use crate::services::analytics::postgres_analytics::postgres_analytics_service::PostgresAnalyticsService;
 use crate::services::aws::inventory::types::{Pillar, DEFAULT_STALE_AFTER_HOURS};
@@ -552,6 +556,84 @@ pub async fn get_mysql_performance_schema_inventory_pillar_reports(
         "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
         "connection_id": query.connection_id,
         "resources_evaluated": items.len(),
+        "oldest_refresh": oldest_refresh,
+        "reports": reports,
+    })))
+}
+
+pub async fn get_postgres_pg_stat_activity_inventory_pillar_reports(
+    query: web::Query<MySqlInventoryQuery>,
+    db_pool: web::Data<Arc<DatabaseConnection>>,
+    config: web::Data<Config>,
+    claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let query = query.into_inner();
+    let pillars = parse_postgres_inventory_pillars(&query.pillar, "PostgreSQL pg_stat_activity")?;
+    let connection_id = query
+        .connection_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|connection_id| !connection_id.is_empty());
+
+    let items = if let Some(connection_id) = connection_id {
+        let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
+        let conn_id = uuid::Uuid::parse_str(connection_id)
+            .map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+        let conn_model = db_repo
+            .find_by_id(conn_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Database connection not found".to_string()))?;
+
+        let user_id = uuid::Uuid::parse_str(&claims.sub)
+            .map_err(|e| AppError::BadRequest(format!("Invalid user UUID: {}", e)))?;
+        let is_admin = claims.roles.iter().any(|role| role == "admin");
+        if conn_model.created_by != user_id && !is_admin {
+            return Err(AppError::Auth(
+                "You do not have access to this database connection".to_string(),
+            ));
+        }
+
+        let connection_type = conn_model.connection_type.to_lowercase();
+        if connection_type != "postgres" && connection_type != "postgresql" {
+            return Err(AppError::BadRequest(
+                "PostgreSQL pg_stat_activity inventory is only supported for postgres connections"
+                    .to_string(),
+            ));
+        }
+
+        let dynamic_conn = connect_to_dynamic_database(&conn_model, config.get_ref()).await?;
+        vec![
+            pg_stat_activity_item_from_connection(
+                &dynamic_conn,
+                &conn_model.id.to_string(),
+                &conn_model.name,
+                Some(conn_model.created_by.to_string()),
+            )
+            .await?,
+        ]
+    } else {
+        Vec::new()
+    };
+
+    let now = Utc::now();
+    let reports = pillars
+        .iter()
+        .map(|pillar| evaluate_postgres_pg_stat_activity_inventory(&items, *pillar, now))
+        .collect::<Vec<_>>();
+    let oldest_refresh = items.iter().map(|item| item.collected_at).min();
+    let stale_resources = reports
+        .iter()
+        .map(|report| report.stale_resources)
+        .max()
+        .unwrap_or(0);
+
+    Ok(HttpResponse::Ok().json(json!({
+        "resource_type": POSTGRES_PG_STAT_ACTIVITY_RESOURCE_TYPE,
+        "evaluated_at": now,
+        "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
+        "connection_id": query.connection_id,
+        "resources_evaluated": items.len(),
+        "stale_resources": stale_resources,
         "oldest_refresh": oldest_refresh,
         "reports": reports,
     })))
@@ -3436,6 +3518,68 @@ pub async fn get_mysql_wait_events_health_pillar_reports(
     })))
 }
 
+async fn pg_stat_activity_item_from_connection(
+    conn: &DatabaseConnection,
+    connection_id: &str,
+    connection_name: &str,
+    owner: Option<String>,
+) -> Result<PgStatActivityInventoryItem, AppError> {
+    let row = conn
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            r#"
+            WITH activity AS (
+                SELECT pid, state, wait_event_type
+                FROM pg_stat_activity
+            )
+            SELECT
+                COUNT(*)::bigint AS total_sessions,
+                COUNT(*) FILTER (WHERE state = 'active')::bigint AS active_sessions,
+                COUNT(*) FILTER (WHERE state = 'idle')::bigint AS idle_sessions,
+                COUNT(*) FILTER (WHERE state = 'idle in transaction')::bigint AS idle_in_transaction_sessions,
+                COUNT(*) FILTER (WHERE wait_event_type = 'Lock')::bigint AS blocked_sessions,
+                (SELECT setting::bigint FROM pg_settings WHERE name = 'max_connections') AS max_connections,
+                version() AS server_version,
+                (SELECT COUNT(*)::bigint FROM pg_stat_ssl ssl JOIN activity a ON a.pid = ssl.pid WHERE ssl.ssl) AS ssl_sessions
+            FROM activity
+            "#,
+        ))
+        .await
+        .map_err(AppError::Database)?
+        .ok_or_else(|| {
+            AppError::Database(sea_orm::DbErr::RecordNotFound(
+                "pg_stat_activity summary returned no row".to_string(),
+            ))
+        })?;
+
+    Ok(PgStatActivityInventoryItem {
+        connection_id: connection_id.to_string(),
+        connection_name: connection_name.to_string(),
+        owner,
+        labels: BTreeMap::new(),
+        server_version: row.try_get::<String>("", "server_version").ok(),
+        total_sessions: non_negative_usize(row.try_get::<i64>("", "total_sessions")?),
+        active_sessions: non_negative_usize(row.try_get::<i64>("", "active_sessions")?),
+        idle_sessions: non_negative_usize(row.try_get::<i64>("", "idle_sessions")?),
+        idle_in_transaction_sessions: non_negative_usize(
+            row.try_get::<i64>("", "idle_in_transaction_sessions")?,
+        ),
+        blocked_sessions: non_negative_usize(row.try_get::<i64>("", "blocked_sessions")?),
+        max_connections: Some(non_negative_usize(
+            row.try_get::<i64>("", "max_connections")?,
+        )),
+        ssl_sessions: row
+            .try_get::<i64>("", "ssl_sessions")
+            .ok()
+            .map(non_negative_usize),
+        collected_at: Utc::now(),
+    })
+}
+
+fn non_negative_usize(value: i64) -> usize {
+    value.max(0) as usize
+}
+
 fn parse_mysql_inventory_pillars(
     requested: &Option<String>,
     resource_label: &str,
@@ -3455,6 +3599,52 @@ fn parse_mysql_inventory_pillars(
             {
                 let pillar = Pillar::parse(token).ok_or_else(|| {
                     AppError::BadRequest(format!("Unsupported MySQL inventory pillar: {}", token))
+                })?;
+                match pillar {
+                    Pillar::Cost | Pillar::Resilience | Pillar::Security => {
+                        if !pillars.contains(&pillar) {
+                            pillars.push(pillar);
+                        }
+                    }
+                    _ => {
+                        return Err(AppError::BadRequest(format!(
+                            "Unsupported {} inventory pillar: {}",
+                            resource_label, token
+                        )));
+                    }
+                }
+            }
+            if pillars.is_empty() {
+                Ok(vec![Pillar::Cost, Pillar::Resilience, Pillar::Security])
+            } else {
+                Ok(pillars)
+            }
+        }
+    }
+}
+
+fn parse_postgres_inventory_pillars(
+    requested: &Option<String>,
+    resource_label: &str,
+) -> Result<Vec<Pillar>, AppError> {
+    match requested
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        None => Ok(vec![Pillar::Cost, Pillar::Resilience, Pillar::Security]),
+        Some(value) => {
+            let mut pillars = Vec::new();
+            for token in value
+                .split(',')
+                .map(str::trim)
+                .filter(|token| !token.is_empty())
+            {
+                let pillar = Pillar::parse(token).ok_or_else(|| {
+                    AppError::BadRequest(format!(
+                        "Unsupported PostgreSQL inventory pillar: {}",
+                        token
+                    ))
                 })?;
                 match pillar {
                     Pillar::Cost | Pillar::Resilience | Pillar::Security => {

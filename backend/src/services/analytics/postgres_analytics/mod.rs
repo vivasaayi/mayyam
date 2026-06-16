@@ -12,4 +12,5 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+pub mod pg_stat_activity_inventory;
 pub mod postgres_analytics_service;

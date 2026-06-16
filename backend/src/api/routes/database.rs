@@ -68,6 +68,9 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .service(web::resource("/mysql/performance-schema/pillars").route(
                 web::get().to(database::get_mysql_performance_schema_inventory_pillar_reports),
             ))
+            .service(web::resource("/postgres/pg-stat-activity/pillars").route(
+                web::get().to(database::get_postgres_pg_stat_activity_inventory_pillar_reports),
+            ))
             .service(
                 web::resource("/mysql/performance-schema/health/pillars").route(
                     web::get().to(database::get_mysql_performance_schema_health_pillar_reports),
