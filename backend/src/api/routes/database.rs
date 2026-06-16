@@ -83,6 +83,15 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 ),
             )
             .service(
+                web::resource("/postgres/pg-stat-wal/pillars").route(
+                    web::get().to(database::get_postgres_pg_stat_wal_inventory_pillar_reports),
+                ),
+            )
+            .service(
+                web::resource("/postgres/pg-locks/pillars")
+                    .route(web::get().to(database::get_postgres_pg_locks_inventory_pillar_reports)),
+            )
+            .service(
                 web::resource("/mysql/performance-schema/health/pillars").route(
                     web::get().to(database::get_mysql_performance_schema_health_pillar_reports),
                 ),

@@ -201,6 +201,10 @@ use crate::services::analytics::mysql_analytics::wait_events_inventory::{
     evaluate_mysql_wait_events_inventory, wait_events_item_from_telemetry,
     RESOURCE_TYPE as MYSQL_WAIT_EVENTS_RESOURCE_TYPE,
 };
+use crate::services::analytics::postgres_analytics::pg_locks_inventory::{
+    evaluate_postgres_pg_locks_inventory, PgLocksInventoryItem,
+    RESOURCE_TYPE as POSTGRES_PG_LOCKS_RESOURCE_TYPE,
+};
 use crate::services::analytics::postgres_analytics::pg_stat_activity_inventory::{
     evaluate_postgres_pg_stat_activity_inventory, PgStatActivityInventoryItem,
     RESOURCE_TYPE as POSTGRES_PG_STAT_ACTIVITY_RESOURCE_TYPE,
@@ -216,6 +220,10 @@ use crate::services::analytics::postgres_analytics::pg_stat_io_inventory::{
 use crate::services::analytics::postgres_analytics::pg_stat_statements_inventory::{
     evaluate_postgres_pg_stat_statements_inventory, PgStatStatementsInventoryItem,
     RESOURCE_TYPE as POSTGRES_PG_STAT_STATEMENTS_RESOURCE_TYPE,
+};
+use crate::services::analytics::postgres_analytics::pg_stat_wal_inventory::{
+    evaluate_postgres_pg_stat_wal_inventory, PgStatWalInventoryItem,
+    RESOURCE_TYPE as POSTGRES_PG_STAT_WAL_RESOURCE_TYPE,
 };
 use crate::services::analytics::postgres_analytics::postgres_analytics_service::PostgresAnalyticsService;
 use crate::services::aws::inventory::types::{Pillar, DEFAULT_STALE_AFTER_HOURS};
@@ -871,6 +879,158 @@ pub async fn get_postgres_pg_stat_io_inventory_pillar_reports(
 
     Ok(HttpResponse::Ok().json(json!({
         "resource_type": POSTGRES_PG_STAT_IO_RESOURCE_TYPE,
+        "evaluated_at": now,
+        "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
+        "connection_id": query.connection_id,
+        "resources_evaluated": items.len(),
+        "stale_resources": stale_resources,
+        "oldest_refresh": oldest_refresh,
+        "reports": reports,
+    })))
+}
+
+pub async fn get_postgres_pg_stat_wal_inventory_pillar_reports(
+    query: web::Query<MySqlInventoryQuery>,
+    db_pool: web::Data<Arc<DatabaseConnection>>,
+    config: web::Data<Config>,
+    claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let query = query.into_inner();
+    let pillars = parse_postgres_inventory_pillars(&query.pillar, "PostgreSQL pg_stat_wal")?;
+    let connection_id = query
+        .connection_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|connection_id| !connection_id.is_empty());
+
+    let items = if let Some(connection_id) = connection_id {
+        let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
+        let conn_id = uuid::Uuid::parse_str(connection_id)
+            .map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+        let conn_model = db_repo
+            .find_by_id(conn_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Database connection not found".to_string()))?;
+
+        let user_id = uuid::Uuid::parse_str(&claims.sub)
+            .map_err(|e| AppError::BadRequest(format!("Invalid user UUID: {}", e)))?;
+        let is_admin = claims.roles.iter().any(|role| role == "admin");
+        if conn_model.created_by != user_id && !is_admin {
+            return Err(AppError::Auth(
+                "You do not have access to this database connection".to_string(),
+            ));
+        }
+
+        let connection_type = conn_model.connection_type.to_lowercase();
+        if connection_type != "postgres" && connection_type != "postgresql" {
+            return Err(AppError::BadRequest(
+                "PostgreSQL pg_stat_wal inventory is only supported for postgres connections"
+                    .to_string(),
+            ));
+        }
+
+        let dynamic_conn = connect_to_dynamic_database(&conn_model, config.get_ref()).await?;
+        pg_stat_wal_items_from_connection(
+            &dynamic_conn,
+            &conn_model.id.to_string(),
+            &conn_model.name,
+            Some(conn_model.created_by.to_string()),
+        )
+        .await?
+    } else {
+        Vec::new()
+    };
+
+    let now = Utc::now();
+    let reports = pillars
+        .iter()
+        .map(|pillar| evaluate_postgres_pg_stat_wal_inventory(&items, *pillar, now))
+        .collect::<Vec<_>>();
+    let oldest_refresh = items.iter().map(|item| item.collected_at).min();
+    let stale_resources = reports
+        .iter()
+        .map(|report| report.stale_resources)
+        .max()
+        .unwrap_or(0);
+
+    Ok(HttpResponse::Ok().json(json!({
+        "resource_type": POSTGRES_PG_STAT_WAL_RESOURCE_TYPE,
+        "evaluated_at": now,
+        "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
+        "connection_id": query.connection_id,
+        "resources_evaluated": items.len(),
+        "stale_resources": stale_resources,
+        "oldest_refresh": oldest_refresh,
+        "reports": reports,
+    })))
+}
+
+pub async fn get_postgres_pg_locks_inventory_pillar_reports(
+    query: web::Query<MySqlInventoryQuery>,
+    db_pool: web::Data<Arc<DatabaseConnection>>,
+    config: web::Data<Config>,
+    claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let query = query.into_inner();
+    let pillars = parse_postgres_inventory_pillars(&query.pillar, "PostgreSQL pg_locks")?;
+    let connection_id = query
+        .connection_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|connection_id| !connection_id.is_empty());
+
+    let items = if let Some(connection_id) = connection_id {
+        let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
+        let conn_id = uuid::Uuid::parse_str(connection_id)
+            .map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+        let conn_model = db_repo
+            .find_by_id(conn_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Database connection not found".to_string()))?;
+
+        let user_id = uuid::Uuid::parse_str(&claims.sub)
+            .map_err(|e| AppError::BadRequest(format!("Invalid user UUID: {}", e)))?;
+        let is_admin = claims.roles.iter().any(|role| role == "admin");
+        if conn_model.created_by != user_id && !is_admin {
+            return Err(AppError::Auth(
+                "You do not have access to this database connection".to_string(),
+            ));
+        }
+
+        let connection_type = conn_model.connection_type.to_lowercase();
+        if connection_type != "postgres" && connection_type != "postgresql" {
+            return Err(AppError::BadRequest(
+                "PostgreSQL pg_locks inventory is only supported for postgres connections"
+                    .to_string(),
+            ));
+        }
+
+        let dynamic_conn = connect_to_dynamic_database(&conn_model, config.get_ref()).await?;
+        pg_locks_items_from_connection(
+            &dynamic_conn,
+            &conn_model.id.to_string(),
+            &conn_model.name,
+            Some(conn_model.created_by.to_string()),
+        )
+        .await?
+    } else {
+        Vec::new()
+    };
+
+    let now = Utc::now();
+    let reports = pillars
+        .iter()
+        .map(|pillar| evaluate_postgres_pg_locks_inventory(&items, *pillar, now))
+        .collect::<Vec<_>>();
+    let oldest_refresh = items.iter().map(|item| item.collected_at).min();
+    let stale_resources = reports
+        .iter()
+        .map(|report| report.stale_resources)
+        .max()
+        .unwrap_or(0);
+
+    Ok(HttpResponse::Ok().json(json!({
+        "resource_type": POSTGRES_PG_LOCKS_RESOURCE_TYPE,
         "evaluated_at": now,
         "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
         "connection_id": query.connection_id,
@@ -4306,6 +4466,324 @@ fn missing_pg_stat_io_item(
         server_version,
         security_evidence_recorded: false,
         missing_evidence_reason: Some(reason),
+        collected_at: Utc::now(),
+    }
+}
+
+async fn pg_stat_wal_items_from_connection(
+    conn: &DatabaseConnection,
+    connection_id: &str,
+    connection_name: &str,
+    owner: Option<String>,
+) -> Result<Vec<PgStatWalInventoryItem>, AppError> {
+    let availability = match conn
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            r#"
+            SELECT
+                EXISTS (
+                    SELECT 1
+                    FROM information_schema.views
+                    WHERE table_schema = 'pg_catalog'
+                      AND table_name = 'pg_stat_wal'
+                ) AS available,
+                version() AS server_version
+            "#,
+        ))
+        .await
+    {
+        Ok(Some(row)) => row,
+        Ok(None) => {
+            return Ok(vec![missing_pg_stat_wal_item(
+                connection_id,
+                connection_name,
+                owner,
+                None,
+                "pg_stat_wal availability check returned no row".to_string(),
+            )]);
+        }
+        Err(error) => {
+            return Ok(vec![missing_pg_stat_wal_item(
+                connection_id,
+                connection_name,
+                owner,
+                None,
+                format!("pg_stat_wal availability check failed: {}", error),
+            )]);
+        }
+    };
+
+    let server_version = availability.try_get::<String>("", "server_version").ok();
+    let available = availability
+        .try_get::<bool>("", "available")
+        .unwrap_or(false);
+    if !available {
+        return Ok(vec![missing_pg_stat_wal_item(
+            connection_id,
+            connection_name,
+            owner,
+            server_version,
+            "pg_stat_wal is not available on this PostgreSQL connection".to_string(),
+        )]);
+    }
+
+    let row = match conn
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            r#"
+            SELECT
+                COALESCE(w.wal_records, 0)::bigint AS wal_records,
+                COALESCE(w.wal_fpi, 0)::bigint AS wal_fpi,
+                COALESCE(w.wal_bytes, 0)::bigint AS wal_bytes,
+                COALESCE(w.wal_buffers_full, 0)::bigint AS wal_buffers_full,
+                COALESCE(w.wal_write, 0)::bigint AS wal_write,
+                COALESCE(w.wal_sync, 0)::bigint AS wal_sync,
+                COALESCE(w.wal_write_time, 0)::double precision AS wal_write_time_ms,
+                COALESCE(w.wal_sync_time, 0)::double precision AS wal_sync_time_ms,
+                w.stats_reset AS stats_reset,
+                (SELECT setting FROM pg_settings WHERE name = 'archive_mode') AS archive_mode,
+                (SELECT setting::bigint FROM pg_settings WHERE name = 'max_wal_size') AS max_wal_size_mb,
+                (SELECT setting::bigint FROM pg_settings WHERE name = 'min_wal_size') AS min_wal_size_mb,
+                (SELECT setting FROM pg_settings WHERE name = 'wal_level') AS wal_level
+            FROM pg_stat_wal w
+            "#,
+        ))
+        .await
+    {
+        Ok(Some(row)) => row,
+        Ok(None) => {
+            return Ok(vec![missing_pg_stat_wal_item(
+                connection_id,
+                connection_name,
+                owner,
+                server_version,
+                "pg_stat_wal returned no row".to_string(),
+            )]);
+        }
+        Err(error) => {
+            return Ok(vec![missing_pg_stat_wal_item(
+                connection_id,
+                connection_name,
+                owner,
+                server_version,
+                format!("pg_stat_wal query failed: {}", error),
+            )]);
+        }
+    };
+
+    Ok(vec![PgStatWalInventoryItem {
+        connection_id: connection_id.to_string(),
+        connection_name: connection_name.to_string(),
+        owner,
+        labels: BTreeMap::new(),
+        wal_stats_available: true,
+        missing_evidence_reason: None,
+        wal_records: row.try_get::<i64>("", "wal_records").unwrap_or(0).max(0),
+        wal_fpi: row.try_get::<i64>("", "wal_fpi").unwrap_or(0).max(0),
+        wal_bytes: row.try_get::<i64>("", "wal_bytes").unwrap_or(0).max(0),
+        wal_buffers_full: row
+            .try_get::<i64>("", "wal_buffers_full")
+            .unwrap_or(0)
+            .max(0),
+        wal_write: row.try_get::<i64>("", "wal_write").unwrap_or(0).max(0),
+        wal_sync: row.try_get::<i64>("", "wal_sync").unwrap_or(0).max(0),
+        wal_write_time_ms: row
+            .try_get::<f64>("", "wal_write_time_ms")
+            .unwrap_or(0.0)
+            .max(0.0),
+        wal_sync_time_ms: row
+            .try_get::<f64>("", "wal_sync_time_ms")
+            .unwrap_or(0.0)
+            .max(0.0),
+        stats_reset: row
+            .try_get::<Option<DateTime<Utc>>>("", "stats_reset")
+            .ok()
+            .flatten(),
+        archive_mode: row.try_get::<String>("", "archive_mode").ok(),
+        max_wal_size_mb: row
+            .try_get::<i64>("", "max_wal_size_mb")
+            .ok()
+            .map(|value| value.max(0)),
+        min_wal_size_mb: row
+            .try_get::<i64>("", "min_wal_size_mb")
+            .ok()
+            .map(|value| value.max(0)),
+        wal_level: row.try_get::<String>("", "wal_level").ok(),
+        server_version,
+        collected_at: Utc::now(),
+    }])
+}
+
+fn missing_pg_stat_wal_item(
+    connection_id: &str,
+    connection_name: &str,
+    owner: Option<String>,
+    server_version: Option<String>,
+    reason: String,
+) -> PgStatWalInventoryItem {
+    PgStatWalInventoryItem {
+        connection_id: connection_id.to_string(),
+        connection_name: connection_name.to_string(),
+        owner,
+        labels: BTreeMap::new(),
+        wal_stats_available: false,
+        missing_evidence_reason: Some(reason),
+        wal_records: 0,
+        wal_fpi: 0,
+        wal_bytes: 0,
+        wal_buffers_full: 0,
+        wal_write: 0,
+        wal_sync: 0,
+        wal_write_time_ms: 0.0,
+        wal_sync_time_ms: 0.0,
+        stats_reset: None,
+        archive_mode: None,
+        max_wal_size_mb: None,
+        min_wal_size_mb: None,
+        wal_level: None,
+        server_version,
+        collected_at: Utc::now(),
+    }
+}
+
+async fn pg_locks_items_from_connection(
+    conn: &DatabaseConnection,
+    connection_id: &str,
+    connection_name: &str,
+    owner: Option<String>,
+) -> Result<Vec<PgLocksInventoryItem>, AppError> {
+    let row = match conn
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            r#"
+            WITH lock_summary AS (
+                SELECT
+                    COUNT(*)::bigint AS total_locks,
+                    COUNT(*) FILTER (WHERE granted)::bigint AS granted_locks,
+                    COUNT(*) FILTER (WHERE NOT granted)::bigint AS waiting_locks,
+                    COUNT(*) FILTER (WHERE mode ILIKE '%exclusive%')::bigint AS exclusive_locks,
+                    COUNT(*) FILTER (WHERE locktype = 'transactionid')::bigint AS transactionid_locks,
+                    COUNT(*) FILTER (WHERE locktype = 'relation')::bigint AS relation_locks,
+                    MAX(EXTRACT(EPOCH FROM (now() - a.query_start))) FILTER (WHERE NOT l.granted AND a.query_start IS NOT NULL)::bigint AS oldest_wait_seconds
+                FROM pg_locks l
+                LEFT JOIN pg_stat_activity a ON a.pid = l.pid
+            ),
+            blocked AS (
+                SELECT COUNT(DISTINCT pid)::bigint AS blocked_sessions
+                FROM pg_stat_activity
+                WHERE wait_event_type = 'Lock'
+            )
+            SELECT
+                lock_summary.total_locks,
+                lock_summary.granted_locks,
+                lock_summary.waiting_locks,
+                lock_summary.exclusive_locks,
+                lock_summary.transactionid_locks,
+                lock_summary.relation_locks,
+                blocked.blocked_sessions,
+                lock_summary.oldest_wait_seconds,
+                (SELECT setting::bigint FROM pg_settings WHERE name = 'max_locks_per_transaction') AS max_locks_per_transaction,
+                (SELECT setting::bigint FROM pg_settings WHERE name = 'max_connections') AS max_connections,
+                (SELECT setting::bigint FROM pg_settings WHERE name = 'deadlock_timeout') AS deadlock_timeout_ms,
+                version() AS server_version
+            FROM lock_summary, blocked
+            "#,
+        ))
+        .await
+    {
+        Ok(Some(row)) => row,
+        Ok(None) => {
+            return Ok(vec![missing_pg_locks_item(
+                connection_id,
+                connection_name,
+                owner,
+                None,
+                "pg_locks summary returned no row".to_string(),
+            )]);
+        }
+        Err(error) => {
+            return Ok(vec![missing_pg_locks_item(
+                connection_id,
+                connection_name,
+                owner,
+                None,
+                format!("pg_locks summary query failed: {}", error),
+            )]);
+        }
+    };
+
+    Ok(vec![PgLocksInventoryItem {
+        connection_id: connection_id.to_string(),
+        connection_name: connection_name.to_string(),
+        owner,
+        labels: BTreeMap::new(),
+        locks_available: true,
+        missing_evidence_reason: None,
+        total_locks: row.try_get::<i64>("", "total_locks").unwrap_or(0).max(0),
+        granted_locks: row.try_get::<i64>("", "granted_locks").unwrap_or(0).max(0),
+        waiting_locks: row.try_get::<i64>("", "waiting_locks").unwrap_or(0).max(0),
+        exclusive_locks: row
+            .try_get::<i64>("", "exclusive_locks")
+            .unwrap_or(0)
+            .max(0),
+        transactionid_locks: row
+            .try_get::<i64>("", "transactionid_locks")
+            .unwrap_or(0)
+            .max(0),
+        relation_locks: row.try_get::<i64>("", "relation_locks").unwrap_or(0).max(0),
+        blocked_sessions: row
+            .try_get::<i64>("", "blocked_sessions")
+            .unwrap_or(0)
+            .max(0),
+        oldest_wait_seconds: row
+            .try_get::<i64>("", "oldest_wait_seconds")
+            .ok()
+            .map(|value| value.max(0)),
+        max_locks_per_transaction: row
+            .try_get::<i64>("", "max_locks_per_transaction")
+            .ok()
+            .map(|value| value.max(0)),
+        max_connections: row
+            .try_get::<i64>("", "max_connections")
+            .ok()
+            .map(|value| value.max(0)),
+        deadlock_timeout_ms: row
+            .try_get::<i64>("", "deadlock_timeout_ms")
+            .ok()
+            .map(|value| value.max(0)),
+        server_version: row.try_get::<String>("", "server_version").ok(),
+        security_evidence_recorded: false,
+        collected_at: Utc::now(),
+    }])
+}
+
+fn missing_pg_locks_item(
+    connection_id: &str,
+    connection_name: &str,
+    owner: Option<String>,
+    server_version: Option<String>,
+    reason: String,
+) -> PgLocksInventoryItem {
+    PgLocksInventoryItem {
+        connection_id: connection_id.to_string(),
+        connection_name: connection_name.to_string(),
+        owner,
+        labels: BTreeMap::new(),
+        locks_available: false,
+        missing_evidence_reason: Some(reason),
+        total_locks: 0,
+        granted_locks: 0,
+        waiting_locks: 0,
+        exclusive_locks: 0,
+        transactionid_locks: 0,
+        relation_locks: 0,
+        blocked_sessions: 0,
+        oldest_wait_seconds: None,
+        max_locks_per_transaction: None,
+        max_connections: None,
+        deadlock_timeout_ms: None,
+        server_version,
+        security_evidence_recorded: false,
         collected_at: Utc::now(),
     }
 }
