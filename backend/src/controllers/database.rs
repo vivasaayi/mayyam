@@ -205,6 +205,14 @@ use crate::services::analytics::postgres_analytics::pg_stat_activity_inventory::
     evaluate_postgres_pg_stat_activity_inventory, PgStatActivityInventoryItem,
     RESOURCE_TYPE as POSTGRES_PG_STAT_ACTIVITY_RESOURCE_TYPE,
 };
+use crate::services::analytics::postgres_analytics::pg_stat_database_inventory::{
+    evaluate_postgres_pg_stat_database_inventory, PgStatDatabaseExposureEvidence,
+    PgStatDatabaseInventoryItem, RESOURCE_TYPE as POSTGRES_PG_STAT_DATABASE_RESOURCE_TYPE,
+};
+use crate::services::analytics::postgres_analytics::pg_stat_io_inventory::{
+    evaluate_postgres_pg_stat_io_inventory, PgStatIoInventoryItem,
+    RESOURCE_TYPE as POSTGRES_PG_STAT_IO_RESOURCE_TYPE,
+};
 use crate::services::analytics::postgres_analytics::pg_stat_statements_inventory::{
     evaluate_postgres_pg_stat_statements_inventory, PgStatStatementsInventoryItem,
     RESOURCE_TYPE as POSTGRES_PG_STAT_STATEMENTS_RESOURCE_TYPE,
@@ -711,6 +719,158 @@ pub async fn get_postgres_pg_stat_statements_inventory_pillar_reports(
 
     Ok(HttpResponse::Ok().json(json!({
         "resource_type": POSTGRES_PG_STAT_STATEMENTS_RESOURCE_TYPE,
+        "evaluated_at": now,
+        "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
+        "connection_id": query.connection_id,
+        "resources_evaluated": items.len(),
+        "stale_resources": stale_resources,
+        "oldest_refresh": oldest_refresh,
+        "reports": reports,
+    })))
+}
+
+pub async fn get_postgres_pg_stat_database_inventory_pillar_reports(
+    query: web::Query<MySqlInventoryQuery>,
+    db_pool: web::Data<Arc<DatabaseConnection>>,
+    config: web::Data<Config>,
+    claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let query = query.into_inner();
+    let pillars = parse_postgres_inventory_pillars(&query.pillar, "PostgreSQL pg_stat_database")?;
+    let connection_id = query
+        .connection_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|connection_id| !connection_id.is_empty());
+
+    let items = if let Some(connection_id) = connection_id {
+        let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
+        let conn_id = uuid::Uuid::parse_str(connection_id)
+            .map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+        let conn_model = db_repo
+            .find_by_id(conn_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Database connection not found".to_string()))?;
+
+        let user_id = uuid::Uuid::parse_str(&claims.sub)
+            .map_err(|e| AppError::BadRequest(format!("Invalid user UUID: {}", e)))?;
+        let is_admin = claims.roles.iter().any(|role| role == "admin");
+        if conn_model.created_by != user_id && !is_admin {
+            return Err(AppError::Auth(
+                "You do not have access to this database connection".to_string(),
+            ));
+        }
+
+        let connection_type = conn_model.connection_type.to_lowercase();
+        if connection_type != "postgres" && connection_type != "postgresql" {
+            return Err(AppError::BadRequest(
+                "PostgreSQL pg_stat_database inventory is only supported for postgres connections"
+                    .to_string(),
+            ));
+        }
+
+        let dynamic_conn = connect_to_dynamic_database(&conn_model, config.get_ref()).await?;
+        pg_stat_database_items_from_connection(
+            &dynamic_conn,
+            &conn_model.id.to_string(),
+            &conn_model.name,
+            Some(conn_model.created_by.to_string()),
+        )
+        .await?
+    } else {
+        Vec::new()
+    };
+
+    let now = Utc::now();
+    let reports = pillars
+        .iter()
+        .map(|pillar| evaluate_postgres_pg_stat_database_inventory(&items, *pillar, now))
+        .collect::<Vec<_>>();
+    let oldest_refresh = items.iter().map(|item| item.collected_at).min();
+    let stale_resources = reports
+        .iter()
+        .map(|report| report.stale_resources)
+        .max()
+        .unwrap_or(0);
+
+    Ok(HttpResponse::Ok().json(json!({
+        "resource_type": POSTGRES_PG_STAT_DATABASE_RESOURCE_TYPE,
+        "evaluated_at": now,
+        "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
+        "connection_id": query.connection_id,
+        "resources_evaluated": items.len(),
+        "stale_resources": stale_resources,
+        "oldest_refresh": oldest_refresh,
+        "reports": reports,
+    })))
+}
+
+pub async fn get_postgres_pg_stat_io_inventory_pillar_reports(
+    query: web::Query<MySqlInventoryQuery>,
+    db_pool: web::Data<Arc<DatabaseConnection>>,
+    config: web::Data<Config>,
+    claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let query = query.into_inner();
+    let pillars = parse_postgres_inventory_pillars(&query.pillar, "PostgreSQL pg_stat_io")?;
+    let connection_id = query
+        .connection_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|connection_id| !connection_id.is_empty());
+
+    let items = if let Some(connection_id) = connection_id {
+        let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
+        let conn_id = uuid::Uuid::parse_str(connection_id)
+            .map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+        let conn_model = db_repo
+            .find_by_id(conn_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Database connection not found".to_string()))?;
+
+        let user_id = uuid::Uuid::parse_str(&claims.sub)
+            .map_err(|e| AppError::BadRequest(format!("Invalid user UUID: {}", e)))?;
+        let is_admin = claims.roles.iter().any(|role| role == "admin");
+        if conn_model.created_by != user_id && !is_admin {
+            return Err(AppError::Auth(
+                "You do not have access to this database connection".to_string(),
+            ));
+        }
+
+        let connection_type = conn_model.connection_type.to_lowercase();
+        if connection_type != "postgres" && connection_type != "postgresql" {
+            return Err(AppError::BadRequest(
+                "PostgreSQL pg_stat_io inventory is only supported for postgres connections"
+                    .to_string(),
+            ));
+        }
+
+        let dynamic_conn = connect_to_dynamic_database(&conn_model, config.get_ref()).await?;
+        pg_stat_io_items_from_connection(
+            &dynamic_conn,
+            &conn_model.id.to_string(),
+            &conn_model.name,
+            Some(conn_model.created_by.to_string()),
+        )
+        .await?
+    } else {
+        Vec::new()
+    };
+
+    let now = Utc::now();
+    let reports = pillars
+        .iter()
+        .map(|pillar| evaluate_postgres_pg_stat_io_inventory(&items, *pillar, now))
+        .collect::<Vec<_>>();
+    let oldest_refresh = items.iter().map(|item| item.collected_at).min();
+    let stale_resources = reports
+        .iter()
+        .map(|report| report.stale_resources)
+        .max()
+        .unwrap_or(0);
+
+    Ok(HttpResponse::Ok().json(json!({
+        "resource_type": POSTGRES_PG_STAT_IO_RESOURCE_TYPE,
         "evaluated_at": now,
         "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
         "connection_id": query.connection_id,
@@ -3798,6 +3958,353 @@ fn missing_pg_stat_statements_item(
         shared_blks_hit: 0,
         temp_blks_written: 0,
         query_text_visible: false,
+        missing_evidence_reason: Some(reason),
+        collected_at: Utc::now(),
+    }
+}
+
+async fn pg_stat_database_items_from_connection(
+    conn: &DatabaseConnection,
+    connection_id: &str,
+    connection_name: &str,
+    owner: Option<String>,
+) -> Result<Vec<PgStatDatabaseInventoryItem>, AppError> {
+    let row = match conn
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            r#"
+            SELECT
+                d.datname,
+                d.numbackends::bigint AS numbackends,
+                d.xact_commit::bigint AS xact_commit,
+                d.xact_rollback::bigint AS xact_rollback,
+                d.blks_read::bigint AS blks_read,
+                d.blks_hit::bigint AS blks_hit,
+                d.tup_returned::bigint AS tup_returned,
+                d.tup_fetched::bigint AS tup_fetched,
+                d.tup_inserted::bigint AS tup_inserted,
+                d.tup_updated::bigint AS tup_updated,
+                d.tup_deleted::bigint AS tup_deleted,
+                d.deadlocks::bigint AS deadlocks,
+                d.temp_files::bigint AS temp_files,
+                d.temp_bytes::bigint AS temp_bytes,
+                d.conflicts::bigint AS conflicts,
+                d.checksum_failures::bigint AS checksum_failures,
+                pg_database_size(d.datname)::bigint AS database_size_bytes,
+                (SELECT setting::bigint FROM pg_settings WHERE name = 'max_connections') AS max_connections,
+                version() AS server_version
+            FROM pg_stat_database d
+            WHERE d.datname = current_database()
+            "#,
+        ))
+        .await
+    {
+        Ok(Some(row)) => row,
+        Ok(None) => {
+            return Ok(vec![missing_pg_stat_database_item(
+                connection_id,
+                connection_name,
+                owner,
+                None,
+                "pg_stat_database returned no row for current_database()".to_string(),
+            )]);
+        }
+        Err(error) => {
+            return Ok(vec![missing_pg_stat_database_item(
+                connection_id,
+                connection_name,
+                owner,
+                None,
+                format!("pg_stat_database query failed: {}", error),
+            )]);
+        }
+    };
+
+    Ok(vec![PgStatDatabaseInventoryItem {
+        connection_id: connection_id.to_string(),
+        connection_name: connection_name.to_string(),
+        datname: row
+            .try_get::<String>("", "datname")
+            .unwrap_or_else(|_| connection_name.to_string()),
+        owner,
+        labels: BTreeMap::new(),
+        stats_available: true,
+        missing_evidence_reason: None,
+        numbackends: row.try_get::<i64>("", "numbackends").unwrap_or(0).max(0),
+        max_connections: row
+            .try_get::<i64>("", "max_connections")
+            .ok()
+            .map(|value| value.max(0)),
+        xact_commit: row.try_get::<i64>("", "xact_commit").unwrap_or(0).max(0),
+        xact_rollback: row.try_get::<i64>("", "xact_rollback").unwrap_or(0).max(0),
+        blks_read: row.try_get::<i64>("", "blks_read").unwrap_or(0).max(0),
+        blks_hit: row.try_get::<i64>("", "blks_hit").unwrap_or(0).max(0),
+        tup_returned: row.try_get::<i64>("", "tup_returned").unwrap_or(0).max(0),
+        tup_fetched: row.try_get::<i64>("", "tup_fetched").unwrap_or(0).max(0),
+        tup_inserted: row.try_get::<i64>("", "tup_inserted").unwrap_or(0).max(0),
+        tup_updated: row.try_get::<i64>("", "tup_updated").unwrap_or(0).max(0),
+        tup_deleted: row.try_get::<i64>("", "tup_deleted").unwrap_or(0).max(0),
+        deadlocks: row.try_get::<i64>("", "deadlocks").unwrap_or(0).max(0),
+        temp_files: row.try_get::<i64>("", "temp_files").unwrap_or(0).max(0),
+        temp_bytes: row.try_get::<i64>("", "temp_bytes").unwrap_or(0).max(0),
+        conflicts: row.try_get::<i64>("", "conflicts").unwrap_or(0).max(0),
+        checksum_failures: row
+            .try_get::<i64>("", "checksum_failures")
+            .ok()
+            .map(|value| value.max(0)),
+        database_size_bytes: row
+            .try_get::<i64>("", "database_size_bytes")
+            .ok()
+            .map(|value| value.max(0)),
+        server_version: row.try_get::<String>("", "server_version").ok(),
+        exposure: Some(PgStatDatabaseExposureEvidence {
+            publicly_accessible: None,
+            ssl_enforced: None,
+            allowed_source_count: None,
+        }),
+        collected_at: Utc::now(),
+    }])
+}
+
+fn missing_pg_stat_database_item(
+    connection_id: &str,
+    connection_name: &str,
+    owner: Option<String>,
+    server_version: Option<String>,
+    reason: String,
+) -> PgStatDatabaseInventoryItem {
+    PgStatDatabaseInventoryItem {
+        connection_id: connection_id.to_string(),
+        connection_name: connection_name.to_string(),
+        datname: connection_name.to_string(),
+        owner,
+        labels: BTreeMap::new(),
+        stats_available: false,
+        missing_evidence_reason: Some(reason),
+        numbackends: 0,
+        max_connections: None,
+        xact_commit: 0,
+        xact_rollback: 0,
+        blks_read: 0,
+        blks_hit: 0,
+        tup_returned: 0,
+        tup_fetched: 0,
+        tup_inserted: 0,
+        tup_updated: 0,
+        tup_deleted: 0,
+        deadlocks: 0,
+        temp_files: 0,
+        temp_bytes: 0,
+        conflicts: 0,
+        checksum_failures: None,
+        database_size_bytes: None,
+        server_version,
+        exposure: None,
+        collected_at: Utc::now(),
+    }
+}
+
+async fn pg_stat_io_items_from_connection(
+    conn: &DatabaseConnection,
+    connection_id: &str,
+    connection_name: &str,
+    owner: Option<String>,
+) -> Result<Vec<PgStatIoInventoryItem>, AppError> {
+    let availability = match conn
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            r#"
+            SELECT
+                EXISTS (
+                    SELECT 1
+                    FROM information_schema.views
+                    WHERE table_schema = 'pg_catalog'
+                      AND table_name = 'pg_stat_io'
+                ) AS available,
+                version() AS server_version
+            "#,
+        ))
+        .await
+    {
+        Ok(Some(row)) => row,
+        Ok(None) => {
+            return Ok(vec![missing_pg_stat_io_item(
+                connection_id,
+                connection_name,
+                owner,
+                None,
+                "pg_stat_io availability check returned no row".to_string(),
+            )]);
+        }
+        Err(error) => {
+            return Ok(vec![missing_pg_stat_io_item(
+                connection_id,
+                connection_name,
+                owner,
+                None,
+                format!("pg_stat_io availability check failed: {}", error),
+            )]);
+        }
+    };
+
+    let server_version = availability.try_get::<String>("", "server_version").ok();
+    let available = availability
+        .try_get::<bool>("", "available")
+        .unwrap_or(false);
+    if !available {
+        return Ok(vec![missing_pg_stat_io_item(
+            connection_id,
+            connection_name,
+            owner,
+            server_version,
+            "pg_stat_io is not available on this PostgreSQL connection".to_string(),
+        )]);
+    }
+
+    let rows = match conn
+        .query_all(Statement::from_string(
+            DbBackend::Postgres,
+            r#"
+            SELECT
+                backend_type,
+                context,
+                object,
+                COALESCE(SUM(reads), 0)::bigint AS reads,
+                COALESCE(SUM(read_time), 0)::double precision AS read_time_ms,
+                COALESCE(SUM(writes), 0)::bigint AS writes,
+                COALESCE(SUM(write_time), 0)::double precision AS write_time_ms,
+                COALESCE(SUM(writebacks), 0)::bigint AS writebacks,
+                COALESCE(SUM(writeback_time), 0)::double precision AS writeback_time_ms,
+                COALESCE(SUM(extends), 0)::bigint AS extends,
+                COALESCE(SUM(extend_time), 0)::double precision AS extend_time_ms,
+                COALESCE(MAX(op_bytes), 0)::bigint AS op_bytes,
+                COALESCE(SUM(hits), 0)::bigint AS hits,
+                COALESCE(SUM(evictions), 0)::bigint AS evictions,
+                COALESCE(SUM(reuses), 0)::bigint AS reuses,
+                COALESCE(SUM(fsyncs), 0)::bigint AS fsyncs,
+                COALESCE(SUM(fsync_time), 0)::double precision AS fsync_time_ms,
+                MAX(stats_reset) AS stats_reset
+            FROM pg_stat_io
+            GROUP BY backend_type, context, object
+            "#,
+        ))
+        .await
+    {
+        Ok(rows) => rows,
+        Err(error) => {
+            return Ok(vec![missing_pg_stat_io_item(
+                connection_id,
+                connection_name,
+                owner,
+                server_version,
+                format!("pg_stat_io aggregate query failed: {}", error),
+            )]);
+        }
+    };
+
+    if rows.is_empty() {
+        return Ok(vec![missing_pg_stat_io_item(
+            connection_id,
+            connection_name,
+            owner,
+            server_version,
+            "pg_stat_io aggregate returned no rows".to_string(),
+        )]);
+    }
+
+    let mut items = Vec::with_capacity(rows.len());
+    for row in rows {
+        items.push(PgStatIoInventoryItem {
+            connection_id: connection_id.to_string(),
+            connection_name: connection_name.to_string(),
+            owner: owner.clone(),
+            labels: BTreeMap::new(),
+            pg_stat_io_available: true,
+            backend_type: row
+                .try_get::<String>("", "backend_type")
+                .unwrap_or_else(|_| "unknown".to_string()),
+            context: row
+                .try_get::<String>("", "context")
+                .unwrap_or_else(|_| "unknown".to_string()),
+            object: row
+                .try_get::<String>("", "object")
+                .unwrap_or_else(|_| "unknown".to_string()),
+            reads: row.try_get::<i64>("", "reads").unwrap_or(0).max(0),
+            read_time_ms: row
+                .try_get::<f64>("", "read_time_ms")
+                .unwrap_or(0.0)
+                .max(0.0),
+            writes: row.try_get::<i64>("", "writes").unwrap_or(0).max(0),
+            write_time_ms: row
+                .try_get::<f64>("", "write_time_ms")
+                .unwrap_or(0.0)
+                .max(0.0),
+            writebacks: row.try_get::<i64>("", "writebacks").unwrap_or(0).max(0),
+            writeback_time_ms: row
+                .try_get::<f64>("", "writeback_time_ms")
+                .unwrap_or(0.0)
+                .max(0.0),
+            extends: row.try_get::<i64>("", "extends").unwrap_or(0).max(0),
+            extend_time_ms: row
+                .try_get::<f64>("", "extend_time_ms")
+                .unwrap_or(0.0)
+                .max(0.0),
+            op_bytes: row.try_get::<i64>("", "op_bytes").unwrap_or(0).max(0),
+            hits: row.try_get::<i64>("", "hits").unwrap_or(0).max(0),
+            evictions: row.try_get::<i64>("", "evictions").unwrap_or(0).max(0),
+            reuses: row.try_get::<i64>("", "reuses").unwrap_or(0).max(0),
+            fsyncs: row.try_get::<i64>("", "fsyncs").unwrap_or(0).max(0),
+            fsync_time_ms: row
+                .try_get::<f64>("", "fsync_time_ms")
+                .unwrap_or(0.0)
+                .max(0.0),
+            stats_reset: row
+                .try_get::<Option<DateTime<Utc>>>("", "stats_reset")
+                .ok()
+                .flatten(),
+            server_version: server_version.clone(),
+            security_evidence_recorded: false,
+            missing_evidence_reason: None,
+            collected_at: Utc::now(),
+        });
+    }
+
+    Ok(items)
+}
+
+fn missing_pg_stat_io_item(
+    connection_id: &str,
+    connection_name: &str,
+    owner: Option<String>,
+    server_version: Option<String>,
+    reason: String,
+) -> PgStatIoInventoryItem {
+    PgStatIoInventoryItem {
+        connection_id: connection_id.to_string(),
+        connection_name: connection_name.to_string(),
+        owner,
+        labels: BTreeMap::new(),
+        pg_stat_io_available: false,
+        backend_type: "unknown".to_string(),
+        context: "unknown".to_string(),
+        object: "unknown".to_string(),
+        reads: 0,
+        read_time_ms: 0.0,
+        writes: 0,
+        write_time_ms: 0.0,
+        writebacks: 0,
+        writeback_time_ms: 0.0,
+        extends: 0,
+        extend_time_ms: 0.0,
+        op_bytes: 0,
+        hits: 0,
+        evictions: 0,
+        reuses: 0,
+        fsyncs: 0,
+        fsync_time_ms: 0.0,
+        stats_reset: None,
+        server_version,
+        security_evidence_recorded: false,
         missing_evidence_reason: Some(reason),
         collected_at: Utc::now(),
     }
