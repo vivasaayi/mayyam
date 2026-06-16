@@ -28,6 +28,7 @@ pub mod dead_letter_topic_inventory;
 pub mod isr_health_inventory;
 pub mod kraft_inventory;
 pub mod lag_inventory;
+pub mod managed_service_inventory;
 pub mod message_replay_inventory;
 pub mod mirror_maker_inventory;
 pub mod network_throughput_inventory;

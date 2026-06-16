@@ -205,6 +205,10 @@ use crate::services::analytics::postgres_analytics::pg_stat_activity_inventory::
     evaluate_postgres_pg_stat_activity_inventory, PgStatActivityInventoryItem,
     RESOURCE_TYPE as POSTGRES_PG_STAT_ACTIVITY_RESOURCE_TYPE,
 };
+use crate::services::analytics::postgres_analytics::pg_stat_statements_inventory::{
+    evaluate_postgres_pg_stat_statements_inventory, PgStatStatementsInventoryItem,
+    RESOURCE_TYPE as POSTGRES_PG_STAT_STATEMENTS_RESOURCE_TYPE,
+};
 use crate::services::analytics::postgres_analytics::postgres_analytics_service::PostgresAnalyticsService;
 use crate::services::aws::inventory::types::{Pillar, DEFAULT_STALE_AFTER_HOURS};
 use crate::services::database::DatabaseService;
@@ -629,6 +633,84 @@ pub async fn get_postgres_pg_stat_activity_inventory_pillar_reports(
 
     Ok(HttpResponse::Ok().json(json!({
         "resource_type": POSTGRES_PG_STAT_ACTIVITY_RESOURCE_TYPE,
+        "evaluated_at": now,
+        "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
+        "connection_id": query.connection_id,
+        "resources_evaluated": items.len(),
+        "stale_resources": stale_resources,
+        "oldest_refresh": oldest_refresh,
+        "reports": reports,
+    })))
+}
+
+pub async fn get_postgres_pg_stat_statements_inventory_pillar_reports(
+    query: web::Query<MySqlInventoryQuery>,
+    db_pool: web::Data<Arc<DatabaseConnection>>,
+    config: web::Data<Config>,
+    claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let query = query.into_inner();
+    let pillars = parse_postgres_inventory_pillars(&query.pillar, "PostgreSQL pg_stat_statements")?;
+    let connection_id = query
+        .connection_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|connection_id| !connection_id.is_empty());
+
+    let items = if let Some(connection_id) = connection_id {
+        let db_repo = DatabaseRepository::new(db_pool.get_ref().clone(), config.get_ref().clone());
+        let conn_id = uuid::Uuid::parse_str(connection_id)
+            .map_err(|e| AppError::BadRequest(format!("Invalid UUID: {}", e)))?;
+        let conn_model = db_repo
+            .find_by_id(conn_id)
+            .await?
+            .ok_or_else(|| AppError::NotFound("Database connection not found".to_string()))?;
+
+        let user_id = uuid::Uuid::parse_str(&claims.sub)
+            .map_err(|e| AppError::BadRequest(format!("Invalid user UUID: {}", e)))?;
+        let is_admin = claims.roles.iter().any(|role| role == "admin");
+        if conn_model.created_by != user_id && !is_admin {
+            return Err(AppError::Auth(
+                "You do not have access to this database connection".to_string(),
+            ));
+        }
+
+        let connection_type = conn_model.connection_type.to_lowercase();
+        if connection_type != "postgres" && connection_type != "postgresql" {
+            return Err(AppError::BadRequest(
+                "PostgreSQL pg_stat_statements inventory is only supported for postgres connections"
+                    .to_string(),
+            ));
+        }
+
+        let dynamic_conn = connect_to_dynamic_database(&conn_model, config.get_ref()).await?;
+        vec![
+            pg_stat_statements_item_from_connection(
+                &dynamic_conn,
+                &conn_model.id.to_string(),
+                &conn_model.name,
+                Some(conn_model.created_by.to_string()),
+            )
+            .await?,
+        ]
+    } else {
+        Vec::new()
+    };
+
+    let now = Utc::now();
+    let reports = pillars
+        .iter()
+        .map(|pillar| evaluate_postgres_pg_stat_statements_inventory(&items, *pillar, now))
+        .collect::<Vec<_>>();
+    let oldest_refresh = items.iter().map(|item| item.collected_at).min();
+    let stale_resources = reports
+        .iter()
+        .map(|report| report.stale_resources)
+        .max()
+        .unwrap_or(0);
+
+    Ok(HttpResponse::Ok().json(json!({
+        "resource_type": POSTGRES_PG_STAT_STATEMENTS_RESOURCE_TYPE,
         "evaluated_at": now,
         "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
         "connection_id": query.connection_id,
@@ -3574,6 +3656,151 @@ async fn pg_stat_activity_item_from_connection(
             .map(non_negative_usize),
         collected_at: Utc::now(),
     })
+}
+
+async fn pg_stat_statements_item_from_connection(
+    conn: &DatabaseConnection,
+    connection_id: &str,
+    connection_name: &str,
+    owner: Option<String>,
+) -> Result<PgStatStatementsInventoryItem, AppError> {
+    let extension_row = conn
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            r#"
+            SELECT
+                EXISTS (
+                    SELECT 1
+                    FROM pg_extension
+                    WHERE extname = 'pg_stat_statements'
+                ) AS extension_available,
+                version() AS server_version
+            "#,
+        ))
+        .await
+        .map_err(AppError::Database)?
+        .ok_or_else(|| {
+            AppError::Database(sea_orm::DbErr::RecordNotFound(
+                "pg_stat_statements extension check returned no row".to_string(),
+            ))
+        })?;
+
+    let server_version = extension_row.try_get::<String>("", "server_version").ok();
+    let extension_available = extension_row
+        .try_get::<bool>("", "extension_available")
+        .unwrap_or(false);
+
+    if !extension_available {
+        return Ok(missing_pg_stat_statements_item(
+            connection_id,
+            connection_name,
+            owner,
+            server_version,
+            "pg_stat_statements extension is not installed".to_string(),
+        ));
+    }
+
+    let row = match conn
+        .query_one(Statement::from_string(
+            DbBackend::Postgres,
+            r#"
+            SELECT
+                COUNT(*)::bigint AS statements_tracked,
+                COALESCE(SUM(calls), 0)::bigint AS total_calls,
+                COALESCE(SUM(total_exec_time), 0)::double precision AS total_exec_time_ms,
+                MAX(mean_exec_time)::double precision AS max_mean_exec_time_ms,
+                COALESCE(SUM(shared_blks_read), 0)::bigint AS shared_blks_read,
+                COALESCE(SUM(shared_blks_hit), 0)::bigint AS shared_blks_hit,
+                COALESCE(SUM(temp_blks_written), 0)::bigint AS temp_blks_written,
+                COALESCE(BOOL_OR(NULLIF(query, '') IS NOT NULL), false) AS query_text_visible
+            FROM pg_stat_statements
+            "#,
+        ))
+        .await
+    {
+        Ok(Some(row)) => row,
+        Ok(None) => {
+            return Ok(missing_pg_stat_statements_item(
+                connection_id,
+                connection_name,
+                owner,
+                server_version,
+                "pg_stat_statements aggregate returned no row".to_string(),
+            ));
+        }
+        Err(error) => {
+            return Ok(missing_pg_stat_statements_item(
+                connection_id,
+                connection_name,
+                owner,
+                server_version,
+                format!("pg_stat_statements aggregate query failed: {}", error),
+            ));
+        }
+    };
+
+    Ok(PgStatStatementsInventoryItem {
+        connection_id: connection_id.to_string(),
+        connection_name: connection_name.to_string(),
+        owner,
+        labels: BTreeMap::new(),
+        server_version,
+        extension_available: true,
+        statements_tracked: non_negative_usize(row.try_get::<i64>("", "statements_tracked")?),
+        total_calls: row.try_get::<i64>("", "total_calls").unwrap_or(0).max(0),
+        total_exec_time_ms: row
+            .try_get::<f64>("", "total_exec_time_ms")
+            .unwrap_or(0.0)
+            .max(0.0),
+        max_mean_exec_time_ms: row
+            .try_get::<f64>("", "max_mean_exec_time_ms")
+            .ok()
+            .map(|value| value.max(0.0)),
+        shared_blks_read: row
+            .try_get::<i64>("", "shared_blks_read")
+            .unwrap_or(0)
+            .max(0),
+        shared_blks_hit: row
+            .try_get::<i64>("", "shared_blks_hit")
+            .unwrap_or(0)
+            .max(0),
+        temp_blks_written: row
+            .try_get::<i64>("", "temp_blks_written")
+            .unwrap_or(0)
+            .max(0),
+        query_text_visible: row
+            .try_get::<bool>("", "query_text_visible")
+            .unwrap_or(false),
+        missing_evidence_reason: None,
+        collected_at: Utc::now(),
+    })
+}
+
+fn missing_pg_stat_statements_item(
+    connection_id: &str,
+    connection_name: &str,
+    owner: Option<String>,
+    server_version: Option<String>,
+    reason: String,
+) -> PgStatStatementsInventoryItem {
+    PgStatStatementsInventoryItem {
+        connection_id: connection_id.to_string(),
+        connection_name: connection_name.to_string(),
+        owner,
+        labels: BTreeMap::new(),
+        server_version,
+        extension_available: false,
+        statements_tracked: 0,
+        total_calls: 0,
+        total_exec_time_ms: 0.0,
+        max_mean_exec_time_ms: None,
+        shared_blks_read: 0,
+        shared_blks_hit: 0,
+        temp_blks_written: 0,
+        query_text_visible: false,
+        missing_evidence_reason: Some(reason),
+        collected_at: Utc::now(),
+    }
 }
 
 fn non_negative_usize(value: i64) -> usize {

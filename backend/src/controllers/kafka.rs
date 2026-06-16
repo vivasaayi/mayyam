@@ -84,6 +84,10 @@ use crate::services::analytics::kafka_analytics::lag_inventory::{
     evaluate_kafka_lag_inventory, lag_inventory_item_from_config,
     RESOURCE_TYPE as KAFKA_LAG_RESOURCE_TYPE,
 };
+use crate::services::analytics::kafka_analytics::managed_service_inventory::{
+    evaluate_managed_service_inventory, managed_service_inventory_item_from_config,
+    RESOURCE_TYPE as KAFKA_MANAGED_SERVICE_RESOURCE_TYPE,
+};
 use crate::services::analytics::kafka_analytics::message_replay_inventory::{
     evaluate_message_replay_inventory, message_replay_inventory_item_from_config,
     RESOURCE_TYPE as KAFKA_MESSAGE_REPLAY_RESOURCE_TYPE,
@@ -1414,6 +1418,36 @@ pub async fn get_kafka_network_throughput_inventory_pillar_reports(
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "resource_type": KAFKA_NETWORK_THROUGHPUT_RESOURCE_TYPE,
+        "evaluated_at": now,
+        "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
+        "resources_evaluated": items.len(),
+        "oldest_refresh": oldest_refresh,
+        "reports": reports,
+    })))
+}
+
+pub async fn get_kafka_managed_service_inventory_pillar_reports(
+    query: web::Query<KafkaInventoryQuery>,
+    config: web::Data<crate::config::Config>,
+    _claims: web::ReqData<Claims>,
+) -> Result<impl Responder, AppError> {
+    let query = query.into_inner();
+    let pillars = parse_kafka_inventory_pillars(&query.pillar, "Managed Kafka services inventory")?;
+    let now = Utc::now();
+    let items = config
+        .kafka
+        .clusters
+        .iter()
+        .map(|cluster| managed_service_inventory_item_from_config(cluster, now))
+        .collect::<Vec<_>>();
+    let reports = pillars
+        .iter()
+        .map(|pillar| evaluate_managed_service_inventory(&items, *pillar, now))
+        .collect::<Vec<_>>();
+    let oldest_refresh = items.iter().map(|item| item.collected_at).min();
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "resource_type": KAFKA_MANAGED_SERVICE_RESOURCE_TYPE,
         "evaluated_at": now,
         "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
         "resources_evaluated": items.len(),
