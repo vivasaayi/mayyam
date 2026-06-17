@@ -104,6 +104,56 @@ pub struct Ec2CostTriageContext {
     pub evidence_citations: Vec<Ec2EvidenceCitation>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Ec2InvestigationStepKind {
+    Inspect,
+    Compare,
+    Diagnose,
+    ProposeMutationPlan,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Ec2InvestigationToolMode {
+    ReadOnly,
+    ApprovalRequired,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Ec2InvestigationStep {
+    pub step_id: String,
+    pub kind: Ec2InvestigationStepKind,
+    pub tool_name: &'static str,
+    pub tool_mode: Ec2InvestigationToolMode,
+    pub target_resource_id: String,
+    pub reason_code: String,
+    pub stop_condition: String,
+    pub evidence: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Ec2MutationApprovalGate {
+    pub gate_id: String,
+    pub target_resource_id: String,
+    pub required_approval: &'static str,
+    pub blast_radius: String,
+    pub rollback_note_required: bool,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Ec2CostAgenticInvestigationPlan {
+    pub workflow_id: &'static str,
+    pub default_tool_mode: Ec2InvestigationToolMode,
+    pub max_tool_calls: usize,
+    pub max_evidence_citations: usize,
+    pub replay_required: bool,
+    pub steps: Vec<Ec2InvestigationStep>,
+    pub approval_gates: Vec<Ec2MutationApprovalGate>,
+    pub evidence_citations: Vec<Ec2EvidenceCitation>,
+}
+
 /// Evaluate every EC2 instance in the fleet for one pillar.
 pub fn evaluate_ec2_fleet(
     resources: &[AwsResourceModel],
@@ -238,6 +288,144 @@ pub fn ec2_cost_triage_context(report: &PillarReport) -> Ec2CostTriageContext {
         hypotheses,
         missing_data_questions,
         evidence_citations,
+    }
+}
+
+pub fn ec2_cost_agentic_investigation_plan(
+    report: &PillarReport,
+) -> Ec2CostAgenticInvestigationPlan {
+    let triage = ec2_cost_triage_context(report);
+    let mut steps = Vec::new();
+    let mut approval_gates = Vec::new();
+
+    for citation in &triage.evidence_citations {
+        if citation.resource_id == "fleet" {
+            continue;
+        }
+
+        match citation.reason_code.as_str() {
+            REASON_COST_MISSING_UTILIZATION_TELEMETRY => {
+                steps.push(investigation_step(
+                    &steps,
+                    Ec2InvestigationStepKind::Inspect,
+                    "ec2.cloudwatch.get_metric_data",
+                    Ec2InvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when CPUUtilization is found for the lookback window or the metric is confirmed absent",
+                ));
+            }
+            REASON_COST_LOW_UTILIZATION_TELEMETRY => {
+                steps.push(investigation_step(
+                    &steps,
+                    Ec2InvestigationStepKind::Compare,
+                    "ec2.compute_optimizer.get_instance_recommendations",
+                    Ec2InvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when rightsizing evidence, reservation coverage, or a conflicting utilization signal is found",
+                ));
+                approval_gates.push(mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve any resize, stop schedule, or purchase-plan change after owner review",
+                ));
+            }
+            REASON_COST_STOPPED_INSTANCE => {
+                steps.push(investigation_step(
+                    &steps,
+                    Ec2InvestigationStepKind::Diagnose,
+                    "ec2.describe_attached_cost_artifacts",
+                    Ec2InvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when attached EBS volumes, elastic IPs, and recovery expectations are recorded",
+                ));
+                approval_gates.push(mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve terminate, snapshot, detach, or release actions after rollback notes are captured",
+                ));
+            }
+            REASON_COST_MISSING_ALLOCATION_TAGS => {
+                steps.push(investigation_step(
+                    &steps,
+                    Ec2InvestigationStepKind::Diagnose,
+                    "ec2.resource_groups.get_tagging_context",
+                    Ec2InvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when owner, team, project, or cost-center can be inferred or the gap is assigned",
+                ));
+                approval_gates.push(mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve tag writes after ownership is verified",
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    steps.push(Ec2InvestigationStep {
+        step_id: format!("ec2-cost-step-{:02}", steps.len() + 1),
+        kind: Ec2InvestigationStepKind::ProposeMutationPlan,
+        tool_name: "ec2.cost.prepare_approval_plan",
+        tool_mode: Ec2InvestigationToolMode::ApprovalRequired,
+        target_resource_id: "investigation".to_string(),
+        reason_code: "EC2_COST_APPROVAL_PLAN_REQUIRED".to_string(),
+        stop_condition:
+            "stop before mutation; require explicit operator approval, blast-radius summary, and rollback note"
+                .to_string(),
+        evidence: json!({
+            "approval_gate_count": approval_gates.len(),
+            "read_only_step_count": steps.len(),
+        }),
+    });
+
+    Ec2CostAgenticInvestigationPlan {
+        workflow_id: "ec2_cost_agentic_investigation",
+        default_tool_mode: Ec2InvestigationToolMode::ReadOnly,
+        max_tool_calls: steps.len().min(12),
+        max_evidence_citations: triage.evidence_citations.len(),
+        replay_required: true,
+        steps,
+        approval_gates,
+        evidence_citations: triage.evidence_citations,
+    }
+}
+
+fn investigation_step(
+    existing_steps: &[Ec2InvestigationStep],
+    kind: Ec2InvestigationStepKind,
+    tool_name: &'static str,
+    tool_mode: Ec2InvestigationToolMode,
+    citation: &Ec2EvidenceCitation,
+    stop_condition: &str,
+) -> Ec2InvestigationStep {
+    Ec2InvestigationStep {
+        step_id: format!("ec2-cost-step-{:02}", existing_steps.len() + 1),
+        kind,
+        tool_name,
+        tool_mode,
+        target_resource_id: citation.resource_id.clone(),
+        reason_code: citation.reason_code.clone(),
+        stop_condition: stop_condition.to_string(),
+        evidence: citation.evidence.clone(),
+    }
+}
+
+fn mutation_gate(
+    existing_gates: &[Ec2MutationApprovalGate],
+    citation: &Ec2EvidenceCitation,
+    required_approval: &'static str,
+) -> Ec2MutationApprovalGate {
+    Ec2MutationApprovalGate {
+        gate_id: format!("ec2-cost-approval-{:02}", existing_gates.len() + 1),
+        target_resource_id: citation.resource_id.clone(),
+        required_approval,
+        blast_radius: format!(
+            "single EC2 instance {}; no mutation is executable from the investigation plan",
+            citation.resource_id
+        ),
+        rollback_note_required: true,
+        evidence_reason_codes: vec![citation.reason_code.clone()],
     }
 }
 
@@ -1322,6 +1510,66 @@ mod tests {
             .evidence_citations
             .iter()
             .any(|citation| citation.reason_code == REASON_COST_MISSING_UTILIZATION_TELEMETRY));
+    }
+
+    #[test]
+    fn ec2_cost_agentic_investigation_plan_is_read_only_until_approval() {
+        let idle = fixture(
+            "i-idle",
+            json!({"cost-center": "cc-42", "owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[1.2, 2.4, 3.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let stopped = fixture(
+            "i-stopped",
+            json!({}),
+            json!({
+                "state": "stopped",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[12.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[idle, stopped], Pillar::Cost, now());
+        let plan = ec2_cost_agentic_investigation_plan(&report);
+
+        assert_eq!(plan.workflow_id, "ec2_cost_agentic_investigation");
+        assert_eq!(plan.default_tool_mode, Ec2InvestigationToolMode::ReadOnly);
+        assert!(plan.replay_required);
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "ec2.compute_optimizer.get_instance_recommendations"
+                && step.tool_mode == Ec2InvestigationToolMode::ReadOnly
+                && step.target_resource_id == "i-idle"
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "ec2.describe_attached_cost_artifacts"
+                && step.tool_mode == Ec2InvestigationToolMode::ReadOnly
+                && step.target_resource_id == "i-stopped"
+        }));
+        assert_eq!(
+            plan.steps.last().map(|step| step.tool_mode),
+            Some(Ec2InvestigationToolMode::ApprovalRequired)
+        );
+        assert_eq!(plan.approval_gates.len(), 3);
+        assert!(plan
+            .approval_gates
+            .iter()
+            .all(|gate| gate.rollback_note_required));
     }
 
     #[test]
