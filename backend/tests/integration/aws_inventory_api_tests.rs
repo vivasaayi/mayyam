@@ -1416,6 +1416,38 @@ async fn autoscaling_resilience_pillar_reports_posture_contract() {
             |step| step["tool_name"] == "autoscaling.resilience.prepare_approval_plan"
                 && step["tool_mode"] == "approval_required"
         ));
+
+    let remediation = &reports[0]["remediation_workflow"];
+    assert_eq!(
+        remediation["workflow_id"],
+        "autoscaling_resilience_safe_remediation"
+    );
+    assert_eq!(remediation["read_only_mode"], true);
+    assert_eq!(
+        remediation["rbac_permission"],
+        "aws.autoscaling.resilience.remediation.approve"
+    );
+    assert_eq!(
+        remediation["audit_stream"],
+        "autoscaling_resilience_remediation_audit"
+    );
+    assert!(remediation["actions"].is_array());
+    assert!(remediation["approval_gates"].is_array());
+    let remediation_actions = remediation["actions"]
+        .as_array()
+        .expect("resilience remediation actions should be an array");
+    assert!(remediation_actions.iter().all(|action| {
+        action["dry_run"] == true
+            && action["requires_approval"] == true
+            && !action["approval_gate_id"].is_null()
+            && action["audit_event_type"] == "autoscaling.resilience.remediation.dry_run_planned"
+            && (action["status"] == "dry_run_pending_approval"
+                || action["status"] == "blocked_missing_evidence")
+            && action["rollback_note"]
+                .as_str()
+                .map(|note| note.contains("rollback"))
+                .unwrap_or(false)
+    }));
 }
 
 #[tokio::test]

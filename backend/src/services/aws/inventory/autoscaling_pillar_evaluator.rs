@@ -182,6 +182,11 @@ pub type AsgResilienceAgenticInvestigationPlan = AsgAgenticInvestigationPlan;
 pub enum AsgRemediationActionKind {
     ReviewCostAllocationTags,
     ReviewScalingPolicyCapacity,
+    PlanMultiAzCoverage,
+    ReviewElbHealthCheckPolicy,
+    ReviewScalingProcessRecovery,
+    ReviewCapacityBounds,
+    ReviewUnhealthyInstanceRecovery,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -218,6 +223,9 @@ pub struct AsgCostRemediationWorkflow {
     pub actions: Vec<AsgCostRemediationAction>,
     pub approval_gates: Vec<AsgMutationApprovalGate>,
 }
+
+pub type AsgResilienceRemediationAction = AsgCostRemediationAction;
+pub type AsgResilienceRemediationWorkflow = AsgCostRemediationWorkflow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -743,6 +751,51 @@ pub fn asg_cost_remediation_workflow(report: &PillarReport) -> AsgCostRemediatio
     }
 }
 
+pub fn asg_resilience_remediation_workflow(
+    report: &PillarReport,
+) -> AsgResilienceRemediationWorkflow {
+    let investigation = asg_resilience_agentic_investigation_plan(report);
+    let has_stale_data = report
+        .findings
+        .iter()
+        .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+    let mut actions = Vec::new();
+
+    for gate in &investigation.approval_gates {
+        for reason_code in &gate.evidence_reason_codes {
+            if let Some(kind) = asg_resilience_remediation_action_kind(reason_code) {
+                actions.push(asg_remediation_action_with_contract(
+                    "autoscaling-resilience",
+                    "autoscaling.resilience.remediation.dry_run_planned",
+                    &[
+                        "refresh Auto Scaling replacement, health, and placement evidence",
+                        "verify owner, blast radius, health-check policy, and scaling-process intent",
+                        "capture operator approval, rollback note, and audit id before execution",
+                    ],
+                    &actions,
+                    kind,
+                    gate,
+                    if has_stale_data {
+                        AsgRemediationStatus::BlockedMissingEvidence
+                    } else {
+                        AsgRemediationStatus::DryRunPendingApproval
+                    },
+                ));
+            }
+        }
+    }
+
+    AsgResilienceRemediationWorkflow {
+        workflow_id: "autoscaling_resilience_safe_remediation",
+        read_only_mode: true,
+        rbac_permission: "aws.autoscaling.resilience.remediation.approve",
+        audit_stream: "autoscaling_resilience_remediation_audit",
+        stale_data_blocks_execution: has_stale_data,
+        actions,
+        approval_gates: investigation.approval_gates,
+    }
+}
+
 pub fn asg_cost_slo_policy_snapshot(report: &PillarReport) -> AsgCostSloPolicySnapshot {
     let posture = asg_cost_posture_summary(report);
     let failed_rule_count = posture.rules_failed;
@@ -1181,7 +1234,48 @@ fn asg_remediation_action_kind(reason_code: &str) -> Option<AsgRemediationAction
     }
 }
 
+fn asg_resilience_remediation_action_kind(reason_code: &str) -> Option<AsgRemediationActionKind> {
+    match reason_code {
+        REASON_RES_UNHEALTHY_INSTANCE_TELEMETRY => {
+            Some(AsgRemediationActionKind::ReviewUnhealthyInstanceRecovery)
+        }
+        REASON_RES_SINGLE_AZ => Some(AsgRemediationActionKind::PlanMultiAzCoverage),
+        REASON_RES_ELB_HEALTH_CHECK_EC2_ONLY => {
+            Some(AsgRemediationActionKind::ReviewElbHealthCheckPolicy)
+        }
+        REASON_RES_SUSPENDED_PROCESSES => {
+            Some(AsgRemediationActionKind::ReviewScalingProcessRecovery)
+        }
+        REASON_RES_DESIRED_BELOW_MIN => Some(AsgRemediationActionKind::ReviewCapacityBounds),
+        _ => None,
+    }
+}
+
 fn asg_remediation_action(
+    existing_actions: &[AsgCostRemediationAction],
+    kind: AsgRemediationActionKind,
+    gate: &AsgMutationApprovalGate,
+    status: AsgRemediationStatus,
+) -> AsgCostRemediationAction {
+    asg_remediation_action_with_contract(
+        "autoscaling-cost",
+        "autoscaling.cost.remediation.dry_run_planned",
+        &[
+            "refresh Auto Scaling capacity, tag, and group metric evidence",
+            "verify owner, blast radius, budget impact, and scaling-policy intent",
+            "capture operator approval, rollback note, and audit id before execution",
+        ],
+        existing_actions,
+        kind,
+        gate,
+        status,
+    )
+}
+
+fn asg_remediation_action_with_contract(
+    action_id_prefix: &str,
+    audit_event_type: &'static str,
+    validation_steps: &[&'static str],
     existing_actions: &[AsgCostRemediationAction],
     kind: AsgRemediationActionKind,
     gate: &AsgMutationApprovalGate,
@@ -1191,31 +1285,34 @@ fn asg_remediation_action(
     let action_slug = match kind {
         AsgRemediationActionKind::ReviewCostAllocationTags => "review-cost-allocation-tags",
         AsgRemediationActionKind::ReviewScalingPolicyCapacity => "review-scaling-policy-capacity",
+        AsgRemediationActionKind::PlanMultiAzCoverage => "plan-multi-az-coverage",
+        AsgRemediationActionKind::ReviewElbHealthCheckPolicy => "review-elb-health-check-policy",
+        AsgRemediationActionKind::ReviewScalingProcessRecovery => "review-scaling-process-recovery",
+        AsgRemediationActionKind::ReviewCapacityBounds => "review-capacity-bounds",
+        AsgRemediationActionKind::ReviewUnhealthyInstanceRecovery => {
+            "review-unhealthy-instance-recovery"
+        }
     };
 
     AsgCostRemediationAction {
-        action_id: format!("autoscaling-cost-remediation-{:02}", action_number),
+        action_id: format!("{}-remediation-{:02}", action_id_prefix, action_number),
         kind,
         status,
         target_resource_id: gate.target_resource_id.clone(),
         dry_run: true,
         requires_approval: true,
         approval_gate_id: Some(gate.gate_id.clone()),
-        audit_event_type: "autoscaling.cost.remediation.dry_run_planned",
+        audit_event_type,
         idempotency_key: format!(
-            "autoscaling-cost-{}-{}",
-            gate.target_resource_id, action_slug
+            "{}-{}-{}",
+            action_id_prefix, gate.target_resource_id, action_slug
         ),
         blast_radius: gate.blast_radius.clone(),
         rollback_note: format!(
             "Before approval, record rollback or recovery notes for {} on {}.",
             action_slug, gate.target_resource_id
         ),
-        validation_steps: vec![
-            "refresh Auto Scaling capacity, tag, and group metric evidence",
-            "verify owner, blast radius, budget impact, and scaling-policy intent",
-            "capture operator approval, rollback note, and audit id before execution",
-        ],
+        validation_steps: validation_steps.to_vec(),
         evidence_reason_codes: gate.evidence_reason_codes.clone(),
     }
 }
@@ -2809,6 +2906,104 @@ mod tests {
                     .contains(&REASON_RES_SINGLE_AZ.to_string())
         }));
         assert_eq!(plan.max_evidence_citations, report.findings.len());
+    }
+
+    #[test]
+    fn asg_resilience_remediation_workflow_plans_dry_run_actions_until_approved() {
+        let mut single_az_data = healthy_data();
+        single_az_data["availability_zones"] = json!(["us-east-1a"]);
+        single_az_data["health_check_type"] = json!("EC2");
+        let single_az = fixture(
+            "asg-res-single-az-remediation",
+            json!({"owner": "sre"}),
+            single_az_data,
+            now(),
+        );
+
+        let mut suspended_process_data = healthy_data();
+        suspended_process_data["suspended_process_count"] = json!(1);
+        let suspended_process = fixture(
+            "asg-res-suspended-process-remediation",
+            json!({"owner": "sre"}),
+            suspended_process_data,
+            now(),
+        );
+
+        let report =
+            evaluate_autoscaling_fleet(&[single_az, suspended_process], Pillar::Resilience, now());
+        let workflow = asg_resilience_remediation_workflow(&report);
+
+        assert_eq!(
+            workflow.workflow_id,
+            "autoscaling_resilience_safe_remediation"
+        );
+        assert!(workflow.read_only_mode);
+        assert_eq!(
+            workflow.rbac_permission,
+            "aws.autoscaling.resilience.remediation.approve"
+        );
+        assert_eq!(
+            workflow.audit_stream,
+            "autoscaling_resilience_remediation_audit"
+        );
+        assert!(!workflow.stale_data_blocks_execution);
+        assert_eq!(workflow.actions.len(), 3);
+        assert!(workflow.actions.iter().all(|action| {
+            let action_text = format!(
+                "{} {} {}",
+                action.action_id, action.audit_event_type, action.idempotency_key
+            );
+            action
+                .action_id
+                .starts_with("autoscaling-resilience-remediation-")
+                && action.dry_run
+                && action.requires_approval
+                && action.approval_gate_id.is_some()
+                && action.status == AsgRemediationStatus::DryRunPendingApproval
+                && action.audit_event_type == "autoscaling.resilience.remediation.dry_run_planned"
+                && action.rollback_note.contains("rollback")
+                && !["execute", "terminate", "modify", "resume", "detach"]
+                    .iter()
+                    .any(|term| action_text.contains(term))
+                && action.validation_steps.contains(
+                    &"capture operator approval, rollback note, and audit id before execution",
+                )
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == AsgRemediationActionKind::PlanMultiAzCoverage
+                && action.target_resource_id == "asg-res-single-az-remediation"
+                && action
+                    .evidence_reason_codes
+                    .contains(&REASON_RES_SINGLE_AZ.to_string())
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == AsgRemediationActionKind::ReviewScalingProcessRecovery
+                && action.target_resource_id == "asg-res-suspended-process-remediation"
+                && action
+                    .evidence_reason_codes
+                    .contains(&REASON_RES_SUSPENDED_PROCESSES.to_string())
+        }));
+    }
+
+    #[test]
+    fn asg_resilience_remediation_workflow_blocks_execution_when_data_is_stale() {
+        let mut stale_data = healthy_data();
+        stale_data["availability_zones"] = json!(["us-east-1a"]);
+        let stale = fixture(
+            "asg-res-stale-remediation",
+            json!({"owner": "sre"}),
+            stale_data,
+            now() - Duration::hours(30),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Resilience, now());
+        let workflow = asg_resilience_remediation_workflow(&report);
+
+        assert!(workflow.stale_data_blocks_execution);
+        assert!(!workflow.actions.is_empty());
+        assert!(workflow.actions.iter().all(|action| {
+            action.dry_run && action.status == AsgRemediationStatus::BlockedMissingEvidence
+        }));
     }
 
     #[test]

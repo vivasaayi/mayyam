@@ -599,6 +599,49 @@ describe("PillarScorecard", () => {
               },
             ],
           },
+          remediation_workflow: {
+            workflow_id: "autoscaling_resilience_safe_remediation",
+            read_only_mode: true,
+            rbac_permission: "aws.autoscaling.resilience.remediation.approve",
+            audit_stream: "autoscaling_resilience_remediation_audit",
+            stale_data_blocks_execution: false,
+            actions: [
+              {
+                action_id: "autoscaling-resilience-remediation-01",
+                kind: "plan_multi_az_coverage",
+                status: "dry_run_pending_approval",
+                target_resource_id: "asg-single-az",
+                dry_run: true,
+                requires_approval: true,
+                approval_gate_id: "autoscaling-resilience-approval-01",
+                audit_event_type:
+                  "autoscaling.resilience.remediation.dry_run_planned",
+                idempotency_key:
+                  "autoscaling-resilience-asg-single-az-plan-multi-az-coverage",
+                blast_radius:
+                  "single Auto Scaling group asg-single-az; no mutation is executable from the investigation plan",
+                rollback_note:
+                  "Before approval, record rollback or recovery notes for plan-multi-az-coverage on asg-single-az.",
+                validation_steps: [
+                  "refresh Auto Scaling replacement, health, and placement evidence",
+                  "capture operator approval, rollback note, and audit id before execution",
+                ],
+                evidence_reason_codes: ["ASG_RES_SINGLE_AZ"],
+              },
+            ],
+            approval_gates: [
+              {
+                gate_id: "autoscaling-resilience-approval-01",
+                target_resource_id: "asg-single-az",
+                required_approval:
+                  "Approve subnet or capacity changes after resilience owner review",
+                blast_radius:
+                  "single Auto Scaling group asg-single-az; no mutation is executable from the investigation plan",
+                rollback_note_required: true,
+                evidence_reason_codes: ["ASG_RES_SINGLE_AZ"],
+              },
+            ],
+          },
         },
       ],
     };
@@ -631,6 +674,11 @@ describe("PillarScorecard", () => {
     expect(text).toContain("autoscaling.resilience.prepare_approval_plan");
     expect(text).toContain("Mutation planning requires approval");
     expect(text).toContain("Rollback note required");
+    expect(text).toContain("Resilience Remediation");
+    expect(text).toContain("autoscaling_resilience_safe_remediation");
+    expect(text).toContain("aws.autoscaling.resilience.remediation.approve");
+    expect(text).toContain("autoscaling.resilience.remediation.dry_run_planned");
+    expect(text).toContain("autoscaling-resilience-remediation-01");
 
     await view.unmount();
   });

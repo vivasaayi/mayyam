@@ -37,7 +37,8 @@ use crate::services::aws::inventory::autoscaling_pillar_evaluator::{
     asg_cost_agentic_investigation_plan, asg_cost_forecast_snapshot, asg_cost_posture_summary,
     asg_cost_remediation_workflow, asg_cost_reporting_bundle, asg_cost_slo_policy_snapshot,
     asg_cost_triage_context, asg_resilience_agentic_investigation_plan,
-    asg_resilience_posture_summary, asg_resilience_triage_context, evaluate_autoscaling_fleet,
+    asg_resilience_posture_summary, asg_resilience_remediation_workflow,
+    asg_resilience_triage_context, evaluate_autoscaling_fleet,
 };
 use crate::services::aws::inventory::backup_pillar_evaluator::evaluate_backup_fleet;
 use crate::services::aws::inventory::batch_pillar_evaluator::evaluate_batch_fleet;
@@ -1214,6 +1215,7 @@ pub async fn get_autoscaling_pillar_reports(
                     "posture": asg_resilience_posture_summary(&report),
                     "triage_context": asg_resilience_triage_context(&report),
                     "agentic_investigation": asg_resilience_agentic_investigation_plan(&report),
+                    "remediation_workflow": asg_resilience_remediation_workflow(&report),
                 })
             } else {
                 json!(report)
