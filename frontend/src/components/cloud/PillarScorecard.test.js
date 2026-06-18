@@ -2231,10 +2231,37 @@ describe("PillarScorecard", () => {
           assessment_scope:
             "lambda_cost_invocation_duration_error_and_throttle_telemetry",
           posture: {
+            workflow_id: "lambda_cost_posture",
+            rule_pack_id: "lambda-cost-posture-rules-v1",
+            audit_event_type: "lambda_cost_posture_evaluated",
+            read_only_mode: true,
             status: "fail",
             rules_evaluated: 7,
             rules_failed: 1,
             affected_resources: ["fn-no-telemetry"],
+            suppression_policy: {
+              supported: true,
+              scope: "resource_reason_code",
+              requires_reason: true,
+            },
+            assignment_policy: {
+              supported: true,
+              owner_sources: ["tag:owner", "tag:team"],
+              fallback_owner: "unassigned",
+            },
+            recommendations: [
+              {
+                resource_id: "fn-no-telemetry",
+                reason_code: "LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY",
+                recommendation:
+                  "collect_lambda_invocation_duration_error_and_throttle_metrics",
+                confidence: "medium",
+                effort: "low",
+                risk: "low",
+                suppression_key:
+                  "fn-no-telemetry:LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY",
+              },
+            ],
             rules: [
               {
                 rule_id: "lambda-cost-cloudwatch-metrics-present",
@@ -2251,6 +2278,41 @@ describe("PillarScorecard", () => {
                 affected_resources: [],
                 suppression_supported: true,
                 assignment_supported: true,
+              },
+            ],
+          },
+          triage_context: {
+            workflow_id: "lambda_cost_triage_context",
+            pillar: "cost",
+            context_builder_id: "lambda-cost-deterministic-context-v1",
+            prompt_template_id: "lambda-cost-ai-triage-v1",
+            generation_mode: "deterministic_no_llm",
+            max_prompt_tokens: 1200,
+            provider_routing: ["primary_ops_llm", "fallback_ops_llm"],
+            audit_event_type: "lambda_cost_ai_triage_context_built",
+            guardrails: {
+              read_only_mode: true,
+              evidence_required: true,
+              separate_facts_from_hypotheses: true,
+              ask_for_missing_data: true,
+              no_llm_invocation: true,
+              no_mutation_planning: true,
+            },
+            facts: [
+              "LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY affects fn-no-telemetry with Medium severity",
+            ],
+            hypotheses: [],
+            missing_data_questions: [
+              "Collect Invocations, Duration, Errors, and Throttles telemetry for fn-no-telemetry before explaining Lambda cost behavior",
+            ],
+            evidence_citations: [
+              {
+                reason_code: "LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY",
+                resource_id: "fn-no-telemetry",
+                severity: "medium",
+                evidence: {
+                  missing_metrics: ["Invocations"],
+                },
               },
             ],
           },
@@ -2274,6 +2336,17 @@ describe("PillarScorecard", () => {
     expect(text).toContain("fn-no-telemetry");
     expect(text).toContain("lambda-cost-cloudwatch-metrics-present");
     expect(text).toContain("LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY");
+    expect(text).toContain("Suppress supported");
+    expect(text).toContain("Assign supported");
+    expect(text).toContain("Cost Triage Context");
+    expect(text).toContain("lambda-cost-deterministic-context-v1");
+    expect(text).toContain("lambda-cost-ai-triage-v1");
+    expect(text).toContain("Provider Routing (not invoked)");
+    expect(text).toContain("primary_ops_llm");
+    expect(text).toContain("1200 token budget");
+    expect(text).toContain("Read only");
+    expect(text).toContain("Deterministic context only");
+    expect(text).toContain("Invocations, Duration, Errors, and Throttles");
 
     await view.unmount();
   });

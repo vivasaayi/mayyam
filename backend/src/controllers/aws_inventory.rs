@@ -101,6 +101,7 @@ use crate::services::aws::inventory::kms_pillar_evaluator::evaluate_kms_fleet;
 use crate::services::aws::inventory::lakeformation_pillar_evaluator::evaluate_lakeformation_fleet;
 use crate::services::aws::inventory::lambda_pillar_evaluator::{
     evaluate_lambda_fleet, lambda_cost_posture_summary, lambda_cost_telemetry_summary,
+    lambda_cost_triage_context,
 };
 use crate::services::aws::inventory::lightsail_pillar_evaluator::evaluate_lightsail_fleet;
 use crate::services::aws::inventory::load_balancer_pillar_evaluator::evaluate_load_balancer_fleet;
@@ -475,6 +476,7 @@ pub async fn get_lambda_pillar_reports(
                     "findings": report.findings,
                     "assessment_scope": "lambda_cost_invocation_duration_error_and_throttle_telemetry",
                     "posture": lambda_cost_posture_summary(&report),
+                    "triage_context": lambda_cost_triage_context(&report),
                     "telemetry": lambda_cost_telemetry_summary(&report),
                 })
             } else {

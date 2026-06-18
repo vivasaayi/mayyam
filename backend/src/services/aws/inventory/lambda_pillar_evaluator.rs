@@ -84,11 +84,49 @@ pub struct LambdaPostureRule {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LambdaCostPostureSummary {
+    pub workflow_id: &'static str,
+    pub rule_pack_id: &'static str,
+    pub evidence_serializer: &'static str,
+    pub severity_model: &'static str,
+    pub audit_event_type: &'static str,
+    pub read_only_mode: bool,
     pub status: LambdaPostureStatus,
     pub rules_evaluated: usize,
     pub rules_failed: usize,
     pub affected_resources: Vec<String>,
     pub rules: Vec<LambdaPostureRule>,
+    pub suppression_policy: LambdaSuppressionPolicy,
+    pub assignment_policy: LambdaAssignmentPolicy,
+    pub recommendations: Vec<LambdaCostPostureRecommendation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LambdaSuppressionPolicy {
+    pub supported: bool,
+    pub scope: &'static str,
+    pub requires_reason: bool,
+    pub audit_event_type: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LambdaAssignmentPolicy {
+    pub supported: bool,
+    pub owner_sources: Vec<&'static str>,
+    pub fallback_owner: &'static str,
+    pub audit_event_type: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LambdaCostPostureRecommendation {
+    pub resource_id: String,
+    pub reason_code: String,
+    pub recommendation: &'static str,
+    pub owner: Option<String>,
+    pub confidence: &'static str,
+    pub effort: &'static str,
+    pub risk: &'static str,
+    pub suppression_key: String,
+    pub audit_event_type: &'static str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -105,6 +143,41 @@ pub struct LambdaCostTelemetrySummary {
     pub evidence_reason_codes: Vec<String>,
     pub stale_data_blocks_delivery: bool,
     pub telemetry_quality_score: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LambdaAiTriageGuardrails {
+    pub read_only_mode: bool,
+    pub evidence_required: bool,
+    pub separate_facts_from_hypotheses: bool,
+    pub ask_for_missing_data: bool,
+    pub no_llm_invocation: bool,
+    pub no_mutation_planning: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LambdaEvidenceCitation {
+    pub reason_code: String,
+    pub resource_id: String,
+    pub severity: Severity,
+    pub evidence: Value,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LambdaCostTriageContext {
+    pub workflow_id: &'static str,
+    pub pillar: Pillar,
+    pub context_builder_id: &'static str,
+    pub prompt_template_id: &'static str,
+    pub generation_mode: &'static str,
+    pub max_prompt_tokens: u16,
+    pub provider_routing: Vec<&'static str>,
+    pub audit_event_type: &'static str,
+    pub guardrails: LambdaAiTriageGuardrails,
+    pub facts: Vec<String>,
+    pub hypotheses: Vec<String>,
+    pub missing_data_questions: Vec<String>,
+    pub evidence_citations: Vec<LambdaEvidenceCitation>,
 }
 
 /// Evaluate every Lambda function in the fleet for one pillar.
@@ -137,6 +210,87 @@ pub fn evaluate_lambda_fleet(
         stale_resources,
         score,
         findings,
+    }
+}
+
+pub fn lambda_cost_triage_context(report: &PillarReport) -> LambdaCostTriageContext {
+    let mut facts = Vec::new();
+    let mut hypotheses = Vec::new();
+    let mut missing_data_questions = Vec::new();
+    let mut evidence_citations = Vec::new();
+
+    for finding in &report.findings {
+        facts.push(format!(
+            "{} affects {} with {:?} severity",
+            finding.reason_code, finding.resource_id, finding.severity
+        ));
+        evidence_citations.push(LambdaEvidenceCitation {
+            reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            evidence: finding.evidence.clone(),
+        });
+
+        match finding.reason_code.as_str() {
+            REASON_INV_STALE_DATA => missing_data_questions.push(format!(
+                "Refresh Lambda inventory and cost telemetry for {} before explaining current cost posture",
+                finding.resource_id
+            )),
+            REASON_COST_MISSING_TELEMETRY_COLLECTION_METADATA => missing_data_questions.push(
+                format!(
+                    "Collect Lambda telemetry collection metadata for {} before trusting cost posture evidence",
+                    finding.resource_id
+                ),
+            ),
+            REASON_COST_TELEMETRY_COLLECTION_ERRORS => hypotheses.push(format!(
+                "{} has Lambda telemetry collection errors; inspect CloudWatch permissions, API throttling, and collector retry evidence before changing cost posture",
+                finding.resource_id
+            )),
+            REASON_COST_MISSING_CLOUDWATCH_TELEMETRY => missing_data_questions.push(format!(
+                "Collect Invocations, Duration, Errors, and Throttles telemetry for {} before explaining Lambda cost behavior",
+                finding.resource_id
+            )),
+            REASON_COST_MISSING_ALLOCATION_TAGS => missing_data_questions.push(format!(
+                "Assign owner, team, project, or cost-center metadata for {} so Lambda savings can be routed",
+                finding.resource_id
+            )),
+            REASON_COST_X86_ONLY_ARCHITECTURE => hypotheses.push(format!(
+                "{} may reduce GB-second cost with arm64, but runtime dependencies and native extensions must be checked before migration",
+                finding.resource_id
+            )),
+            REASON_COST_NO_INVOCATIONS_TELEMETRY => hypotheses.push(format!(
+                "{} has no observed invocations in the telemetry window; verify schedule, event source mapping, and retention expectations before cleanup",
+                finding.resource_id
+            )),
+            REASON_COST_ERROR_OR_THROTTLE_TELEMETRY => hypotheses.push(format!(
+                "{} has error or throttle telemetry that can increase retry and duration spend; inspect concurrency limits, upstream retry policy, and error budget before tuning",
+                finding.resource_id
+            )),
+            _ => {}
+        }
+    }
+
+    LambdaCostTriageContext {
+        workflow_id: "lambda_cost_triage_context",
+        pillar: report.pillar,
+        context_builder_id: "lambda-cost-deterministic-context-v1",
+        prompt_template_id: "lambda-cost-ai-triage-v1",
+        generation_mode: "deterministic_no_llm",
+        max_prompt_tokens: 1200,
+        provider_routing: vec!["primary_ops_llm", "fallback_ops_llm"],
+        audit_event_type: "lambda_cost_ai_triage_context_built",
+        guardrails: LambdaAiTriageGuardrails {
+            read_only_mode: true,
+            evidence_required: true,
+            separate_facts_from_hypotheses: true,
+            ask_for_missing_data: true,
+            no_llm_invocation: true,
+            no_mutation_planning: true,
+        },
+        facts,
+        hypotheses,
+        missing_data_questions,
+        evidence_citations,
     }
 }
 
@@ -192,6 +346,12 @@ pub fn lambda_cost_posture_summary(report: &PillarReport) -> LambdaCostPostureSu
     );
 
     LambdaCostPostureSummary {
+        workflow_id: "lambda_cost_posture",
+        rule_pack_id: "lambda-cost-posture-rules-v1",
+        evidence_serializer: "lambda-cost-evidence-v1",
+        severity_model: "deterministic-high-medium-low-v1",
+        audit_event_type: "lambda_cost_posture_evaluated",
+        read_only_mode: true,
         status: if rules_failed == 0 {
             LambdaPostureStatus::Pass
         } else {
@@ -201,6 +361,19 @@ pub fn lambda_cost_posture_summary(report: &PillarReport) -> LambdaCostPostureSu
         rules_failed,
         affected_resources,
         rules,
+        suppression_policy: LambdaSuppressionPolicy {
+            supported: true,
+            scope: "resource_reason_code",
+            requires_reason: true,
+            audit_event_type: "lambda_cost_posture_suppression_requested",
+        },
+        assignment_policy: LambdaAssignmentPolicy {
+            supported: true,
+            owner_sources: vec!["tag:owner", "tag:team", "tag:cost-center", "tag:project"],
+            fallback_owner: "unassigned",
+            audit_event_type: "lambda_cost_posture_assignment_requested",
+        },
+        recommendations: lambda_cost_posture_recommendations(report),
     }
 }
 
@@ -495,6 +668,77 @@ fn lambda_cost_posture_rule(
         suppression_supported: true,
         assignment_supported: true,
     }
+}
+
+fn lambda_cost_posture_recommendations(
+    report: &PillarReport,
+) -> Vec<LambdaCostPostureRecommendation> {
+    report
+        .findings
+        .iter()
+        .filter_map(|finding| {
+            let recommendation = match finding.reason_code.as_str() {
+                REASON_INV_STALE_DATA => "refresh_lambda_inventory_and_cost_telemetry",
+                REASON_COST_MISSING_TELEMETRY_COLLECTION_METADATA => {
+                    "restore_lambda_cost_collection_metadata"
+                }
+                REASON_COST_TELEMETRY_COLLECTION_ERRORS => {
+                    "inspect_lambda_cloudwatch_collection_errors"
+                }
+                REASON_COST_MISSING_CLOUDWATCH_TELEMETRY => {
+                    "collect_lambda_invocation_duration_error_and_throttle_metrics"
+                }
+                REASON_COST_MISSING_ALLOCATION_TAGS => "assign_lambda_cost_owner_metadata",
+                REASON_COST_X86_ONLY_ARCHITECTURE => "evaluate_arm64_runtime_compatibility",
+                REASON_COST_NO_INVOCATIONS_TELEMETRY => "review_unused_lambda_function",
+                REASON_COST_ERROR_OR_THROTTLE_TELEMETRY => {
+                    "diagnose_retry_error_and_throttle_cost_waste"
+                }
+                _ => return None,
+            };
+
+            Some(LambdaCostPostureRecommendation {
+                resource_id: finding.resource_id.clone(),
+                reason_code: finding.reason_code.clone(),
+                recommendation,
+                owner: owner_from_evidence(&finding.evidence),
+                confidence: "medium",
+                effort: recommendation_effort(finding.reason_code.as_str()),
+                risk: recommendation_risk(finding.reason_code.as_str()),
+                suppression_key: format!("{}:{}", finding.resource_id, finding.reason_code),
+                audit_event_type: "lambda_cost_posture_recommendation_emitted",
+            })
+        })
+        .collect()
+}
+
+fn recommendation_effort(reason_code: &str) -> &'static str {
+    match reason_code {
+        REASON_COST_X86_ONLY_ARCHITECTURE | REASON_COST_ERROR_OR_THROTTLE_TELEMETRY => "medium",
+        _ => "low",
+    }
+}
+
+fn recommendation_risk(reason_code: &str) -> &'static str {
+    match reason_code {
+        REASON_COST_X86_ONLY_ARCHITECTURE | REASON_COST_ERROR_OR_THROTTLE_TELEMETRY => "medium",
+        _ => "low",
+    }
+}
+
+fn owner_from_evidence(evidence: &Value) -> Option<String> {
+    evidence
+        .get("tags")
+        .and_then(|tags| tag_string(tags, &["owner", "team", "cost-center", "project"]))
+}
+
+fn tag_string(tags: &Value, keys: &[&str]) -> Option<String> {
+    keys.iter()
+        .filter_map(|key| tags.get(key))
+        .filter_map(Value::as_str)
+        .map(str::trim)
+        .find(|value| !value.is_empty())
+        .map(str::to_string)
 }
 
 fn lambda_cost_metric_names() -> [&'static str; 4] {
@@ -804,11 +1048,99 @@ mod tests {
         assert!(codes.contains(&REASON_COST_NO_INVOCATIONS_TELEMETRY));
         assert!(codes.contains(&REASON_COST_ERROR_OR_THROTTLE_TELEMETRY));
         let posture = lambda_cost_posture_summary(&report);
+        assert_eq!(posture.workflow_id, "lambda_cost_posture");
+        assert_eq!(posture.rule_pack_id, "lambda-cost-posture-rules-v1");
+        assert_eq!(posture.audit_event_type, "lambda_cost_posture_evaluated");
+        assert!(posture.read_only_mode);
         assert_eq!(posture.status, LambdaPostureStatus::Fail);
         assert_eq!(posture.rules_evaluated, 7);
+        assert!(posture.suppression_policy.supported);
+        assert!(posture.assignment_policy.supported);
         assert!(posture
             .affected_resources
             .contains(&"fn-cost-waste".to_string()));
+        assert!(posture.recommendations.iter().any(|recommendation| {
+            recommendation.resource_id == "fn-cost-waste"
+                && recommendation.reason_code == REASON_COST_ERROR_OR_THROTTLE_TELEMETRY
+                && recommendation.recommendation == "diagnose_retry_error_and_throttle_cost_waste"
+                && recommendation.suppression_key
+                    == "fn-cost-waste:LAMBDA_COST_ERROR_OR_THROTTLE_TELEMETRY"
+        }));
+    }
+
+    #[test]
+    fn lambda_cost_triage_context_separates_facts_hypotheses_and_questions() {
+        let mut collection_error_data = healthy_data();
+        collection_error_data["telemetry_collection_success_count"] = json!(0);
+        collection_error_data["telemetry_collection_failure_count"] = json!(1);
+        collection_error_data["telemetry_collection_error_count"] = json!(1);
+        collection_error_data["telemetry_collection_errors"] = json!([
+            {
+                "source": "cloudwatch",
+                "operation": "GetMetricData",
+                "error": "AccessDenied"
+            }
+        ]);
+        let collection_error = fixture(
+            "fn-collection-error",
+            json!({"team": "payments"}),
+            collection_error_data,
+            1,
+            now(),
+        );
+
+        let mut missing_telemetry_data = healthy_data();
+        missing_telemetry_data
+            .as_object_mut()
+            .unwrap()
+            .remove("cloudwatch_metrics");
+        let missing_telemetry = fixture(
+            "fn-missing-telemetry",
+            json!({}),
+            missing_telemetry_data,
+            1,
+            now(),
+        );
+
+        let report =
+            evaluate_lambda_fleet(&[collection_error, missing_telemetry], Pillar::Cost, now());
+        let triage = lambda_cost_triage_context(&report);
+
+        assert_eq!(triage.workflow_id, "lambda_cost_triage_context");
+        assert_eq!(
+            triage.context_builder_id,
+            "lambda-cost-deterministic-context-v1"
+        );
+        assert_eq!(triage.prompt_template_id, "lambda-cost-ai-triage-v1");
+        assert_eq!(triage.generation_mode, "deterministic_no_llm");
+        assert_eq!(triage.max_prompt_tokens, 1200);
+        assert!(triage.guardrails.read_only_mode);
+        assert!(triage.guardrails.evidence_required);
+        assert!(triage.guardrails.separate_facts_from_hypotheses);
+        assert!(triage.guardrails.ask_for_missing_data);
+        assert!(triage.guardrails.no_llm_invocation);
+        assert!(triage.guardrails.no_mutation_planning);
+        assert!(triage
+            .facts
+            .iter()
+            .any(|fact| fact.contains(REASON_COST_TELEMETRY_COLLECTION_ERRORS)));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("collection errors")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("Invocations, Duration, Errors, and Throttles")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("owner, team, project, or cost-center")));
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_COST_TELEMETRY_COLLECTION_ERRORS
+                && citation.resource_id == "fn-collection-error"
+                && citation.evidence["telemetry_collection_error_count"] == 1
+        }));
     }
 
     #[test]

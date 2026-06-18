@@ -206,6 +206,7 @@ const PostureSummary = ({ report }) => {
               <CTableHeaderCell>Status</CTableHeaderCell>
               <CTableHeaderCell>Reason Codes</CTableHeaderCell>
               <CTableHeaderCell>Affected Resources</CTableHeaderCell>
+              <CTableHeaderCell>Actions</CTableHeaderCell>
             </CTableRow>
           </CTableHead>
           <CTableBody>
@@ -228,6 +229,16 @@ const PostureSummary = ({ report }) => {
                 </CTableDataCell>
                 <CTableDataCell>
                   {(rule.affected_resources || []).join(", ") || "None"}
+                </CTableDataCell>
+                <CTableDataCell>
+                  {rule.suppression_supported && (
+                    <CBadge color="secondary" className="me-1">
+                      Suppress supported
+                    </CBadge>
+                  )}
+                  {rule.assignment_supported && (
+                    <CBadge color="info">Assign supported</CBadge>
+                  )}
                 </CTableDataCell>
               </CTableRow>
             ))}

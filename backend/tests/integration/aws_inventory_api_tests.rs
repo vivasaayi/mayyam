@@ -924,7 +924,45 @@ async fn lambda_pillar_reports_contract() {
         cost["assessment_scope"],
         "lambda_cost_invocation_duration_error_and_throttle_telemetry"
     );
+    assert_eq!(cost["posture"]["workflow_id"], "lambda_cost_posture");
+    assert_eq!(
+        cost["posture"]["rule_pack_id"],
+        "lambda-cost-posture-rules-v1"
+    );
+    assert_eq!(
+        cost["posture"]["audit_event_type"],
+        "lambda_cost_posture_evaluated"
+    );
+    assert_eq!(cost["posture"]["read_only_mode"], true);
     assert_eq!(cost["posture"]["rules_evaluated"], 7);
+    assert_eq!(cost["posture"]["suppression_policy"]["supported"], true);
+    assert_eq!(cost["posture"]["assignment_policy"]["supported"], true);
+    assert!(cost["posture"]["recommendations"].is_array());
+    assert_eq!(
+        cost["triage_context"]["workflow_id"],
+        "lambda_cost_triage_context"
+    );
+    assert_eq!(
+        cost["triage_context"]["context_builder_id"],
+        "lambda-cost-deterministic-context-v1"
+    );
+    assert_eq!(
+        cost["triage_context"]["prompt_template_id"],
+        "lambda-cost-ai-triage-v1"
+    );
+    assert_eq!(
+        cost["triage_context"]["generation_mode"],
+        "deterministic_no_llm"
+    );
+    assert_eq!(cost["triage_context"]["guardrails"]["read_only_mode"], true);
+    assert_eq!(
+        cost["triage_context"]["guardrails"]["evidence_required"],
+        true
+    );
+    assert!(cost["triage_context"]["facts"].is_array());
+    assert!(cost["triage_context"]["hypotheses"].is_array());
+    assert!(cost["triage_context"]["missing_data_questions"].is_array());
+    assert!(cost["triage_context"]["evidence_citations"].is_array());
     assert_eq!(cost["telemetry"]["workflow_id"], "lambda_cost_telemetry");
     assert_eq!(cost["telemetry"]["cloudwatch_namespace"], "AWS/Lambda");
     assert_eq!(cost["telemetry"]["cloudwatch_dimension"], "FunctionName");
