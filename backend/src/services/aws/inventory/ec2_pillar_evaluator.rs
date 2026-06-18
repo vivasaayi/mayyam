@@ -323,6 +323,11 @@ pub struct Ec2ResilienceSloPolicySnapshot {
     pub evidence_reason_codes: Vec<String>,
 }
 
+pub type Ec2SecurityObjectiveStatus = Ec2ResilienceObjectiveStatus;
+pub type Ec2SecurityTrendDirection = Ec2ResilienceTrendDirection;
+pub type Ec2SecurityPolicyObjective = Ec2ResiliencePolicyObjective;
+pub type Ec2SecuritySloPolicySnapshot = Ec2ResilienceSloPolicySnapshot;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Ec2CostForecastRisk {
@@ -509,7 +514,7 @@ pub fn evaluate_ec2_fleet(
 
     for resource in resources {
         if let Some(mut stale) = check_stale(resource, pillar, REASON_INV_STALE_DATA, now) {
-            if pillar == Pillar::Resilience {
+            if matches!(pillar, Pillar::Security | Pillar::Resilience) {
                 stale.evidence["tags"] = resource.tags.clone();
             }
             stale_resources += 1;
@@ -1510,6 +1515,54 @@ pub fn ec2_resilience_slo_policy_snapshot(report: &PillarReport) -> Ec2Resilienc
     }
 }
 
+pub fn ec2_security_slo_policy_snapshot(report: &PillarReport) -> Ec2SecuritySloPolicySnapshot {
+    let posture = ec2_security_posture_summary(report);
+    let failed_rule_count = posture.rules_failed;
+    let affected_resource_count = posture.affected_resources.len();
+    let status = security_objective_status(report.score, failed_rule_count, report.stale_resources);
+    let owner_filters = sorted_unique_evidence_values(report, &["owner", "team"]);
+    let environment_filters = sorted_unique_evidence_values(report, &["environment", "env"]);
+    let application_filters =
+        sorted_unique_evidence_values(report, &["application", "app", "service"]);
+    let notification_targets = notification_targets_with_default(
+        &owner_filters,
+        &environment_filters,
+        "security-operations",
+    );
+
+    Ec2SecuritySloPolicySnapshot {
+        workflow_id: "ec2_security_slo_policy",
+        read_only_mode: true,
+        freshness_required: true,
+        objective: Ec2SecurityPolicyObjective {
+            objective_id: "ec2-security-score-min-95",
+            status,
+            target_score_min: 95,
+            current_score: report.score,
+            trend_direction: security_trend_direction(report, status, failed_rule_count),
+            failed_rule_count,
+            affected_resource_count,
+            owner_filters,
+            environment_filters,
+            application_filters,
+            notification_targets,
+            policy_state: if report.stale_resources > 0 {
+                "blocked_stale_data"
+            } else if failed_rule_count > 0 {
+                "active_with_findings"
+            } else {
+                "active"
+            },
+            status_history: vec![
+                "snapshot_collected",
+                "security_policy_evaluated",
+                "notification_targets_resolved",
+            ],
+        },
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
 pub fn ec2_cost_forecast_snapshot(report: &PillarReport) -> Ec2CostForecastSnapshot {
     const BASELINE_WINDOW_DAYS: u16 = 30;
     const FORECAST_HORIZON_DAYS: u16 = 30;
@@ -2014,6 +2067,48 @@ fn resilience_trend_direction(
         }
         Ec2ResilienceObjectiveStatus::AtRisk | Ec2ResilienceObjectiveStatus::Breached => {
             Ec2ResilienceTrendDirection::Degrading
+        }
+    }
+}
+
+fn security_objective_status(
+    score: u8,
+    failed_rule_count: usize,
+    stale_resources: usize,
+) -> Ec2SecurityObjectiveStatus {
+    if stale_resources > 0 || failed_rule_count >= 2 || score < 80 {
+        Ec2SecurityObjectiveStatus::Breached
+    } else if failed_rule_count > 0 || score < 95 {
+        Ec2SecurityObjectiveStatus::AtRisk
+    } else {
+        Ec2SecurityObjectiveStatus::OnTrack
+    }
+}
+
+fn security_trend_direction(
+    report: &PillarReport,
+    status: Ec2SecurityObjectiveStatus,
+    failed_rule_count: usize,
+) -> Ec2SecurityTrendDirection {
+    if report.findings.iter().any(|finding| {
+        matches!(
+            finding.reason_code.as_str(),
+            REASON_INV_STALE_DATA
+                | REASON_SEC_PUBLIC_IP
+                | REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY
+                | REASON_SEC_MISSING_PACKET_TELEMETRY
+        )
+    }) {
+        return Ec2SecurityTrendDirection::Degrading;
+    }
+
+    match status {
+        Ec2SecurityObjectiveStatus::OnTrack => Ec2SecurityTrendDirection::Stable,
+        Ec2SecurityObjectiveStatus::AtRisk if failed_rule_count <= 1 => {
+            Ec2SecurityTrendDirection::Stable
+        }
+        Ec2SecurityObjectiveStatus::AtRisk | Ec2SecurityObjectiveStatus::Breached => {
+            Ec2SecurityTrendDirection::Degrading
         }
     }
 }
@@ -2546,7 +2641,10 @@ fn evaluate_security(resource: &AwsResourceModel, findings: &mut Vec<InventoryFi
                     "Instance {} has a public IP address assigned; verify it is intentionally internet-facing",
                     resource.resource_id
                 ),
-                evidence: json!({ "public_ip": public_ip }),
+                evidence: json!({
+                    "public_ip": public_ip,
+                    "tags": resource.tags,
+                }),
             });
         }
     }
@@ -2582,6 +2680,7 @@ fn evaluate_security(resource: &AwsResourceModel, findings: &mut Vec<InventoryFi
             evidence: json!({
                 "required_metrics": packet_metrics,
                 "missing_metrics": missing_packet_metrics,
+                "tags": resource.tags,
             }),
         });
     }
@@ -2604,6 +2703,7 @@ fn evaluate_security(resource: &AwsResourceModel, findings: &mut Vec<InventoryFi
                     "public_ip": public_ip,
                     "metric_name": "NetworkPacketsIn",
                     "max": max_packets_in,
+                    "tags": resource.tags,
                 }),
             });
         }
@@ -5002,6 +5102,140 @@ mod tests {
         assert!(workflow.actions.iter().all(|action| {
             action.dry_run && action.status == Ec2RemediationStatus::BlockedMissingEvidence
         }));
+    }
+
+    #[test]
+    fn ec2_security_slo_policy_snapshot_tracks_owner_policy_and_notifications() {
+        let exposed = fixture(
+            "i-sec-owned",
+            json!({
+                "owner": "security",
+                "environment": "prod",
+                "application": "payments"
+            }),
+            json!({
+                "state": "running",
+                "public_ip": "54.0.0.1",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[12.0]),
+                        metric("NetworkPacketsOut", &[6.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[exposed], Pillar::Security, now());
+        let snapshot = ec2_security_slo_policy_snapshot(&report);
+
+        assert_eq!(snapshot.workflow_id, "ec2_security_slo_policy");
+        assert!(snapshot.read_only_mode);
+        assert!(snapshot.freshness_required);
+        assert_eq!(snapshot.objective.objective_id, "ec2-security-score-min-95");
+        assert_eq!(
+            snapshot.objective.status,
+            Ec2SecurityObjectiveStatus::Breached
+        );
+        assert_eq!(snapshot.objective.target_score_min, 95);
+        assert_eq!(snapshot.objective.failed_rule_count, 2);
+        assert_eq!(snapshot.objective.affected_resource_count, 1);
+        assert_eq!(
+            snapshot.objective.trend_direction,
+            Ec2SecurityTrendDirection::Degrading
+        );
+        assert_eq!(snapshot.objective.owner_filters, vec!["security"]);
+        assert_eq!(snapshot.objective.environment_filters, vec!["prod"]);
+        assert_eq!(snapshot.objective.application_filters, vec!["payments"]);
+        assert_eq!(
+            snapshot.objective.notification_targets,
+            vec!["environment:prod", "owner:security"]
+        );
+        assert_eq!(snapshot.objective.policy_state, "active_with_findings");
+        assert!(snapshot
+            .objective
+            .status_history
+            .contains(&"security_policy_evaluated"));
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_SEC_PUBLIC_IP.to_string()));
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY.to_string()));
+    }
+
+    #[test]
+    fn ec2_security_slo_policy_snapshot_marks_stale_data_as_breached() {
+        let stale = fixture(
+            "i-sec-stale-slo",
+            json!({"team": "sre", "env": "stage", "app": "checkout"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[0.0]),
+                        metric("NetworkPacketsOut", &[0.0])
+                    ]
+                }
+            }),
+            48,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Security, now());
+        let snapshot = ec2_security_slo_policy_snapshot(&report);
+
+        assert_eq!(
+            snapshot.objective.status,
+            Ec2SecurityObjectiveStatus::Breached
+        );
+        assert_eq!(
+            snapshot.objective.trend_direction,
+            Ec2SecurityTrendDirection::Degrading
+        );
+        assert_eq!(snapshot.objective.policy_state, "blocked_stale_data");
+        assert_eq!(snapshot.objective.owner_filters, vec!["sre"]);
+        assert_eq!(snapshot.objective.environment_filters, vec!["stage"]);
+        assert_eq!(snapshot.objective.application_filters, vec!["checkout"]);
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+    }
+
+    #[test]
+    fn ec2_security_slo_policy_snapshot_does_not_route_service_as_owner() {
+        let service_tagged = fixture(
+            "i-sec-service-only",
+            json!({"service": "checkout", "environment": "prod"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[0.0]),
+                        metric("NetworkPacketsOut", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[service_tagged], Pillar::Security, now());
+        let snapshot = ec2_security_slo_policy_snapshot(&report);
+
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_SEC_MISSING_OWNER_TAG.to_string()));
+        assert!(snapshot.objective.owner_filters.is_empty());
+        assert_eq!(snapshot.objective.application_filters, vec!["checkout"]);
+        assert_eq!(
+            snapshot.objective.notification_targets,
+            vec!["environment:prod"]
+        );
     }
 
     #[test]

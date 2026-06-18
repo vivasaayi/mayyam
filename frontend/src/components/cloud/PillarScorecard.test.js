@@ -541,6 +541,34 @@ describe("PillarScorecard", () => {
               },
             ],
           },
+          slo_policy_tracking: {
+            workflow_id: "ec2_security_slo_policy",
+            read_only_mode: true,
+            freshness_required: true,
+            objective: {
+              objective_id: "ec2-security-score-min-95",
+              status: "breached",
+              target_score_min: 95,
+              current_score: 55,
+              trend_direction: "degrading",
+              failed_rule_count: 4,
+              affected_resource_count: 2,
+              owner_filters: ["security"],
+              environment_filters: ["prod"],
+              application_filters: ["payments"],
+              notification_targets: ["environment:prod", "owner:security"],
+              policy_state: "active_with_findings",
+              status_history: [
+                "snapshot_collected",
+                "security_policy_evaluated",
+                "notification_targets_resolved",
+              ],
+            },
+            evidence_reason_codes: [
+              "EC2_SEC_PUBLIC_IP_ASSIGNED",
+              "EC2_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY",
+            ],
+          },
           findings: [
             {
               severity: "high",
@@ -577,6 +605,17 @@ describe("PillarScorecard", () => {
     expect(text).toContain("EC2_SEC_MISSING_OWNER_TAG");
     expect(text).toContain("EC2_SEC_MISSING_PACKET_TELEMETRY");
     expect(text).toContain("EC2_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY");
+    expect(text).toContain("Security SLO Policy");
+    expect(text).toContain("Breached");
+    expect(text).toContain("ec2-security-score-min-95");
+    expect(text).toContain("score 55 / target 95");
+    expect(text).toContain("Active With Findings");
+    expect(text).toContain("Degrading trend");
+    expect(text).toContain("security");
+    expect(text).toContain("prod");
+    expect(text).toContain("environment:prod, owner:security");
+    expect(text).toContain("payments");
+    expect(text).toContain("Security Policy Evaluated");
     expect(text).toContain("Security Triage Context");
     expect(text).toContain("ec2-security-deterministic-context-v1");
     expect(text).toContain("ec2-security-ai-triage-v1");

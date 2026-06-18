@@ -323,6 +323,75 @@ const TriageSummary = ({ report }) => {
   );
 };
 
+const SloPolicySummary = ({ report }) => {
+  const policy = report.slo_policy_tracking;
+  if (!policy || !policy.objective) {
+    return null;
+  }
+
+  const objective = policy.objective;
+  const statusColor =
+    objective.status === "on_track"
+      ? "success"
+      : objective.status === "breached"
+        ? "danger"
+        : "warning";
+
+  return (
+    <CCard className="mb-3">
+      <CCardHeader>
+        {formatToken(report.pillar)} SLO Policy
+        <CBadge color={statusColor} className="ms-2">
+          {formatToken(objective.status)}
+        </CBadge>
+      </CCardHeader>
+      <CCardBody>
+        <CRow className="g-3 mb-3">
+          <CCol md={3}>
+            <div className="text-medium-emphasis small">Objective</div>
+            <div className="fw-semibold">{objective.objective_id}</div>
+            <div className="small">
+              score {objective.current_score} / target {objective.target_score_min}
+            </div>
+          </CCol>
+          <CCol md={3}>
+            <div className="text-medium-emphasis small">Policy State</div>
+            <div className="fw-semibold">{formatToken(objective.policy_state)}</div>
+            <div className="small">
+              {formatToken(objective.trend_direction)} trend
+            </div>
+          </CCol>
+          <CCol md={3}>
+            <div className="text-medium-emphasis small">Ownership</div>
+            <div className="fw-semibold">
+              {(objective.owner_filters || []).join(", ") || "Unassigned"}
+            </div>
+            <div className="small">
+              {(objective.environment_filters || []).join(", ") || "No environment"}
+            </div>
+          </CCol>
+          <CCol md={3}>
+            <div className="text-medium-emphasis small">Notifications</div>
+            <div className="fw-semibold">
+              {(objective.notification_targets || []).join(", ") || "None"}
+            </div>
+            <div className="small">
+              {(objective.application_filters || []).join(", ") || "No application"}
+            </div>
+          </CCol>
+        </CRow>
+        <div className="small">
+          {(objective.status_history || []).map((event) => (
+            <CBadge color="secondary" className="me-1" key={event}>
+              {formatToken(event)}
+            </CBadge>
+          ))}
+        </div>
+      </CCardBody>
+    </CCard>
+  );
+};
+
 const AgenticInvestigationSummary = ({ report }) => {
   const investigation = report.agentic_investigation;
   if (!investigation) {
@@ -557,6 +626,9 @@ const PillarScorecard = ({ data }) => {
       ))}
       {data.reports.map((report) => (
         <PostureSummary key={`${report.pillar}-posture`} report={report} />
+      ))}
+      {data.reports.map((report) => (
+        <SloPolicySummary key={`${report.pillar}-slo-policy`} report={report} />
       ))}
       {data.reports.map((report) => (
         <TriageSummary key={`${report.pillar}-triage`} report={report} />

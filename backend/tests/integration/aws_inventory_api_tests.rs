@@ -273,6 +273,42 @@ async fn ec2_pillar_reports_contract() {
                 .unwrap_or_default()
                 .contains("rollback")
     }));
+    assert_eq!(
+        reports[0]["slo_policy_tracking"]["workflow_id"],
+        "ec2_security_slo_policy"
+    );
+    assert_eq!(reports[0]["slo_policy_tracking"]["read_only_mode"], true);
+    assert_eq!(
+        reports[0]["slo_policy_tracking"]["freshness_required"],
+        true
+    );
+    assert_eq!(
+        reports[0]["slo_policy_tracking"]["objective"]["objective_id"],
+        "ec2-security-score-min-95"
+    );
+    assert_eq!(
+        reports[0]["slo_policy_tracking"]["objective"]["target_score_min"],
+        95
+    );
+    assert!(reports[0]["slo_policy_tracking"]["objective"]["status"]
+        .as_str()
+        .is_some());
+    assert!(
+        reports[0]["slo_policy_tracking"]["objective"]["trend_direction"]
+            .as_str()
+            .is_some()
+    );
+    assert!(
+        reports[0]["slo_policy_tracking"]["objective"]["policy_state"]
+            .as_str()
+            .is_some()
+    );
+    assert!(reports[0]["slo_policy_tracking"]["objective"]["owner_filters"].is_array());
+    assert!(reports[0]["slo_policy_tracking"]["objective"]["environment_filters"].is_array());
+    assert!(reports[0]["slo_policy_tracking"]["objective"]["application_filters"].is_array());
+    assert!(reports[0]["slo_policy_tracking"]["objective"]["notification_targets"].is_array());
+    assert!(reports[0]["slo_policy_tracking"]["objective"]["status_history"].is_array());
+    assert!(reports[0]["slo_policy_tracking"]["evidence_reason_codes"].is_array());
 
     let resp = client
         .get(format!(
