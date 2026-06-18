@@ -56,7 +56,8 @@ use crate::services::aws::inventory::ec2_pillar_evaluator::{
     ec2_cost_forecast_snapshot, ec2_cost_posture_summary, ec2_cost_remediation_workflow,
     ec2_cost_reporting_bundle, ec2_cost_slo_policy_snapshot, ec2_cost_triage_context,
     ec2_resilience_agentic_investigation_plan, ec2_resilience_posture_summary,
-    ec2_resilience_remediation_workflow, ec2_resilience_triage_context, evaluate_ec2_fleet,
+    ec2_resilience_remediation_workflow, ec2_resilience_slo_policy_snapshot,
+    ec2_resilience_triage_context, evaluate_ec2_fleet,
 };
 use crate::services::aws::inventory::ecs_pillar_evaluator::evaluate_ecs_fleet;
 use crate::services::aws::inventory::efs_pillar_evaluator::evaluate_efs_fleet;
@@ -343,6 +344,7 @@ pub async fn get_ec2_pillar_reports(
                     "triage_context": ec2_resilience_triage_context(&report),
                     "agentic_investigation": ec2_resilience_agentic_investigation_plan(&report),
                     "remediation_workflow": ec2_resilience_remediation_workflow(&report),
+                    "slo_policy_tracking": ec2_resilience_slo_policy_snapshot(&report),
                 })
             } else {
                 json!(report)

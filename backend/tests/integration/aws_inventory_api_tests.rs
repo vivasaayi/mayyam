@@ -276,6 +276,40 @@ async fn ec2_pillar_reports_contract() {
                 .map(|note| note.contains("rollback"))
                 .unwrap_or(false)
     }));
+    assert_eq!(
+        reports[0]["slo_policy_tracking"]["workflow_id"],
+        "ec2_resilience_slo_policy"
+    );
+    assert_eq!(reports[0]["slo_policy_tracking"]["read_only_mode"], true);
+    assert_eq!(
+        reports[0]["slo_policy_tracking"]["objective"]["objective_id"],
+        "ec2-resilience-score-min-95"
+    );
+    assert_eq!(
+        reports[0]["slo_policy_tracking"]["objective"]["target_score_min"],
+        95
+    );
+    assert_eq!(
+        reports[0]["slo_policy_tracking"]["freshness_required"],
+        true
+    );
+    assert!(matches!(
+        reports[0]["slo_policy_tracking"]["objective"]["status"].as_str(),
+        Some("on_track" | "at_risk" | "breached")
+    ));
+    assert!(matches!(
+        reports[0]["slo_policy_tracking"]["objective"]["trend_direction"].as_str(),
+        Some("stable" | "degrading")
+    ));
+    assert!(matches!(
+        reports[0]["slo_policy_tracking"]["objective"]["policy_state"].as_str(),
+        Some("active" | "active_with_findings" | "blocked_stale_data")
+    ));
+    assert!(reports[0]["slo_policy_tracking"]["objective"]["notification_targets"].is_array());
+    assert!(reports[0]["slo_policy_tracking"]["objective"]["status_history"].is_array());
+    assert!(reports[0]["slo_policy_tracking"]["evidence_reason_codes"].is_array());
+    assert!(reports[0]["forecasting"].is_null());
+    assert!(reports[0]["reporting"].is_null());
 }
 
 #[tokio::test]

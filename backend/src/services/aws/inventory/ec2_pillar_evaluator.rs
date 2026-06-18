@@ -23,7 +23,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;
 
 use crate::models::aws_resource::Model as AwsResourceModel;
@@ -268,6 +268,47 @@ pub struct Ec2CostSloPolicySnapshot {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
+pub enum Ec2ResilienceObjectiveStatus {
+    OnTrack,
+    AtRisk,
+    Breached,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Ec2ResilienceTrendDirection {
+    Stable,
+    Degrading,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Ec2ResiliencePolicyObjective {
+    pub objective_id: &'static str,
+    pub status: Ec2ResilienceObjectiveStatus,
+    pub target_score_min: u8,
+    pub current_score: u8,
+    pub trend_direction: Ec2ResilienceTrendDirection,
+    pub failed_rule_count: usize,
+    pub affected_resource_count: usize,
+    pub owner_filters: Vec<String>,
+    pub environment_filters: Vec<String>,
+    pub application_filters: Vec<String>,
+    pub notification_targets: Vec<String>,
+    pub policy_state: &'static str,
+    pub status_history: Vec<&'static str>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Ec2ResilienceSloPolicySnapshot {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub freshness_required: bool,
+    pub objective: Ec2ResiliencePolicyObjective,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Ec2CostForecastRisk {
     Low,
     Moderate,
@@ -359,7 +400,10 @@ pub fn evaluate_ec2_fleet(
     let mut stale_resources = 0usize;
 
     for resource in resources {
-        if let Some(stale) = check_stale(resource, pillar, REASON_INV_STALE_DATA, now) {
+        if let Some(mut stale) = check_stale(resource, pillar, REASON_INV_STALE_DATA, now) {
+            if pillar == Pillar::Resilience {
+                stale.evidence["tags"] = resource.tags.clone();
+            }
             stale_resources += 1;
             findings.push(stale);
         }
@@ -855,6 +899,54 @@ pub fn ec2_cost_slo_policy_snapshot(report: &PillarReport) -> Ec2CostSloPolicySn
     }
 }
 
+pub fn ec2_resilience_slo_policy_snapshot(report: &PillarReport) -> Ec2ResilienceSloPolicySnapshot {
+    let posture = ec2_resilience_posture_summary(report);
+    let failed_rule_count = posture.rules_failed;
+    let affected_resource_count = posture.affected_resources.len();
+    let status =
+        resilience_objective_status(report.score, failed_rule_count, report.stale_resources);
+    let owner_filters = sorted_unique_evidence_values(report, &["owner", "team"]);
+    let environment_filters = sorted_unique_evidence_values(report, &["environment", "env"]);
+    let application_filters = sorted_unique_evidence_values(report, &["application", "app"]);
+    let notification_targets = notification_targets_with_default(
+        &owner_filters,
+        &environment_filters,
+        "resilience-operations",
+    );
+
+    Ec2ResilienceSloPolicySnapshot {
+        workflow_id: "ec2_resilience_slo_policy",
+        read_only_mode: true,
+        freshness_required: true,
+        objective: Ec2ResiliencePolicyObjective {
+            objective_id: "ec2-resilience-score-min-95",
+            status,
+            target_score_min: 95,
+            current_score: report.score,
+            trend_direction: resilience_trend_direction(report, status, failed_rule_count),
+            failed_rule_count,
+            affected_resource_count,
+            owner_filters,
+            environment_filters,
+            application_filters,
+            notification_targets,
+            policy_state: if report.stale_resources > 0 {
+                "blocked_stale_data"
+            } else if failed_rule_count > 0 {
+                "active_with_findings"
+            } else {
+                "active"
+            },
+            status_history: vec![
+                "snapshot_collected",
+                "resilience_policy_evaluated",
+                "notification_targets_resolved",
+            ],
+        },
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
 pub fn ec2_cost_forecast_snapshot(report: &PillarReport) -> Ec2CostForecastSnapshot {
     const BASELINE_WINDOW_DAYS: u16 = 30;
     const FORECAST_HORIZON_DAYS: u16 = 30;
@@ -1073,6 +1165,47 @@ fn cost_objective_status(
     }
 }
 
+fn resilience_objective_status(
+    score: u8,
+    failed_rule_count: usize,
+    stale_resources: usize,
+) -> Ec2ResilienceObjectiveStatus {
+    if stale_resources > 0 || failed_rule_count >= 2 || score < 80 {
+        Ec2ResilienceObjectiveStatus::Breached
+    } else if failed_rule_count > 0 || score < 95 {
+        Ec2ResilienceObjectiveStatus::AtRisk
+    } else {
+        Ec2ResilienceObjectiveStatus::OnTrack
+    }
+}
+
+fn resilience_trend_direction(
+    report: &PillarReport,
+    status: Ec2ResilienceObjectiveStatus,
+    failed_rule_count: usize,
+) -> Ec2ResilienceTrendDirection {
+    if report.findings.iter().any(|finding| {
+        matches!(
+            finding.reason_code.as_str(),
+            REASON_INV_STALE_DATA
+                | REASON_RES_SINGLE_AZ_CONCENTRATION
+                | REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY
+        )
+    }) {
+        return Ec2ResilienceTrendDirection::Degrading;
+    }
+
+    match status {
+        Ec2ResilienceObjectiveStatus::OnTrack => Ec2ResilienceTrendDirection::Stable,
+        Ec2ResilienceObjectiveStatus::AtRisk if failed_rule_count == 0 => {
+            Ec2ResilienceTrendDirection::Stable
+        }
+        Ec2ResilienceObjectiveStatus::AtRisk | Ec2ResilienceObjectiveStatus::Breached => {
+            Ec2ResilienceTrendDirection::Degrading
+        }
+    }
+}
+
 fn cost_trend_direction(
     status: Ec2CostObjectiveStatus,
     failed_rule_count: usize,
@@ -1110,6 +1243,14 @@ fn evidence_string(evidence: &Value, key: &str) -> Option<String> {
 }
 
 fn notification_targets(owner_filters: &[String], environment_filters: &[String]) -> Vec<String> {
+    notification_targets_with_default(owner_filters, environment_filters, "cost-operations")
+}
+
+fn notification_targets_with_default(
+    owner_filters: &[String],
+    environment_filters: &[String],
+    default_target: &str,
+) -> Vec<String> {
     let mut targets: BTreeSet<String> = owner_filters
         .iter()
         .map(|owner| format!("owner:{}", owner))
@@ -1120,7 +1261,7 @@ fn notification_targets(owner_filters: &[String], environment_filters: &[String]
             .map(|environment| format!("environment:{}", environment)),
     );
     if targets.is_empty() {
-        targets.insert("cost-operations".to_string());
+        targets.insert(default_target.to_string());
     }
     targets.into_iter().collect()
 }
@@ -1591,7 +1732,10 @@ fn evaluate_resilience(resource: &AwsResourceModel, findings: &mut Vec<Inventory
                 "Instance {} has no availability zone recorded; placement resilience cannot be assessed",
                 resource.resource_id
             ),
-            evidence: json!({ "resource_data": resource.resource_data }),
+            evidence: json!({
+                "resource_data": resource.resource_data,
+                "tags": resource.tags,
+            }),
         });
     }
 
@@ -1618,6 +1762,7 @@ fn evaluate_resilience(resource: &AwsResourceModel, findings: &mut Vec<Inventory
             ),
             evidence: json!({
                 "required_metrics": status_metrics,
+                "tags": resource.tags,
                 "resource_data_keys": resource_data_keys(resource),
             }),
         });
@@ -1639,6 +1784,7 @@ fn evaluate_resilience(resource: &AwsResourceModel, findings: &mut Vec<Inventory
             evidence: json!({
                 "metric_name": metric_name,
                 "max": max_value,
+                "tags": resource.tags,
             }),
         });
     }
@@ -1906,8 +2052,56 @@ fn check_az_concentration(resources: &[AwsResourceModel]) -> Option<InventoryFin
         evidence: json!({
             "availability_zone": first_az,
             "instance_ids": instance_ids,
+            "tags": shared_routing_tags(placements.iter().map(|(resource, _)| *resource)),
         }),
     })
+}
+
+fn shared_routing_tags<'a>(
+    resources: impl Iterator<Item = &'a AwsResourceModel>,
+) -> Map<String, Value> {
+    let mut owners = BTreeSet::new();
+    let mut environments = BTreeSet::new();
+    let mut applications = BTreeSet::new();
+
+    for resource in resources {
+        if let Some(owner) = tag_string(&resource.tags, &["owner", "team"]) {
+            owners.insert(owner);
+        }
+        if let Some(environment) = tag_string(&resource.tags, &["environment", "env"]) {
+            environments.insert(environment);
+        }
+        if let Some(application) = tag_string(&resource.tags, &["application", "app"]) {
+            applications.insert(application);
+        }
+    }
+
+    let mut tags = Map::new();
+    if owners.len() == 1 {
+        if let Some(owner) = owners.into_iter().next() {
+            tags.insert("owner".to_string(), Value::String(owner));
+        }
+    }
+    if environments.len() == 1 {
+        if let Some(environment) = environments.into_iter().next() {
+            tags.insert("environment".to_string(), Value::String(environment));
+        }
+    }
+    if applications.len() == 1 {
+        if let Some(application) = applications.into_iter().next() {
+            tags.insert("application".to_string(), Value::String(application));
+        }
+    }
+    tags
+}
+
+fn tag_string(tags: &Value, keys: &[&str]) -> Option<String> {
+    keys.iter()
+        .filter_map(|key| tags.get(key))
+        .filter_map(Value::as_str)
+        .map(str::trim)
+        .find(|value| !value.is_empty())
+        .map(str::to_string)
 }
 
 const LOW_CPU_UTILIZATION_MAX: f64 = 5.0;
@@ -2734,6 +2928,166 @@ mod tests {
         }));
         assert!(workflow.actions.is_empty());
         assert!(workflow.approval_gates.is_empty());
+    }
+
+    #[test]
+    fn ec2_resilience_slo_policy_snapshot_tracks_owner_policy_and_notifications() {
+        let tagged_a = fixture(
+            "i-tagged-res-a",
+            json!({
+                "owner": "sre",
+                "environment": "prod",
+                "application": "payments"
+            }),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let tagged_b = fixture(
+            "i-tagged-res-b",
+            json!({
+                "owner": "sre",
+                "environment": "prod",
+                "application": "payments"
+            }),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[tagged_a, tagged_b], Pillar::Resilience, now());
+        let snapshot = ec2_resilience_slo_policy_snapshot(&report);
+
+        assert_eq!(snapshot.workflow_id, "ec2_resilience_slo_policy");
+        assert!(snapshot.read_only_mode);
+        assert!(snapshot.freshness_required);
+        assert_eq!(
+            snapshot.objective.objective_id,
+            "ec2-resilience-score-min-95"
+        );
+        assert_eq!(
+            snapshot.objective.status,
+            Ec2ResilienceObjectiveStatus::AtRisk
+        );
+        assert_eq!(snapshot.objective.target_score_min, 95);
+        assert_eq!(snapshot.objective.failed_rule_count, 1);
+        assert_eq!(snapshot.objective.affected_resource_count, 1);
+        assert_eq!(
+            snapshot.objective.trend_direction,
+            Ec2ResilienceTrendDirection::Degrading
+        );
+        assert_eq!(snapshot.objective.owner_filters, vec!["sre"]);
+        assert_eq!(snapshot.objective.environment_filters, vec!["prod"]);
+        assert_eq!(snapshot.objective.application_filters, vec!["payments"]);
+        assert_eq!(
+            snapshot.objective.notification_targets,
+            vec!["environment:prod", "owner:sre"]
+        );
+        assert_eq!(snapshot.objective.policy_state, "active_with_findings");
+        assert!(snapshot
+            .objective
+            .status_history
+            .contains(&"resilience_policy_evaluated"));
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_RES_SINGLE_AZ_CONCENTRATION.to_string()));
+    }
+
+    #[test]
+    fn ec2_resilience_slo_policy_snapshot_marks_status_failures_as_degrading() {
+        let status_failed = fixture(
+            "i-status-failed-slo",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0, 1.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[status_failed], Pillar::Resilience, now());
+        let snapshot = ec2_resilience_slo_policy_snapshot(&report);
+
+        assert_eq!(
+            snapshot.objective.status,
+            Ec2ResilienceObjectiveStatus::AtRisk
+        );
+        assert_eq!(
+            snapshot.objective.trend_direction,
+            Ec2ResilienceTrendDirection::Degrading
+        );
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY.to_string()));
+    }
+
+    #[test]
+    fn ec2_resilience_slo_policy_snapshot_marks_stale_data_as_breached() {
+        let stale = fixture(
+            "i-stale-res",
+            json!({}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            30,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Resilience, now());
+        let snapshot = ec2_resilience_slo_policy_snapshot(&report);
+
+        assert_eq!(
+            snapshot.objective.status,
+            Ec2ResilienceObjectiveStatus::Breached
+        );
+        assert_eq!(
+            snapshot.objective.trend_direction,
+            Ec2ResilienceTrendDirection::Degrading
+        );
+        assert_eq!(snapshot.objective.policy_state, "blocked_stale_data");
+        assert_eq!(
+            snapshot.objective.notification_targets,
+            vec!["resilience-operations"]
+        );
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
     }
 
     #[test]
