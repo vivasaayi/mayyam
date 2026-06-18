@@ -1372,6 +1372,24 @@ async fn autoscaling_security_pillar_reports_posture_contract() {
     );
     assert!(remediation["actions"].is_array());
     assert!(remediation["approval_gates"].is_array());
+    let slo = &reports[0]["slo_policy_tracking"];
+    assert_eq!(slo["workflow_id"], "autoscaling_security_slo_policy");
+    assert_eq!(slo["read_only_mode"], true);
+    assert_eq!(slo["freshness_required"], true);
+    assert_eq!(
+        slo["objective"]["objective_id"],
+        "autoscaling-security-score-min-95"
+    );
+    assert_eq!(slo["objective"]["target_score_min"], 95);
+    assert!(slo["objective"]["status"].as_str().is_some());
+    assert!(slo["objective"]["trend_direction"].as_str().is_some());
+    assert!(slo["objective"]["policy_state"].as_str().is_some());
+    assert!(slo["objective"]["owner_filters"].is_array());
+    assert!(slo["objective"]["environment_filters"].is_array());
+    assert!(slo["objective"]["application_filters"].is_array());
+    assert!(slo["objective"]["notification_targets"].is_array());
+    assert!(slo["objective"]["status_history"].is_array());
+    assert!(slo["evidence_reason_codes"].is_array());
 
     let rules = reports[0]["posture"]["rules"]
         .as_array()

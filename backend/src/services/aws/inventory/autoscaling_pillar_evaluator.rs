@@ -278,6 +278,10 @@ pub type AsgResilienceObjectiveStatus = AsgCostObjectiveStatus;
 pub type AsgResilienceTrendDirection = AsgCostTrendDirection;
 pub type AsgResiliencePolicyObjective = AsgCostPolicyObjective;
 pub type AsgResilienceSloPolicySnapshot = AsgCostSloPolicySnapshot;
+pub type AsgSecurityObjectiveStatus = AsgCostObjectiveStatus;
+pub type AsgSecurityTrendDirection = AsgCostTrendDirection;
+pub type AsgSecurityPolicyObjective = AsgCostPolicyObjective;
+pub type AsgSecuritySloPolicySnapshot = AsgCostSloPolicySnapshot;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -1110,6 +1114,55 @@ pub fn asg_resilience_slo_policy_snapshot(report: &PillarReport) -> AsgResilienc
     }
 }
 
+pub fn asg_security_slo_policy_snapshot(report: &PillarReport) -> AsgSecuritySloPolicySnapshot {
+    let posture = asg_security_posture_summary(report);
+    let failed_rule_count = posture.rules_failed;
+    let affected_resource_count = posture.affected_resources.len();
+    let status =
+        asg_security_objective_status(report.score, failed_rule_count, report.stale_resources);
+    let owner_filters = sorted_unique_evidence_values(report, &["owner", "team"]);
+    let environment_filters = sorted_unique_evidence_values(report, &["environment", "env"]);
+    let application_filters =
+        sorted_unique_evidence_values(report, &["application", "app", "service"]);
+    let notification_targets = notification_targets_with_default(
+        &owner_filters,
+        &environment_filters,
+        "security-operations",
+    );
+
+    AsgSecuritySloPolicySnapshot {
+        workflow_id: "autoscaling_security_slo_policy",
+        read_only_mode: true,
+        freshness_required: true,
+        objective: AsgSecurityPolicyObjective {
+            objective_id: "autoscaling-security-score-min-95",
+            status,
+            target_score_min: 95,
+            current_score: report.score,
+            trend_direction: asg_security_trend_direction(report, status, failed_rule_count),
+            failed_rule_count,
+            affected_resource_count,
+            owner_filters,
+            environment_filters,
+            application_filters,
+            notification_targets,
+            policy_state: if report.stale_resources > 0 {
+                "blocked_stale_data"
+            } else if failed_rule_count > 0 {
+                "active_with_findings"
+            } else {
+                "active"
+            },
+            status_history: vec![
+                "snapshot_collected",
+                "security_policy_evaluated",
+                "notification_targets_resolved",
+            ],
+        },
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
 pub fn asg_cost_forecast_snapshot(report: &PillarReport) -> AsgCostForecastSnapshot {
     const BASELINE_WINDOW_DAYS: u16 = 30;
     const FORECAST_HORIZON_DAYS: u16 = 30;
@@ -1481,6 +1534,49 @@ fn asg_resilience_trend_direction(
     }
 }
 
+fn asg_security_objective_status(
+    score: u8,
+    failed_rule_count: usize,
+    stale_resources: usize,
+) -> AsgSecurityObjectiveStatus {
+    if stale_resources > 0 || score < 75 {
+        AsgSecurityObjectiveStatus::Breached
+    } else if failed_rule_count > 0 || score < 95 {
+        AsgSecurityObjectiveStatus::AtRisk
+    } else {
+        AsgSecurityObjectiveStatus::OnTrack
+    }
+}
+
+fn asg_security_trend_direction(
+    report: &PillarReport,
+    status: AsgSecurityObjectiveStatus,
+    failed_rule_count: usize,
+) -> AsgSecurityTrendDirection {
+    if report.findings.iter().any(|finding| {
+        matches!(
+            finding.reason_code.as_str(),
+            REASON_INV_STALE_DATA
+                | REASON_SEC_LEGACY_LAUNCH_CONFIGURATION
+                | REASON_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED
+                | REASON_SEC_MISSING_INSTANCE_TELEMETRY
+                | REASON_SEC_TELEMETRY_COLLECTION_ERRORS
+        )
+    }) {
+        return AsgSecurityTrendDirection::Degrading;
+    }
+
+    match status {
+        AsgSecurityObjectiveStatus::OnTrack => AsgSecurityTrendDirection::Stable,
+        AsgSecurityObjectiveStatus::AtRisk if failed_rule_count <= 1 => {
+            AsgSecurityTrendDirection::Stable
+        }
+        AsgSecurityObjectiveStatus::AtRisk | AsgSecurityObjectiveStatus::Breached => {
+            AsgSecurityTrendDirection::Degrading
+        }
+    }
+}
+
 fn sorted_unique_reason_codes(report: &PillarReport) -> Vec<String> {
     report
         .findings
@@ -1515,6 +1611,14 @@ fn evidence_string(evidence: &Value, keys: &[&str]) -> Option<String> {
 }
 
 fn notification_targets(owner_filters: &[String], environment_filters: &[String]) -> Vec<String> {
+    notification_targets_with_default(owner_filters, environment_filters, "cost-operations")
+}
+
+fn notification_targets_with_default(
+    owner_filters: &[String],
+    environment_filters: &[String],
+    default_target: &str,
+) -> Vec<String> {
     let mut targets: BTreeSet<String> = owner_filters
         .iter()
         .map(|owner| format!("owner:{}", owner))
@@ -1525,7 +1629,7 @@ fn notification_targets(owner_filters: &[String], environment_filters: &[String]
             .map(|environment| format!("environment:{}", environment)),
     );
     if targets.is_empty() {
-        targets.insert("cost-operations".to_string());
+        targets.insert(default_target.to_string());
     }
     targets.into_iter().collect()
 }
@@ -2698,6 +2802,7 @@ fn evaluate_security(resource: &AwsResourceModel, findings: &mut Vec<InventoryFi
             evidence: json!({
                 "required_fields": ["instance_health"],
                 "resource_data_keys": resource_data_keys(resource),
+                "tags": resource.tags,
             }),
         });
     }
@@ -2718,6 +2823,7 @@ fn evaluate_security(resource: &AwsResourceModel, findings: &mut Vec<InventoryFi
             evidence: json!({
                 "telemetry_collection_error_count": telemetry_error_count,
                 "telemetry_collection_errors": resource.resource_data.get("telemetry_collection_errors"),
+                "tags": resource.tags,
             }),
         });
     }
@@ -2748,7 +2854,8 @@ fn evaluate_security(resource: &AwsResourceModel, findings: &mut Vec<InventoryFi
             ),
             evidence: json!({
                 "launch_configuration_name":
-                    data_str(&resource.resource_data, "launch_configuration_name")
+                    data_str(&resource.resource_data, "launch_configuration_name"),
+                "tags": resource.tags,
             }),
         });
     } else if !uses_launch_template && !uses_mixed_instances_policy {
@@ -2762,7 +2869,10 @@ fn evaluate_security(resource: &AwsResourceModel, findings: &mut Vec<InventoryFi
                 "Launch source for Auto Scaling group {} is not collected yet (no launch configuration, launch template, or mixed instances policy recorded); security pillar cannot be fully assessed",
                 resource.resource_id
             ),
-            evidence: json!({ "launch_source_collected": false }),
+            evidence: json!({
+                "launch_source_collected": false,
+                "tags": resource.tags,
+            }),
         });
     }
 }
@@ -4084,6 +4194,94 @@ mod tests {
         assert!(workflow.actions.iter().all(|action| {
             action.dry_run && action.status == AsgRemediationStatus::BlockedMissingEvidence
         }));
+    }
+
+    #[test]
+    fn asg_security_slo_policy_snapshot_tracks_owner_policy_and_notifications() {
+        let mut legacy_data = healthy_data();
+        legacy_data["launch_configuration_name"] = json!("legacy-lc");
+        legacy_data["uses_launch_template"] = json!(false);
+        let legacy = fixture(
+            "asg-security-slo-legacy",
+            json!({"owner": "security", "environment": "prod", "application": "payments"}),
+            legacy_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[legacy], Pillar::Security, now());
+        let snapshot = asg_security_slo_policy_snapshot(&report);
+
+        assert_eq!(snapshot.workflow_id, "autoscaling_security_slo_policy");
+        assert!(snapshot.read_only_mode);
+        assert!(snapshot.freshness_required);
+        assert_eq!(
+            snapshot.objective.objective_id,
+            "autoscaling-security-score-min-95"
+        );
+        assert_eq!(snapshot.objective.target_score_min, 95);
+        assert_eq!(snapshot.objective.current_score, report.score);
+        assert_eq!(
+            snapshot.objective.status,
+            AsgSecurityObjectiveStatus::AtRisk
+        );
+        assert_eq!(
+            snapshot.objective.trend_direction,
+            AsgSecurityTrendDirection::Degrading
+        );
+        assert_eq!(snapshot.objective.failed_rule_count, 1);
+        assert_eq!(snapshot.objective.affected_resource_count, 1);
+        assert_eq!(snapshot.objective.owner_filters, vec!["security"]);
+        assert_eq!(snapshot.objective.environment_filters, vec!["prod"]);
+        assert_eq!(snapshot.objective.application_filters, vec!["payments"]);
+        assert_eq!(
+            snapshot.objective.notification_targets,
+            vec!["environment:prod", "owner:security"]
+        );
+        assert_eq!(snapshot.objective.policy_state, "active_with_findings");
+        assert_eq!(
+            snapshot.objective.status_history,
+            vec![
+                "snapshot_collected",
+                "security_policy_evaluated",
+                "notification_targets_resolved"
+            ]
+        );
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_SEC_LEGACY_LAUNCH_CONFIGURATION.to_string()));
+    }
+
+    #[test]
+    fn asg_security_slo_policy_snapshot_marks_stale_data_as_breached() {
+        let mut stale_data = healthy_data();
+        stale_data["launch_configuration_name"] = json!("legacy-lc");
+        stale_data["uses_launch_template"] = json!(false);
+        let stale = fixture(
+            "asg-security-slo-stale",
+            json!({}),
+            stale_data,
+            now() - Duration::hours(30),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Security, now());
+        let snapshot = asg_security_slo_policy_snapshot(&report);
+
+        assert_eq!(
+            snapshot.objective.status,
+            AsgSecurityObjectiveStatus::Breached
+        );
+        assert_eq!(snapshot.objective.policy_state, "blocked_stale_data");
+        assert_eq!(
+            snapshot.objective.trend_direction,
+            AsgSecurityTrendDirection::Degrading
+        );
+        assert_eq!(
+            snapshot.objective.notification_targets,
+            vec!["security-operations"]
+        );
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
     }
 
     #[test]

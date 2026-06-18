@@ -1051,6 +1051,31 @@ describe("PillarScorecard", () => {
               },
             ],
           },
+          slo_policy_tracking: {
+            workflow_id: "autoscaling_security_slo_policy",
+            read_only_mode: true,
+            freshness_required: true,
+            objective: {
+              objective_id: "autoscaling-security-score-min-95",
+              status: "at_risk",
+              target_score_min: 95,
+              current_score: 82,
+              trend_direction: "degrading",
+              failed_rule_count: 1,
+              affected_resource_count: 1,
+              owner_filters: ["security"],
+              environment_filters: ["prod"],
+              application_filters: ["payments"],
+              notification_targets: ["environment:prod", "owner:security"],
+              policy_state: "active_with_findings",
+              status_history: [
+                "snapshot_collected",
+                "security_policy_evaluated",
+                "notification_targets_resolved",
+              ],
+            },
+            evidence_reason_codes: ["ASG_SEC_LEGACY_LAUNCH_CONFIGURATION"],
+          },
         },
       ],
     };
@@ -1098,6 +1123,13 @@ describe("PillarScorecard", () => {
     expect(text).toContain("autoscaling.security.remediation.dry_run_planned");
     expect(text).toContain("autoscaling-security-remediation-01");
     expect(text).toContain("Review Launch Source Security Migration");
+    expect(text).toContain("Security SLO Policy");
+    expect(text).toContain("autoscaling-security-score-min-95");
+    expect(text).toContain("score 82 / target 95");
+    expect(text).toContain("Active With Findings");
+    expect(text).toContain("Degrading trend");
+    expect(text).toContain("environment:prod, owner:security");
+    expect(text).toContain("Security Policy Evaluated");
 
     await view.unmount();
   });
