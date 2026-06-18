@@ -82,4 +82,79 @@ describe("PillarScorecard", () => {
 
     await view.unmount();
   });
+
+  it("renders EC2 performance posture findings for operator review", async () => {
+    const data = {
+      evaluated_at: "2026-06-18T05:00:00Z",
+      stale_after_hours: 24,
+      reports: [
+        {
+          pillar: "performance",
+          score: 74,
+          resources_evaluated: 2,
+          stale_resources: 0,
+          posture: {
+            status: "fail",
+            rules_evaluated: 3,
+            rules_failed: 2,
+            affected_resources: ["i-perf-gap", "i-perf-hot"],
+            rules: [
+              {
+                rule_id: "ec2-performance-inventory-freshness",
+                status: "pass",
+                reason_codes: ["EC2_INV_STALE_DATA"],
+                affected_resources: [],
+              },
+              {
+                rule_id: "ec2-performance-core-telemetry-present",
+                status: "fail",
+                reason_codes: ["EC2_PERF_MISSING_CORE_TELEMETRY"],
+                affected_resources: ["i-perf-gap"],
+              },
+              {
+                rule_id: "ec2-performance-cpu-headroom",
+                status: "fail",
+                reason_codes: ["EC2_PERF_HIGH_CPU_TELEMETRY"],
+                affected_resources: ["i-perf-hot"],
+              },
+            ],
+          },
+          findings: [
+            {
+              severity: "medium",
+              reason_code: "EC2_PERF_MISSING_CORE_TELEMETRY",
+              resource_id: "i-perf-gap",
+              message: "Instance i-perf-gap is missing core EC2 performance telemetry",
+              evidence: { missing_metrics: ["NetworkIn"] },
+            },
+            {
+              severity: "high",
+              reason_code: "EC2_PERF_HIGH_CPU_TELEMETRY",
+              resource_id: "i-perf-hot",
+              message: "Instance i-perf-hot has high CPUUtilization telemetry",
+              evidence: { metric_name: "CPUUtilization", max: 94 },
+            },
+          ],
+        },
+      ],
+    };
+
+    const view = await render(<PillarScorecard data={data} />);
+    const text = view.container.textContent;
+
+    expect(text).toContain("performance");
+    expect(text).toContain("Performance Posture");
+    expect(text).toContain("2 failed of 3");
+    expect(text).toContain("ec2-performance-inventory-freshness");
+    expect(text).toContain("ec2-performance-core-telemetry-present");
+    expect(text).toContain("ec2-performance-cpu-headroom");
+    expect(text).toContain("EC2_INV_STALE_DATA");
+    expect(text).toContain("EC2_PERF_MISSING_CORE_TELEMETRY");
+    expect(text).toContain("EC2_PERF_HIGH_CPU_TELEMETRY");
+    expect(text).toContain("i-perf-gap");
+    expect(text).toContain("i-perf-hot");
+    expect(text).toContain("high CPUUtilization telemetry");
+
+    await view.unmount();
+  });
 });

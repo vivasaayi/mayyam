@@ -154,6 +154,78 @@ const ReportingSummary = ({ report }) => {
   );
 };
 
+const PostureSummary = ({ report }) => {
+  const posture = report.posture;
+  if (!posture) {
+    return null;
+  }
+
+  const rules = posture.rules || [];
+  return (
+    <CCard className="mb-3">
+      <CCardHeader>
+        {formatToken(report.pillar)} Posture
+        <CBadge
+          color={posture.status === "pass" ? "success" : "danger"}
+          className="ms-2"
+        >
+          {formatToken(posture.status)}
+        </CBadge>
+      </CCardHeader>
+      <CCardBody>
+        <CRow className="g-3 mb-3">
+          <CCol md={4}>
+            <div className="text-medium-emphasis small">Rules</div>
+            <div className="fw-semibold">
+              {posture.rules_failed || 0} failed of {posture.rules_evaluated || 0}
+            </div>
+          </CCol>
+          <CCol md={8}>
+            <div className="text-medium-emphasis small">Affected Resources</div>
+            <div className="fw-semibold">
+              {(posture.affected_resources || []).join(", ") || "None"}
+            </div>
+          </CCol>
+        </CRow>
+        <CTable small responsive>
+          <CTableHead>
+            <CTableRow>
+              <CTableHeaderCell>Rule</CTableHeaderCell>
+              <CTableHeaderCell>Status</CTableHeaderCell>
+              <CTableHeaderCell>Reason Codes</CTableHeaderCell>
+              <CTableHeaderCell>Affected Resources</CTableHeaderCell>
+            </CTableRow>
+          </CTableHead>
+          <CTableBody>
+            {rules.map((rule) => (
+              <CTableRow key={rule.rule_id}>
+                <CTableDataCell>
+                  <code>{rule.rule_id}</code>
+                </CTableDataCell>
+                <CTableDataCell>
+                  <CBadge color={rule.status === "pass" ? "success" : "danger"}>
+                    {rule.status}
+                  </CBadge>
+                </CTableDataCell>
+                <CTableDataCell>
+                  {(rule.reason_codes || []).map((reasonCode) => (
+                    <code className="d-block" key={`${rule.rule_id}-${reasonCode}`}>
+                      {reasonCode}
+                    </code>
+                  ))}
+                </CTableDataCell>
+                <CTableDataCell>
+                  {(rule.affected_resources || []).join(", ") || "None"}
+                </CTableDataCell>
+              </CTableRow>
+            ))}
+          </CTableBody>
+        </CTable>
+      </CCardBody>
+    </CCard>
+  );
+};
+
 // Renders the deterministic pillar reports returned by
 // /api/aws/inventory/<service>/pillars: one score card per pillar plus a
 // reason-coded findings table with raw evidence.
@@ -183,6 +255,9 @@ const PillarScorecard = ({ data }) => {
       </CRow>
       {data.reports.map((report) => (
         <ReportingSummary key={`${report.pillar}-reporting`} report={report} />
+      ))}
+      {data.reports.map((report) => (
+        <PostureSummary key={`${report.pillar}-posture`} report={report} />
       ))}
       <CCard>
         <CCardHeader>

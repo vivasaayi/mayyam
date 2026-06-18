@@ -89,6 +89,7 @@ pub struct Ec2PostureSummary {
 
 pub type Ec2CostPostureSummary = Ec2PostureSummary;
 pub type Ec2ResiliencePostureSummary = Ec2PostureSummary;
+pub type Ec2PerformancePostureSummary = Ec2PostureSummary;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Ec2EvidenceCitation {
@@ -608,6 +609,46 @@ pub fn ec2_resilience_posture_summary(report: &PillarReport) -> Ec2ResiliencePos
         .count();
 
     Ec2PostureSummary {
+        status: if rules_failed == 0 {
+            Ec2PostureStatus::Pass
+        } else {
+            Ec2PostureStatus::Fail
+        },
+        rules_evaluated: rules.len(),
+        rules_failed,
+        affected_resources,
+        rules,
+    }
+}
+
+pub fn ec2_performance_posture_summary(report: &PillarReport) -> Ec2PerformancePostureSummary {
+    let rules = vec![
+        ec2_performance_posture_rule(
+            report,
+            "ec2-performance-inventory-freshness",
+            &[REASON_INV_STALE_DATA],
+        ),
+        ec2_performance_posture_rule(
+            report,
+            "ec2-performance-core-telemetry-present",
+            &[REASON_PERF_MISSING_CORE_TELEMETRY],
+        ),
+        ec2_performance_posture_rule(
+            report,
+            "ec2-performance-cpu-headroom",
+            &[REASON_PERF_HIGH_CPU_TELEMETRY],
+        ),
+    ];
+    let rules_failed = rules
+        .iter()
+        .filter(|rule| rule.status == Ec2PostureStatus::Fail)
+        .count();
+    let affected_resources = sorted_unique_resources(
+        rules
+            .iter()
+            .flat_map(|rule| rule.affected_resources.iter().cloned()),
+    );
+    Ec2PerformancePostureSummary {
         status: if rules_failed == 0 {
             Ec2PostureStatus::Pass
         } else {
@@ -1860,6 +1901,14 @@ fn ec2_cost_posture_rule(
 }
 
 fn ec2_resilience_posture_rule(
+    report: &PillarReport,
+    rule_id: &'static str,
+    reason_codes: &[&'static str],
+) -> Ec2PostureRule {
+    ec2_posture_rule(report, rule_id, reason_codes)
+}
+
+fn ec2_performance_posture_rule(
     report: &PillarReport,
     rule_id: &'static str,
     reason_codes: &[&'static str],
@@ -4339,6 +4388,143 @@ mod tests {
         let codes = reason_codes(&report);
         assert!(codes.contains(&REASON_PERF_MISSING_CORE_TELEMETRY));
         assert!(codes.contains(&REASON_PERF_HIGH_CPU_TELEMETRY));
+    }
+
+    #[test]
+    fn ec2_performance_posture_summary_flags_core_telemetry_and_cpu_headroom_rules() {
+        let missing = fixture(
+            "i-perf-gap",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[35.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let hot = fixture(
+            "i-perf-hot",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[90.0, 94.0]),
+                        metric("NetworkIn", &[1024.0]),
+                        metric("NetworkOut", &[2048.0]),
+                        metric("DiskReadOps", &[10.0]),
+                        metric("DiskWriteOps", &[12.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[missing, hot], Pillar::Performance, now());
+        let posture = ec2_performance_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 3);
+        assert_eq!(posture.rules_failed, 2);
+        assert_eq!(
+            posture.affected_resources,
+            vec!["i-perf-gap".to_string(), "i-perf-hot".to_string()]
+        );
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-performance-core-telemetry-present"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule
+                    .reason_codes
+                    .contains(&REASON_PERF_MISSING_CORE_TELEMETRY)
+                && rule.affected_resources == vec!["i-perf-gap"]
+                && rule.suppression_supported
+                && rule.assignment_supported
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-performance-cpu-headroom"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule.reason_codes.contains(&REASON_PERF_HIGH_CPU_TELEMETRY)
+                && rule.affected_resources == vec!["i-perf-hot"]
+        }));
+    }
+
+    #[test]
+    fn ec2_performance_posture_summary_blocks_pass_when_inventory_is_stale() {
+        let stale = fixture(
+            "i-perf-stale",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[30.0]),
+                        metric("NetworkIn", &[1024.0]),
+                        metric("NetworkOut", &[2048.0]),
+                        metric("DiskReadOps", &[10.0]),
+                        metric("DiskWriteOps", &[12.0])
+                    ]
+                }
+            }),
+            48,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Performance, now());
+        let posture = ec2_performance_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 3);
+        assert_eq!(posture.rules_failed, 1);
+        assert_eq!(posture.affected_resources, vec!["i-perf-stale"]);
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-performance-inventory-freshness"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule.reason_codes.contains(&REASON_INV_STALE_DATA)
+                && rule.affected_resources == vec!["i-perf-stale"]
+        }));
+    }
+
+    #[test]
+    fn ec2_performance_posture_summary_passes_for_fresh_complete_telemetry() {
+        let healthy = fixture(
+            "i-perf-healthy",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[30.0, 45.0]),
+                        metric("NetworkIn", &[1024.0]),
+                        metric("NetworkOut", &[2048.0]),
+                        metric("DiskReadOps", &[10.0]),
+                        metric("DiskWriteOps", &[12.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[healthy], Pillar::Performance, now());
+        let posture = ec2_performance_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Pass);
+        assert_eq!(posture.rules_evaluated, 3);
+        assert_eq!(posture.rules_failed, 0);
+        assert!(posture.affected_resources.is_empty());
+        assert!(posture
+            .rules
+            .iter()
+            .all(|rule| rule.status == Ec2PostureStatus::Pass));
     }
 
     #[test]

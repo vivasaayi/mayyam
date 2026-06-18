@@ -371,6 +371,53 @@ async fn ec2_pillar_reports_contract() {
     assert!(reports[0]["reporting"]["incident_review"]["rows"].is_array());
     assert!(reports[0]["reporting"]["missing_data_reason_codes"].is_array());
     assert!(reports[0]["reporting"]["evidence_reason_codes"].is_array());
+
+    let resp = client
+        .get(format!(
+            "{}/api/aws/inventory/ec2/pillars?account_id={}&pillar=performance",
+            base, account_id
+        ))
+        .send()
+        .await
+        .expect("performance pillar request failed");
+    assert_eq!(resp.status(), 200);
+    let body: Value = resp.json().await.expect("invalid JSON body");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0]["pillar"], "performance");
+    assert_eq!(
+        reports[0]["assessment_scope"],
+        "ec2_core_performance_telemetry_and_cpu_headroom"
+    );
+    assert_eq!(reports[0]["posture"]["rules_evaluated"], 3);
+    assert!(matches!(
+        reports[0]["posture"]["status"].as_str(),
+        Some("pass" | "fail")
+    ));
+    let performance_rules = reports[0]["posture"]["rules"]
+        .as_array()
+        .expect("performance posture rules");
+    assert_eq!(performance_rules.len(), 3);
+    let expected_rules = [
+        ("ec2-performance-inventory-freshness", "EC2_INV_STALE_DATA"),
+        (
+            "ec2-performance-core-telemetry-present",
+            "EC2_PERF_MISSING_CORE_TELEMETRY",
+        ),
+        (
+            "ec2-performance-cpu-headroom",
+            "EC2_PERF_HIGH_CPU_TELEMETRY",
+        ),
+    ];
+    for (rule, (expected_rule_id, expected_reason_code)) in
+        performance_rules.iter().zip(expected_rules)
+    {
+        assert_eq!(rule["rule_id"], expected_rule_id);
+        assert_eq!(rule["reason_codes"][0], expected_reason_code);
+        assert!(rule["suppression_supported"].is_boolean());
+        assert!(rule["assignment_supported"].is_boolean());
+        assert!(rule["affected_resources"].is_array());
+    }
 }
 
 #[tokio::test]
