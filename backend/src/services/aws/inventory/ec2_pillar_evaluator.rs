@@ -185,6 +185,7 @@ pub struct Ec2AgenticInvestigationPlan {
 }
 
 pub type Ec2CostAgenticInvestigationPlan = Ec2AgenticInvestigationPlan;
+pub type Ec2SecurityAgenticInvestigationPlan = Ec2AgenticInvestigationPlan;
 pub type Ec2ResilienceAgenticInvestigationPlan = Ec2AgenticInvestigationPlan;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -1177,6 +1178,132 @@ pub fn ec2_cost_agentic_investigation_plan(
 
     Ec2CostAgenticInvestigationPlan {
         workflow_id: "ec2_cost_agentic_investigation",
+        default_tool_mode: Ec2InvestigationToolMode::ReadOnly,
+        max_tool_calls: steps.len().min(12),
+        max_evidence_citations: triage.evidence_citations.len(),
+        replay_required: true,
+        steps,
+        approval_gates,
+        evidence_citations: triage.evidence_citations,
+    }
+}
+
+pub fn ec2_security_agentic_investigation_plan(
+    report: &PillarReport,
+) -> Ec2SecurityAgenticInvestigationPlan {
+    let triage = ec2_security_triage_context(report);
+    let mut steps = Vec::new();
+    let mut approval_gates = Vec::new();
+
+    for citation in &triage.evidence_citations {
+        match citation.reason_code.as_str() {
+            REASON_SEC_PUBLIC_IP => {
+                steps.push(investigation_step_with_prefix(
+                    "ec2-security",
+                    &steps,
+                    Ec2InvestigationStepKind::Inspect,
+                    "ec2.describe_instance_networking",
+                    Ec2InvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when public IP, security group, subnet route table, and internet gateway evidence are recorded or confirmed absent",
+                ));
+                steps.push(investigation_step_with_prefix(
+                    "ec2-security",
+                    &steps,
+                    Ec2InvestigationStepKind::Compare,
+                    "ec2.compare_security_group_ingress",
+                    Ec2InvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when allowed ingress is compared against owner intent and known exposure exceptions",
+                ));
+                approval_gates.push(mutation_gate_with_prefix(
+                    "ec2-security",
+                    &approval_gates,
+                    citation,
+                    "Approve any security group, route, public IP, or exposure suppression change only after owner review, blast-radius summary, and rollback note",
+                ));
+            }
+            REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY => {
+                steps.push(investigation_step_with_prefix(
+                    "ec2-security",
+                    &steps,
+                    Ec2InvestigationStepKind::Diagnose,
+                    "ec2.vpc_flow_logs.query_instance_traffic",
+                    Ec2InvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when packet telemetry is correlated with flow logs, allowed ingress, and source/destination evidence",
+                ));
+                approval_gates.push(mutation_gate_with_prefix(
+                    "ec2-security",
+                    &approval_gates,
+                    citation,
+                    "Approve any access restriction or listener change only after traffic evidence, business impact, and rollback note are captured",
+                ));
+            }
+            REASON_SEC_MISSING_PACKET_TELEMETRY => {
+                steps.push(investigation_step_with_prefix(
+                    "ec2-security",
+                    &steps,
+                    Ec2InvestigationStepKind::Inspect,
+                    "ec2.cloudwatch.get_packet_metrics",
+                    Ec2InvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when NetworkPacketsIn and NetworkPacketsOut are found for the lookback window or confirmed absent",
+                ));
+            }
+            REASON_SEC_MISSING_OWNER_TAG => {
+                steps.push(investigation_step_with_prefix(
+                    "ec2-security",
+                    &steps,
+                    Ec2InvestigationStepKind::Diagnose,
+                    "ec2.resource_groups.get_tagging_context",
+                    Ec2InvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when owner, team, service, or escalation target can be inferred or the gap is assigned",
+                ));
+                approval_gates.push(mutation_gate_with_prefix(
+                    "ec2-security",
+                    &approval_gates,
+                    citation,
+                    "Approve tag writes or assignment changes after ownership is verified",
+                ));
+            }
+            REASON_INV_STALE_DATA => {
+                steps.push(investigation_step_with_prefix(
+                    "ec2-security",
+                    &steps,
+                    Ec2InvestigationStepKind::Inspect,
+                    "ec2.inventory.refresh_status",
+                    Ec2InvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when current EC2 inventory freshness is confirmed or a refresh is queued for operator approval",
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    if !approval_gates.is_empty() {
+        steps.push(Ec2InvestigationStep {
+            step_id: format!("ec2-security-step-{:02}", steps.len() + 1),
+            kind: Ec2InvestigationStepKind::ProposeMutationPlan,
+            tool_name: "ec2.security.prepare_approval_plan",
+            tool_mode: Ec2InvestigationToolMode::ApprovalRequired,
+            target_resource_id: "investigation".to_string(),
+            reason_code: "EC2_SECURITY_APPROVAL_PLAN_REQUIRED".to_string(),
+            stop_condition:
+                "stop before mutation; require explicit operator approval, blast-radius summary, rollback note, and replayable evidence"
+                    .to_string(),
+            evidence: json!({
+                "approval_gate_count": approval_gates.len(),
+                "read_only_step_count": steps.len(),
+                "assessment_scope": "ec2_public_exposure_owner_routing_and_packet_telemetry",
+            }),
+        });
+    }
+
+    Ec2SecurityAgenticInvestigationPlan {
+        workflow_id: "ec2_security_agentic_investigation",
         default_tool_mode: Ec2InvestigationToolMode::ReadOnly,
         max_tool_calls: steps.len().min(12),
         max_evidence_citations: triage.evidence_citations.len(),
@@ -3370,6 +3497,122 @@ mod tests {
         assert!(triage.evidence_citations.iter().any(|citation| {
             citation.reason_code == REASON_INV_STALE_DATA && citation.resource_id == "i-sec-stale"
         }));
+    }
+
+    #[test]
+    fn ec2_security_agentic_investigation_plan_is_read_only_until_approval() {
+        let exposed = fixture(
+            "i-sec-exposed",
+            json!({}),
+            json!({
+                "state": "running",
+                "public_ip": "54.0.0.1",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[12.0]),
+                        metric("NetworkPacketsOut", &[6.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let telemetry_gap = fixture(
+            "i-sec-gap",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "private_ip": "10.0.0.5",
+                "availability_zone": "us-east-1a"
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[exposed, telemetry_gap], Pillar::Security, now());
+        let plan = ec2_security_agentic_investigation_plan(&report);
+
+        assert_eq!(plan.workflow_id, "ec2_security_agentic_investigation");
+        assert_eq!(plan.default_tool_mode, Ec2InvestigationToolMode::ReadOnly);
+        assert!(plan.replay_required);
+        assert_eq!(plan.max_evidence_citations, 4);
+        assert!(plan.steps.iter().any(|step| {
+            step.step_id.starts_with("ec2-security-step-")
+                && step.tool_name == "ec2.describe_instance_networking"
+                && step.tool_mode == Ec2InvestigationToolMode::ReadOnly
+                && step.target_resource_id == "i-sec-exposed"
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "ec2.compare_security_group_ingress"
+                && step.tool_mode == Ec2InvestigationToolMode::ReadOnly
+                && step.stop_condition.contains("owner intent")
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "ec2.vpc_flow_logs.query_instance_traffic"
+                && step.tool_mode == Ec2InvestigationToolMode::ReadOnly
+                && step.stop_condition.contains("flow logs")
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "ec2.cloudwatch.get_packet_metrics"
+                && step.tool_mode == Ec2InvestigationToolMode::ReadOnly
+                && step.target_resource_id == "i-sec-gap"
+        }));
+        assert_eq!(
+            plan.steps.last().map(|step| step.tool_mode),
+            Some(Ec2InvestigationToolMode::ApprovalRequired)
+        );
+        assert_eq!(
+            plan.steps.last().map(|step| step.tool_name),
+            Some("ec2.security.prepare_approval_plan")
+        );
+        assert_eq!(
+            plan.steps.last().map(|step| step.reason_code.as_str()),
+            Some("EC2_SECURITY_APPROVAL_PLAN_REQUIRED")
+        );
+        assert_eq!(plan.approval_gates.len(), 3);
+        assert!(plan.approval_gates.iter().all(|gate| gate
+            .gate_id
+            .starts_with("ec2-security-approval-")
+            && gate.rollback_note_required
+            && gate
+                .blast_radius
+                .contains("no mutation is executable from the investigation plan")));
+    }
+
+    #[test]
+    fn ec2_security_agentic_investigation_plan_refreshes_stale_data_without_mutation_gate() {
+        let stale = fixture(
+            "i-sec-stale",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "private_ip": "10.0.0.5",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[0.0]),
+                        metric("NetworkPacketsOut", &[0.0])
+                    ]
+                }
+            }),
+            48,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Security, now());
+        let plan = ec2_security_agentic_investigation_plan(&report);
+
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "ec2.inventory.refresh_status"
+                && step.tool_mode == Ec2InvestigationToolMode::ReadOnly
+                && step.reason_code == REASON_INV_STALE_DATA
+        }));
+        assert!(plan.approval_gates.is_empty());
+        assert!(plan
+            .steps
+            .iter()
+            .all(|step| step.tool_mode == Ec2InvestigationToolMode::ReadOnly));
     }
 
     #[test]

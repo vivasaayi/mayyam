@@ -323,6 +323,121 @@ const TriageSummary = ({ report }) => {
   );
 };
 
+const AgenticInvestigationSummary = ({ report }) => {
+  const investigation = report.agentic_investigation;
+  if (!investigation) {
+    return null;
+  }
+
+  const steps = investigation.steps || [];
+  const approvalGates = investigation.approval_gates || [];
+  const evidenceCitations = investigation.evidence_citations || [];
+
+  return (
+    <CCard className="mb-3">
+      <CCardHeader>
+        {formatToken(report.pillar)} Agentic Investigation
+        <CBadge color="info" className="ms-2">
+          {formatToken(investigation.default_tool_mode)}
+        </CBadge>
+      </CCardHeader>
+      <CCardBody>
+        <CRow className="g-3 mb-3">
+          <CCol md={4}>
+            <div className="text-medium-emphasis small">Workflow</div>
+            <div className="fw-semibold">{investigation.workflow_id}</div>
+            <div className="small">
+              {investigation.replay_required ? "Replay required" : "Replay optional"}
+            </div>
+          </CCol>
+          <CCol md={4}>
+            <div className="text-medium-emphasis small">Budget</div>
+            <div className="fw-semibold">
+              {investigation.max_tool_calls || 0} max tool call(s)
+            </div>
+            <div className="small">
+              {investigation.max_evidence_citations || 0} evidence citation(s)
+            </div>
+          </CCol>
+          <CCol md={4}>
+            <div className="text-medium-emphasis small">Approval Gates</div>
+            <div className="fw-semibold">{approvalGates.length} gate(s)</div>
+            <div className="small">
+              {approvalGates.length > 0
+                ? "Mutation planning requires approval"
+                : "Read-only diagnostics only"}
+            </div>
+          </CCol>
+        </CRow>
+        <CTable small responsive>
+          <CTableHead>
+            <CTableRow>
+              <CTableHeaderCell>Step</CTableHeaderCell>
+              <CTableHeaderCell>Mode</CTableHeaderCell>
+              <CTableHeaderCell>Tool</CTableHeaderCell>
+              <CTableHeaderCell>Resource</CTableHeaderCell>
+              <CTableHeaderCell>Stop Condition</CTableHeaderCell>
+            </CTableRow>
+          </CTableHead>
+          <CTableBody>
+            {steps.map((step) => (
+              <CTableRow key={step.step_id}>
+                <CTableDataCell>
+                  <code>{step.step_id}</code>
+                  <div className="small">{formatToken(step.kind)}</div>
+                </CTableDataCell>
+                <CTableDataCell>
+                  <CBadge
+                    color={
+                      step.tool_mode === "approval_required" ? "warning" : "success"
+                    }
+                  >
+                    {formatToken(step.tool_mode)}
+                  </CBadge>
+                </CTableDataCell>
+                <CTableDataCell>
+                  <code>{step.tool_name}</code>
+                  <div className="small">{step.reason_code}</div>
+                </CTableDataCell>
+                <CTableDataCell>{step.target_resource_id}</CTableDataCell>
+                <CTableDataCell>{step.stop_condition}</CTableDataCell>
+              </CTableRow>
+            ))}
+          </CTableBody>
+        </CTable>
+        {approvalGates.length > 0 && (
+          <div className="mt-3">
+            <div className="text-medium-emphasis small">Approval Gates</div>
+            {approvalGates.map((gate) => (
+              <div className="small mb-2" key={gate.gate_id}>
+                <code>{gate.gate_id}</code> · {gate.target_resource_id} ·{" "}
+                {gate.required_approval}
+                <div>{gate.blast_radius}</div>
+                <div>
+                  Rollback note{" "}
+                  {gate.rollback_note_required ? "required" : "not required"}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {evidenceCitations.length > 0 && (
+          <div className="mt-3">
+            <div className="text-medium-emphasis small">
+              Investigation Evidence
+            </div>
+            {evidenceCitations.map((citation, idx) => (
+              <div className="small" key={`investigation-citation-${idx}`}>
+                {citation.reason_code} · {citation.resource_id}
+              </div>
+            ))}
+          </div>
+        )}
+      </CCardBody>
+    </CCard>
+  );
+};
+
 // Renders the deterministic pillar reports returned by
 // /api/aws/inventory/<service>/pillars: one score card per pillar plus a
 // reason-coded findings table with raw evidence.
@@ -358,6 +473,12 @@ const PillarScorecard = ({ data }) => {
       ))}
       {data.reports.map((report) => (
         <TriageSummary key={`${report.pillar}-triage`} report={report} />
+      ))}
+      {data.reports.map((report) => (
+        <AgenticInvestigationSummary
+          key={`${report.pillar}-agentic-investigation`}
+          report={report}
+        />
       ))}
       <CCard>
         <CCardHeader>

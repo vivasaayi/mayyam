@@ -204,6 +204,45 @@ async fn ec2_pillar_reports_contract() {
     assert!(triage["hypotheses"].is_array());
     assert!(triage["missing_data_questions"].is_array());
     assert!(triage["evidence_citations"].is_array());
+    assert_eq!(
+        reports[0]["agentic_investigation"]["workflow_id"],
+        "ec2_security_agentic_investigation"
+    );
+    assert_eq!(
+        reports[0]["agentic_investigation"]["default_tool_mode"],
+        "read_only"
+    );
+    assert_eq!(reports[0]["agentic_investigation"]["replay_required"], true);
+    assert!(reports[0]["agentic_investigation"]["steps"].is_array());
+    assert!(reports[0]["agentic_investigation"]["approval_gates"].is_array());
+    assert!(reports[0]["agentic_investigation"]["evidence_citations"].is_array());
+    let security_steps = reports[0]["agentic_investigation"]["steps"]
+        .as_array()
+        .expect("security investigation steps should be an array");
+    assert!(security_steps.iter().all(|step| {
+        let tool_name = step["tool_name"].as_str().unwrap_or_default();
+        tool_name.starts_with("ec2.")
+            && !tool_name.contains("execute")
+            && !tool_name.contains("run_instances")
+            && !tool_name.contains("terminate")
+    }));
+    assert!(security_steps.iter().all(|step| {
+        step["tool_mode"] == "read_only"
+            || (step["tool_mode"] == "approval_required"
+                && step["tool_name"] == "ec2.security.prepare_approval_plan")
+    }));
+    if let Some(final_step) = security_steps.last() {
+        if final_step["tool_mode"] == "approval_required" {
+            assert_eq!(
+                final_step["reason_code"],
+                "EC2_SECURITY_APPROVAL_PLAN_REQUIRED"
+            );
+            assert_eq!(
+                final_step["evidence"]["assessment_scope"],
+                "ec2_public_exposure_owner_routing_and_packet_telemetry"
+            );
+        }
+    }
 
     let resp = client
         .get(format!(

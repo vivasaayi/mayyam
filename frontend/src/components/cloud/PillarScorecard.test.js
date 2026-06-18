@@ -419,6 +419,71 @@ describe("PillarScorecard", () => {
               },
             ],
           },
+          agentic_investigation: {
+            workflow_id: "ec2_security_agentic_investigation",
+            default_tool_mode: "read_only",
+            max_tool_calls: 5,
+            max_evidence_citations: 2,
+            replay_required: true,
+            steps: [
+              {
+                step_id: "ec2-security-step-01",
+                kind: "inspect",
+                tool_name: "ec2.describe_instance_networking",
+                tool_mode: "read_only",
+                target_resource_id: "i-sec-exposed",
+                reason_code: "EC2_SEC_PUBLIC_IP_ASSIGNED",
+                stop_condition:
+                  "stop when public IP, security group, subnet route table, and internet gateway evidence are recorded or confirmed absent",
+              },
+              {
+                step_id: "ec2-security-step-02",
+                kind: "compare",
+                tool_name: "ec2.compare_security_group_ingress",
+                tool_mode: "read_only",
+                target_resource_id: "i-sec-exposed",
+                reason_code: "EC2_SEC_PUBLIC_IP_ASSIGNED",
+                stop_condition:
+                  "stop when allowed ingress is compared against owner intent and known exposure exceptions",
+              },
+              {
+                step_id: "ec2-security-step-03",
+                kind: "propose_mutation_plan",
+                tool_name: "ec2.security.prepare_approval_plan",
+                tool_mode: "approval_required",
+                target_resource_id: "investigation",
+                reason_code: "EC2_SECURITY_APPROVAL_PLAN_REQUIRED",
+                stop_condition:
+                  "stop before mutation; require explicit operator approval, blast-radius summary, rollback note, and replayable evidence",
+              },
+            ],
+            approval_gates: [
+              {
+                gate_id: "ec2-security-approval-01",
+                target_resource_id: "i-sec-exposed",
+                required_approval:
+                  "Approve any security group, route, public IP, or exposure suppression change only after owner review, blast-radius summary, and rollback note",
+                blast_radius:
+                  "single EC2 instance i-sec-exposed; no mutation is executable from the investigation plan",
+                rollback_note_required: true,
+                evidence_reason_codes: ["EC2_SEC_PUBLIC_IP_ASSIGNED"],
+              },
+            ],
+            evidence_citations: [
+              {
+                reason_code: "EC2_SEC_PUBLIC_IP_ASSIGNED",
+                resource_id: "i-sec-exposed",
+                severity: "high",
+                evidence: { public_ip: "54.0.0.1" },
+              },
+              {
+                reason_code: "EC2_SEC_MISSING_PACKET_TELEMETRY",
+                resource_id: "i-sec-gap",
+                severity: "medium",
+                evidence: { missing_metrics: ["NetworkPacketsIn"] },
+              },
+            ],
+          },
           findings: [
             {
               severity: "high",
@@ -466,6 +531,20 @@ describe("PillarScorecard", () => {
     expect(text).toContain("public IP assignment");
     expect(text).toContain("security groups");
     expect(text).toContain("NetworkPacketsIn and NetworkPacketsOut");
+    expect(text).toContain("Security Agentic Investigation");
+    expect(text).toContain("ec2_security_agentic_investigation");
+    expect(text).toContain("Replay required");
+    expect(text).toContain("5 max tool call");
+    expect(text).toContain("2 evidence citation");
+    expect(text).toContain("Mutation planning requires approval");
+    expect(text).toContain("ec2.describe_instance_networking");
+    expect(text).toContain("ec2.compare_security_group_ingress");
+    expect(text).toContain("ec2.security.prepare_approval_plan");
+    expect(text).toContain("Approval Required");
+    expect(text).toContain("EC2_SECURITY_APPROVAL_PLAN_REQUIRED");
+    expect(text).toContain("ec2-security-approval-01");
+    expect(text).toContain("no mutation is executable from the investigation plan");
+    expect(text).toContain("Rollback note required");
     expect(text).toContain("i-sec-exposed");
     expect(text).toContain("i-sec-gap");
     expect(text).toContain("intentionally internet-facing");
