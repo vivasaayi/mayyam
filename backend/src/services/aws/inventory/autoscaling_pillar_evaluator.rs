@@ -85,6 +85,43 @@ pub struct AsgPostureSummary {
 
 pub type AsgCostPostureSummary = AsgPostureSummary;
 
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AsgEvidenceCitation {
+    pub reason_code: String,
+    pub resource_id: String,
+    pub severity: Severity,
+    pub evidence: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AsgAiTriageGuardrails {
+    pub read_only_mode: bool,
+    pub evidence_required: bool,
+    pub separate_facts_from_hypotheses: bool,
+    pub ask_for_missing_data: bool,
+    pub no_llm_invocation: bool,
+    pub no_mutation_planning: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AsgTriageContext {
+    pub workflow_id: &'static str,
+    pub pillar: Pillar,
+    pub context_builder_id: &'static str,
+    pub prompt_template_id: &'static str,
+    pub generation_mode: &'static str,
+    pub max_prompt_tokens: u16,
+    pub provider_routing: Vec<&'static str>,
+    pub audit_event_type: &'static str,
+    pub guardrails: AsgAiTriageGuardrails,
+    pub facts: Vec<String>,
+    pub hypotheses: Vec<String>,
+    pub missing_data_questions: Vec<String>,
+    pub evidence_citations: Vec<AsgEvidenceCitation>,
+}
+
+pub type AsgCostTriageContext = AsgTriageContext;
+
 /// Evaluate every Auto Scaling group in the fleet for one pillar. Rows whose
 /// `resource_type` is not `AutoScalingGroup` are skipped and not counted.
 pub fn evaluate_autoscaling_fleet(
@@ -131,6 +168,81 @@ pub fn evaluate_autoscaling_fleet(
         stale_resources,
         score,
         findings,
+    }
+}
+
+pub fn asg_cost_triage_context(report: &PillarReport) -> AsgCostTriageContext {
+    let mut facts = Vec::new();
+    let mut hypotheses = Vec::new();
+    let mut missing_data_questions = Vec::new();
+    let mut evidence_citations = Vec::new();
+
+    for finding in &report.findings {
+        facts.push(format!(
+            "{} affects {} with {:?} severity",
+            finding.reason_code, finding.resource_id, finding.severity
+        ));
+        evidence_citations.push(AsgEvidenceCitation {
+            reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            evidence: finding.evidence.clone(),
+        });
+
+        match finding.reason_code.as_str() {
+            REASON_INV_STALE_DATA => missing_data_questions.push(format!(
+                "Refresh Auto Scaling inventory for {} before generating cost triage",
+                finding.resource_id
+            )),
+            REASON_TEL_MISSING_COLLECTION_METADATA => missing_data_questions.push(format!(
+                "Collect telemetry collection metadata for {} before trusting Auto Scaling cost evidence",
+                finding.resource_id
+            )),
+            REASON_TEL_COLLECTION_ERRORS => hypotheses.push(format!(
+                "{} has telemetry collection errors; inspect collector logs, Auto Scaling API throttling, permissions, and retry evidence before changing scaling policy or capacity",
+                finding.resource_id
+            )),
+            REASON_COST_MISSING_CAPACITY_TELEMETRY => missing_data_questions.push(format!(
+                "Collect capacity telemetry for {} before quantifying ASG cost posture",
+                finding.resource_id
+            )),
+            REASON_COST_MISSING_GROUP_METRICS_TELEMETRY => missing_data_questions.push(format!(
+                "Enable or collect Auto Scaling group metrics for {} before explaining scaling cost behavior",
+                finding.resource_id
+            )),
+            REASON_COST_NO_TAGS => missing_data_questions.push(format!(
+                "Assign owner, team, project, or cost-center metadata for {} so Auto Scaling savings can be routed",
+                finding.resource_id
+            )),
+            REASON_COST_FIXED_SIZE => hypotheses.push(format!(
+                "{} may be paying for fixed capacity because scale-in is disabled by min == max; verify steady-state demand, scheduled scaling, and availability requirements before recommending capacity changes",
+                finding.resource_id
+            )),
+            _ => {}
+        }
+    }
+
+    AsgTriageContext {
+        workflow_id: "autoscaling_cost_triage_context",
+        pillar: report.pillar,
+        context_builder_id: "autoscaling-cost-deterministic-context-v1",
+        prompt_template_id: "autoscaling-cost-ai-triage-v1",
+        generation_mode: "deterministic_no_llm",
+        max_prompt_tokens: 1200,
+        provider_routing: vec!["primary_ops_llm", "fallback_ops_llm"],
+        audit_event_type: "autoscaling_ai_triage_context_built",
+        guardrails: AsgAiTriageGuardrails {
+            read_only_mode: true,
+            evidence_required: true,
+            separate_facts_from_hypotheses: true,
+            ask_for_missing_data: true,
+            no_llm_invocation: true,
+            no_mutation_planning: true,
+        },
+        facts,
+        hypotheses,
+        missing_data_questions,
+        evidence_citations,
     }
 }
 
@@ -1158,6 +1270,99 @@ mod tests {
             .rules
             .iter()
             .all(|rule| rule.status == AsgPostureStatus::Pass));
+    }
+
+    #[test]
+    fn asg_cost_triage_context_separates_facts_hypotheses_and_questions() {
+        let mut missing_data = healthy_data();
+        for field in [
+            "enabled_metrics",
+            "enabled_metric_count",
+            "desired_capacity",
+            "telemetry_collection_duration_ms",
+        ] {
+            missing_data.as_object_mut().expect("object").remove(field);
+        }
+        let missing = fixture("asg-cost-missing", json!({}), missing_data, now());
+
+        let mut fixed_data = healthy_data();
+        fixed_data["min_size"] = json!(3);
+        fixed_data["max_size"] = json!(3);
+        fixed_data["desired_capacity"] = json!(3);
+        let fixed = fixture("asg-fixed", json!({"team": "core"}), fixed_data, now());
+
+        let mut errored_data = healthy_data();
+        errored_data["telemetry_collection_success_count"] = json!(0);
+        errored_data["telemetry_collection_failure_count"] = json!(1);
+        errored_data["telemetry_collection_error_count"] = json!(1);
+        errored_data["telemetry_collection_errors"] = json!([
+            {
+                "source": "autoscaling",
+                "operation": "DescribeAutoScalingGroups",
+                "error": "throttled"
+            }
+        ]);
+        let errored = fixture(
+            "asg-telemetry-error",
+            json!({"team": "core"}),
+            errored_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[missing, fixed, errored], Pillar::Cost, now());
+        let triage = asg_cost_triage_context(&report);
+
+        assert_eq!(triage.workflow_id, "autoscaling_cost_triage_context");
+        assert_eq!(
+            triage.context_builder_id,
+            "autoscaling-cost-deterministic-context-v1"
+        );
+        assert_eq!(triage.prompt_template_id, "autoscaling-cost-ai-triage-v1");
+        assert_eq!(triage.generation_mode, "deterministic_no_llm");
+        assert_eq!(triage.max_prompt_tokens, 1200);
+        assert_eq!(
+            triage.provider_routing,
+            vec!["primary_ops_llm", "fallback_ops_llm"]
+        );
+        assert_eq!(
+            triage.audit_event_type,
+            "autoscaling_ai_triage_context_built"
+        );
+        assert!(triage.guardrails.read_only_mode);
+        assert!(triage.guardrails.evidence_required);
+        assert!(triage.guardrails.separate_facts_from_hypotheses);
+        assert!(triage.guardrails.ask_for_missing_data);
+        assert!(triage.guardrails.no_llm_invocation);
+        assert!(triage.guardrails.no_mutation_planning);
+        assert!(triage
+            .facts
+            .iter()
+            .any(|fact| fact.contains(REASON_COST_MISSING_CAPACITY_TELEMETRY)));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("scale-in")));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("collector logs")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("capacity telemetry")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("group metrics")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("owner, team, project, or cost-center")));
+        assert_eq!(triage.evidence_citations.len(), report.findings.len());
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_TEL_COLLECTION_ERRORS
+                && citation.resource_id == "asg-telemetry-error"
+        }));
     }
 
     #[test]

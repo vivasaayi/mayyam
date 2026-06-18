@@ -100,6 +100,41 @@ describe("PillarScorecard", () => {
               },
             ],
           },
+          triage_context: {
+            workflow_id: "autoscaling_cost_triage_context",
+            pillar: "cost",
+            context_builder_id: "autoscaling-cost-deterministic-context-v1",
+            prompt_template_id: "autoscaling-cost-ai-triage-v1",
+            generation_mode: "deterministic_no_llm",
+            max_prompt_tokens: 1200,
+            provider_routing: ["primary_ops_llm", "fallback_ops_llm"],
+            audit_event_type: "autoscaling_ai_triage_context_built",
+            guardrails: {
+              read_only_mode: true,
+              evidence_required: true,
+              separate_facts_from_hypotheses: true,
+              ask_for_missing_data: true,
+              no_llm_invocation: true,
+              no_mutation_planning: true,
+            },
+            facts: [
+              "ASG_COST_NO_TAGS affects asg-missing-tags with Medium severity",
+            ],
+            hypotheses: [
+              "asg-fixed may be paying for fixed capacity because scale-in is disabled by min == max",
+            ],
+            missing_data_questions: [
+              "Collect capacity telemetry for asg-missing-tags before quantifying ASG cost posture",
+            ],
+            evidence_citations: [
+              {
+                reason_code: "ASG_COST_NO_TAGS",
+                resource_id: "asg-missing-tags",
+                severity: "medium",
+                evidence: { tags: {} },
+              },
+            ],
+          },
         },
       ],
     };
@@ -117,6 +152,16 @@ describe("PillarScorecard", () => {
     expect(text).toContain("ASG_COST_FIXED_SIZE");
     expect(text).toContain("asg-missing-tags");
     expect(text).toContain("asg-fixed");
+    expect(text).toContain("Cost Triage Context");
+    expect(text).toContain("autoscaling-cost-deterministic-context-v1");
+    expect(text).toContain("autoscaling-cost-ai-triage-v1");
+    expect(text).toContain("Provider Routing (not invoked)");
+    expect(text).toContain("primary_ops_llm");
+    expect(text).toContain("1200 token budget");
+    expect(text).toContain("Read only");
+    expect(text).toContain("Deterministic context only");
+    expect(text).toContain("scale-in is disabled");
+    expect(text).toContain("Collect capacity telemetry");
 
     await view.unmount();
   });
