@@ -83,6 +83,103 @@ describe("PillarScorecard", () => {
     await view.unmount();
   });
 
+  it("renders EC2 disaster-recovery posture and triage context", async () => {
+    const data = {
+      evaluated_at: "2026-06-18T05:00:00Z",
+      stale_after_hours: 24,
+      reports: [
+        {
+          pillar: "disaster-recovery",
+          score: 68,
+          resources_evaluated: 2,
+          stale_resources: 0,
+          findings: [],
+          posture: {
+            status: "fail",
+            rules_evaluated: 3,
+            rules_failed: 2,
+            affected_resources: ["i-no-recovery-evidence", "i-stale-recovery"],
+            rules: [
+              {
+                rule_id: "ec2-disaster-recovery-inventory-freshness",
+                status: "pass",
+                reason_codes: ["EC2_INV_STALE_DATA"],
+                affected_resources: [],
+              },
+              {
+                rule_id:
+                  "ec2-disaster-recovery-recovery-point-telemetry-present",
+                status: "fail",
+                reason_codes: ["EC2_DR_MISSING_RECOVERY_POINT_TELEMETRY"],
+                affected_resources: ["i-no-recovery-evidence"],
+              },
+              {
+                rule_id: "ec2-disaster-recovery-recovery-point-freshness",
+                status: "fail",
+                reason_codes: ["EC2_DR_STALE_RECOVERY_POINT_TELEMETRY"],
+                affected_resources: ["i-stale-recovery"],
+              },
+            ],
+          },
+          triage_context: {
+            workflow_id: "ec2_disaster_recovery_triage_context",
+            context_builder_id:
+              "ec2-disaster-recovery-deterministic-context-v1",
+            prompt_template_id: "ec2-disaster-recovery-ai-triage-v1",
+            generation_mode: "deterministic_no_llm",
+            max_prompt_tokens: 1200,
+            provider_routing: ["primary_ops_llm", "fallback_ops_llm"],
+            guardrails: {
+              read_only_mode: true,
+              evidence_required: true,
+              separate_facts_from_hypotheses: true,
+              ask_for_missing_data: true,
+              no_llm_invocation: true,
+              no_mutation_planning: true,
+            },
+            facts: [
+              "EC2_DR_MISSING_RECOVERY_POINT_TELEMETRY affects i-no-recovery-evidence with Medium severity",
+              "EC2_DR_STALE_RECOVERY_POINT_TELEMETRY affects i-stale-recovery with High severity",
+            ],
+            hypotheses: [
+              "i-stale-recovery has stale recovery point telemetry; verify backup policy before workflow changes",
+            ],
+            missing_data_questions: [
+              "Collect latest recovery point age or timestamp evidence for i-no-recovery-evidence before judging EC2 disaster-recovery posture",
+            ],
+            evidence_citations: [
+              {
+                reason_code: "EC2_DR_STALE_RECOVERY_POINT_TELEMETRY",
+                resource_id: "i-stale-recovery",
+                severity: "high",
+                evidence: { latest_recovery_point_age_hours: 72 },
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const view = await render(<PillarScorecard data={data} />);
+    const text = view.container.textContent;
+
+    expect(text).toContain("Disaster-Recovery Posture");
+    expect(text).toContain(
+      "ec2-disaster-recovery-recovery-point-telemetry-present",
+    );
+    expect(text).toContain("EC2_DR_MISSING_RECOVERY_POINT_TELEMETRY");
+    expect(text).toContain("Disaster-Recovery Triage Context");
+    expect(text).toContain(
+      "ec2-disaster-recovery-deterministic-context-v1",
+    );
+    expect(text).toContain("ec2-disaster-recovery-ai-triage-v1");
+    expect(text).toContain("backup policy");
+    expect(text).toContain("latest recovery point age");
+    expect(text).toContain("i-stale-recovery");
+
+    await view.unmount();
+  });
+
   it("renders EC2 performance posture findings for operator review", async () => {
     const data = {
       evaluated_at: "2026-06-18T05:00:00Z",

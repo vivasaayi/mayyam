@@ -738,6 +738,81 @@ async fn ec2_pillar_reports_contract() {
     assert!(triage["hypotheses"].is_array());
     assert!(triage["missing_data_questions"].is_array());
     assert!(triage["evidence_citations"].is_array());
+
+    let resp = client
+        .get(format!(
+            "{}/api/aws/inventory/ec2/pillars?account_id={}&pillar=disaster-recovery",
+            base, account_id
+        ))
+        .send()
+        .await
+        .expect("disaster-recovery pillar request failed");
+    assert_eq!(resp.status(), 200);
+    let body: Value = resp.json().await.expect("invalid JSON body");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0]["pillar"], "disaster-recovery");
+    assert_eq!(
+        reports[0]["assessment_scope"],
+        "ec2_recovery_point_freshness_and_restore_evidence"
+    );
+    assert_eq!(reports[0]["posture"]["rules_evaluated"], 3);
+    assert!(matches!(
+        reports[0]["posture"]["status"].as_str(),
+        Some("pass" | "fail")
+    ));
+    let dr_rules = reports[0]["posture"]["rules"]
+        .as_array()
+        .expect("disaster-recovery posture rules");
+    assert_eq!(dr_rules.len(), 3);
+    let expected_rules = [
+        (
+            "ec2-disaster-recovery-inventory-freshness",
+            "EC2_INV_STALE_DATA",
+        ),
+        (
+            "ec2-disaster-recovery-recovery-point-telemetry-present",
+            "EC2_DR_MISSING_RECOVERY_POINT_TELEMETRY",
+        ),
+        (
+            "ec2-disaster-recovery-recovery-point-freshness",
+            "EC2_DR_STALE_RECOVERY_POINT_TELEMETRY",
+        ),
+    ];
+    for (rule, (expected_rule_id, expected_reason_code)) in dr_rules.iter().zip(expected_rules) {
+        assert_eq!(rule["rule_id"], expected_rule_id);
+        assert_eq!(rule["reason_codes"][0], expected_reason_code);
+        assert!(rule["suppression_supported"].is_boolean());
+        assert!(rule["assignment_supported"].is_boolean());
+        assert!(rule["affected_resources"].is_array());
+    }
+    let triage = &reports[0]["triage_context"];
+    assert_eq!(
+        triage["workflow_id"],
+        "ec2_disaster_recovery_triage_context"
+    );
+    assert_eq!(
+        triage["context_builder_id"],
+        "ec2-disaster-recovery-deterministic-context-v1"
+    );
+    assert_eq!(
+        triage["prompt_template_id"],
+        "ec2-disaster-recovery-ai-triage-v1"
+    );
+    assert_eq!(triage["generation_mode"], "deterministic_no_llm");
+    assert_eq!(triage["max_prompt_tokens"], 1200);
+    assert_eq!(triage["provider_routing"][0], "primary_ops_llm");
+    assert_eq!(triage["audit_event_type"], "ec2_ai_triage_context_built");
+    assert_eq!(triage["guardrails"]["read_only_mode"], true);
+    assert_eq!(triage["guardrails"]["evidence_required"], true);
+    assert_eq!(triage["guardrails"]["separate_facts_from_hypotheses"], true);
+    assert_eq!(triage["guardrails"]["ask_for_missing_data"], true);
+    assert_eq!(triage["guardrails"]["no_llm_invocation"], true);
+    assert_eq!(triage["guardrails"]["no_mutation_planning"], true);
+    assert!(triage["facts"].is_array());
+    assert!(triage["hypotheses"].is_array());
+    assert!(triage["missing_data_questions"].is_array());
+    assert!(triage["evidence_citations"].is_array());
 }
 
 #[tokio::test]

@@ -93,6 +93,7 @@ pub type Ec2SecurityPostureSummary = Ec2PostureSummary;
 pub type Ec2ResiliencePostureSummary = Ec2PostureSummary;
 pub type Ec2PerformancePostureSummary = Ec2PostureSummary;
 pub type Ec2ScalabilityPostureSummary = Ec2PostureSummary;
+pub type Ec2DisasterRecoveryPostureSummary = Ec2PostureSummary;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Ec2EvidenceCitation {
@@ -134,6 +135,7 @@ pub type Ec2SecurityTriageContext = Ec2TriageContext;
 pub type Ec2ResilienceTriageContext = Ec2TriageContext;
 pub type Ec2PerformanceTriageContext = Ec2TriageContext;
 pub type Ec2ScalabilityTriageContext = Ec2TriageContext;
+pub type Ec2DisasterRecoveryTriageContext = Ec2TriageContext;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -848,6 +850,48 @@ pub fn ec2_scalability_posture_summary(report: &PillarReport) -> Ec2ScalabilityP
     }
 }
 
+pub fn ec2_disaster_recovery_posture_summary(
+    report: &PillarReport,
+) -> Ec2DisasterRecoveryPostureSummary {
+    let rules = vec![
+        ec2_disaster_recovery_posture_rule(
+            report,
+            "ec2-disaster-recovery-inventory-freshness",
+            &[REASON_INV_STALE_DATA],
+        ),
+        ec2_disaster_recovery_posture_rule(
+            report,
+            "ec2-disaster-recovery-recovery-point-telemetry-present",
+            &[REASON_DR_MISSING_RECOVERY_POINT_TELEMETRY],
+        ),
+        ec2_disaster_recovery_posture_rule(
+            report,
+            "ec2-disaster-recovery-recovery-point-freshness",
+            &[REASON_DR_STALE_RECOVERY_POINT_TELEMETRY],
+        ),
+    ];
+    let rules_failed = rules
+        .iter()
+        .filter(|rule| rule.status == Ec2PostureStatus::Fail)
+        .count();
+    let affected_resources = sorted_unique_resources(
+        rules
+            .iter()
+            .flat_map(|rule| rule.affected_resources.iter().cloned()),
+    );
+    Ec2DisasterRecoveryPostureSummary {
+        status: if rules_failed == 0 {
+            Ec2PostureStatus::Pass
+        } else {
+            Ec2PostureStatus::Fail
+        },
+        rules_evaluated: rules.len(),
+        rules_failed,
+        affected_resources,
+        rules,
+    }
+}
+
 pub fn ec2_cost_triage_context(report: &PillarReport) -> Ec2CostTriageContext {
     let mut facts = Vec::new();
     let mut hypotheses = Vec::new();
@@ -1134,6 +1178,72 @@ pub fn ec2_scalability_triage_context(report: &PillarReport) -> Ec2ScalabilityTr
         report.pillar,
         "ec2-scalability-deterministic-context-v1",
         "ec2-scalability-ai-triage-v1",
+        facts,
+        hypotheses,
+        missing_data_questions,
+        evidence_citations,
+    )
+}
+
+pub fn ec2_disaster_recovery_triage_context(
+    report: &PillarReport,
+) -> Ec2DisasterRecoveryTriageContext {
+    let mut facts = Vec::new();
+    let mut hypotheses = Vec::new();
+    let mut missing_data_questions = Vec::new();
+    let mut evidence_citations = Vec::new();
+    let stale_resource_ids: BTreeSet<&str> = report
+        .findings
+        .iter()
+        .filter(|finding| finding.reason_code == REASON_INV_STALE_DATA)
+        .map(|finding| finding.resource_id.as_str())
+        .collect();
+
+    for finding in &report.findings {
+        facts.push(format!(
+            "{} affects {} with {:?} severity",
+            finding.reason_code, finding.resource_id, finding.severity
+        ));
+        evidence_citations.push(Ec2EvidenceCitation {
+            reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            evidence: finding.evidence.clone(),
+        });
+
+        match finding.reason_code.as_str() {
+            REASON_DR_MISSING_RECOVERY_POINT_TELEMETRY => {
+                missing_data_questions.push(format!(
+                    "Collect latest recovery point age or timestamp evidence for {} before judging EC2 disaster-recovery posture",
+                    finding.resource_id
+                ));
+            }
+            REASON_DR_STALE_RECOVERY_POINT_TELEMETRY => {
+                if stale_resource_ids.contains(finding.resource_id.as_str()) {
+                    missing_data_questions.push(format!(
+                        "Refresh EC2 inventory for {} before interpreting stale recovery point telemetry as current DR exposure",
+                        finding.resource_id
+                    ));
+                } else {
+                    hypotheses.push(format!(
+                        "{} has stale recovery point telemetry; verify backup policy, AWS Elastic Disaster Recovery replication health, snapshot cadence, and restore objectives before recommending recovery workflow changes",
+                        finding.resource_id
+                    ));
+                }
+            }
+            REASON_INV_STALE_DATA => missing_data_questions.push(format!(
+                "Refresh EC2 inventory for {} before generating disaster-recovery triage",
+                finding.resource_id
+            )),
+            _ => {}
+        }
+    }
+
+    ec2_triage_context(
+        "ec2_disaster_recovery_triage_context",
+        report.pillar,
+        "ec2-disaster-recovery-deterministic-context-v1",
+        "ec2-disaster-recovery-ai-triage-v1",
         facts,
         hypotheses,
         missing_data_questions,
@@ -2960,6 +3070,14 @@ fn ec2_scalability_posture_rule(
     ec2_posture_rule(report, rule_id, reason_codes)
 }
 
+fn ec2_disaster_recovery_posture_rule(
+    report: &PillarReport,
+    rule_id: &'static str,
+    reason_codes: &[&'static str],
+) -> Ec2PostureRule {
+    ec2_posture_rule(report, rule_id, reason_codes)
+}
+
 fn ec2_posture_rule(
     report: &PillarReport,
     rule_id: &'static str,
@@ -3328,7 +3446,7 @@ fn evaluate_disaster_recovery(
     now: DateTime<Utc>,
     findings: &mut Vec<InventoryFinding>,
 ) {
-    match recovery_point_age_hours(resource, now) {
+    match recovery_point_evidence(resource, now) {
         None => findings.push(InventoryFinding {
             resource_id: resource.resource_id.clone(),
             arn: resource.arn.clone(),
@@ -3343,12 +3461,16 @@ fn evaluate_disaster_recovery(
                 "expected_fields": [
                     "latest_recovery_point_age_hours",
                     "recovery_point_age_hours",
-                    "latest_recovery_point_at"
+                    "backup_age_hours",
+                    "latest_recovery_point_at",
+                    "recovery_point_at",
+                    "disaster_recovery.latest_recovery_point_age_hours",
+                    "disaster_recovery.latest_recovery_point_at"
                 ],
                 "resource_data_keys": resource_data_keys(resource),
             }),
         }),
-        Some(age_hours) if age_hours > RECOVERY_POINT_STALE_AFTER_HOURS => {
+        Some(recovery_point) if recovery_point.age_hours > RECOVERY_POINT_STALE_AFTER_HOURS => {
             findings.push(InventoryFinding {
                 resource_id: resource.resource_id.clone(),
                 arn: resource.arn.clone(),
@@ -3360,8 +3482,10 @@ fn evaluate_disaster_recovery(
                     resource.resource_id
                 ),
                 evidence: json!({
-                    "latest_recovery_point_age_hours": age_hours,
+                    "latest_recovery_point_age_hours": recovery_point.age_hours,
                     "stale_after_hours": RECOVERY_POINT_STALE_AFTER_HOURS,
+                    "source_field": recovery_point.source_field,
+                    "source_value": recovery_point.source_value,
                 }),
             });
         }
@@ -3548,6 +3672,12 @@ const HIGH_CPU_UTILIZATION_MIN: f64 = 90.0;
 const SCALING_CPU_PRESSURE_MIN: f64 = 80.0;
 const RECOVERY_POINT_STALE_AFTER_HOURS: f64 = 24.0;
 
+struct RecoveryPointEvidence {
+    age_hours: f64,
+    source_field: &'static str,
+    source_value: Value,
+}
+
 fn missing_metrics(resource: &AwsResourceModel, required_metrics: &[&str]) -> Vec<String> {
     required_metrics
         .iter()
@@ -3562,44 +3692,72 @@ fn metric_max(resource: &AwsResourceModel, metric_name: &str) -> Option<f64> {
         .reduce(f64::max)
 }
 
-fn recovery_point_age_hours(resource: &AwsResourceModel, now: DateTime<Utc>) -> Option<f64> {
+fn recovery_point_evidence(
+    resource: &AwsResourceModel,
+    now: DateTime<Utc>,
+) -> Option<RecoveryPointEvidence> {
     for key in [
         "latest_recovery_point_age_hours",
         "recovery_point_age_hours",
         "backup_age_hours",
     ] {
-        if let Some(value) = resource
-            .resource_data
-            .get(key)
-            .and_then(|value| value.as_f64().or_else(|| value.as_i64().map(|n| n as f64)))
-        {
-            return Some(value);
+        if let Some(raw_value) = resource.resource_data.get(key) {
+            if let Some(age_hours) = value_as_f64(raw_value) {
+                return Some(RecoveryPointEvidence {
+                    age_hours,
+                    source_field: key,
+                    source_value: raw_value.clone(),
+                });
+            }
         }
     }
 
-    if let Some(value) = resource
+    if let Some(raw_value) = resource
         .resource_data
         .pointer("/disaster_recovery/latest_recovery_point_age_hours")
-        .and_then(|value| value.as_f64().or_else(|| value.as_i64().map(|n| n as f64)))
     {
-        return Some(value);
+        if let Some(age_hours) = value_as_f64(raw_value) {
+            return Some(RecoveryPointEvidence {
+                age_hours,
+                source_field: "disaster_recovery.latest_recovery_point_age_hours",
+                source_value: raw_value.clone(),
+            });
+        }
     }
 
     for key in ["latest_recovery_point_at", "recovery_point_at"] {
-        if let Some(value) = resource
-            .resource_data
-            .get(key)
-            .and_then(|value| value.as_str())
-            .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
-        {
-            return Some((now - value.with_timezone(&Utc)).num_hours() as f64);
+        if let Some(raw_value) = resource.resource_data.get(key) {
+            if let Some(age_hours) = recovery_point_timestamp_age_hours(raw_value, now) {
+                return Some(RecoveryPointEvidence {
+                    age_hours,
+                    source_field: key,
+                    source_value: raw_value.clone(),
+                });
+            }
         }
     }
 
     resource
         .resource_data
         .pointer("/disaster_recovery/latest_recovery_point_at")
-        .and_then(|value| value.as_str())
+        .and_then(|raw_value| {
+            recovery_point_timestamp_age_hours(raw_value, now).map(|age_hours| {
+                RecoveryPointEvidence {
+                    age_hours,
+                    source_field: "disaster_recovery.latest_recovery_point_at",
+                    source_value: raw_value.clone(),
+                }
+            })
+        })
+}
+
+fn value_as_f64(value: &Value) -> Option<f64> {
+    value.as_f64().or_else(|| value.as_i64().map(|n| n as f64))
+}
+
+fn recovery_point_timestamp_age_hours(value: &Value, now: DateTime<Utc>) -> Option<f64> {
+    value
+        .as_str()
         .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
         .map(|value| (now - value.with_timezone(&Utc)).num_hours() as f64)
 }
@@ -7021,6 +7179,230 @@ mod tests {
         let codes = reason_codes(&report);
         assert!(codes.contains(&REASON_DR_MISSING_RECOVERY_POINT_TELEMETRY));
         assert!(codes.contains(&REASON_DR_STALE_RECOVERY_POINT_TELEMETRY));
+    }
+
+    #[test]
+    fn ec2_disaster_recovery_posture_summary_flags_recovery_point_rules() {
+        let missing = fixture(
+            "i-no-recovery-evidence",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a"
+            }),
+            1,
+            now(),
+        );
+        let stale = fixture(
+            "i-stale-recovery",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1b",
+                "latest_recovery_point_age_hours": 72
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[missing, stale], Pillar::DisasterRecovery, now());
+        let posture = ec2_disaster_recovery_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 3);
+        assert_eq!(posture.rules_failed, 2);
+        assert_eq!(
+            posture.affected_resources,
+            vec![
+                "i-no-recovery-evidence".to_string(),
+                "i-stale-recovery".to_string()
+            ]
+        );
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-disaster-recovery-recovery-point-telemetry-present"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule
+                    .reason_codes
+                    .contains(&REASON_DR_MISSING_RECOVERY_POINT_TELEMETRY)
+                && rule.affected_resources == vec!["i-no-recovery-evidence"]
+                && rule.suppression_supported
+                && rule.assignment_supported
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-disaster-recovery-recovery-point-freshness"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule
+                    .reason_codes
+                    .contains(&REASON_DR_STALE_RECOVERY_POINT_TELEMETRY)
+                && rule.affected_resources == vec!["i-stale-recovery"]
+        }));
+    }
+
+    #[test]
+    fn ec2_disaster_recovery_triage_context_separates_facts_hypotheses_and_missing_data() {
+        let missing = fixture(
+            "i-no-recovery-evidence",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a"
+            }),
+            1,
+            now(),
+        );
+        let stale = fixture(
+            "i-stale-recovery",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1b",
+                "latest_recovery_point_age_hours": 72
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[missing, stale], Pillar::DisasterRecovery, now());
+        let triage = ec2_disaster_recovery_triage_context(&report);
+
+        assert_eq!(triage.workflow_id, "ec2_disaster_recovery_triage_context");
+        assert_eq!(triage.pillar, Pillar::DisasterRecovery);
+        assert_eq!(
+            triage.context_builder_id,
+            "ec2-disaster-recovery-deterministic-context-v1"
+        );
+        assert_eq!(
+            triage.prompt_template_id,
+            "ec2-disaster-recovery-ai-triage-v1"
+        );
+        assert_eq!(triage.generation_mode, "deterministic_no_llm");
+        assert!(triage.guardrails.read_only_mode);
+        assert!(triage.guardrails.evidence_required);
+        assert!(triage.guardrails.separate_facts_from_hypotheses);
+        assert!(triage.guardrails.ask_for_missing_data);
+        assert!(triage
+            .facts
+            .iter()
+            .any(|fact| fact.contains(REASON_DR_MISSING_RECOVERY_POINT_TELEMETRY)));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("backup policy")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("latest recovery point")));
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_DR_STALE_RECOVERY_POINT_TELEMETRY
+                && citation.resource_id == "i-stale-recovery"
+        }));
+    }
+
+    #[test]
+    fn ec2_disaster_recovery_triage_preserves_recovery_point_source_provenance() {
+        let nested_age = fixture(
+            "i-nested-recovery-age",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "disaster_recovery": {
+                    "latest_recovery_point_age_hours": 96
+                }
+            }),
+            1,
+            now(),
+        );
+        let timestamp = fixture(
+            "i-recovery-timestamp",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1b",
+                "latest_recovery_point_at": "2026-06-08T00:00:00Z"
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[nested_age, timestamp], Pillar::DisasterRecovery, now());
+        let triage = ec2_disaster_recovery_triage_context(&report);
+
+        let nested_citation = triage
+            .evidence_citations
+            .iter()
+            .find(|citation| citation.resource_id == "i-nested-recovery-age")
+            .expect("nested age citation");
+        assert_eq!(
+            nested_citation.evidence["source_field"],
+            "disaster_recovery.latest_recovery_point_age_hours"
+        );
+        assert_eq!(nested_citation.evidence["source_value"], 96);
+        assert_eq!(
+            nested_citation.evidence["latest_recovery_point_age_hours"],
+            96.0
+        );
+
+        let timestamp_citation = triage
+            .evidence_citations
+            .iter()
+            .find(|citation| citation.resource_id == "i-recovery-timestamp")
+            .expect("timestamp citation");
+        assert_eq!(
+            timestamp_citation.evidence["source_field"],
+            "latest_recovery_point_at"
+        );
+        assert_eq!(
+            timestamp_citation.evidence["source_value"],
+            "2026-06-08T00:00:00Z"
+        );
+        assert!(
+            timestamp_citation.evidence["latest_recovery_point_age_hours"]
+                .as_f64()
+                .expect("timestamp-derived age")
+                > RECOVERY_POINT_STALE_AFTER_HOURS
+        );
+    }
+
+    #[test]
+    fn ec2_disaster_recovery_missing_evidence_lists_all_accepted_recovery_point_shapes() {
+        let missing = fixture(
+            "i-no-recovery-evidence",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a"
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[missing], Pillar::DisasterRecovery, now());
+        let finding = report
+            .findings
+            .iter()
+            .find(|finding| finding.reason_code == REASON_DR_MISSING_RECOVERY_POINT_TELEMETRY)
+            .expect("missing recovery point finding");
+        let expected_fields = finding.evidence["expected_fields"]
+            .as_array()
+            .expect("expected field list");
+
+        for expected_field in [
+            "latest_recovery_point_age_hours",
+            "recovery_point_age_hours",
+            "backup_age_hours",
+            "latest_recovery_point_at",
+            "recovery_point_at",
+            "disaster_recovery.latest_recovery_point_age_hours",
+            "disaster_recovery.latest_recovery_point_at",
+        ] {
+            assert!(
+                expected_fields
+                    .iter()
+                    .any(|field| field.as_str() == Some(expected_field)),
+                "missing expected field {expected_field}"
+            );
+        }
     }
 
     #[test]

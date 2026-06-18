@@ -55,6 +55,7 @@ use crate::services::aws::inventory::ebs_pillar_evaluator::evaluate_ebs_fleet;
 use crate::services::aws::inventory::ec2_pillar_evaluator::{
     ec2_cost_forecast_snapshot, ec2_cost_posture_summary, ec2_cost_remediation_workflow,
     ec2_cost_reporting_bundle, ec2_cost_slo_policy_snapshot, ec2_cost_triage_context,
+    ec2_disaster_recovery_posture_summary, ec2_disaster_recovery_triage_context,
     ec2_performance_forecast_snapshot, ec2_performance_posture_summary,
     ec2_performance_triage_context, ec2_resilience_agentic_investigation_plan,
     ec2_resilience_forecast_snapshot, ec2_resilience_posture_summary,
@@ -391,6 +392,17 @@ pub async fn get_ec2_pillar_reports(
                     "findings": report.findings,
                     "posture": ec2_scalability_posture_summary(&report),
                     "triage_context": ec2_scalability_triage_context(&report),
+                })
+            } else if *pillar == Pillar::DisasterRecovery {
+                json!({
+                    "pillar": report.pillar,
+                    "assessment_scope": "ec2_recovery_point_freshness_and_restore_evidence",
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "posture": ec2_disaster_recovery_posture_summary(&report),
+                    "triage_context": ec2_disaster_recovery_triage_context(&report),
                 })
             } else {
                 json!(report)
