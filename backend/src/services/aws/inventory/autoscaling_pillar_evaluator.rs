@@ -302,6 +302,64 @@ pub struct AsgCostForecastSnapshot {
     pub evidence_reason_codes: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgCostExecutiveSummary {
+    pub report_id: &'static str,
+    pub score: u8,
+    pub resources_evaluated: usize,
+    pub stale_resources: usize,
+    pub rules_failed: usize,
+    pub affected_resources: Vec<String>,
+    pub top_reason_codes: Vec<String>,
+    pub blast_radius_summary: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgCostReportRow {
+    pub resource_id: String,
+    pub severity: Severity,
+    pub reason_code: String,
+    pub message: String,
+    pub recovery_note: String,
+    pub suppression_supported: bool,
+    pub evidence: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgCostEngineeringBacklog {
+    pub report_id: &'static str,
+    pub page: u16,
+    pub page_size: u16,
+    pub total: usize,
+    pub rows: Vec<AsgCostReportRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgCostIncidentReview {
+    pub report_id: &'static str,
+    pub page: u16,
+    pub page_size: u16,
+    pub total: usize,
+    pub rows: Vec<AsgCostReportRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgCostReportingBundle {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub scheduled_delivery_state: &'static str,
+    pub stale_data_blocks_delivery: bool,
+    pub portfolio_summary_ready: bool,
+    pub workload_summary_ready: bool,
+    pub export_formats: Vec<&'static str>,
+    pub saved_view_id: &'static str,
+    pub executive_summary: AsgCostExecutiveSummary,
+    pub engineering_backlog: AsgCostEngineeringBacklog,
+    pub incident_review: AsgCostIncidentReview,
+    pub missing_data_reason_codes: Vec<String>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
 /// Evaluate every Auto Scaling group in the fleet for one pillar. Rows whose
 /// `resource_type` is not `AutoScalingGroup` are skipped and not counted.
 pub fn evaluate_autoscaling_fleet(
@@ -657,6 +715,66 @@ pub fn asg_cost_forecast_snapshot(report: &PillarReport) -> AsgCostForecastSnaps
     }
 }
 
+pub fn asg_cost_reporting_bundle(report: &PillarReport) -> AsgCostReportingBundle {
+    let posture = asg_cost_posture_summary(report);
+    let reason_codes = sorted_unique_reason_codes(report);
+    let rows = asg_cost_report_rows(report);
+    let stale_data_blocks_delivery = report.stale_resources > 0
+        || report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+    let blast_radius_summary = if posture.affected_resources.is_empty() {
+        "No Auto Scaling groups require cost reporting review.".to_string()
+    } else {
+        format!(
+            "{} Auto Scaling group(s) require cost reporting review.",
+            posture.affected_resources.len()
+        )
+    };
+
+    AsgCostReportingBundle {
+        workflow_id: "autoscaling_cost_reporting",
+        read_only_mode: true,
+        scheduled_delivery_state: if stale_data_blocks_delivery {
+            "blocked_until_fresh_inventory"
+        } else {
+            "ready_for_schedule"
+        },
+        stale_data_blocks_delivery,
+        portfolio_summary_ready: !stale_data_blocks_delivery,
+        workload_summary_ready: !stale_data_blocks_delivery,
+        export_formats: vec!["json", "csv"],
+        saved_view_id: "autoscaling-cost-posture-report",
+        executive_summary: AsgCostExecutiveSummary {
+            report_id: "autoscaling-cost-executive-summary",
+            score: report.score,
+            resources_evaluated: report.resources_evaluated,
+            stale_resources: report.stale_resources,
+            rules_failed: posture.rules_failed,
+            affected_resources: posture.affected_resources,
+            top_reason_codes: reason_codes.clone(),
+            blast_radius_summary,
+        },
+        engineering_backlog: AsgCostEngineeringBacklog {
+            report_id: "autoscaling-cost-engineering-backlog",
+            page: 0,
+            page_size: 50,
+            total: rows.len(),
+            rows: rows.clone(),
+        },
+        incident_review: AsgCostIncidentReview {
+            report_id: "autoscaling-cost-incident-review",
+            page: 0,
+            page_size: 50,
+            total: rows.len(),
+            rows,
+        },
+        missing_data_reason_codes: asg_cost_reporting_missing_data_reason_codes(report),
+        evidence_reason_codes: reason_codes,
+    }
+}
+
 fn asg_cost_objective_status(
     score: u8,
     failed_rule_count: usize,
@@ -817,6 +935,68 @@ fn asg_cost_capacity_risk(
         "unknown_due_to_missing_collection_metadata"
     } else {
         "cost_capacity_within_current_thresholds"
+    }
+}
+
+fn asg_cost_reporting_missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    [
+        REASON_INV_STALE_DATA,
+        REASON_TEL_MISSING_COLLECTION_METADATA,
+        REASON_TEL_COLLECTION_ERRORS,
+        REASON_COST_MISSING_CAPACITY_TELEMETRY,
+        REASON_COST_MISSING_GROUP_METRICS_TELEMETRY,
+    ]
+    .into_iter()
+    .filter(|reason_code| {
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == *reason_code)
+    })
+    .map(str::to_string)
+    .collect()
+}
+
+fn asg_cost_report_rows(report: &PillarReport) -> Vec<AsgCostReportRow> {
+    report
+        .findings
+        .iter()
+        .map(|finding| AsgCostReportRow {
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            reason_code: finding.reason_code.clone(),
+            message: finding.message.clone(),
+            recovery_note: asg_cost_reporting_recovery_note(&finding.reason_code).to_string(),
+            suppression_supported: true,
+            evidence: finding.evidence.clone(),
+        })
+        .collect()
+}
+
+fn asg_cost_reporting_recovery_note(reason_code: &str) -> &'static str {
+    match reason_code {
+        REASON_INV_STALE_DATA => {
+            "Refresh Auto Scaling inventory before sharing the cost report."
+        }
+        REASON_TEL_MISSING_COLLECTION_METADATA => {
+            "Collect telemetry run metadata before scheduling report delivery."
+        }
+        REASON_TEL_COLLECTION_ERRORS => {
+            "Resolve Auto Scaling collector errors before publishing report findings."
+        }
+        REASON_COST_MISSING_CAPACITY_TELEMETRY => {
+            "Collect min, max, desired, and instance-count evidence before prioritizing cost actions."
+        }
+        REASON_COST_MISSING_GROUP_METRICS_TELEMETRY => {
+            "Enable or collect group metrics before quantifying utilization and scale-in opportunity."
+        }
+        REASON_COST_NO_TAGS => {
+            "Add owner, environment, and application tags before routing cost findings."
+        }
+        REASON_COST_FIXED_SIZE => {
+            "Review scaling policy and capacity history before changing min or max size."
+        }
+        _ => "Review Auto Scaling cost evidence and owner context before action.",
     }
 }
 
@@ -2367,6 +2547,91 @@ mod tests {
             .missing_data_reason_codes
             .contains(&REASON_INV_STALE_DATA.to_string()));
         assert!(forecast.forecast_band.upper_monthly_cost_index > 100);
+    }
+
+    #[test]
+    fn asg_cost_reporting_bundle_materializes_executive_engineering_and_incident_views() {
+        let mut fixed_data = healthy_data();
+        fixed_data["min_size"] = json!(3);
+        fixed_data["max_size"] = json!(3);
+        fixed_data["desired_capacity"] = json!(3);
+        let fixed = fixture(
+            "asg-fixed-report",
+            json!({"owner": "sre", "environment": "prod"}),
+            fixed_data,
+            now(),
+        );
+        let missing_tags = fixture("asg-missing-tags-report", json!({}), healthy_data(), now());
+
+        let report = evaluate_autoscaling_fleet(&[fixed, missing_tags], Pillar::Cost, now());
+        let bundle = asg_cost_reporting_bundle(&report);
+
+        assert_eq!(bundle.workflow_id, "autoscaling_cost_reporting");
+        assert!(bundle.read_only_mode);
+        assert_eq!(bundle.scheduled_delivery_state, "ready_for_schedule");
+        assert!(bundle.portfolio_summary_ready);
+        assert!(bundle.workload_summary_ready);
+        assert_eq!(bundle.export_formats, vec!["json", "csv"]);
+        assert_eq!(
+            bundle.executive_summary.report_id,
+            "autoscaling-cost-executive-summary"
+        );
+        assert_eq!(bundle.executive_summary.score, report.score);
+        assert_eq!(bundle.executive_summary.resources_evaluated, 2);
+        assert_eq!(bundle.executive_summary.stale_resources, 0);
+        assert!(bundle
+            .executive_summary
+            .affected_resources
+            .contains(&"asg-fixed-report".to_string()));
+        assert!(bundle
+            .executive_summary
+            .top_reason_codes
+            .contains(&REASON_COST_FIXED_SIZE.to_string()));
+        assert_eq!(
+            bundle.engineering_backlog.report_id,
+            "autoscaling-cost-engineering-backlog"
+        );
+        assert_eq!(bundle.engineering_backlog.page, 0);
+        assert_eq!(bundle.engineering_backlog.page_size, 50);
+        assert_eq!(bundle.engineering_backlog.total, report.findings.len());
+        assert_eq!(
+            bundle.incident_review.report_id,
+            "autoscaling-cost-incident-review"
+        );
+        assert!(bundle.incident_review.rows.iter().any(|row| {
+            row.resource_id == "asg-fixed-report"
+                && row.reason_code == REASON_COST_FIXED_SIZE
+                && row.suppression_supported
+                && row.recovery_note.contains("Review scaling policy")
+        }));
+    }
+
+    #[test]
+    fn asg_cost_reporting_bundle_blocks_delivery_for_stale_inventory() {
+        let stale = fixture(
+            "asg-stale-report",
+            json!({"owner": "sre"}),
+            healthy_data(),
+            now() - chrono::Duration::hours(30),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Cost, now());
+        let bundle = asg_cost_reporting_bundle(&report);
+
+        assert_eq!(
+            bundle.scheduled_delivery_state,
+            "blocked_until_fresh_inventory"
+        );
+        assert!(bundle.stale_data_blocks_delivery);
+        assert!(!bundle.portfolio_summary_ready);
+        assert!(!bundle.workload_summary_ready);
+        assert_eq!(bundle.executive_summary.stale_resources, 1);
+        assert!(bundle
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(bundle
+            .evidence_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
     }
 
     #[test]

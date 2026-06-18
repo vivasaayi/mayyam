@@ -311,6 +311,58 @@ describe("PillarScorecard", () => {
               "ASG_COST_FIXED_SIZE",
             ],
           },
+          reporting: {
+            workflow_id: "autoscaling_cost_reporting",
+            read_only_mode: true,
+            scheduled_delivery_state: "ready_for_schedule",
+            stale_data_blocks_delivery: false,
+            portfolio_summary_ready: true,
+            workload_summary_ready: true,
+            export_formats: ["json", "csv"],
+            executive_summary: {
+              report_id: "autoscaling-cost-executive-summary",
+              score: 64,
+              resources_evaluated: 2,
+              stale_resources: 0,
+              rules_failed: 3,
+              affected_resources: ["asg-missing-tags", "asg-fixed"],
+              top_reason_codes: [
+                "ASG_COST_MISSING_CAPACITY_TELEMETRY",
+                "ASG_COST_NO_TAGS",
+                "ASG_COST_FIXED_SIZE",
+              ],
+              blast_radius_summary:
+                "2 Auto Scaling group(s) require cost reporting review.",
+            },
+            engineering_backlog: {
+              report_id: "autoscaling-cost-engineering-backlog",
+              page: 0,
+              page_size: 50,
+              total: 2,
+              rows: [],
+            },
+            incident_review: {
+              report_id: "autoscaling-cost-incident-review",
+              page: 0,
+              page_size: 50,
+              total: 1,
+              rows: [
+                {
+                  resource_id: "asg-fixed",
+                  reason_code: "ASG_COST_FIXED_SIZE",
+                  recovery_note:
+                    "Review scaling policy and capacity history before changing min or max size.",
+                  suppression_supported: true,
+                },
+              ],
+            },
+            missing_data_reason_codes: ["ASG_COST_MISSING_CAPACITY_TELEMETRY"],
+            evidence_reason_codes: [
+              "ASG_COST_MISSING_CAPACITY_TELEMETRY",
+              "ASG_COST_NO_TAGS",
+              "ASG_COST_FIXED_SIZE",
+            ],
+          },
         },
       ],
     };
@@ -378,6 +430,16 @@ describe("PillarScorecard", () => {
     expect(text).toContain("Fresh enough");
     expect(text).toContain("Ready Findings Baseline");
     expect(text).toContain("Monthly Cost Index Warning Threshold");
+    expect(text).toContain("Cost Reporting");
+    expect(text).toContain("Ready For Schedule");
+    expect(text).toContain("autoscaling-cost-executive-summary");
+    expect(text).toContain("3 failed rule");
+    expect(text).toContain("2 affected");
+    expect(text).toContain("2 Auto Scaling group");
+    expect(text).toContain("1 missing signal");
+    expect(text).toContain("autoscaling-cost-incident-review");
+    expect(text).toContain("Review scaling policy and capacity history");
+    expect(text).toContain("Supported");
 
     await view.unmount();
   });

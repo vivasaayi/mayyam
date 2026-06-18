@@ -125,6 +125,11 @@ const ReportingSummary = ({ report }) => {
             </div>
           </CCol>
         </CRow>
+        {reporting.incident_review?.report_id && (
+          <div className="text-medium-emphasis small mb-2">
+            {reporting.incident_review.report_id}
+          </div>
+        )}
         <CTable small responsive>
           <CTableHead>
             <CTableRow>

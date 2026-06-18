@@ -1249,6 +1249,36 @@ async fn autoscaling_cost_pillar_reports_posture_contract() {
     assert!(reports[0]["forecasting"]["missing_data_reason_codes"].is_array());
     assert!(reports[0]["forecasting"]["risk_drivers"].is_array());
     assert!(reports[0]["forecasting"]["evidence_reason_codes"].is_array());
+    assert_eq!(
+        reports[0]["reporting"]["workflow_id"],
+        "autoscaling_cost_reporting"
+    );
+    assert_eq!(reports[0]["reporting"]["read_only_mode"], true);
+    assert!(reports[0]["reporting"]["scheduled_delivery_state"]
+        .as_str()
+        .is_some());
+    assert!(reports[0]["reporting"]["portfolio_summary_ready"].is_boolean());
+    assert!(reports[0]["reporting"]["workload_summary_ready"].is_boolean());
+    assert!(reports[0]["reporting"]["stale_data_blocks_delivery"].is_boolean());
+    assert!(reports[0]["reporting"]["export_formats"].is_array());
+    assert_eq!(
+        reports[0]["reporting"]["executive_summary"]["report_id"],
+        "autoscaling-cost-executive-summary"
+    );
+    assert!(reports[0]["reporting"]["executive_summary"]["top_reason_codes"].is_array());
+    assert!(reports[0]["reporting"]["executive_summary"]["blast_radius_summary"].is_string());
+    assert_eq!(
+        reports[0]["reporting"]["engineering_backlog"]["report_id"],
+        "autoscaling-cost-engineering-backlog"
+    );
+    assert!(reports[0]["reporting"]["engineering_backlog"]["rows"].is_array());
+    assert_eq!(
+        reports[0]["reporting"]["incident_review"]["report_id"],
+        "autoscaling-cost-incident-review"
+    );
+    assert!(reports[0]["reporting"]["incident_review"]["rows"].is_array());
+    assert!(reports[0]["reporting"]["missing_data_reason_codes"].is_array());
+    assert!(reports[0]["reporting"]["evidence_reason_codes"].is_array());
 }
 
 #[tokio::test]
