@@ -109,6 +109,24 @@ async fn ec2_pillar_reports_contract() {
     assert!(reports[0]["forecasting"]["forecast_band"]["expected_monthly_cost_index"].is_number());
     assert!(reports[0]["forecasting"]["risk_drivers"].is_array());
     assert!(reports[0]["forecasting"]["missing_data_reason_codes"].is_array());
+    assert_eq!(reports[0]["reporting"]["workflow_id"], "ec2_cost_reporting");
+    assert_eq!(reports[0]["reporting"]["read_only_mode"], true);
+    assert_eq!(
+        reports[0]["reporting"]["executive_summary"]["report_id"],
+        "ec2-cost-executive-summary"
+    );
+    assert!(reports[0]["reporting"]["executive_summary"]["top_reason_codes"].is_array());
+    assert_eq!(
+        reports[0]["reporting"]["engineering_backlog"]["report_id"],
+        "ec2-cost-engineering-backlog"
+    );
+    assert_eq!(reports[0]["reporting"]["engineering_backlog"]["page"], 0);
+    assert_eq!(
+        reports[0]["reporting"]["engineering_backlog"]["page_size"],
+        50
+    );
+    assert!(reports[0]["reporting"]["engineering_backlog"]["rows"].is_array());
+    assert!(reports[0]["reporting"]["evidence_reason_codes"].is_array());
 }
 
 #[tokio::test]

@@ -282,6 +282,45 @@ pub struct Ec2CostForecastSnapshot {
     pub evidence_reason_codes: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2CostExecutiveSummary {
+    pub report_id: &'static str,
+    pub score: u8,
+    pub resources_evaluated: usize,
+    pub stale_resources: usize,
+    pub rules_failed: usize,
+    pub affected_resources: Vec<String>,
+    pub top_reason_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2CostReportRow {
+    pub resource_id: String,
+    pub severity: Severity,
+    pub reason_code: String,
+    pub message: String,
+    pub evidence: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2CostEngineeringBacklog {
+    pub report_id: &'static str,
+    pub page: u16,
+    pub page_size: u16,
+    pub total: usize,
+    pub rows: Vec<Ec2CostReportRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2CostReportingBundle {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub scheduled_delivery_state: &'static str,
+    pub executive_summary: Ec2CostExecutiveSummary,
+    pub engineering_backlog: Ec2CostEngineeringBacklog,
+    pub evidence_reason_codes: Vec<String>,
+}
+
 /// Evaluate every EC2 instance in the fleet for one pillar.
 pub fn evaluate_ec2_fleet(
     resources: &[AwsResourceModel],
@@ -640,6 +679,53 @@ pub fn ec2_cost_forecast_snapshot(report: &PillarReport) -> Ec2CostForecastSnaps
         risk_drivers: ec2_cost_forecast_risk_drivers(report),
         evidence_reason_codes: sorted_unique_reason_codes(report),
     }
+}
+
+pub fn ec2_cost_reporting_bundle(report: &PillarReport) -> Ec2CostReportingBundle {
+    let posture = ec2_cost_posture_summary(report);
+    let reason_codes = sorted_unique_reason_codes(report);
+    let rows = ec2_cost_report_rows(report);
+
+    Ec2CostReportingBundle {
+        workflow_id: "ec2_cost_reporting",
+        read_only_mode: true,
+        scheduled_delivery_state: if report.stale_resources > 0 {
+            "blocked_until_fresh_inventory"
+        } else {
+            "ready_for_schedule"
+        },
+        executive_summary: Ec2CostExecutiveSummary {
+            report_id: "ec2-cost-executive-summary",
+            score: report.score,
+            resources_evaluated: report.resources_evaluated,
+            stale_resources: report.stale_resources,
+            rules_failed: posture.rules_failed,
+            affected_resources: posture.affected_resources,
+            top_reason_codes: reason_codes.clone(),
+        },
+        engineering_backlog: Ec2CostEngineeringBacklog {
+            report_id: "ec2-cost-engineering-backlog",
+            page: 0,
+            page_size: 50,
+            total: rows.len(),
+            rows,
+        },
+        evidence_reason_codes: reason_codes,
+    }
+}
+
+fn ec2_cost_report_rows(report: &PillarReport) -> Vec<Ec2CostReportRow> {
+    report
+        .findings
+        .iter()
+        .map(|finding| Ec2CostReportRow {
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            reason_code: finding.reason_code.clone(),
+            message: finding.message.clone(),
+            evidence: finding.evidence.clone(),
+        })
+        .collect()
 }
 
 fn count_reason(report: &PillarReport, reason_code: &str) -> usize {
@@ -2351,6 +2437,119 @@ mod tests {
             .missing_data_reason_codes
             .contains(&REASON_COST_MISSING_UTILIZATION_TELEMETRY.to_string()));
         assert!(forecast.forecast_band.upper_monthly_cost_index > 100);
+    }
+
+    #[test]
+    fn ec2_cost_reporting_bundle_materializes_executive_and_engineering_views() {
+        let idle = fixture(
+            "i-idle",
+            json!({
+                "cost-center": "cc-42",
+                "owner": "sre",
+                "environment": "prod"
+            }),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[1.2, 2.4, 3.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let stopped = fixture(
+            "i-stopped",
+            json!({}),
+            json!({
+                "state": "stopped",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[12.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[idle, stopped], Pillar::Cost, now());
+        let bundle = ec2_cost_reporting_bundle(&report);
+
+        assert_eq!(bundle.workflow_id, "ec2_cost_reporting");
+        assert!(bundle.read_only_mode);
+        assert_eq!(bundle.scheduled_delivery_state, "ready_for_schedule");
+        assert_eq!(
+            bundle.executive_summary.report_id,
+            "ec2-cost-executive-summary"
+        );
+        assert_eq!(bundle.executive_summary.score, report.score);
+        assert_eq!(bundle.executive_summary.resources_evaluated, 2);
+        assert_eq!(bundle.executive_summary.stale_resources, 0);
+        assert!(bundle
+            .executive_summary
+            .affected_resources
+            .contains(&"i-idle".to_string()));
+        assert!(bundle
+            .executive_summary
+            .top_reason_codes
+            .contains(&REASON_COST_LOW_UTILIZATION_TELEMETRY.to_string()));
+        assert_eq!(
+            bundle.engineering_backlog.report_id,
+            "ec2-cost-engineering-backlog"
+        );
+        assert_eq!(bundle.engineering_backlog.page, 0);
+        assert_eq!(bundle.engineering_backlog.page_size, 50);
+        assert_eq!(bundle.engineering_backlog.total, report.findings.len());
+        assert!(bundle.engineering_backlog.rows.iter().any(|row| {
+            row.resource_id == "i-idle"
+                && row.reason_code == REASON_COST_LOW_UTILIZATION_TELEMETRY
+                && row.severity == Severity::Low
+                && row.evidence["metric_name"] == json!("CPUUtilization")
+        }));
+    }
+
+    #[test]
+    fn ec2_cost_reporting_bundle_blocks_scheduled_delivery_for_stale_inventory() {
+        let stale = fixture(
+            "i-stale",
+            json!({"cost-center": "cc-42", "owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[44.0])
+                    ]
+                }
+            }),
+            30,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Cost, now());
+        let bundle = ec2_cost_reporting_bundle(&report);
+
+        assert_eq!(
+            bundle.scheduled_delivery_state,
+            "blocked_until_fresh_inventory"
+        );
+        assert!(bundle
+            .evidence_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert_eq!(bundle.executive_summary.stale_resources, 1);
+        assert!(bundle
+            .executive_summary
+            .top_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(bundle
+            .engineering_backlog
+            .rows
+            .iter()
+            .any(|row| row.reason_code == REASON_INV_STALE_DATA));
     }
 
     #[test]
