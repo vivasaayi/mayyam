@@ -175,6 +175,7 @@ pub struct AsgAgenticInvestigationPlan {
 }
 
 pub type AsgCostAgenticInvestigationPlan = AsgAgenticInvestigationPlan;
+pub type AsgResilienceAgenticInvestigationPlan = AsgAgenticInvestigationPlan;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -526,6 +527,176 @@ pub fn asg_cost_agentic_investigation_plan(
 
     AsgCostAgenticInvestigationPlan {
         workflow_id: "autoscaling_cost_agentic_investigation",
+        default_tool_mode: AsgInvestigationToolMode::ReadOnly,
+        max_tool_calls: steps.len().min(12),
+        max_evidence_citations: triage.evidence_citations.len(),
+        replay_required: true,
+        steps,
+        approval_gates,
+        evidence_citations: triage.evidence_citations,
+    }
+}
+
+pub fn asg_resilience_agentic_investigation_plan(
+    report: &PillarReport,
+) -> AsgResilienceAgenticInvestigationPlan {
+    let triage = asg_resilience_triage_context(report);
+    let mut steps = Vec::new();
+    let mut approval_gates = Vec::new();
+
+    for citation in &triage.evidence_citations {
+        if citation.resource_id == "fleet" {
+            continue;
+        }
+
+        match citation.reason_code.as_str() {
+            REASON_INV_STALE_DATA => {
+                steps.push(asg_resilience_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.describe_group_inventory",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when the Auto Scaling group inventory is refreshed or stale evidence is confirmed",
+                ));
+            }
+            REASON_TEL_MISSING_COLLECTION_METADATA => {
+                steps.push(asg_resilience_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.inspect_collection_metadata",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when collection start, completion, duration, success, failure, and error counts are recorded",
+                ));
+            }
+            REASON_TEL_COLLECTION_ERRORS => {
+                steps.push(asg_resilience_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Diagnose,
+                    "autoscaling.inspect_collector_errors",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when collector logs, throttling, permissions, and retry evidence explain the resilience evidence gap",
+                ));
+            }
+            REASON_RES_MISSING_REPLACEMENT_TELEMETRY => {
+                steps.push(asg_resilience_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.describe_replacement_activity",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when recent launch, terminate, lifecycle, and replacement activity evidence is recorded",
+                ));
+            }
+            REASON_RES_MISSING_INSTANCE_HEALTH_TELEMETRY => {
+                steps.push(asg_resilience_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.describe_instance_health",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when healthy, unhealthy, lifecycle, and protected instance evidence is recorded",
+                ));
+            }
+            REASON_RES_UNHEALTHY_INSTANCE_TELEMETRY => {
+                steps.push(asg_resilience_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Diagnose,
+                    "autoscaling.diagnose_unhealthy_replacement",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when instance health, lifecycle hooks, termination policy, and replacement timing explain unhealthy capacity",
+                ));
+                approval_gates.push(asg_resilience_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve replacement policy changes after resilience owner review",
+                ));
+            }
+            REASON_RES_SINGLE_AZ => {
+                steps.push(asg_resilience_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Compare,
+                    "autoscaling.compare_availability_zone_coverage",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when subnet, AZ, target capacity, and cross-zone evidence explain replacement exposure",
+                ));
+                approval_gates.push(asg_resilience_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve subnet or capacity changes after resilience owner review",
+                ));
+            }
+            REASON_RES_ELB_HEALTH_CHECK_EC2_ONLY => {
+                steps.push(asg_resilience_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.inspect_elb_health_check_policy",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when load balancer attachment and EC2 versus ELB health check evidence are recorded",
+                ));
+                approval_gates.push(asg_resilience_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve health check policy changes after application owner review",
+                ));
+            }
+            REASON_RES_SUSPENDED_PROCESSES => {
+                steps.push(asg_resilience_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Diagnose,
+                    "autoscaling.inspect_suspended_processes",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when suspended process names, suspension reason, and owner intent are recorded",
+                ));
+                approval_gates.push(asg_resilience_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve scaling process resume after owner review",
+                ));
+            }
+            REASON_RES_DESIRED_BELOW_MIN => {
+                steps.push(asg_resilience_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Compare,
+                    "autoscaling.compare_capacity_bounds",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when desired, min, max, warm pool, and pending capacity evidence explain the inconsistency",
+                ));
+                approval_gates.push(asg_resilience_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve capacity correction after resilience owner review",
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    steps.push(AsgInvestigationStep {
+        step_id: format!("autoscaling-resilience-step-{:02}", steps.len() + 1),
+        kind: AsgInvestigationStepKind::ProposeMutationPlan,
+        tool_name: "autoscaling.resilience.prepare_approval_plan",
+        tool_mode: AsgInvestigationToolMode::ApprovalRequired,
+        target_resource_id: "investigation".to_string(),
+        reason_code: "ASG_RESILIENCE_APPROVAL_PLAN_REQUIRED".to_string(),
+        stop_condition:
+            "stop before mutation; require explicit operator approval, blast-radius summary, and rollback note"
+                .to_string(),
+        evidence: json!({
+            "approval_gate_count": approval_gates.len(),
+            "read_only_step_count": steps.len(),
+        }),
+    });
+
+    AsgAgenticInvestigationPlan {
+        workflow_id: "autoscaling_resilience_agentic_investigation",
         default_tool_mode: AsgInvestigationToolMode::ReadOnly,
         max_tool_calls: steps.len().min(12),
         max_evidence_citations: triage.evidence_citations.len(),
@@ -1069,6 +1240,29 @@ fn asg_investigation_step(
     }
 }
 
+fn asg_resilience_investigation_step(
+    existing_steps: &[AsgInvestigationStep],
+    kind: AsgInvestigationStepKind,
+    tool_name: &'static str,
+    tool_mode: AsgInvestigationToolMode,
+    citation: &AsgEvidenceCitation,
+    stop_condition: &str,
+) -> AsgInvestigationStep {
+    AsgInvestigationStep {
+        step_id: format!(
+            "autoscaling-resilience-step-{:02}",
+            existing_steps.len() + 1
+        ),
+        kind,
+        tool_name,
+        tool_mode,
+        target_resource_id: citation.resource_id.clone(),
+        reason_code: citation.reason_code.clone(),
+        stop_condition: stop_condition.to_string(),
+        evidence: citation.evidence.clone(),
+    }
+}
+
 fn asg_mutation_gate(
     existing_gates: &[AsgMutationApprovalGate],
     citation: &AsgEvidenceCitation,
@@ -1076,6 +1270,27 @@ fn asg_mutation_gate(
 ) -> AsgMutationApprovalGate {
     AsgMutationApprovalGate {
         gate_id: format!("autoscaling-cost-approval-{:02}", existing_gates.len() + 1),
+        target_resource_id: citation.resource_id.clone(),
+        required_approval,
+        blast_radius: format!(
+            "single Auto Scaling group {}; no mutation is executable from the investigation plan",
+            citation.resource_id
+        ),
+        rollback_note_required: true,
+        evidence_reason_codes: vec![citation.reason_code.clone()],
+    }
+}
+
+fn asg_resilience_mutation_gate(
+    existing_gates: &[AsgMutationApprovalGate],
+    citation: &AsgEvidenceCitation,
+    required_approval: &'static str,
+) -> AsgMutationApprovalGate {
+    AsgMutationApprovalGate {
+        gate_id: format!(
+            "autoscaling-resilience-approval-{:02}",
+            existing_gates.len() + 1
+        ),
         target_resource_id: citation.resource_id.clone(),
         required_approval,
         blast_radius: format!(
@@ -2515,6 +2730,85 @@ mod tests {
             citation.reason_code == REASON_RES_ELB_HEALTH_CHECK_EC2_ONLY
                 && citation.resource_id == "asg-res-single-az-triage"
         }));
+    }
+
+    #[test]
+    fn asg_resilience_agentic_investigation_plan_is_read_only_until_approval() {
+        let mut single_az_data = healthy_data();
+        single_az_data["availability_zones"] = json!(["us-east-1a"]);
+        single_az_data["health_check_type"] = json!("EC2");
+        let single_az = fixture(
+            "asg-res-single-az-investigation",
+            json!({"team": "core"}),
+            single_az_data,
+            now(),
+        );
+
+        let mut missing_health_data = healthy_data();
+        for field in [
+            "health_check_type",
+            "instance_health",
+            "healthy_instance_count",
+            "unhealthy_instance_count",
+        ] {
+            missing_health_data
+                .as_object_mut()
+                .expect("object")
+                .remove(field);
+        }
+        let missing_health = fixture(
+            "asg-res-missing-health-investigation",
+            json!({"team": "core"}),
+            missing_health_data,
+            now(),
+        );
+
+        let report =
+            evaluate_autoscaling_fleet(&[single_az, missing_health], Pillar::Resilience, now());
+        let plan = asg_resilience_agentic_investigation_plan(&report);
+
+        assert_eq!(
+            plan.workflow_id,
+            "autoscaling_resilience_agentic_investigation"
+        );
+        assert_eq!(plan.default_tool_mode, AsgInvestigationToolMode::ReadOnly);
+        assert!(plan.replay_required);
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "autoscaling.describe_replacement_activity"
+                && step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                && step.target_resource_id == "asg-res-missing-health-investigation"
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "autoscaling.describe_instance_health"
+                && step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                && step.target_resource_id == "asg-res-missing-health-investigation"
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "autoscaling.compare_availability_zone_coverage"
+                && step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                && step.target_resource_id == "asg-res-single-az-investigation"
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "autoscaling.inspect_elb_health_check_policy"
+                && step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                && step.target_resource_id == "asg-res-single-az-investigation"
+        }));
+        assert_eq!(
+            plan.steps.last().map(|step| step.tool_mode),
+            Some(AsgInvestigationToolMode::ApprovalRequired)
+        );
+        assert!(plan.steps.iter().all(|step| {
+            step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                || step.tool_name == "autoscaling.resilience.prepare_approval_plan"
+        }));
+        assert!(plan.approval_gates.iter().any(|gate| {
+            gate.target_resource_id == "asg-res-single-az-investigation"
+                && gate.rollback_note_required
+                && gate
+                    .evidence_reason_codes
+                    .contains(&REASON_RES_SINGLE_AZ.to_string())
+        }));
+        assert_eq!(plan.max_evidence_citations, report.findings.len());
     }
 
     #[test]

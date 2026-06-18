@@ -541,6 +541,64 @@ describe("PillarScorecard", () => {
               },
             ],
           },
+          agentic_investigation: {
+            workflow_id: "autoscaling_resilience_agentic_investigation",
+            default_tool_mode: "read_only",
+            max_tool_calls: 4,
+            max_evidence_citations: 2,
+            replay_required: true,
+            steps: [
+              {
+                step_id: "autoscaling-resilience-step-01",
+                kind: "compare",
+                tool_name: "autoscaling.compare_availability_zone_coverage",
+                tool_mode: "read_only",
+                target_resource_id: "asg-single-az",
+                reason_code: "ASG_RES_SINGLE_AZ",
+                stop_condition:
+                  "stop when subnet, AZ, target capacity, and cross-zone evidence explain replacement exposure",
+                evidence: {
+                  availability_zones: ["us-east-1a"],
+                },
+              },
+              {
+                step_id: "autoscaling-resilience-step-02",
+                kind: "propose_mutation_plan",
+                tool_name: "autoscaling.resilience.prepare_approval_plan",
+                tool_mode: "approval_required",
+                target_resource_id: "investigation",
+                reason_code: "ASG_RESILIENCE_APPROVAL_PLAN_REQUIRED",
+                stop_condition:
+                  "stop before mutation; require explicit operator approval, blast-radius summary, and rollback note",
+                evidence: {
+                  approval_gate_count: 1,
+                  read_only_step_count: 1,
+                },
+              },
+            ],
+            approval_gates: [
+              {
+                gate_id: "autoscaling-resilience-approval-01",
+                target_resource_id: "asg-single-az",
+                required_approval:
+                  "Approve subnet or capacity changes after resilience owner review",
+                blast_radius:
+                  "single Auto Scaling group asg-single-az; no mutation is executable from the investigation plan",
+                rollback_note_required: true,
+                evidence_reason_codes: ["ASG_RES_SINGLE_AZ"],
+              },
+            ],
+            evidence_citations: [
+              {
+                reason_code: "ASG_RES_SINGLE_AZ",
+                resource_id: "asg-single-az",
+                severity: "high",
+                evidence: {
+                  availability_zones: ["us-east-1a"],
+                },
+              },
+            ],
+          },
         },
       ],
     };
@@ -566,6 +624,13 @@ describe("PillarScorecard", () => {
     expect(text).toContain("Deterministic context only");
     expect(text).toContain("AZ outage");
     expect(text).toContain("Collect instance health telemetry");
+    expect(text).toContain("Resilience Agentic Investigation");
+    expect(text).toContain("autoscaling_resilience_agentic_investigation");
+    expect(text).toContain("Replay required");
+    expect(text).toContain("autoscaling.compare_availability_zone_coverage");
+    expect(text).toContain("autoscaling.resilience.prepare_approval_plan");
+    expect(text).toContain("Mutation planning requires approval");
+    expect(text).toContain("Rollback note required");
 
     await view.unmount();
   });

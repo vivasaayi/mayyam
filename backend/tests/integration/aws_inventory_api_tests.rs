@@ -1395,6 +1395,27 @@ async fn autoscaling_resilience_pillar_reports_posture_contract() {
     assert!(triage["hypotheses"].is_array());
     assert!(triage["missing_data_questions"].is_array());
     assert!(triage["evidence_citations"].is_array());
+
+    let investigation = &reports[0]["agentic_investigation"];
+    assert_eq!(
+        investigation["workflow_id"],
+        "autoscaling_resilience_agentic_investigation"
+    );
+    assert_eq!(investigation["default_tool_mode"], "read_only");
+    assert_eq!(investigation["replay_required"], true);
+    assert!(investigation["max_tool_calls"].as_u64().unwrap() > 0);
+    assert!(investigation["max_evidence_citations"].as_u64().unwrap() > 0);
+    assert!(investigation["steps"].is_array());
+    assert!(investigation["approval_gates"].is_array());
+    assert!(investigation["evidence_citations"].is_array());
+    assert!(investigation["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(
+            |step| step["tool_name"] == "autoscaling.resilience.prepare_approval_plan"
+                && step["tool_mode"] == "approval_required"
+        ));
 }
 
 #[tokio::test]
