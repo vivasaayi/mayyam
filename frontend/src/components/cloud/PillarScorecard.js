@@ -226,6 +226,78 @@ const PostureSummary = ({ report }) => {
   );
 };
 
+const TriageSummary = ({ report }) => {
+  const triage = report.triage_context;
+  if (!triage) {
+    return null;
+  }
+
+  const guardrails = triage.guardrails || {};
+  return (
+    <CCard className="mb-3">
+      <CCardHeader>
+        {formatToken(report.pillar)} AI Triage
+        <CBadge color="info" className="ms-2">
+          {formatToken(triage.generation_mode)}
+        </CBadge>
+      </CCardHeader>
+      <CCardBody>
+        <CRow className="g-3 mb-3">
+          <CCol md={4}>
+            <div className="text-medium-emphasis small">Context</div>
+            <div className="fw-semibold">{triage.context_builder_id}</div>
+            <div className="small">{triage.prompt_template_id}</div>
+          </CCol>
+          <CCol md={4}>
+            <div className="text-medium-emphasis small">Routing</div>
+            <div className="fw-semibold">
+              {(triage.provider_routing || []).join(", ") || "None"}
+            </div>
+            <div className="small">{triage.max_prompt_tokens || 0} token budget</div>
+          </CCol>
+          <CCol md={4}>
+            <div className="text-medium-emphasis small">Guardrails</div>
+            <div className="fw-semibold">
+              {guardrails.read_only_mode ? "Read only" : "Mutation capable"}
+            </div>
+            <div className="small">
+              {guardrails.no_llm_invocation
+                ? "Deterministic context only"
+                : "LLM invocation allowed"}
+            </div>
+          </CCol>
+        </CRow>
+        <CRow className="g-3">
+          <CCol md={4}>
+            <div className="text-medium-emphasis small">Facts</div>
+            {(triage.facts || []).map((fact, idx) => (
+              <div className="small" key={`fact-${idx}`}>
+                {fact}
+              </div>
+            ))}
+          </CCol>
+          <CCol md={4}>
+            <div className="text-medium-emphasis small">Hypotheses</div>
+            {(triage.hypotheses || []).map((hypothesis, idx) => (
+              <div className="small" key={`hypothesis-${idx}`}>
+                {hypothesis}
+              </div>
+            ))}
+          </CCol>
+          <CCol md={4}>
+            <div className="text-medium-emphasis small">Missing Data</div>
+            {(triage.missing_data_questions || []).map((question, idx) => (
+              <div className="small" key={`question-${idx}`}>
+                {question}
+              </div>
+            ))}
+          </CCol>
+        </CRow>
+      </CCardBody>
+    </CCard>
+  );
+};
+
 // Renders the deterministic pillar reports returned by
 // /api/aws/inventory/<service>/pillars: one score card per pillar plus a
 // reason-coded findings table with raw evidence.
@@ -258,6 +330,9 @@ const PillarScorecard = ({ data }) => {
       ))}
       {data.reports.map((report) => (
         <PostureSummary key={`${report.pillar}-posture`} report={report} />
+      ))}
+      {data.reports.map((report) => (
+        <TriageSummary key={`${report.pillar}-triage`} report={report} />
       ))}
       <CCard>
         <CCardHeader>

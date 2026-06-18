@@ -119,6 +119,40 @@ describe("PillarScorecard", () => {
               },
             ],
           },
+          triage_context: {
+            workflow_id: "ec2_performance_triage_context",
+            context_builder_id: "ec2-performance-deterministic-context-v1",
+            prompt_template_id: "ec2-performance-ai-triage-v1",
+            generation_mode: "deterministic_no_llm",
+            max_prompt_tokens: 1200,
+            provider_routing: ["primary_ops_llm", "fallback_ops_llm"],
+            guardrails: {
+              read_only_mode: true,
+              evidence_required: true,
+              separate_facts_from_hypotheses: true,
+              ask_for_missing_data: true,
+              no_llm_invocation: true,
+              no_mutation_planning: true,
+            },
+            facts: [
+              "EC2_PERF_MISSING_CORE_TELEMETRY affects i-perf-gap with Medium severity",
+              "EC2_PERF_HIGH_CPU_TELEMETRY affects i-perf-hot with High severity",
+            ],
+            hypotheses: [
+              "i-perf-hot may be CPU constrained; compare instance type before resizing",
+            ],
+            missing_data_questions: [
+              "Collect CPUUtilization, NetworkIn, NetworkOut, DiskReadOps, and DiskWriteOps telemetry for i-perf-gap before diagnosing EC2 performance bottlenecks",
+            ],
+            evidence_citations: [
+              {
+                reason_code: "EC2_PERF_HIGH_CPU_TELEMETRY",
+                resource_id: "i-perf-hot",
+                severity: "high",
+                evidence: { metric_name: "CPUUtilization", max: 94 },
+              },
+            ],
+          },
           findings: [
             {
               severity: "medium",
@@ -149,6 +183,16 @@ describe("PillarScorecard", () => {
     expect(text).toContain("ec2-performance-core-telemetry-present");
     expect(text).toContain("ec2-performance-cpu-headroom");
     expect(text).toContain("EC2_INV_STALE_DATA");
+    expect(text).toContain("Performance AI Triage");
+    expect(text).toContain("Deterministic No Llm");
+    expect(text).toContain("ec2-performance-deterministic-context-v1");
+    expect(text).toContain("ec2-performance-ai-triage-v1");
+    expect(text).toContain("primary_ops_llm");
+    expect(text).toContain("1200 token budget");
+    expect(text).toContain("Read only");
+    expect(text).toContain("Deterministic context only");
+    expect(text).toContain("CPU constrained");
+    expect(text).toContain("Collect CPUUtilization");
     expect(text).toContain("EC2_PERF_MISSING_CORE_TELEMETRY");
     expect(text).toContain("EC2_PERF_HIGH_CPU_TELEMETRY");
     expect(text).toContain("i-perf-gap");

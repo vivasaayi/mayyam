@@ -114,7 +114,11 @@ pub struct Ec2TriageContext {
     pub workflow_id: &'static str,
     pub pillar: Pillar,
     pub context_builder_id: &'static str,
+    pub prompt_template_id: &'static str,
     pub generation_mode: &'static str,
+    pub max_prompt_tokens: u16,
+    pub provider_routing: Vec<&'static str>,
+    pub audit_event_type: &'static str,
     pub guardrails: Ec2AiTriageGuardrails,
     pub facts: Vec<String>,
     pub hypotheses: Vec<String>,
@@ -124,6 +128,7 @@ pub struct Ec2TriageContext {
 
 pub type Ec2CostTriageContext = Ec2TriageContext;
 pub type Ec2ResilienceTriageContext = Ec2TriageContext;
+pub type Ec2PerformanceTriageContext = Ec2TriageContext;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -704,6 +709,7 @@ pub fn ec2_cost_triage_context(report: &PillarReport) -> Ec2CostTriageContext {
         "ec2_cost_triage_context",
         report.pillar,
         "ec2-cost-deterministic-context-v1",
+        "ec2-cost-ai-triage-v1",
         facts,
         hypotheses,
         missing_data_questions,
@@ -753,6 +759,56 @@ pub fn ec2_resilience_triage_context(report: &PillarReport) -> Ec2ResilienceTria
         "ec2_resilience_triage_context",
         report.pillar,
         "ec2-resilience-deterministic-context-v1",
+        "ec2-resilience-ai-triage-v1",
+        facts,
+        hypotheses,
+        missing_data_questions,
+        evidence_citations,
+    )
+}
+
+pub fn ec2_performance_triage_context(report: &PillarReport) -> Ec2PerformanceTriageContext {
+    let mut facts = Vec::new();
+    let mut hypotheses = Vec::new();
+    let mut missing_data_questions = Vec::new();
+    let mut evidence_citations = Vec::new();
+
+    for finding in &report.findings {
+        facts.push(format!(
+            "{} affects {} with {:?} severity",
+            finding.reason_code, finding.resource_id, finding.severity
+        ));
+        evidence_citations.push(Ec2EvidenceCitation {
+            reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            evidence: finding.evidence.clone(),
+        });
+
+        match finding.reason_code.as_str() {
+            REASON_PERF_MISSING_CORE_TELEMETRY => {
+                missing_data_questions.push(format!(
+                    "Collect CPUUtilization, NetworkIn, NetworkOut, DiskReadOps, and DiskWriteOps telemetry for {} before diagnosing EC2 performance bottlenecks",
+                    finding.resource_id
+                ));
+            }
+            REASON_PERF_HIGH_CPU_TELEMETRY => hypotheses.push(format!(
+                "{} may be CPU constrained; compare instance type, burst credit, deployment, and workload concurrency evidence before recommending a resize",
+                finding.resource_id
+            )),
+            REASON_INV_STALE_DATA => missing_data_questions.push(format!(
+                "Refresh EC2 inventory for {} before generating performance triage",
+                finding.resource_id
+            )),
+            _ => {}
+        }
+    }
+
+    ec2_triage_context(
+        "ec2_performance_triage_context",
+        report.pillar,
+        "ec2-performance-deterministic-context-v1",
+        "ec2-performance-ai-triage-v1",
         facts,
         hypotheses,
         missing_data_questions,
@@ -764,6 +820,7 @@ fn ec2_triage_context(
     workflow_id: &'static str,
     pillar: Pillar,
     context_builder_id: &'static str,
+    prompt_template_id: &'static str,
     facts: Vec<String>,
     hypotheses: Vec<String>,
     missing_data_questions: Vec<String>,
@@ -773,7 +830,11 @@ fn ec2_triage_context(
         workflow_id,
         pillar,
         context_builder_id,
+        prompt_template_id,
         generation_mode: "deterministic_no_llm",
+        max_prompt_tokens: 1200,
+        provider_routing: vec!["primary_ops_llm", "fallback_ops_llm"],
+        audit_event_type: "ec2_ai_triage_context_built",
         guardrails: Ec2AiTriageGuardrails {
             read_only_mode: true,
             evidence_required: true,
@@ -4525,6 +4586,117 @@ mod tests {
             .rules
             .iter()
             .all(|rule| rule.status == Ec2PostureStatus::Pass));
+    }
+
+    #[test]
+    fn ec2_performance_triage_context_separates_facts_hypotheses_and_missing_data() {
+        let missing = fixture(
+            "i-perf-gap",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[35.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let hot = fixture(
+            "i-perf-hot",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[90.0, 94.0]),
+                        metric("NetworkIn", &[1024.0]),
+                        metric("NetworkOut", &[2048.0]),
+                        metric("DiskReadOps", &[10.0]),
+                        metric("DiskWriteOps", &[12.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[missing, hot], Pillar::Performance, now());
+        let triage = ec2_performance_triage_context(&report);
+
+        assert_eq!(triage.workflow_id, "ec2_performance_triage_context");
+        assert_eq!(triage.pillar, Pillar::Performance);
+        assert_eq!(
+            triage.context_builder_id,
+            "ec2-performance-deterministic-context-v1"
+        );
+        assert_eq!(triage.prompt_template_id, "ec2-performance-ai-triage-v1");
+        assert_eq!(triage.generation_mode, "deterministic_no_llm");
+        assert_eq!(triage.max_prompt_tokens, 1200);
+        assert_eq!(
+            triage.provider_routing,
+            vec!["primary_ops_llm", "fallback_ops_llm"]
+        );
+        assert!(triage.guardrails.read_only_mode);
+        assert!(triage.guardrails.separate_facts_from_hypotheses);
+        assert!(triage.guardrails.ask_for_missing_data);
+        assert!(triage.guardrails.no_llm_invocation);
+        assert_eq!(triage.facts.len(), 2);
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("CPU constrained")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("CPUUtilization")));
+        assert_eq!(triage.evidence_citations.len(), 2);
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_PERF_HIGH_CPU_TELEMETRY
+                && citation.resource_id == "i-perf-hot"
+        }));
+    }
+
+    #[test]
+    fn ec2_performance_triage_context_asks_for_refresh_when_inventory_is_stale() {
+        let stale = fixture(
+            "i-perf-stale",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[30.0]),
+                        metric("NetworkIn", &[1024.0]),
+                        metric("NetworkOut", &[2048.0]),
+                        metric("DiskReadOps", &[10.0]),
+                        metric("DiskWriteOps", &[12.0])
+                    ]
+                }
+            }),
+            48,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Performance, now());
+        let triage = ec2_performance_triage_context(&report);
+
+        assert!(triage
+            .facts
+            .iter()
+            .any(|fact| fact.contains(REASON_INV_STALE_DATA)));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("Refresh EC2 inventory")));
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_INV_STALE_DATA && citation.resource_id == "i-perf-stale"
+        }));
     }
 
     #[test]
