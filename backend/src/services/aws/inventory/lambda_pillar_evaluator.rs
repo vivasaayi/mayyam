@@ -260,6 +260,50 @@ pub struct LambdaCostAgenticInvestigationPlan {
     pub evidence_citations: Vec<LambdaEvidenceCitation>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LambdaRemediationActionKind {
+    AssignCostTags,
+    PlanArm64Migration,
+    ReviewUnusedFunctionCleanup,
+    ReviewRetryThrottleCostControls,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LambdaRemediationStatus {
+    DryRunPendingApproval,
+    BlockedMissingEvidence,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct LambdaCostRemediationAction {
+    pub action_id: String,
+    pub kind: LambdaRemediationActionKind,
+    pub status: LambdaRemediationStatus,
+    pub target_resource_id: String,
+    pub dry_run: bool,
+    pub requires_approval: bool,
+    pub approval_gate_id: Option<String>,
+    pub audit_event_type: &'static str,
+    pub idempotency_key: String,
+    pub blast_radius: String,
+    pub rollback_note: String,
+    pub validation_steps: Vec<&'static str>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct LambdaCostRemediationWorkflow {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub rbac_permission: &'static str,
+    pub audit_stream: &'static str,
+    pub stale_data_blocks_execution: bool,
+    pub actions: Vec<LambdaCostRemediationAction>,
+    pub approval_gates: Vec<LambdaMutationApprovalGate>,
+}
+
 /// Evaluate every Lambda function in the fleet for one pillar.
 pub fn evaluate_lambda_fleet(
     resources: &[AwsResourceModel],
@@ -678,6 +722,42 @@ pub fn lambda_cost_agentic_investigation_plan(
     }
 }
 
+pub fn lambda_cost_remediation_workflow(report: &PillarReport) -> LambdaCostRemediationWorkflow {
+    let investigation = lambda_cost_agentic_investigation_plan(report);
+    let has_stale_data = report
+        .findings
+        .iter()
+        .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+    let mut actions = Vec::new();
+
+    for gate in &investigation.approval_gates {
+        for reason_code in &gate.evidence_reason_codes {
+            if let Some(kind) = lambda_remediation_action_kind(reason_code) {
+                actions.push(lambda_remediation_action(
+                    &actions,
+                    kind,
+                    gate,
+                    if has_stale_data {
+                        LambdaRemediationStatus::BlockedMissingEvidence
+                    } else {
+                        LambdaRemediationStatus::DryRunPendingApproval
+                    },
+                ));
+            }
+        }
+    }
+
+    LambdaCostRemediationWorkflow {
+        workflow_id: "lambda_cost_safe_remediation",
+        read_only_mode: true,
+        rbac_permission: "aws.lambda.cost.remediation.approve",
+        audit_stream: "lambda_cost_remediation_audit",
+        stale_data_blocks_execution: has_stale_data,
+        actions,
+        approval_gates: investigation.approval_gates,
+    }
+}
+
 pub fn lambda_cost_telemetry_summary(report: &PillarReport) -> LambdaCostTelemetrySummary {
     let missing_data_reason_codes = sorted_unique_reasons(
         report
@@ -1077,6 +1157,62 @@ fn lambda_mutation_gate(
         ),
         rollback_note_required: true,
         evidence_reason_codes: vec![citation.reason_code.clone()],
+    }
+}
+
+fn lambda_remediation_action_kind(reason_code: &str) -> Option<LambdaRemediationActionKind> {
+    match reason_code {
+        REASON_COST_MISSING_ALLOCATION_TAGS => Some(LambdaRemediationActionKind::AssignCostTags),
+        REASON_COST_X86_ONLY_ARCHITECTURE => Some(LambdaRemediationActionKind::PlanArm64Migration),
+        REASON_COST_NO_INVOCATIONS_TELEMETRY => {
+            Some(LambdaRemediationActionKind::ReviewUnusedFunctionCleanup)
+        }
+        REASON_COST_ERROR_OR_THROTTLE_TELEMETRY => {
+            Some(LambdaRemediationActionKind::ReviewRetryThrottleCostControls)
+        }
+        _ => None,
+    }
+}
+
+fn lambda_remediation_action(
+    existing_actions: &[LambdaCostRemediationAction],
+    kind: LambdaRemediationActionKind,
+    gate: &LambdaMutationApprovalGate,
+    status: LambdaRemediationStatus,
+) -> LambdaCostRemediationAction {
+    let action_number = existing_actions.len() + 1;
+    let action_slug = match kind {
+        LambdaRemediationActionKind::AssignCostTags => "assign-cost-tags",
+        LambdaRemediationActionKind::PlanArm64Migration => "plan-arm64-migration",
+        LambdaRemediationActionKind::ReviewUnusedFunctionCleanup => {
+            "review-unused-function-cleanup"
+        }
+        LambdaRemediationActionKind::ReviewRetryThrottleCostControls => {
+            "review-retry-throttle-cost-controls"
+        }
+    };
+
+    LambdaCostRemediationAction {
+        action_id: format!("lambda-cost-remediation-{:02}", action_number),
+        kind,
+        status,
+        target_resource_id: gate.target_resource_id.clone(),
+        dry_run: true,
+        requires_approval: true,
+        approval_gate_id: Some(gate.gate_id.clone()),
+        audit_event_type: "lambda.cost.remediation.dry_run_planned",
+        idempotency_key: format!("lambda-cost-{}-{}", gate.target_resource_id, action_slug),
+        blast_radius: gate.blast_radius.clone(),
+        rollback_note: format!(
+            "Before approval, record rollback or recovery notes for {} on {}.",
+            action_slug, gate.target_resource_id
+        ),
+        validation_steps: vec![
+            "refresh Lambda inventory, tag, architecture, invocation, error, and throttle evidence",
+            "verify owner, blast radius, estimated savings, compatibility, and traffic expectations",
+            "capture operator approval, rollback note, and audit id before execution",
+        ],
+        evidence_reason_codes: gate.evidence_reason_codes.clone(),
     }
 }
 
@@ -1558,6 +1694,69 @@ mod tests {
         }));
         assert!(plan.approval_gates.iter().any(|gate| {
             gate.target_resource_id == "fn-cost-investigate" && gate.rollback_note_required
+        }));
+    }
+
+    #[test]
+    fn lambda_cost_remediation_workflow_plans_dry_run_actions_until_approved() {
+        let mut spend_data = healthy_data();
+        spend_data["cloudwatch_metrics"]["metrics"][2]["datapoints"] = json!([{ "value": 8.0 }]);
+        spend_data["cloudwatch_metrics"]["metrics"][3]["datapoints"] = json!([{ "value": 2.0 }]);
+        let spend = fixture("fn-cost-remediate", json!({}), spend_data, 1, now());
+
+        let report = evaluate_lambda_fleet(&[spend], Pillar::Cost, now());
+        let workflow = lambda_cost_remediation_workflow(&report);
+
+        assert_eq!(workflow.workflow_id, "lambda_cost_safe_remediation");
+        assert!(workflow.read_only_mode);
+        assert_eq!(
+            workflow.rbac_permission,
+            "aws.lambda.cost.remediation.approve"
+        );
+        assert_eq!(workflow.audit_stream, "lambda_cost_remediation_audit");
+        assert!(!workflow.stale_data_blocks_execution);
+        assert!(workflow.actions.len() >= 2);
+        assert!(workflow.actions.iter().all(|action| {
+            action.dry_run
+                && action.requires_approval
+                && action.approval_gate_id.is_some()
+                && action.status == LambdaRemediationStatus::DryRunPendingApproval
+                && action.audit_event_type == "lambda.cost.remediation.dry_run_planned"
+                && action.rollback_note.contains("rollback")
+                && action.idempotency_key.starts_with("lambda-cost-")
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == LambdaRemediationActionKind::AssignCostTags
+                && action.target_resource_id == "fn-cost-remediate"
+                && action
+                    .evidence_reason_codes
+                    .contains(&REASON_COST_MISSING_ALLOCATION_TAGS.to_string())
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == LambdaRemediationActionKind::ReviewRetryThrottleCostControls
+                && action.target_resource_id == "fn-cost-remediate"
+                && action
+                    .evidence_reason_codes
+                    .contains(&REASON_COST_ERROR_OR_THROTTLE_TELEMETRY.to_string())
+        }));
+    }
+
+    #[test]
+    fn lambda_cost_remediation_workflow_blocks_execution_when_cost_data_is_stale() {
+        let stale = fixture(
+            "fn-cost-stale-remediate",
+            json!({}),
+            healthy_data(),
+            1,
+            now() - chrono::Duration::hours(30),
+        );
+
+        let report = evaluate_lambda_fleet(&[stale], Pillar::Cost, now());
+        let workflow = lambda_cost_remediation_workflow(&report);
+
+        assert!(workflow.stale_data_blocks_execution);
+        assert!(workflow.actions.iter().all(|action| {
+            action.dry_run && action.status == LambdaRemediationStatus::BlockedMissingEvidence
         }));
     }
 

@@ -2390,6 +2390,44 @@ describe("PillarScorecard", () => {
               },
             ],
           },
+          remediation_workflow: {
+            workflow_id: "lambda_cost_safe_remediation",
+            read_only_mode: true,
+            rbac_permission: "aws.lambda.cost.remediation.approve",
+            audit_stream: "lambda_cost_remediation_audit",
+            stale_data_blocks_execution: false,
+            actions: [
+              {
+                action_id: "lambda-cost-remediation-01",
+                kind: "review_unused_function_cleanup",
+                status: "dry_run_pending_approval",
+                target_resource_id: "fn-no-telemetry",
+                dry_run: true,
+                requires_approval: true,
+                approval_gate_id: "lambda-cost-gate-01",
+                audit_event_type: "lambda.cost.remediation.dry_run_planned",
+                idempotency_key:
+                  "lambda-cost-fn-no-telemetry-review-unused-function-cleanup",
+                blast_radius:
+                  "Potential Lambda cost mutation affects fn-no-telemetry for LAMBDA_COST_NO_INVOCATIONS_TELEMETRY",
+                rollback_note:
+                  "Before approval, record rollback or recovery notes for review-unused-function-cleanup on fn-no-telemetry.",
+                validation_steps: [
+                  "refresh Lambda inventory, tag, architecture, invocation, error, and throttle evidence",
+                  "capture operator approval, rollback note, and audit id before execution",
+                ],
+                evidence_reason_codes: ["LAMBDA_COST_NO_INVOCATIONS_TELEMETRY"],
+              },
+            ],
+            approval_gates: [
+              {
+                gate_id: "lambda-cost-gate-01",
+                target_resource_id: "fn-no-telemetry",
+                required_approval:
+                  "Approve disable or cleanup plan after owner confirmation",
+              },
+            ],
+          },
           telemetry: {
             workflow_id: "lambda_cost_telemetry",
             cloudwatch_namespace: "AWS/Lambda",
@@ -2443,6 +2481,17 @@ describe("PillarScorecard", () => {
     expect(text).toContain("Mutation planning requires approval");
     expect(text).toContain("Rollback note required");
     expect(text).toContain("Investigation Evidence");
+    expect(text).toContain("Cost Remediation");
+    expect(text).toContain("lambda_cost_safe_remediation");
+    expect(text).toContain("lambda_cost_remediation_audit");
+    expect(text).toContain("aws.lambda.cost.remediation.approve");
+    expect(text).toContain("Pending approval");
+    expect(text).toContain("1 dry-run action");
+    expect(text).toContain("lambda-cost-remediation-01");
+    expect(text).toContain("lambda.cost.remediation.dry_run_planned");
+    expect(text).toContain("Dry run");
+    expect(text).toContain("Review Unused Function Cleanup");
+    expect(text).toContain("lambda-cost-gate-01");
 
     await view.unmount();
   });

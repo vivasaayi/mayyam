@@ -1016,6 +1016,31 @@ async fn lambda_pillar_reports_contract() {
             || (step["tool_mode"] == "approval_required"
                 && step["tool_name"] == "lambda.cost.prepare_approval_plan")
     }));
+    let remediation = &cost["remediation_workflow"];
+    assert_eq!(remediation["workflow_id"], "lambda_cost_safe_remediation");
+    assert_eq!(remediation["read_only_mode"], true);
+    assert_eq!(
+        remediation["rbac_permission"],
+        "aws.lambda.cost.remediation.approve"
+    );
+    assert_eq!(remediation["audit_stream"], "lambda_cost_remediation_audit");
+    assert!(remediation["stale_data_blocks_execution"].is_boolean());
+    assert!(remediation["actions"].is_array());
+    assert!(remediation["approval_gates"].is_array());
+    let remediation_actions = remediation["actions"]
+        .as_array()
+        .expect("lambda cost remediation actions should be an array");
+    assert!(remediation_actions.iter().all(|action| {
+        action["dry_run"] == true
+            && action["requires_approval"] == true
+            && action["audit_event_type"] == "lambda.cost.remediation.dry_run_planned"
+            && action["idempotency_key"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("lambda-cost-")
+            && action["validation_steps"].is_array()
+            && action["evidence_reason_codes"].is_array()
+    }));
     assert_eq!(cost["telemetry"]["workflow_id"], "lambda_cost_telemetry");
     assert_eq!(cost["telemetry"]["cloudwatch_namespace"], "AWS/Lambda");
     assert_eq!(cost["telemetry"]["cloudwatch_dimension"], "FunctionName");
