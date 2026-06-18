@@ -24,6 +24,103 @@ const render = async (ui) => {
 };
 
 describe("PillarScorecard", () => {
+  it("renders Auto Scaling cost posture rules", async () => {
+    const data = {
+      evaluated_at: "2026-06-18T05:00:00Z",
+      stale_after_hours: 24,
+      reports: [
+        {
+          pillar: "cost",
+          score: 64,
+          resources_evaluated: 2,
+          stale_resources: 0,
+          findings: [],
+          assessment_scope: "autoscaling_cost_capacity_tags_and_group_metrics",
+          posture: {
+            status: "fail",
+            rules_evaluated: 7,
+            rules_failed: 3,
+            affected_resources: ["asg-missing-tags", "asg-fixed"],
+            rules: [
+              {
+                rule_id: "asg-cost-inventory-freshness",
+                status: "pass",
+                reason_codes: ["ASG_INV_STALE_DATA"],
+                affected_resources: [],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-cost-telemetry-collection-metadata-present",
+                status: "pass",
+                reason_codes: ["ASG_TEL_MISSING_COLLECTION_METADATA"],
+                affected_resources: [],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-cost-telemetry-collection-errors-clear",
+                status: "pass",
+                reason_codes: ["ASG_TEL_COLLECTION_ERRORS"],
+                affected_resources: [],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-cost-capacity-telemetry-present",
+                status: "fail",
+                reason_codes: ["ASG_COST_MISSING_CAPACITY_TELEMETRY"],
+                affected_resources: ["asg-missing-tags"],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-cost-group-metrics-telemetry-present",
+                status: "pass",
+                reason_codes: ["ASG_COST_MISSING_GROUP_METRICS_TELEMETRY"],
+                affected_resources: [],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-cost-allocation-tags-present",
+                status: "fail",
+                reason_codes: ["ASG_COST_NO_TAGS"],
+                affected_resources: ["asg-missing-tags"],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-cost-scale-in-capable",
+                status: "fail",
+                reason_codes: ["ASG_COST_FIXED_SIZE"],
+                affected_resources: ["asg-fixed"],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const view = await render(<PillarScorecard data={data} />);
+    const text = view.container.textContent;
+
+    expect(text).toContain("Cost Posture");
+    expect(text).toContain("3 failed of 7");
+    expect(text).toContain("asg-cost-capacity-telemetry-present");
+    expect(text).toContain("asg-cost-allocation-tags-present");
+    expect(text).toContain("asg-cost-scale-in-capable");
+    expect(text).toContain("ASG_COST_MISSING_CAPACITY_TELEMETRY");
+    expect(text).toContain("ASG_COST_NO_TAGS");
+    expect(text).toContain("ASG_COST_FIXED_SIZE");
+    expect(text).toContain("asg-missing-tags");
+    expect(text).toContain("asg-fixed");
+
+    await view.unmount();
+  });
+
   it("renders EC2 resilience reporting status, gaps, and recovery notes", async () => {
     const data = {
       evaluated_at: "2026-06-18T05:00:00Z",

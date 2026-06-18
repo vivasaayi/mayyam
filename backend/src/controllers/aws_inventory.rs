@@ -33,7 +33,9 @@ use crate::services::aws::inventory::apprunner_pillar_evaluator::evaluate_apprun
 use crate::services::aws::inventory::appsync_pillar_evaluator::evaluate_appsync_fleet;
 use crate::services::aws::inventory::athena_pillar_evaluator::evaluate_athena_fleet;
 use crate::services::aws::inventory::aurora_pillar_evaluator::evaluate_aurora_fleet;
-use crate::services::aws::inventory::autoscaling_pillar_evaluator::evaluate_autoscaling_fleet;
+use crate::services::aws::inventory::autoscaling_pillar_evaluator::{
+    asg_cost_posture_summary, evaluate_autoscaling_fleet,
+};
 use crate::services::aws::inventory::backup_pillar_evaluator::evaluate_backup_fleet;
 use crate::services::aws::inventory::batch_pillar_evaluator::evaluate_batch_fleet;
 use crate::services::aws::inventory::bedrock_pillar_evaluator::evaluate_bedrock_fleet;
@@ -1168,13 +1170,46 @@ pub async fn get_autoscaling_pillar_reports(
 ) -> Result<HttpResponse, AppError> {
     let query = query.into_inner();
     debug!("Auto Scaling pillar report request: {:?}", query);
-    pillar_reports(
-        &controller,
-        query,
-        AwsResourceType::AutoScalingGroup,
-        evaluate_autoscaling_fleet,
-    )
-    .await
+    let pillars = parse_pillars(&query.pillar, BASE_PILLARS)?;
+    let resources = controller
+        .aws_resource_repo
+        .find_by_account_and_type(
+            &query.account_id,
+            &AwsResourceType::AutoScalingGroup.to_string(),
+        )
+        .await?;
+
+    let now = Utc::now();
+    let reports: Vec<_> = pillars
+        .iter()
+        .map(|pillar| {
+            let report = evaluate_autoscaling_fleet(&resources, *pillar, now);
+            if *pillar == Pillar::Cost {
+                json!({
+                    "pillar": report.pillar,
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "assessment_scope": "autoscaling_cost_capacity_tags_and_group_metrics",
+                    "posture": asg_cost_posture_summary(&report),
+                })
+            } else {
+                json!(report)
+            }
+        })
+        .collect();
+    let oldest_refresh = resources.iter().map(|r| r.last_refreshed).min();
+
+    Ok(HttpResponse::Ok().json(json!({
+        "account_id": query.account_id,
+        "resource_type": AwsResourceType::AutoScalingGroup.to_string(),
+        "evaluated_at": now,
+        "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
+        "resources_evaluated": resources.len(),
+        "oldest_refresh": oldest_refresh,
+        "reports": reports,
+    })))
 }
 
 pub async fn get_route53_pillar_reports(

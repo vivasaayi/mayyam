@@ -1060,6 +1060,77 @@ async fn storage_and_database_pillar_reports_contract() {
 }
 
 #[tokio::test]
+async fn autoscaling_cost_pillar_reports_posture_contract() {
+    if !aws_tests_enabled() {
+        println!(
+            "Skipping autoscaling_cost_pillar_reports_posture_contract because ENABLE_AWS_TESTS is not true"
+        );
+        return;
+    }
+
+    let base = base_url().await;
+    let client = Client::new();
+    let resp = client
+        .get(format!(
+            "{}/api/aws/inventory/autoscaling/pillars?account_id=123456789012&pillar=cost",
+            base
+        ))
+        .send()
+        .await
+        .expect("autoscaling cost pillar request failed");
+    assert_eq!(resp.status(), 200);
+    let body: Value = resp.json().await.expect("invalid JSON body");
+    assert_eq!(body["resource_type"], "AutoScalingGroup");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(
+        reports[0]["assessment_scope"],
+        "autoscaling_cost_capacity_tags_and_group_metrics"
+    );
+    assert!(matches!(
+        reports[0]["posture"]["status"].as_str(),
+        Some("pass" | "fail")
+    ));
+    assert_eq!(reports[0]["posture"]["rules_evaluated"], 7);
+    assert!(reports[0]["posture"]["rules_failed"].is_number());
+    assert!(reports[0]["posture"]["affected_resources"].is_array());
+
+    let rules = reports[0]["posture"]["rules"]
+        .as_array()
+        .expect("autoscaling cost posture rules");
+    assert_eq!(rules.len(), 7);
+    let expected_rules = [
+        ("asg-cost-inventory-freshness", "ASG_INV_STALE_DATA"),
+        (
+            "asg-cost-telemetry-collection-metadata-present",
+            "ASG_TEL_MISSING_COLLECTION_METADATA",
+        ),
+        (
+            "asg-cost-telemetry-collection-errors-clear",
+            "ASG_TEL_COLLECTION_ERRORS",
+        ),
+        (
+            "asg-cost-capacity-telemetry-present",
+            "ASG_COST_MISSING_CAPACITY_TELEMETRY",
+        ),
+        (
+            "asg-cost-group-metrics-telemetry-present",
+            "ASG_COST_MISSING_GROUP_METRICS_TELEMETRY",
+        ),
+        ("asg-cost-allocation-tags-present", "ASG_COST_NO_TAGS"),
+        ("asg-cost-scale-in-capable", "ASG_COST_FIXED_SIZE"),
+    ];
+    for (rule, (expected_rule_id, expected_reason_code)) in rules.iter().zip(expected_rules) {
+        assert_eq!(rule["rule_id"], expected_rule_id);
+        assert_eq!(rule["reason_codes"][0], expected_reason_code);
+        assert!(rule["suppression_supported"].is_boolean());
+        assert!(rule["assignment_supported"].is_boolean());
+        assert!(rule["affected_resources"].is_array());
+    }
+}
+
+#[tokio::test]
 async fn ec2_pillar_reports_rejects_unknown_pillar() {
     if !aws_tests_enabled() {
         println!(

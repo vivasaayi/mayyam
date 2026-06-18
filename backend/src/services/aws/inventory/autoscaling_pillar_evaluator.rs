@@ -22,7 +22,9 @@
 // uses_mixed_instances_policy, suspended_process_count, plus the tags column.
 
 use chrono::{DateTime, Utc};
+use serde::Serialize;
 use serde_json::{json, Value};
+use std::collections::BTreeSet;
 
 use crate::models::aws_resource::Model as AwsResourceModel;
 use crate::services::aws::inventory::types::{
@@ -54,6 +56,34 @@ pub const REASON_SEC_TELEMETRY_COLLECTION_ERRORS: &str = "ASG_SEC_TELEMETRY_COLL
 pub const REASON_TEL_MISSING_COLLECTION_METADATA: &str = "ASG_TEL_MISSING_COLLECTION_METADATA";
 pub const REASON_TEL_COLLECTION_ERRORS: &str = "ASG_TEL_COLLECTION_ERRORS";
 pub const REASON_INV_STALE_DATA: &str = "ASG_INV_STALE_DATA";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AsgPostureStatus {
+    Pass,
+    Fail,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgPostureRule {
+    pub rule_id: &'static str,
+    pub status: AsgPostureStatus,
+    pub reason_codes: Vec<&'static str>,
+    pub affected_resources: Vec<String>,
+    pub suppression_supported: bool,
+    pub assignment_supported: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgPostureSummary {
+    pub status: AsgPostureStatus,
+    pub rules_evaluated: usize,
+    pub rules_failed: usize,
+    pub affected_resources: Vec<String>,
+    pub rules: Vec<AsgPostureRule>,
+}
+
+pub type AsgCostPostureSummary = AsgPostureSummary;
 
 /// Evaluate every Auto Scaling group in the fleet for one pillar. Rows whose
 /// `resource_type` is not `AutoScalingGroup` are skipped and not counted.
@@ -102,6 +132,102 @@ pub fn evaluate_autoscaling_fleet(
         score,
         findings,
     }
+}
+
+pub fn asg_cost_posture_summary(report: &PillarReport) -> AsgCostPostureSummary {
+    let rules = vec![
+        asg_cost_posture_rule(
+            report,
+            "asg-cost-inventory-freshness",
+            &[REASON_INV_STALE_DATA],
+        ),
+        asg_cost_posture_rule(
+            report,
+            "asg-cost-telemetry-collection-metadata-present",
+            &[REASON_TEL_MISSING_COLLECTION_METADATA],
+        ),
+        asg_cost_posture_rule(
+            report,
+            "asg-cost-telemetry-collection-errors-clear",
+            &[REASON_TEL_COLLECTION_ERRORS],
+        ),
+        asg_cost_posture_rule(
+            report,
+            "asg-cost-capacity-telemetry-present",
+            &[REASON_COST_MISSING_CAPACITY_TELEMETRY],
+        ),
+        asg_cost_posture_rule(
+            report,
+            "asg-cost-group-metrics-telemetry-present",
+            &[REASON_COST_MISSING_GROUP_METRICS_TELEMETRY],
+        ),
+        asg_cost_posture_rule(
+            report,
+            "asg-cost-allocation-tags-present",
+            &[REASON_COST_NO_TAGS],
+        ),
+        asg_cost_posture_rule(
+            report,
+            "asg-cost-scale-in-capable",
+            &[REASON_COST_FIXED_SIZE],
+        ),
+    ];
+    let affected_resources = sorted_unique_resources(
+        rules
+            .iter()
+            .flat_map(|rule| rule.affected_resources.iter().cloned()),
+    );
+    let rules_failed = rules
+        .iter()
+        .filter(|rule| rule.status == AsgPostureStatus::Fail)
+        .count();
+
+    AsgCostPostureSummary {
+        status: if rules_failed == 0 {
+            AsgPostureStatus::Pass
+        } else {
+            AsgPostureStatus::Fail
+        },
+        rules_evaluated: rules.len(),
+        rules_failed,
+        affected_resources,
+        rules,
+    }
+}
+
+fn asg_cost_posture_rule(
+    report: &PillarReport,
+    rule_id: &'static str,
+    reason_codes: &[&'static str],
+) -> AsgPostureRule {
+    let affected_resources = sorted_unique_resources(
+        report
+            .findings
+            .iter()
+            .filter(|finding| reason_codes.contains(&finding.reason_code.as_str()))
+            .map(|finding| finding.resource_id.clone()),
+    );
+
+    AsgPostureRule {
+        rule_id,
+        status: if affected_resources.is_empty() {
+            AsgPostureStatus::Pass
+        } else {
+            AsgPostureStatus::Fail
+        },
+        reason_codes: reason_codes.to_vec(),
+        affected_resources,
+        suppression_supported: true,
+        assignment_supported: true,
+    }
+}
+
+fn sorted_unique_resources(resources: impl Iterator<Item = String>) -> Vec<String> {
+    resources
+        .filter(|resource_id| !resource_id.is_empty())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 fn data_i64(resource_data: &Value, key: &str) -> Option<i64> {
@@ -934,6 +1060,104 @@ mod tests {
             "expected capacity telemetry gap: {:?}",
             report.findings
         );
+    }
+
+    #[test]
+    fn asg_cost_posture_summary_flags_cost_rules() {
+        let mut missing_data = healthy_data();
+        for field in [
+            "enabled_metrics",
+            "enabled_metric_count",
+            "desired_capacity",
+            "telemetry_collection_duration_ms",
+        ] {
+            missing_data.as_object_mut().expect("object").remove(field);
+        }
+        let missing = fixture("asg-cost-missing", json!({}), missing_data, now());
+
+        let mut fixed_data = healthy_data();
+        fixed_data["min_size"] = json!(3);
+        fixed_data["max_size"] = json!(3);
+        fixed_data["desired_capacity"] = json!(3);
+        let fixed = fixture("asg-fixed", json!({"team": "core"}), fixed_data, now());
+
+        let report = evaluate_autoscaling_fleet(&[missing, fixed], Pillar::Cost, now());
+        let posture = asg_cost_posture_summary(&report);
+
+        assert_eq!(posture.status, AsgPostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 7);
+        assert_eq!(posture.rules_failed, 5);
+        assert_eq!(
+            posture.affected_resources,
+            vec!["asg-cost-missing".to_string(), "asg-fixed".to_string()]
+        );
+        assert!(posture
+            .rules
+            .iter()
+            .all(|rule| { rule.suppression_supported && rule.assignment_supported }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-cost-telemetry-collection-metadata-present"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_TEL_MISSING_COLLECTION_METADATA]
+                && rule.affected_resources == vec!["asg-cost-missing".to_string()]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-cost-capacity-telemetry-present"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_COST_MISSING_CAPACITY_TELEMETRY]
+                && rule.affected_resources == vec!["asg-cost-missing".to_string()]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-cost-group-metrics-telemetry-present"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_COST_MISSING_GROUP_METRICS_TELEMETRY]
+                && rule.affected_resources == vec!["asg-cost-missing".to_string()]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-cost-allocation-tags-present"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_COST_NO_TAGS]
+                && rule.affected_resources == vec!["asg-cost-missing".to_string()]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-cost-scale-in-capable"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_COST_FIXED_SIZE]
+                && rule.affected_resources == vec!["asg-fixed".to_string()]
+        }));
+    }
+
+    #[test]
+    fn asg_cost_posture_summary_tracks_stale_inventory() {
+        let mut stale = fixture("asg-stale", json!({"team": "core"}), healthy_data(), now());
+        stale.last_refreshed = now() - Duration::hours(48);
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Cost, now());
+        let posture = asg_cost_posture_summary(&report);
+
+        assert_eq!(posture.status, AsgPostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 7);
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-cost-inventory-freshness"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_INV_STALE_DATA]
+                && rule.affected_resources == vec!["asg-stale".to_string()]
+        }));
+    }
+
+    #[test]
+    fn asg_cost_posture_summary_passes_for_healthy_group() {
+        let healthy = fixture("asg-ok", json!({"team": "core"}), healthy_data(), now());
+        let report = evaluate_autoscaling_fleet(&[healthy], Pillar::Cost, now());
+        let posture = asg_cost_posture_summary(&report);
+
+        assert_eq!(posture.status, AsgPostureStatus::Pass);
+        assert_eq!(posture.rules_evaluated, 7);
+        assert_eq!(posture.rules_failed, 0);
+        assert!(posture.affected_resources.is_empty());
+        assert!(posture
+            .rules
+            .iter()
+            .all(|rule| rule.status == AsgPostureStatus::Pass));
     }
 
     #[test]
