@@ -351,6 +351,52 @@ pub struct Ec2CostForecastSnapshot {
     pub evidence_reason_codes: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Ec2ResilienceForecastRisk {
+    Low,
+    Moderate,
+    High,
+    Blocked,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2ResilienceForecastBand {
+    pub horizon_days: u16,
+    pub lower_recovery_exposure_index: u16,
+    pub expected_recovery_exposure_index: u16,
+    pub upper_recovery_exposure_index: u16,
+    pub confidence_level: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2ResilienceForecastRiskDriver {
+    pub reason_code: String,
+    pub affected_resources: Vec<String>,
+    pub recovery_exposure_index_delta: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2ResilienceForecastSnapshot {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub baseline_window_days: u16,
+    pub forecast_horizon_days: u16,
+    pub confidence_level: u8,
+    pub forecast_band: Ec2ResilienceForecastBand,
+    pub risk_level: Ec2ResilienceForecastRisk,
+    pub recovery_capacity_risk: &'static str,
+    pub backtesting_fixture_status: &'static str,
+    pub threshold_controls: Vec<&'static str>,
+    pub what_if_inputs: Vec<&'static str>,
+    pub blocked_by_stale_data: bool,
+    pub blast_radius_summary: &'static str,
+    pub recovery_note: &'static str,
+    pub missing_data_reason_codes: Vec<String>,
+    pub risk_drivers: Vec<Ec2ResilienceForecastRiskDriver>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Ec2CostExecutiveSummary {
     pub report_id: &'static str,
@@ -1027,6 +1073,100 @@ pub fn ec2_cost_forecast_snapshot(report: &PillarReport) -> Ec2CostForecastSnaps
     }
 }
 
+pub fn ec2_resilience_forecast_snapshot(report: &PillarReport) -> Ec2ResilienceForecastSnapshot {
+    const BASELINE_WINDOW_DAYS: u16 = 30;
+    const FORECAST_HORIZON_DAYS: u16 = 30;
+    const CONFIDENCE_LEVEL: u8 = 75;
+
+    let stale_data = report.stale_resources > 0
+        || report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+    let missing_az_count = count_reason(report, REASON_RES_MISSING_AZ);
+    let single_az_count = count_reason(report, REASON_RES_SINGLE_AZ_CONCENTRATION);
+    let missing_status_count = count_reason(report, REASON_RES_MISSING_STATUS_TELEMETRY);
+    let status_failure_count = count_reason(report, REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY);
+
+    let expected_recovery_exposure_index = 100u16
+        + (single_az_count as u16 * 30)
+        + (status_failure_count as u16 * 35)
+        + (missing_status_count as u16 * 18)
+        + (missing_az_count as u16 * 12)
+        + (report.stale_resources as u16 * 28);
+    let uncertainty = 10u16
+        + (missing_status_count as u16 * 8)
+        + (missing_az_count as u16 * 6)
+        + (report.stale_resources as u16 * 12)
+        + (report.resources_evaluated == 0) as u16 * 25;
+    let lower_recovery_exposure_index =
+        expected_recovery_exposure_index.saturating_sub(uncertainty);
+    let upper_recovery_exposure_index = expected_recovery_exposure_index + uncertainty;
+    let risk_level = if stale_data {
+        Ec2ResilienceForecastRisk::Blocked
+    } else if status_failure_count > 0 || upper_recovery_exposure_index >= 155 {
+        Ec2ResilienceForecastRisk::High
+    } else if single_az_count > 0
+        || missing_status_count > 0
+        || missing_az_count > 0
+        || expected_recovery_exposure_index > 100
+    {
+        Ec2ResilienceForecastRisk::Moderate
+    } else {
+        Ec2ResilienceForecastRisk::Low
+    };
+
+    Ec2ResilienceForecastSnapshot {
+        workflow_id: "ec2_resilience_forecasting",
+        read_only_mode: true,
+        baseline_window_days: BASELINE_WINDOW_DAYS,
+        forecast_horizon_days: FORECAST_HORIZON_DAYS,
+        confidence_level: CONFIDENCE_LEVEL,
+        forecast_band: Ec2ResilienceForecastBand {
+            horizon_days: FORECAST_HORIZON_DAYS,
+            lower_recovery_exposure_index,
+            expected_recovery_exposure_index,
+            upper_recovery_exposure_index,
+            confidence_level: CONFIDENCE_LEVEL,
+        },
+        risk_level,
+        recovery_capacity_risk: ec2_resilience_recovery_capacity_risk(
+            stale_data,
+            single_az_count,
+            status_failure_count,
+            missing_status_count,
+            missing_az_count,
+        ),
+        backtesting_fixture_status: if report.findings.is_empty() {
+            "ready_clean_resilience_baseline"
+        } else if stale_data || missing_status_count > 0 || missing_az_count > 0 {
+            "needs_fresh_resilience_telemetry_fixture"
+        } else {
+            "ready_resilience_findings_baseline"
+        },
+        threshold_controls: vec![
+            "recovery_exposure_index_warning_threshold",
+            "recovery_exposure_index_critical_threshold",
+        ],
+        what_if_inputs: vec![
+            "distribute_instances_across_availability_zones",
+            "restore_ec2_status_check_telemetry",
+            "review_status_check_recovery_plan",
+        ],
+        blocked_by_stale_data: stale_data,
+        blast_radius_summary: ec2_resilience_blast_radius_summary(
+            single_az_count,
+            status_failure_count,
+            missing_status_count,
+            missing_az_count,
+        ),
+        recovery_note: "Forecast is read-only; recovery actions require remediation approval and rollback notes.",
+        missing_data_reason_codes: resilience_missing_data_reason_codes(report),
+        risk_drivers: ec2_resilience_forecast_risk_drivers(report),
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
 pub fn ec2_cost_reporting_bundle(report: &PillarReport) -> Ec2CostReportingBundle {
     let posture = ec2_cost_posture_summary(report);
     let reason_codes = sorted_unique_reason_codes(report);
@@ -1134,6 +1274,87 @@ fn ec2_cost_forecast_risk_drivers(report: &PillarReport) -> Vec<Ec2CostForecastR
             Some(Ec2CostForecastRiskDriver {
                 reason_code: reason_code.to_string(),
                 monthly_cost_index_delta: delta * affected_resources.len() as u16,
+                affected_resources,
+            })
+        }
+    })
+    .collect()
+}
+
+fn ec2_resilience_recovery_capacity_risk(
+    stale_data: bool,
+    single_az_count: usize,
+    status_failure_count: usize,
+    missing_status_count: usize,
+    missing_az_count: usize,
+) -> &'static str {
+    if stale_data {
+        "blocked_until_inventory_refresh"
+    } else if status_failure_count > 0 {
+        "active_status_check_failure_exposure"
+    } else if single_az_count > 0 {
+        "single_availability_zone_recovery_exposure"
+    } else if missing_status_count > 0 {
+        "unknown_due_to_missing_status_check_telemetry"
+    } else if missing_az_count > 0 {
+        "unknown_due_to_missing_placement_data"
+    } else {
+        "within_observed_resilience_baseline"
+    }
+}
+
+fn ec2_resilience_blast_radius_summary(
+    single_az_count: usize,
+    status_failure_count: usize,
+    missing_status_count: usize,
+    missing_az_count: usize,
+) -> &'static str {
+    if status_failure_count > 0 {
+        "status_check_failures_can_reduce_instance_reachability"
+    } else if single_az_count > 0 {
+        "single_az_placement_can_turn_one_az_event_into_fleet_outage"
+    } else if missing_status_count > 0 || missing_az_count > 0 {
+        "blast_radius_unknown_until_resilience_evidence_is_complete"
+    } else {
+        "no_resilience_blast_radius_detected_from_current_evidence"
+    }
+}
+
+fn resilience_missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    report
+        .findings
+        .iter()
+        .filter(|finding| {
+            matches!(
+                finding.reason_code.as_str(),
+                REASON_INV_STALE_DATA | REASON_RES_MISSING_AZ | REASON_RES_MISSING_STATUS_TELEMETRY
+            )
+        })
+        .map(|finding| finding.reason_code.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn ec2_resilience_forecast_risk_drivers(
+    report: &PillarReport,
+) -> Vec<Ec2ResilienceForecastRiskDriver> {
+    [
+        (REASON_INV_STALE_DATA, 28u16),
+        (REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY, 35u16),
+        (REASON_RES_SINGLE_AZ_CONCENTRATION, 30u16),
+        (REASON_RES_MISSING_STATUS_TELEMETRY, 18u16),
+        (REASON_RES_MISSING_AZ, 12u16),
+    ]
+    .into_iter()
+    .filter_map(|(reason_code, delta)| {
+        let affected_resources = resources_for_reason(report, reason_code);
+        if affected_resources.is_empty() {
+            None
+        } else {
+            Some(Ec2ResilienceForecastRiskDriver {
+                reason_code: reason_code.to_string(),
+                recovery_exposure_index_delta: delta * affected_resources.len() as u16,
                 affected_resources,
             })
         }
@@ -3088,6 +3309,122 @@ mod tests {
         assert!(snapshot
             .evidence_reason_codes
             .contains(&REASON_INV_STALE_DATA.to_string()));
+    }
+
+    #[test]
+    fn ec2_resilience_forecast_snapshot_builds_read_only_recovery_exposure_from_placement_and_status_check_evidence(
+    ) {
+        let healthy_a = fixture(
+            "i-forecast-a",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let failing_b = fixture(
+            "i-forecast-b",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0, 1.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[healthy_a, failing_b], Pillar::Resilience, now());
+        let forecast = ec2_resilience_forecast_snapshot(&report);
+
+        assert_eq!(forecast.workflow_id, "ec2_resilience_forecasting");
+        assert!(forecast.read_only_mode);
+        assert_eq!(forecast.baseline_window_days, 30);
+        assert_eq!(forecast.forecast_horizon_days, 30);
+        assert_eq!(forecast.confidence_level, 75);
+        assert_eq!(forecast.risk_level, Ec2ResilienceForecastRisk::High);
+        assert_eq!(
+            forecast.recovery_capacity_risk,
+            "active_status_check_failure_exposure"
+        );
+        assert!(!forecast.blocked_by_stale_data);
+        assert_eq!(
+            forecast.blast_radius_summary,
+            "status_check_failures_can_reduce_instance_reachability"
+        );
+        assert!(forecast.recovery_note.contains("read-only"));
+        assert!(forecast
+            .threshold_controls
+            .contains(&"recovery_exposure_index_warning_threshold"));
+        assert!(forecast
+            .what_if_inputs
+            .contains(&"distribute_instances_across_availability_zones"));
+        assert!(forecast.forecast_band.expected_recovery_exposure_index > 100);
+        assert!(forecast
+            .risk_drivers
+            .iter()
+            .any(|driver| driver.reason_code == REASON_RES_SINGLE_AZ_CONCENTRATION));
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY
+                && driver.affected_resources == vec!["i-forecast-b"]
+        }));
+        assert!(forecast.missing_data_reason_codes.is_empty());
+        assert!(forecast
+            .evidence_reason_codes
+            .contains(&REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY.to_string()));
+    }
+
+    #[test]
+    fn ec2_resilience_forecast_snapshot_blocks_on_stale_or_missing_status_check_evidence() {
+        let stale_missing = fixture(
+            "i-forecast-stale",
+            json!({}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a"
+            }),
+            30,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale_missing], Pillar::Resilience, now());
+        let forecast = ec2_resilience_forecast_snapshot(&report);
+
+        assert_eq!(forecast.risk_level, Ec2ResilienceForecastRisk::Blocked);
+        assert!(forecast.blocked_by_stale_data);
+        assert_eq!(
+            forecast.recovery_capacity_risk,
+            "blocked_until_inventory_refresh"
+        );
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "needs_fresh_resilience_telemetry_fixture"
+        );
+        assert!(forecast
+            .missing_data_reason_codes
+            .contains(&REASON_RES_MISSING_STATUS_TELEMETRY.to_string()));
+        assert!(forecast
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(forecast
+            .risk_drivers
+            .iter()
+            .any(|driver| driver.reason_code == REASON_INV_STALE_DATA));
     }
 
     #[test]

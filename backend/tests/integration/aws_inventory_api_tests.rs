@@ -308,7 +308,38 @@ async fn ec2_pillar_reports_contract() {
     assert!(reports[0]["slo_policy_tracking"]["objective"]["notification_targets"].is_array());
     assert!(reports[0]["slo_policy_tracking"]["objective"]["status_history"].is_array());
     assert!(reports[0]["slo_policy_tracking"]["evidence_reason_codes"].is_array());
-    assert!(reports[0]["forecasting"].is_null());
+    assert_eq!(
+        reports[0]["forecasting"]["workflow_id"],
+        "ec2_resilience_forecasting"
+    );
+    assert_eq!(reports[0]["forecasting"]["read_only_mode"], true);
+    assert_eq!(reports[0]["forecasting"]["baseline_window_days"], 30);
+    assert_eq!(reports[0]["forecasting"]["forecast_horizon_days"], 30);
+    assert_eq!(reports[0]["forecasting"]["confidence_level"], 75);
+    assert_eq!(
+        reports[0]["forecasting"]["forecast_band"]["horizon_days"],
+        30
+    );
+    assert!(
+        reports[0]["forecasting"]["forecast_band"]["expected_recovery_exposure_index"].is_number()
+    );
+    assert!(matches!(
+        reports[0]["forecasting"]["risk_level"].as_str(),
+        Some("low" | "moderate" | "high" | "blocked")
+    ));
+    assert!(reports[0]["forecasting"]["recovery_capacity_risk"].is_string());
+    assert!(reports[0]["forecasting"]["backtesting_fixture_status"].is_string());
+    assert!(reports[0]["forecasting"]["threshold_controls"].is_array());
+    assert!(reports[0]["forecasting"]["what_if_inputs"].is_array());
+    assert!(reports[0]["forecasting"]["blocked_by_stale_data"].is_boolean());
+    assert!(reports[0]["forecasting"]["blast_radius_summary"].is_string());
+    assert!(reports[0]["forecasting"]["recovery_note"]
+        .as_str()
+        .map(|note| note.contains("read-only") && note.contains("approval"))
+        .unwrap_or(false));
+    assert!(reports[0]["forecasting"]["missing_data_reason_codes"].is_array());
+    assert!(reports[0]["forecasting"]["risk_drivers"].is_array());
+    assert!(reports[0]["forecasting"]["evidence_reason_codes"].is_array());
     assert!(reports[0]["reporting"].is_null());
 }
 
