@@ -1356,7 +1356,22 @@ async fn autoscaling_security_pillar_reports_posture_contract() {
     assert!(investigation["steps"].is_array());
     assert!(investigation["approval_gates"].is_array());
     assert!(investigation["evidence_citations"].is_array());
-    assert!(reports[0].get("remediation_workflow").is_none());
+    let remediation = &reports[0]["remediation_workflow"];
+    assert_eq!(
+        remediation["workflow_id"],
+        "autoscaling_security_safe_remediation"
+    );
+    assert_eq!(remediation["read_only_mode"], true);
+    assert_eq!(
+        remediation["rbac_permission"],
+        "aws.autoscaling.security.remediation.approve"
+    );
+    assert_eq!(
+        remediation["audit_stream"],
+        "autoscaling_security_remediation_audit"
+    );
+    assert!(remediation["actions"].is_array());
+    assert!(remediation["approval_gates"].is_array());
 
     let rules = reports[0]["posture"]["rules"]
         .as_array()

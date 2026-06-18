@@ -190,6 +190,7 @@ pub enum AsgRemediationActionKind {
     ReviewScalingProcessRecovery,
     ReviewCapacityBounds,
     ReviewUnhealthyInstanceRecovery,
+    ReviewLaunchSourceSecurityMigration,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -229,6 +230,8 @@ pub struct AsgCostRemediationWorkflow {
 
 pub type AsgResilienceRemediationAction = AsgCostRemediationAction;
 pub type AsgResilienceRemediationWorkflow = AsgCostRemediationWorkflow;
+pub type AsgSecurityRemediationAction = AsgCostRemediationAction;
+pub type AsgSecurityRemediationWorkflow = AsgCostRemediationWorkflow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -972,6 +975,49 @@ pub fn asg_resilience_remediation_workflow(
         read_only_mode: true,
         rbac_permission: "aws.autoscaling.resilience.remediation.approve",
         audit_stream: "autoscaling_resilience_remediation_audit",
+        stale_data_blocks_execution: has_stale_data,
+        actions,
+        approval_gates: investigation.approval_gates,
+    }
+}
+
+pub fn asg_security_remediation_workflow(report: &PillarReport) -> AsgSecurityRemediationWorkflow {
+    let investigation = asg_security_agentic_investigation_plan(report);
+    let has_stale_data = report
+        .findings
+        .iter()
+        .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+    let mut actions = Vec::new();
+
+    for gate in &investigation.approval_gates {
+        for reason_code in &gate.evidence_reason_codes {
+            if let Some(kind) = asg_security_remediation_action_kind(reason_code) {
+                actions.push(asg_remediation_action_with_contract(
+                    "autoscaling-security",
+                    "autoscaling.security.remediation.dry_run_planned",
+                    &[
+                        "refresh Auto Scaling launch source, instance health, and collection evidence",
+                        "verify security owner, blast radius, launch-template migration path, and cost side-effect review",
+                        "capture operator approval, rollback note, and audit id before execution",
+                    ],
+                    &actions,
+                    kind,
+                    gate,
+                    if has_stale_data {
+                        AsgRemediationStatus::BlockedMissingEvidence
+                    } else {
+                        AsgRemediationStatus::DryRunPendingApproval
+                    },
+                ));
+            }
+        }
+    }
+
+    AsgSecurityRemediationWorkflow {
+        workflow_id: "autoscaling_security_safe_remediation",
+        read_only_mode: true,
+        rbac_permission: "aws.autoscaling.security.remediation.approve",
+        audit_stream: "autoscaling_security_remediation_audit",
         stale_data_blocks_execution: has_stale_data,
         actions,
         approval_gates: investigation.approval_gates,
@@ -1818,6 +1864,15 @@ fn asg_resilience_remediation_action_kind(reason_code: &str) -> Option<AsgRemedi
     }
 }
 
+fn asg_security_remediation_action_kind(reason_code: &str) -> Option<AsgRemediationActionKind> {
+    match reason_code {
+        REASON_SEC_LEGACY_LAUNCH_CONFIGURATION => {
+            Some(AsgRemediationActionKind::ReviewLaunchSourceSecurityMigration)
+        }
+        _ => None,
+    }
+}
+
 fn asg_remediation_action(
     existing_actions: &[AsgCostRemediationAction],
     kind: AsgRemediationActionKind,
@@ -1858,6 +1913,9 @@ fn asg_remediation_action_with_contract(
         AsgRemediationActionKind::ReviewCapacityBounds => "review-capacity-bounds",
         AsgRemediationActionKind::ReviewUnhealthyInstanceRecovery => {
             "review-unhealthy-instance-recovery"
+        }
+        AsgRemediationActionKind::ReviewLaunchSourceSecurityMigration => {
+            "review-launch-source-security-migration"
         }
     };
 
@@ -3931,6 +3989,101 @@ mod tests {
             .steps
             .iter()
             .any(|step| step.tool_name == "autoscaling.security.prepare_approval_plan"));
+    }
+
+    #[test]
+    fn asg_security_remediation_workflow_plans_dry_run_actions_until_approved() {
+        let mut legacy_data = healthy_data();
+        legacy_data["launch_configuration_name"] = json!("legacy-lc");
+        legacy_data["uses_launch_template"] = json!(false);
+        let legacy = fixture(
+            "asg-security-legacy-remediation",
+            json!({"owner": "security"}),
+            legacy_data,
+            now(),
+        );
+
+        let mut launch_gap_data = healthy_data();
+        launch_gap_data["uses_launch_template"] = json!(false);
+        launch_gap_data["uses_mixed_instances_policy"] = json!(false);
+        let launch_gap = fixture(
+            "asg-security-launch-gap-remediation",
+            json!({"owner": "security"}),
+            launch_gap_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[legacy, launch_gap], Pillar::Security, now());
+        let workflow = asg_security_remediation_workflow(&report);
+
+        assert_eq!(
+            workflow.workflow_id,
+            "autoscaling_security_safe_remediation"
+        );
+        assert!(workflow.read_only_mode);
+        assert_eq!(
+            workflow.rbac_permission,
+            "aws.autoscaling.security.remediation.approve"
+        );
+        assert_eq!(
+            workflow.audit_stream,
+            "autoscaling_security_remediation_audit"
+        );
+        assert!(!workflow.stale_data_blocks_execution);
+        assert_eq!(workflow.approval_gates.len(), 1);
+        assert_eq!(workflow.actions.len(), 1);
+
+        let action = workflow
+            .actions
+            .first()
+            .expect("security remediation action");
+        assert_eq!(
+            action.kind,
+            AsgRemediationActionKind::ReviewLaunchSourceSecurityMigration
+        );
+        assert_eq!(action.target_resource_id, "asg-security-legacy-remediation");
+        assert!(action.dry_run);
+        assert!(action.requires_approval);
+        assert_eq!(action.status, AsgRemediationStatus::DryRunPendingApproval);
+        assert_eq!(
+            action.audit_event_type,
+            "autoscaling.security.remediation.dry_run_planned"
+        );
+        assert_eq!(
+            action.approval_gate_id.as_deref(),
+            Some("autoscaling-security-approval-01")
+        );
+        assert!(action
+            .idempotency_key
+            .starts_with("autoscaling-security-asg-security-legacy-remediation-"));
+        assert!(action.rollback_note.contains("rollback"));
+        assert!(action.blast_radius.contains("no mutation is executable"));
+        assert!(action.validation_steps.contains(&"verify security owner, blast radius, launch-template migration path, and cost side-effect review"));
+        assert!(action
+            .evidence_reason_codes
+            .contains(&REASON_SEC_LEGACY_LAUNCH_CONFIGURATION.to_string()));
+    }
+
+    #[test]
+    fn asg_security_remediation_workflow_blocks_execution_when_data_is_stale() {
+        let mut stale_data = healthy_data();
+        stale_data["launch_configuration_name"] = json!("legacy-lc");
+        stale_data["uses_launch_template"] = json!(false);
+        let stale = fixture(
+            "asg-security-stale-remediation",
+            json!({"owner": "security"}),
+            stale_data,
+            now() - Duration::hours(30),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Security, now());
+        let workflow = asg_security_remediation_workflow(&report);
+
+        assert!(workflow.stale_data_blocks_execution);
+        assert!(!workflow.actions.is_empty());
+        assert!(workflow.actions.iter().all(|action| {
+            action.dry_run && action.status == AsgRemediationStatus::BlockedMissingEvidence
+        }));
     }
 
     #[test]

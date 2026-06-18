@@ -1003,6 +1003,54 @@ describe("PillarScorecard", () => {
               },
             ],
           },
+          remediation_workflow: {
+            workflow_id: "autoscaling_security_safe_remediation",
+            read_only_mode: true,
+            rbac_permission: "aws.autoscaling.security.remediation.approve",
+            audit_stream: "autoscaling_security_remediation_audit",
+            stale_data_blocks_execution: false,
+            actions: [
+              {
+                action_id: "autoscaling-security-remediation-01",
+                kind: "review_launch_source_security_migration",
+                status: "dry_run_pending_approval",
+                target_resource_id: "asg-legacy-launch",
+                dry_run: true,
+                requires_approval: true,
+                approval_gate_id: "autoscaling-security-approval-01",
+                audit_event_type:
+                  "autoscaling.security.remediation.dry_run_planned",
+                idempotency_key:
+                  "autoscaling-security-asg-legacy-launch-review-launch-source-security-migration",
+                blast_radius:
+                  "single Auto Scaling group asg-legacy-launch; no mutation is executable from the investigation plan",
+                rollback_note:
+                  "Before approval, record rollback or recovery notes for review-launch-source-security-migration on asg-legacy-launch.",
+                validation_steps: [
+                  "refresh Auto Scaling launch source, instance health, and collection evidence",
+                  "verify security owner, blast radius, launch-template migration path, and cost side-effect review",
+                  "capture operator approval, rollback note, and audit id before execution",
+                ],
+                evidence_reason_codes: [
+                  "ASG_SEC_LEGACY_LAUNCH_CONFIGURATION",
+                ],
+              },
+            ],
+            approval_gates: [
+              {
+                gate_id: "autoscaling-security-approval-01",
+                target_resource_id: "asg-legacy-launch",
+                required_approval:
+                  "Approve launch-template migration or launch source changes after security owner review",
+                blast_radius:
+                  "single Auto Scaling group asg-legacy-launch; no mutation is executable from the investigation plan",
+                rollback_note_required: true,
+                evidence_reason_codes: [
+                  "ASG_SEC_LEGACY_LAUNCH_CONFIGURATION",
+                ],
+              },
+            ],
+          },
         },
       ],
     };
@@ -1043,6 +1091,13 @@ describe("PillarScorecard", () => {
     expect(text).toContain("Rollback note required");
     expect(text).toContain("ASG_SECURITY_APPROVAL_PLAN_REQUIRED");
     expect(text).toContain("no mutation is executable from the investigation plan");
+    expect(text).toContain("Security Remediation");
+    expect(text).toContain("autoscaling_security_safe_remediation");
+    expect(text).toContain("autoscaling_security_remediation_audit");
+    expect(text).toContain("aws.autoscaling.security.remediation.approve");
+    expect(text).toContain("autoscaling.security.remediation.dry_run_planned");
+    expect(text).toContain("autoscaling-security-remediation-01");
+    expect(text).toContain("Review Launch Source Security Migration");
 
     await view.unmount();
   });
