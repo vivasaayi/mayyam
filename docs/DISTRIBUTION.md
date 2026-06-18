@@ -46,7 +46,7 @@ Remote install
 For remote machines without a repo checkout:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/sumitharajan/mayyam/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/sumitharajan/mayyam/main/scripts/install.sh | bash
 ```
 
 That installer now:
@@ -54,6 +54,7 @@ That installer now:
 - creates `.env.distributable`
 - generates `config.distributable.yml`
 - starts Mayyam plus its internal app DB
+- pulls the published multi-platform image instead of building Rust locally
 
 Image publishing example
 

@@ -64,6 +64,14 @@ Use this when you want to ship Mayyam with a simple bootstrap flow, while still 
 
 Important: Mayyam itself requires its own application database. In distributable mode, `docker-compose.distributable.yml` starts an internal PostgreSQL container just for Mayyam app state. That is separate from the real databases or Kafka clusters that Mayyam connects to as managed targets.
 
+Remote install without cloning the repository:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sumitharajan/mayyam/main/scripts/install.sh | bash
+```
+
+This pulls the published multi-platform container image and starts Mayyam with Docker Compose, which avoids compiling the Rust/AWS dependency graph on Mac or Linux hosts.
+
 ```bash
 cp .env.distributable.example .env.distributable
 bash scripts/bootstrap.sh distributable up
