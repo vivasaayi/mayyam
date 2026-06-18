@@ -1502,6 +1502,33 @@ async fn autoscaling_resilience_pillar_reports_posture_contract() {
     assert!(forecast["missing_data_reason_codes"].is_array());
     assert!(forecast["risk_drivers"].is_array());
     assert!(forecast["evidence_reason_codes"].is_array());
+
+    let reporting = &reports[0]["reporting"];
+    assert_eq!(reporting["workflow_id"], "autoscaling_resilience_reporting");
+    assert_eq!(reporting["read_only_mode"], true);
+    assert!(reporting["scheduled_delivery_state"].as_str().is_some());
+    assert!(reporting["portfolio_summary_ready"].is_boolean());
+    assert!(reporting["workload_summary_ready"].is_boolean());
+    assert!(reporting["stale_data_blocks_delivery"].is_boolean());
+    assert!(reporting["export_formats"].is_array());
+    assert_eq!(
+        reporting["executive_summary"]["report_id"],
+        "autoscaling-resilience-executive-summary"
+    );
+    assert!(reporting["executive_summary"]["top_reason_codes"].is_array());
+    assert!(reporting["executive_summary"]["blast_radius_summary"].is_string());
+    assert_eq!(
+        reporting["engineering_backlog"]["report_id"],
+        "autoscaling-resilience-engineering-backlog"
+    );
+    assert!(reporting["engineering_backlog"]["rows"].is_array());
+    assert_eq!(
+        reporting["incident_review"]["report_id"],
+        "autoscaling-resilience-incident-review"
+    );
+    assert!(reporting["incident_review"]["rows"].is_array());
+    assert!(reporting["missing_data_reason_codes"].is_array());
+    assert!(reporting["evidence_reason_codes"].is_array());
 }
 
 #[tokio::test]

@@ -712,6 +712,57 @@ describe("PillarScorecard", () => {
               "ASG_RES_UNHEALTHY_INSTANCE_TELEMETRY",
             ],
           },
+          reporting: {
+            workflow_id: "autoscaling_resilience_reporting",
+            read_only_mode: true,
+            scheduled_delivery_state: "ready_for_schedule",
+            stale_data_blocks_delivery: false,
+            portfolio_summary_ready: true,
+            workload_summary_ready: true,
+            export_formats: ["json", "csv"],
+            saved_view_id: "autoscaling-resilience-posture-report",
+            executive_summary: {
+              report_id: "autoscaling-resilience-executive-summary",
+              score: 71,
+              resources_evaluated: 2,
+              stale_resources: 0,
+              rules_failed: 3,
+              affected_resources: ["asg-single-az", "asg-unhealthy"],
+              top_reason_codes: [
+                "ASG_RES_SINGLE_AZ",
+                "ASG_RES_UNHEALTHY_INSTANCE_TELEMETRY",
+              ],
+              blast_radius_summary:
+                "2 Auto Scaling group(s) have resilience recovery forecast risk across placement, replacement, health, or scaling-process evidence.",
+            },
+            engineering_backlog: {
+              report_id: "autoscaling-resilience-engineering-backlog",
+              page: 0,
+              page_size: 50,
+              total: 2,
+              rows: [],
+            },
+            incident_review: {
+              report_id: "autoscaling-resilience-incident-review",
+              page: 0,
+              page_size: 50,
+              total: 1,
+              rows: [
+                {
+                  resource_id: "asg-single-az",
+                  reason_code: "ASG_RES_SINGLE_AZ",
+                  recovery_note:
+                    "Review multi-AZ placement plan before any approved recovery change.",
+                  suppression_supported: true,
+                },
+              ],
+            },
+            missing_data_reason_codes: [],
+            evidence_reason_codes: [
+              "ASG_RES_SINGLE_AZ",
+              "ASG_RES_UNHEALTHY_INSTANCE_TELEMETRY",
+            ],
+          },
         },
       ],
     };
@@ -759,6 +810,14 @@ describe("PillarScorecard", () => {
     expect(text).toContain("75% confidence");
     expect(text).toContain("Active Unhealthy Instance Replacement Exposure");
     expect(text).toContain("Recovery Exposure Index Warning Threshold");
+    expect(text).toContain("Resilience Reporting");
+    expect(text).toContain("Ready For Schedule");
+    expect(text).toContain("autoscaling-resilience-executive-summary");
+    expect(text).toContain("3 failed rule");
+    expect(text).toContain("2 affected");
+    expect(text).toContain("autoscaling-resilience-incident-review");
+    expect(text).toContain("Review multi-AZ placement plan");
+    expect(text).toContain("Supported");
 
     await view.unmount();
   });

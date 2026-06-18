@@ -415,6 +415,28 @@ pub struct AsgCostReportingBundle {
     pub evidence_reason_codes: Vec<String>,
 }
 
+pub type AsgResilienceReportRow = AsgCostReportRow;
+pub type AsgResilienceExecutiveSummary = AsgCostExecutiveSummary;
+pub type AsgResilienceEngineeringBacklog = AsgCostEngineeringBacklog;
+pub type AsgResilienceIncidentReview = AsgCostIncidentReview;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgResilienceReportingBundle {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub scheduled_delivery_state: &'static str,
+    pub stale_data_blocks_delivery: bool,
+    pub portfolio_summary_ready: bool,
+    pub workload_summary_ready: bool,
+    pub export_formats: Vec<&'static str>,
+    pub saved_view_id: &'static str,
+    pub executive_summary: AsgResilienceExecutiveSummary,
+    pub engineering_backlog: AsgResilienceEngineeringBacklog,
+    pub incident_review: AsgResilienceIncidentReview,
+    pub missing_data_reason_codes: Vec<String>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
 /// Evaluate every Auto Scaling group in the fleet for one pillar. Rows whose
 /// `resource_type` is not `AutoScalingGroup` are skipped and not counted.
 pub fn evaluate_autoscaling_fleet(
@@ -1199,6 +1221,62 @@ pub fn asg_cost_reporting_bundle(report: &PillarReport) -> AsgCostReportingBundl
     }
 }
 
+pub fn asg_resilience_reporting_bundle(report: &PillarReport) -> AsgResilienceReportingBundle {
+    let posture = asg_resilience_posture_summary(report);
+    let forecast = asg_resilience_forecast_snapshot(report);
+    let reason_codes = sorted_unique_reason_codes(report);
+    let missing_data_reason_codes = asg_resilience_reporting_missing_data_reason_codes(report);
+    let rows = asg_resilience_report_rows(report);
+    let stale_data_blocks_delivery = report.stale_resources > 0
+        || report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+
+    AsgResilienceReportingBundle {
+        workflow_id: "autoscaling_resilience_reporting",
+        read_only_mode: true,
+        scheduled_delivery_state: if stale_data_blocks_delivery {
+            "blocked_until_fresh_resilience_evidence"
+        } else if !missing_data_reason_codes.is_empty() {
+            "ready_with_resilience_evidence_gaps"
+        } else {
+            "ready_for_schedule"
+        },
+        stale_data_blocks_delivery,
+        portfolio_summary_ready: !stale_data_blocks_delivery,
+        workload_summary_ready: !stale_data_blocks_delivery && report.resources_evaluated > 0,
+        export_formats: vec!["json", "csv"],
+        saved_view_id: "autoscaling-resilience-posture-report",
+        executive_summary: AsgResilienceExecutiveSummary {
+            report_id: "autoscaling-resilience-executive-summary",
+            score: report.score,
+            resources_evaluated: report.resources_evaluated,
+            stale_resources: report.stale_resources,
+            rules_failed: posture.rules_failed,
+            affected_resources: posture.affected_resources,
+            top_reason_codes: reason_codes.clone(),
+            blast_radius_summary: forecast.blast_radius_summary,
+        },
+        engineering_backlog: AsgResilienceEngineeringBacklog {
+            report_id: "autoscaling-resilience-engineering-backlog",
+            page: 0,
+            page_size: 50,
+            total: rows.len(),
+            rows: rows.clone(),
+        },
+        incident_review: AsgResilienceIncidentReview {
+            report_id: "autoscaling-resilience-incident-review",
+            page: 0,
+            page_size: 50,
+            total: rows.len(),
+            rows,
+        },
+        missing_data_reason_codes,
+        evidence_reason_codes: reason_codes,
+    }
+}
+
 fn asg_cost_objective_status(
     score: u8,
     failed_rule_count: usize,
@@ -1488,6 +1566,25 @@ fn asg_cost_reporting_missing_data_reason_codes(report: &PillarReport) -> Vec<St
     .collect()
 }
 
+fn asg_resilience_reporting_missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    [
+        REASON_INV_STALE_DATA,
+        REASON_TEL_MISSING_COLLECTION_METADATA,
+        REASON_TEL_COLLECTION_ERRORS,
+        REASON_RES_MISSING_REPLACEMENT_TELEMETRY,
+        REASON_RES_MISSING_INSTANCE_HEALTH_TELEMETRY,
+    ]
+    .into_iter()
+    .filter(|reason_code| {
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == *reason_code)
+    })
+    .map(str::to_string)
+    .collect()
+}
+
 fn asg_cost_report_rows(report: &PillarReport) -> Vec<AsgCostReportRow> {
     report
         .findings
@@ -1498,6 +1595,22 @@ fn asg_cost_report_rows(report: &PillarReport) -> Vec<AsgCostReportRow> {
             reason_code: finding.reason_code.clone(),
             message: finding.message.clone(),
             recovery_note: asg_cost_reporting_recovery_note(&finding.reason_code).to_string(),
+            suppression_supported: true,
+            evidence: finding.evidence.clone(),
+        })
+        .collect()
+}
+
+fn asg_resilience_report_rows(report: &PillarReport) -> Vec<AsgResilienceReportRow> {
+    report
+        .findings
+        .iter()
+        .map(|finding| AsgResilienceReportRow {
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            reason_code: finding.reason_code.clone(),
+            message: finding.message.clone(),
+            recovery_note: asg_resilience_reporting_recovery_note(&finding.reason_code).to_string(),
             suppression_supported: true,
             evidence: finding.evidence.clone(),
         })
@@ -1528,6 +1641,39 @@ fn asg_cost_reporting_recovery_note(reason_code: &str) -> &'static str {
             "Review scaling policy and capacity history before changing min or max size."
         }
         _ => "Review Auto Scaling cost evidence and owner context before action.",
+    }
+}
+
+fn asg_resilience_reporting_recovery_note(reason_code: &str) -> &'static str {
+    match reason_code {
+        REASON_INV_STALE_DATA => {
+            "Refresh Auto Scaling resilience inventory before scheduling report delivery."
+        }
+        REASON_TEL_MISSING_COLLECTION_METADATA => {
+            "Collect telemetry run metadata before publishing resilience report findings."
+        }
+        REASON_TEL_COLLECTION_ERRORS => {
+            "Resolve Auto Scaling collector errors before sharing the resilience report."
+        }
+        REASON_RES_MISSING_REPLACEMENT_TELEMETRY | REASON_RES_MISSING_INSTANCE_HEALTH_TELEMETRY => {
+            "Refresh replacement and instance-health telemetry before incident review."
+        }
+        REASON_RES_UNHEALTHY_INSTANCE_TELEMETRY => {
+            "Review unhealthy instance replacement evidence and recovery notes before action."
+        }
+        REASON_RES_SINGLE_AZ => {
+            "Review multi-AZ placement plan before any approved recovery change."
+        }
+        REASON_RES_ELB_HEALTH_CHECK_EC2_ONLY => {
+            "Review ELB health check policy before changing replacement behavior."
+        }
+        REASON_RES_SUSPENDED_PROCESSES => {
+            "Review suspended scaling processes and rollback notes before recovery action."
+        }
+        REASON_RES_DESIRED_BELOW_MIN => {
+            "Review desired and minimum capacity evidence before adjusting capacity bounds."
+        }
+        _ => "Review Auto Scaling resilience evidence and owner context before action.",
     }
 }
 
@@ -3505,6 +3651,112 @@ mod tests {
         assert!(forecast
             .missing_data_reason_codes
             .contains(&REASON_RES_MISSING_INSTANCE_HEALTH_TELEMETRY.to_string()));
+    }
+
+    #[test]
+    fn asg_resilience_reporting_bundle_materializes_executive_engineering_and_incident_views() {
+        let mut single_az_data = healthy_data();
+        single_az_data["availability_zones"] = json!(["us-east-1a"]);
+        single_az_data["suspended_process_count"] = json!(1);
+        let single_az = fixture(
+            "asg-res-report-single-az",
+            json!({"owner": "sre"}),
+            single_az_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[single_az], Pillar::Resilience, now());
+        let bundle = asg_resilience_reporting_bundle(&report);
+
+        assert_eq!(bundle.workflow_id, "autoscaling_resilience_reporting");
+        assert!(bundle.read_only_mode);
+        assert_eq!(bundle.scheduled_delivery_state, "ready_for_schedule");
+        assert!(!bundle.stale_data_blocks_delivery);
+        assert!(bundle.portfolio_summary_ready);
+        assert!(bundle.workload_summary_ready);
+        assert_eq!(bundle.export_formats, vec!["json", "csv"]);
+        assert_eq!(
+            bundle.saved_view_id,
+            "autoscaling-resilience-posture-report"
+        );
+        assert_eq!(
+            bundle.executive_summary.report_id,
+            "autoscaling-resilience-executive-summary"
+        );
+        assert_eq!(bundle.executive_summary.resources_evaluated, 1);
+        assert_eq!(bundle.executive_summary.affected_resources.len(), 1);
+        assert!(bundle
+            .executive_summary
+            .blast_radius_summary
+            .contains("Auto Scaling group"));
+        assert!(bundle
+            .executive_summary
+            .top_reason_codes
+            .contains(&REASON_RES_SINGLE_AZ.to_string()));
+        assert_eq!(
+            bundle.engineering_backlog.report_id,
+            "autoscaling-resilience-engineering-backlog"
+        );
+        assert_eq!(bundle.engineering_backlog.page, 0);
+        assert_eq!(bundle.engineering_backlog.page_size, 50);
+        assert_eq!(
+            bundle.engineering_backlog.total,
+            bundle.incident_review.total
+        );
+        assert_eq!(
+            bundle.incident_review.report_id,
+            "autoscaling-resilience-incident-review"
+        );
+        assert!(bundle.incident_review.rows.iter().any(|row| {
+            row.reason_code == REASON_RES_SINGLE_AZ
+                && row.recovery_note.contains("multi-AZ placement")
+                && row.suppression_supported
+        }));
+        assert!(bundle.missing_data_reason_codes.is_empty());
+        assert!(bundle
+            .evidence_reason_codes
+            .contains(&REASON_RES_SUSPENDED_PROCESSES.to_string()));
+    }
+
+    #[test]
+    fn asg_resilience_reporting_bundle_blocks_delivery_for_stale_or_missing_evidence() {
+        let mut missing_data = healthy_data();
+        for field in [
+            "availability_zones",
+            "unhealthy_instance_count",
+            "in_service_instance_count",
+        ] {
+            missing_data.as_object_mut().expect("object").remove(field);
+        }
+        let stale_missing = fixture(
+            "asg-res-report-stale",
+            json!({"owner": "sre"}),
+            missing_data,
+            now() - Duration::hours(30),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale_missing], Pillar::Resilience, now());
+        let bundle = asg_resilience_reporting_bundle(&report);
+
+        assert_eq!(
+            bundle.scheduled_delivery_state,
+            "blocked_until_fresh_resilience_evidence"
+        );
+        assert!(bundle.stale_data_blocks_delivery);
+        assert!(!bundle.portfolio_summary_ready);
+        assert!(!bundle.workload_summary_ready);
+        assert!(bundle
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(bundle
+            .missing_data_reason_codes
+            .contains(&REASON_RES_MISSING_INSTANCE_HEALTH_TELEMETRY.to_string()));
+        assert!(bundle.incident_review.rows.iter().any(|row| {
+            row.reason_code == REASON_INV_STALE_DATA
+                && row
+                    .recovery_note
+                    .contains("Refresh Auto Scaling resilience inventory")
+        }));
     }
 
     #[test]
