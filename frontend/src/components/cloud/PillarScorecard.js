@@ -438,6 +438,93 @@ const AgenticInvestigationSummary = ({ report }) => {
   );
 };
 
+const RemediationWorkflowSummary = ({ report }) => {
+  const remediation = report.remediation_workflow;
+  if (!remediation) {
+    return null;
+  }
+
+  const actions = remediation.actions || [];
+  const approvalGates = remediation.approval_gates || [];
+
+  return (
+    <CCard className="mb-3">
+      <CCardHeader>
+        {formatToken(report.pillar)} Remediation
+        <CBadge
+          color={remediation.stale_data_blocks_execution ? "danger" : "warning"}
+          className="ms-2"
+        >
+          {remediation.read_only_mode ? "Dry Run" : "Execution Enabled"}
+        </CBadge>
+      </CCardHeader>
+      <CCardBody>
+        <CRow className="g-3 mb-3">
+          <CCol md={4}>
+            <div className="text-medium-emphasis small">Workflow</div>
+            <div className="fw-semibold">{remediation.workflow_id}</div>
+            <div className="small">{remediation.audit_stream}</div>
+          </CCol>
+          <CCol md={4}>
+            <div className="text-medium-emphasis small">Approval</div>
+            <div className="fw-semibold">{remediation.rbac_permission}</div>
+            <div className="small">{approvalGates.length} gate(s)</div>
+          </CCol>
+          <CCol md={4}>
+            <div className="text-medium-emphasis small">Execution Guard</div>
+            <div className="fw-semibold">
+              {remediation.stale_data_blocks_execution
+                ? "Blocked by stale data"
+                : "Pending approval"}
+            </div>
+            <div className="small">{actions.length} dry-run action(s)</div>
+          </CCol>
+        </CRow>
+        <CTable small responsive>
+          <CTableHead>
+            <CTableRow>
+              <CTableHeaderCell>Action</CTableHeaderCell>
+              <CTableHeaderCell>Status</CTableHeaderCell>
+              <CTableHeaderCell>Resource</CTableHeaderCell>
+              <CTableHeaderCell>Approval</CTableHeaderCell>
+              <CTableHeaderCell>Rollback</CTableHeaderCell>
+            </CTableRow>
+          </CTableHead>
+          <CTableBody>
+            {actions.map((action) => (
+              <CTableRow key={action.action_id}>
+                <CTableDataCell>
+                  <code>{action.action_id}</code>
+                  <div className="small">{formatToken(action.kind)}</div>
+                  <div className="small">{action.audit_event_type}</div>
+                </CTableDataCell>
+                <CTableDataCell>
+                  <CBadge
+                    color={
+                      action.status === "blocked_missing_evidence"
+                        ? "danger"
+                        : "warning"
+                    }
+                  >
+                    {formatToken(action.status)}
+                  </CBadge>
+                  <div className="small">{action.dry_run ? "Dry run" : "Executable"}</div>
+                </CTableDataCell>
+                <CTableDataCell>{action.target_resource_id}</CTableDataCell>
+                <CTableDataCell>
+                  {action.requires_approval ? "Required" : "Not required"}
+                  <div className="small">{action.approval_gate_id}</div>
+                </CTableDataCell>
+                <CTableDataCell>{action.rollback_note}</CTableDataCell>
+              </CTableRow>
+            ))}
+          </CTableBody>
+        </CTable>
+      </CCardBody>
+    </CCard>
+  );
+};
+
 // Renders the deterministic pillar reports returned by
 // /api/aws/inventory/<service>/pillars: one score card per pillar plus a
 // reason-coded findings table with raw evidence.
@@ -477,6 +564,12 @@ const PillarScorecard = ({ data }) => {
       {data.reports.map((report) => (
         <AgenticInvestigationSummary
           key={`${report.pillar}-agentic-investigation`}
+          report={report}
+        />
+      ))}
+      {data.reports.map((report) => (
+        <RemediationWorkflowSummary
+          key={`${report.pillar}-remediation`}
           report={report}
         />
       ))}

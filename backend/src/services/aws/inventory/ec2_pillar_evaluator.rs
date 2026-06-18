@@ -196,6 +196,9 @@ pub enum Ec2RemediationActionKind {
     RightSizeInstance,
     PlanMultiAzPlacement,
     ReviewStatusCheckRecovery,
+    ReviewSecurityExposure,
+    ReviewPublicPacketTraffic,
+    ReviewSecurityOwnerMetadata,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -235,6 +238,8 @@ pub struct Ec2CostRemediationWorkflow {
 
 pub type Ec2ResilienceRemediationAction = Ec2CostRemediationAction;
 pub type Ec2ResilienceRemediationWorkflow = Ec2CostRemediationWorkflow;
+pub type Ec2SecurityRemediationAction = Ec2CostRemediationAction;
+pub type Ec2SecurityRemediationWorkflow = Ec2CostRemediationWorkflow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -2164,6 +2169,49 @@ pub fn ec2_resilience_remediation_workflow(
     }
 }
 
+pub fn ec2_security_remediation_workflow(report: &PillarReport) -> Ec2SecurityRemediationWorkflow {
+    let investigation = ec2_security_agentic_investigation_plan(report);
+    let has_stale_data = report
+        .findings
+        .iter()
+        .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+    let mut actions = Vec::new();
+
+    for gate in &investigation.approval_gates {
+        for reason_code in &gate.evidence_reason_codes {
+            if let Some(kind) = security_remediation_action_kind(reason_code) {
+                actions.push(remediation_action_with_contract(
+                    "ec2-security",
+                    "ec2.security.remediation.dry_run_planned",
+                    &[
+                        "refresh EC2 security inventory and packet telemetry",
+                        "verify owner, blast radius, exposure intent, and suppression policy",
+                        "capture operator approval, rollback note, and audit id before execution",
+                    ],
+                    &actions,
+                    kind,
+                    gate,
+                    if has_stale_data {
+                        Ec2RemediationStatus::BlockedMissingEvidence
+                    } else {
+                        Ec2RemediationStatus::DryRunPendingApproval
+                    },
+                ));
+            }
+        }
+    }
+
+    Ec2SecurityRemediationWorkflow {
+        workflow_id: "ec2_security_safe_remediation",
+        read_only_mode: true,
+        rbac_permission: "aws.ec2.security.remediation.approve",
+        audit_stream: "ec2_security_remediation_audit",
+        stale_data_blocks_execution: has_stale_data,
+        actions,
+        approval_gates: investigation.approval_gates,
+    }
+}
+
 fn remediation_action_kind(reason_code: &str) -> Option<Ec2RemediationActionKind> {
     match reason_code {
         REASON_COST_MISSING_ALLOCATION_TAGS => Some(Ec2RemediationActionKind::AssignCostTags),
@@ -2171,6 +2219,17 @@ fn remediation_action_kind(reason_code: &str) -> Option<Ec2RemediationActionKind
             Some(Ec2RemediationActionKind::ReviewStoppedInstanceArtifacts)
         }
         REASON_COST_LOW_UTILIZATION_TELEMETRY => Some(Ec2RemediationActionKind::RightSizeInstance),
+        _ => None,
+    }
+}
+
+fn security_remediation_action_kind(reason_code: &str) -> Option<Ec2RemediationActionKind> {
+    match reason_code {
+        REASON_SEC_PUBLIC_IP => Some(Ec2RemediationActionKind::ReviewSecurityExposure),
+        REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY => {
+            Some(Ec2RemediationActionKind::ReviewPublicPacketTraffic)
+        }
+        REASON_SEC_MISSING_OWNER_TAG => Some(Ec2RemediationActionKind::ReviewSecurityOwnerMetadata),
         _ => None,
     }
 }
@@ -2224,6 +2283,9 @@ fn remediation_action_with_contract(
         Ec2RemediationActionKind::RightSizeInstance => "rightsize-instance",
         Ec2RemediationActionKind::PlanMultiAzPlacement => "plan-multi-az-placement",
         Ec2RemediationActionKind::ReviewStatusCheckRecovery => "review-status-check-recovery",
+        Ec2RemediationActionKind::ReviewSecurityExposure => "review-security-exposure",
+        Ec2RemediationActionKind::ReviewPublicPacketTraffic => "review-public-packet-traffic",
+        Ec2RemediationActionKind::ReviewSecurityOwnerMetadata => "review-security-owner-metadata",
     };
 
     Ec2CostRemediationAction {
@@ -3613,6 +3675,110 @@ mod tests {
             .steps
             .iter()
             .all(|step| step.tool_mode == Ec2InvestigationToolMode::ReadOnly));
+    }
+
+    #[test]
+    fn ec2_security_remediation_workflow_plans_dry_run_actions_until_approved() {
+        let exposed = fixture(
+            "i-sec-exposed",
+            json!({}),
+            json!({
+                "state": "running",
+                "public_ip": "54.0.0.1",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[12.0]),
+                        metric("NetworkPacketsOut", &[6.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[exposed], Pillar::Security, now());
+        let workflow = ec2_security_remediation_workflow(&report);
+
+        assert_eq!(workflow.workflow_id, "ec2_security_safe_remediation");
+        assert!(workflow.read_only_mode);
+        assert_eq!(
+            workflow.rbac_permission,
+            "aws.ec2.security.remediation.approve"
+        );
+        assert_eq!(workflow.audit_stream, "ec2_security_remediation_audit");
+        assert!(!workflow.stale_data_blocks_execution);
+        assert_eq!(workflow.actions.len(), 3);
+        assert!(workflow.actions.iter().all(|action| {
+            let action_text = format!(
+                "{} {} {}",
+                action.action_id, action.audit_event_type, action.idempotency_key
+            );
+            action.action_id.starts_with("ec2-security-remediation-")
+                && action.dry_run
+                && action.requires_approval
+                && action.approval_gate_id.is_some()
+                && action.status == Ec2RemediationStatus::DryRunPendingApproval
+                && action.audit_event_type == "ec2.security.remediation.dry_run_planned"
+                && action.rollback_note.contains("rollback")
+                && action.validation_steps.contains(
+                    &"capture operator approval, rollback note, and audit id before execution",
+                )
+                && !["execute", "run_instances", "terminate", "modify", "assign"]
+                    .iter()
+                    .any(|term| action_text.contains(term))
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == Ec2RemediationActionKind::ReviewSecurityExposure
+                && action.target_resource_id == "i-sec-exposed"
+                && action
+                    .evidence_reason_codes
+                    .contains(&REASON_SEC_PUBLIC_IP.to_string())
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == Ec2RemediationActionKind::ReviewPublicPacketTraffic
+                && action.target_resource_id == "i-sec-exposed"
+                && action
+                    .evidence_reason_codes
+                    .contains(&REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY.to_string())
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == Ec2RemediationActionKind::ReviewSecurityOwnerMetadata
+                && action.target_resource_id == "i-sec-exposed"
+                && action
+                    .evidence_reason_codes
+                    .contains(&REASON_SEC_MISSING_OWNER_TAG.to_string())
+        }));
+    }
+
+    #[test]
+    fn ec2_security_remediation_workflow_blocks_execution_when_data_is_stale() {
+        let stale = fixture(
+            "i-sec-stale",
+            json!({}),
+            json!({
+                "state": "running",
+                "public_ip": "54.0.0.1",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[12.0]),
+                        metric("NetworkPacketsOut", &[6.0])
+                    ]
+                }
+            }),
+            48,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Security, now());
+        let workflow = ec2_security_remediation_workflow(&report);
+
+        assert!(workflow.stale_data_blocks_execution);
+        assert!(!workflow.actions.is_empty());
+        assert!(workflow.actions.iter().all(|action| {
+            action.dry_run && action.status == Ec2RemediationStatus::BlockedMissingEvidence
+        }));
     }
 
     #[test]

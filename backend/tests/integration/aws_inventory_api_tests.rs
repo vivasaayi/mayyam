@@ -243,6 +243,36 @@ async fn ec2_pillar_reports_contract() {
             );
         }
     }
+    assert_eq!(
+        reports[0]["remediation_workflow"]["workflow_id"],
+        "ec2_security_safe_remediation"
+    );
+    assert_eq!(reports[0]["remediation_workflow"]["read_only_mode"], true);
+    assert_eq!(
+        reports[0]["remediation_workflow"]["rbac_permission"],
+        "aws.ec2.security.remediation.approve"
+    );
+    assert_eq!(
+        reports[0]["remediation_workflow"]["audit_stream"],
+        "ec2_security_remediation_audit"
+    );
+    assert!(reports[0]["remediation_workflow"]["actions"].is_array());
+    assert!(reports[0]["remediation_workflow"]["approval_gates"].is_array());
+    let security_actions = reports[0]["remediation_workflow"]["actions"]
+        .as_array()
+        .expect("security remediation actions should be an array");
+    assert!(security_actions.iter().all(|action| {
+        action["dry_run"] == true
+            && action["requires_approval"] == true
+            && !action["approval_gate_id"].is_null()
+            && action["audit_event_type"] == "ec2.security.remediation.dry_run_planned"
+            && (action["status"] == "dry_run_pending_approval"
+                || action["status"] == "blocked_missing_evidence")
+            && action["rollback_note"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("rollback")
+    }));
 
     let resp = client
         .get(format!(

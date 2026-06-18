@@ -484,6 +484,63 @@ describe("PillarScorecard", () => {
               },
             ],
           },
+          remediation_workflow: {
+            workflow_id: "ec2_security_safe_remediation",
+            read_only_mode: true,
+            rbac_permission: "aws.ec2.security.remediation.approve",
+            audit_stream: "ec2_security_remediation_audit",
+            stale_data_blocks_execution: false,
+            actions: [
+              {
+                action_id: "ec2-security-remediation-01",
+                kind: "review_security_exposure",
+                status: "dry_run_pending_approval",
+                target_resource_id: "i-sec-exposed",
+                dry_run: true,
+                requires_approval: true,
+                approval_gate_id: "ec2-security-approval-01",
+                audit_event_type: "ec2.security.remediation.dry_run_planned",
+                rollback_note:
+                  "Before approval, record rollback or recovery notes for review-security-exposure on i-sec-exposed.",
+                evidence_reason_codes: ["EC2_SEC_PUBLIC_IP_ASSIGNED"],
+              },
+              {
+                action_id: "ec2-security-remediation-02",
+                kind: "review_security_owner_metadata",
+                status: "dry_run_pending_approval",
+                target_resource_id: "i-sec-exposed",
+                dry_run: true,
+                requires_approval: true,
+                approval_gate_id: "ec2-security-approval-02",
+                audit_event_type: "ec2.security.remediation.dry_run_planned",
+                rollback_note:
+                  "Before approval, record rollback or recovery notes for review-security-owner-metadata on i-sec-exposed.",
+                evidence_reason_codes: ["EC2_SEC_MISSING_OWNER_TAG"],
+              },
+            ],
+            approval_gates: [
+              {
+                gate_id: "ec2-security-approval-01",
+                target_resource_id: "i-sec-exposed",
+                required_approval:
+                  "Approve any security group, route, public IP, or exposure suppression change only after owner review, blast-radius summary, and rollback note",
+                blast_radius:
+                  "single EC2 instance i-sec-exposed; no mutation is executable from the investigation plan",
+                rollback_note_required: true,
+                evidence_reason_codes: ["EC2_SEC_PUBLIC_IP_ASSIGNED"],
+              },
+              {
+                gate_id: "ec2-security-approval-02",
+                target_resource_id: "i-sec-exposed",
+                required_approval:
+                  "Approve tag writes or assignment changes after ownership is verified",
+                blast_radius:
+                  "single EC2 instance i-sec-exposed; no mutation is executable from the investigation plan",
+                rollback_note_required: true,
+                evidence_reason_codes: ["EC2_SEC_MISSING_OWNER_TAG"],
+              },
+            ],
+          },
           findings: [
             {
               severity: "high",
@@ -545,6 +602,18 @@ describe("PillarScorecard", () => {
     expect(text).toContain("ec2-security-approval-01");
     expect(text).toContain("no mutation is executable from the investigation plan");
     expect(text).toContain("Rollback note required");
+    expect(text).toContain("Security Remediation");
+    expect(text).toContain("Dry Run");
+    expect(text).toContain("ec2_security_safe_remediation");
+    expect(text).toContain("ec2_security_remediation_audit");
+    expect(text).toContain("aws.ec2.security.remediation.approve");
+    expect(text).toContain("Pending approval");
+    expect(text).toContain("2 dry-run action");
+    expect(text).toContain("ec2-security-remediation-01");
+    expect(text).toContain("Review Security Exposure");
+    expect(text).toContain("Review Security Owner Metadata");
+    expect(text).toContain("Dry Run Pending Approval");
+    expect(text).toContain("ec2.security.remediation.dry_run_planned");
     expect(text).toContain("i-sec-exposed");
     expect(text).toContain("i-sec-gap");
     expect(text).toContain("intentionally internet-facing");
