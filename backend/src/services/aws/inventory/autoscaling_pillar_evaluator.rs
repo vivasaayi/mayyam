@@ -257,6 +257,51 @@ pub struct AsgCostSloPolicySnapshot {
     pub evidence_reason_codes: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AsgCostForecastRisk {
+    Low,
+    Moderate,
+    High,
+    Blocked,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgCostForecastBand {
+    pub horizon_days: u16,
+    pub lower_monthly_cost_index: u16,
+    pub expected_monthly_cost_index: u16,
+    pub upper_monthly_cost_index: u16,
+    pub confidence_level: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgCostForecastRiskDriver {
+    pub reason_code: String,
+    pub affected_resources: Vec<String>,
+    pub monthly_cost_index_delta: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgCostForecastSnapshot {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub baseline_window_days: u16,
+    pub forecast_horizon_days: u16,
+    pub confidence_level: u8,
+    pub forecast_band: AsgCostForecastBand,
+    pub risk_level: AsgCostForecastRisk,
+    pub capacity_risk: &'static str,
+    pub backtesting_fixture_status: &'static str,
+    pub threshold_controls: Vec<&'static str>,
+    pub what_if_inputs: Vec<&'static str>,
+    pub blocked_by_stale_data: bool,
+    pub blast_radius_summary: String,
+    pub missing_data_reason_codes: Vec<String>,
+    pub risk_drivers: Vec<AsgCostForecastRiskDriver>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
 /// Evaluate every Auto Scaling group in the fleet for one pillar. Rows whose
 /// `resource_type` is not `AutoScalingGroup` are skipped and not counted.
 pub fn evaluate_autoscaling_fleet(
@@ -510,6 +555,108 @@ pub fn asg_cost_slo_policy_snapshot(report: &PillarReport) -> AsgCostSloPolicySn
     }
 }
 
+pub fn asg_cost_forecast_snapshot(report: &PillarReport) -> AsgCostForecastSnapshot {
+    const BASELINE_WINDOW_DAYS: u16 = 30;
+    const FORECAST_HORIZON_DAYS: u16 = 30;
+    const CONFIDENCE_LEVEL: u8 = 80;
+
+    let stale_count = count_reason(report, REASON_INV_STALE_DATA);
+    let telemetry_error_count = count_reason(report, REASON_TEL_COLLECTION_ERRORS);
+    let missing_capacity_count = count_reason(report, REASON_COST_MISSING_CAPACITY_TELEMETRY);
+    let missing_metrics_count = count_reason(report, REASON_COST_MISSING_GROUP_METRICS_TELEMETRY);
+    let fixed_size_count = count_reason(report, REASON_COST_FIXED_SIZE);
+    let missing_tag_count = count_reason(report, REASON_COST_NO_TAGS);
+    let missing_collection_metadata_count =
+        count_reason(report, REASON_TEL_MISSING_COLLECTION_METADATA);
+    let blocked_by_stale_data = report.stale_resources > 0 || stale_count > 0;
+    let forecast_blocked = blocked_by_stale_data || telemetry_error_count > 0;
+
+    let expected_monthly_cost_index = 100u16
+        + (fixed_size_count as u16 * 22)
+        + (missing_capacity_count as u16 * 18)
+        + (missing_metrics_count as u16 * 16)
+        + (missing_collection_metadata_count as u16 * 10)
+        + (missing_tag_count as u16 * 5)
+        + (stale_count as u16 * 25)
+        + (telemetry_error_count as u16 * 20);
+    let uncertainty = 8u16
+        + (missing_capacity_count as u16 * 8)
+        + (missing_metrics_count as u16 * 6)
+        + (missing_collection_metadata_count as u16 * 5)
+        + (missing_tag_count as u16 * 2)
+        + (report.stale_resources as u16 * 10)
+        + (report.resources_evaluated == 0) as u16 * 20;
+    let lower_monthly_cost_index = expected_monthly_cost_index.saturating_sub(uncertainty);
+    let upper_monthly_cost_index = expected_monthly_cost_index + uncertainty;
+    let risk_level = if forecast_blocked {
+        AsgCostForecastRisk::Blocked
+    } else if upper_monthly_cost_index >= 145 {
+        AsgCostForecastRisk::High
+    } else if expected_monthly_cost_index > 100 {
+        AsgCostForecastRisk::Moderate
+    } else {
+        AsgCostForecastRisk::Low
+    };
+    let risk_drivers = asg_cost_forecast_risk_drivers(report);
+    let impacted_groups = sorted_unique_resources(
+        risk_drivers
+            .iter()
+            .flat_map(|driver| driver.affected_resources.iter().cloned()),
+    );
+
+    AsgCostForecastSnapshot {
+        workflow_id: "autoscaling_cost_forecasting",
+        read_only_mode: true,
+        baseline_window_days: BASELINE_WINDOW_DAYS,
+        forecast_horizon_days: FORECAST_HORIZON_DAYS,
+        confidence_level: CONFIDENCE_LEVEL,
+        forecast_band: AsgCostForecastBand {
+            horizon_days: FORECAST_HORIZON_DAYS,
+            lower_monthly_cost_index,
+            expected_monthly_cost_index,
+            upper_monthly_cost_index,
+            confidence_level: CONFIDENCE_LEVEL,
+        },
+        risk_level,
+        capacity_risk: asg_cost_capacity_risk(
+            forecast_blocked,
+            fixed_size_count,
+            missing_capacity_count,
+            missing_metrics_count,
+            missing_collection_metadata_count,
+        ),
+        backtesting_fixture_status: if report.findings.is_empty() {
+            "ready_clean_baseline"
+        } else if forecast_blocked || missing_capacity_count > 0 || missing_metrics_count > 0 {
+            "needs_fresh_capacity_fixture"
+        } else {
+            "ready_findings_baseline"
+        },
+        threshold_controls: vec![
+            "monthly_cost_index_warning_threshold",
+            "monthly_cost_index_critical_threshold",
+        ],
+        what_if_inputs: vec![
+            "allow_scale_in_for_fixed_groups",
+            "restore_missing_capacity_telemetry",
+            "enable_group_metrics_collection",
+            "apply_cost_allocation_tags",
+        ],
+        blocked_by_stale_data,
+        blast_radius_summary: if impacted_groups.is_empty() {
+            "No Auto Scaling groups have cost forecast risk in the current evidence.".to_string()
+        } else {
+            format!(
+                "{} Auto Scaling group(s) have cost forecast risk across capacity and telemetry findings.",
+                impacted_groups.len()
+            )
+        },
+        missing_data_reason_codes: asg_cost_forecast_missing_data_reason_codes(report),
+        risk_drivers,
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
 fn asg_cost_objective_status(
     score: u8,
     failed_rule_count: usize,
@@ -584,6 +731,93 @@ fn notification_targets(owner_filters: &[String], environment_filters: &[String]
         targets.insert("cost-operations".to_string());
     }
     targets.into_iter().collect()
+}
+
+fn count_reason(report: &PillarReport, reason_code: &str) -> usize {
+    report
+        .findings
+        .iter()
+        .filter(|finding| finding.reason_code == reason_code)
+        .count()
+}
+
+fn resources_for_reason(report: &PillarReport, reason_code: &str) -> Vec<String> {
+    sorted_unique_resources(
+        report
+            .findings
+            .iter()
+            .filter(|finding| finding.reason_code == reason_code)
+            .map(|finding| finding.resource_id.clone()),
+    )
+}
+
+fn asg_cost_forecast_missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    [
+        REASON_INV_STALE_DATA,
+        REASON_TEL_MISSING_COLLECTION_METADATA,
+        REASON_TEL_COLLECTION_ERRORS,
+        REASON_COST_MISSING_CAPACITY_TELEMETRY,
+        REASON_COST_MISSING_GROUP_METRICS_TELEMETRY,
+    ]
+    .into_iter()
+    .filter(|reason_code| {
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == *reason_code)
+    })
+    .map(str::to_string)
+    .collect()
+}
+
+fn asg_cost_forecast_risk_drivers(report: &PillarReport) -> Vec<AsgCostForecastRiskDriver> {
+    [
+        (REASON_INV_STALE_DATA, 25u16),
+        (REASON_TEL_COLLECTION_ERRORS, 20u16),
+        (REASON_COST_FIXED_SIZE, 22u16),
+        (REASON_COST_MISSING_CAPACITY_TELEMETRY, 18u16),
+        (REASON_COST_MISSING_GROUP_METRICS_TELEMETRY, 16u16),
+        (REASON_TEL_MISSING_COLLECTION_METADATA, 10u16),
+        (REASON_COST_NO_TAGS, 5u16),
+    ]
+    .into_iter()
+    .filter_map(|(reason_code, delta)| {
+        let affected_resources = resources_for_reason(report, reason_code);
+        if affected_resources.is_empty() {
+            None
+        } else {
+            Some(AsgCostForecastRiskDriver {
+                reason_code: reason_code.to_string(),
+                monthly_cost_index_delta: delta * affected_resources.len() as u16,
+                affected_resources,
+            })
+        }
+    })
+    .collect()
+}
+
+fn asg_cost_capacity_risk(
+    forecast_blocked: bool,
+    fixed_size_count: usize,
+    missing_capacity_count: usize,
+    missing_metrics_count: usize,
+    missing_collection_metadata_count: usize,
+) -> &'static str {
+    if forecast_blocked {
+        "blocked_until_inventory_refresh"
+    } else if fixed_size_count > 0 && missing_metrics_count > 0 {
+        "fixed_capacity_and_missing_group_metrics"
+    } else if fixed_size_count > 0 {
+        "fixed_capacity_scale_in_disabled"
+    } else if missing_capacity_count > 0 {
+        "unknown_due_to_missing_capacity_telemetry"
+    } else if missing_metrics_count > 0 {
+        "unknown_due_to_missing_group_metrics"
+    } else if missing_collection_metadata_count > 0 {
+        "unknown_due_to_missing_collection_metadata"
+    } else {
+        "cost_capacity_within_current_thresholds"
+    }
 }
 
 fn asg_remediation_action_kind(reason_code: &str) -> Option<AsgRemediationActionKind> {
@@ -2051,6 +2285,88 @@ mod tests {
         assert!(snapshot
             .evidence_reason_codes
             .contains(&REASON_INV_STALE_DATA.to_string()));
+    }
+
+    #[test]
+    fn asg_cost_forecast_snapshot_builds_read_only_cost_band_from_capacity_evidence() {
+        let mut fixed_data = healthy_data();
+        fixed_data["min_size"] = json!(4);
+        fixed_data["max_size"] = json!(4);
+        fixed_data["desired_capacity"] = json!(4);
+        let fixed = fixture("asg-fixed", json!({"owner": "sre"}), fixed_data, now());
+        let missing_metrics = fixture(
+            "asg-missing-metrics",
+            json!({"owner": "platform"}),
+            json!({
+                "min_size": 1,
+                "max_size": 4,
+                "desired_capacity": 2
+            }),
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[fixed, missing_metrics], Pillar::Cost, now());
+        let forecast = asg_cost_forecast_snapshot(&report);
+
+        assert_eq!(forecast.workflow_id, "autoscaling_cost_forecasting");
+        assert!(forecast.read_only_mode);
+        assert_eq!(forecast.baseline_window_days, 30);
+        assert_eq!(forecast.forecast_horizon_days, 30);
+        assert_eq!(forecast.confidence_level, 80);
+        assert_eq!(forecast.risk_level, AsgCostForecastRisk::High);
+        assert_eq!(
+            forecast.capacity_risk,
+            "fixed_capacity_and_missing_group_metrics"
+        );
+        assert_eq!(forecast.forecast_band.horizon_days, 30);
+        assert!(forecast.forecast_band.expected_monthly_cost_index > 130);
+        assert!(
+            forecast.forecast_band.upper_monthly_cost_index
+                > forecast.forecast_band.lower_monthly_cost_index
+        );
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "needs_fresh_capacity_fixture"
+        );
+        assert!(forecast
+            .what_if_inputs
+            .contains(&"enable_group_metrics_collection"));
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_COST_FIXED_SIZE
+                && driver.affected_resources == vec!["asg-fixed"]
+        }));
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_COST_MISSING_GROUP_METRICS_TELEMETRY
+                && driver.affected_resources == vec!["asg-missing-metrics"]
+        }));
+        assert!(forecast
+            .missing_data_reason_codes
+            .contains(&REASON_COST_MISSING_GROUP_METRICS_TELEMETRY.to_string()));
+    }
+
+    #[test]
+    fn asg_cost_forecast_snapshot_blocks_on_stale_or_missing_capacity_data() {
+        let stale = fixture(
+            "asg-stale-forecast",
+            json!({"owner": "sre"}),
+            healthy_data(),
+            now() - chrono::Duration::hours(30),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Cost, now());
+        let forecast = asg_cost_forecast_snapshot(&report);
+
+        assert_eq!(forecast.risk_level, AsgCostForecastRisk::Blocked);
+        assert!(forecast.blocked_by_stale_data);
+        assert_eq!(forecast.capacity_risk, "blocked_until_inventory_refresh");
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "needs_fresh_capacity_fixture"
+        );
+        assert!(forecast
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(forecast.forecast_band.upper_monthly_cost_index > 100);
     }
 
     #[test]

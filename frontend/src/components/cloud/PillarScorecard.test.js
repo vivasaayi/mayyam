@@ -270,6 +270,47 @@ describe("PillarScorecard", () => {
               "ASG_COST_FIXED_SIZE",
             ],
           },
+          forecasting: {
+            workflow_id: "autoscaling_cost_forecasting",
+            read_only_mode: true,
+            baseline_window_days: 30,
+            forecast_horizon_days: 30,
+            confidence_level: 80,
+            forecast_band: {
+              horizon_days: 30,
+              lower_monthly_cost_index: 124,
+              expected_monthly_cost_index: 146,
+              upper_monthly_cost_index: 168,
+              confidence_level: 80,
+            },
+            risk_level: "high",
+            capacity_risk: "fixed_capacity_and_missing_group_metrics",
+            backtesting_fixture_status: "ready_findings_baseline",
+            threshold_controls: [
+              "monthly_cost_index_warning_threshold",
+              "monthly_cost_index_critical_threshold",
+            ],
+            what_if_inputs: [
+              "allow_scale_in_for_fixed_groups",
+              "enable_group_metrics_collection",
+            ],
+            blocked_by_stale_data: false,
+            blast_radius_summary:
+              "2 Auto Scaling group(s) have cost forecast risk across capacity and telemetry findings.",
+            missing_data_reason_codes: ["ASG_COST_MISSING_GROUP_METRICS_TELEMETRY"],
+            risk_drivers: [
+              {
+                reason_code: "ASG_COST_FIXED_SIZE",
+                affected_resources: ["asg-fixed"],
+                monthly_cost_index_delta: 20,
+              },
+            ],
+            evidence_reason_codes: [
+              "ASG_COST_MISSING_CAPACITY_TELEMETRY",
+              "ASG_COST_NO_TAGS",
+              "ASG_COST_FIXED_SIZE",
+            ],
+          },
         },
       ],
     };
@@ -328,6 +369,15 @@ describe("PillarScorecard", () => {
     expect(text).toContain("sre");
     expect(text).toContain("environment:prod, owner:sre");
     expect(text).toContain("Snapshot Collected");
+    expect(text).toContain("Cost Forecast");
+    expect(text).toContain("autoscaling_cost_forecasting");
+    expect(text).toContain("30d baseline");
+    expect(text).toContain("expected 146");
+    expect(text).toContain("80% confidence");
+    expect(text).toContain("Fixed Capacity And Missing Group Metrics");
+    expect(text).toContain("Fresh enough");
+    expect(text).toContain("Ready Findings Baseline");
+    expect(text).toContain("Monthly Cost Index Warning Threshold");
 
     await view.unmount();
   });
