@@ -88,6 +88,7 @@ pub struct Ec2PostureSummary {
 }
 
 pub type Ec2CostPostureSummary = Ec2PostureSummary;
+pub type Ec2SecurityPostureSummary = Ec2PostureSummary;
 pub type Ec2ResiliencePostureSummary = Ec2PostureSummary;
 pub type Ec2PerformancePostureSummary = Ec2PostureSummary;
 pub type Ec2ScalabilityPostureSummary = Ec2PostureSummary;
@@ -570,6 +571,56 @@ pub fn ec2_cost_posture_summary(report: &PillarReport) -> Ec2CostPostureSummary 
         .count();
 
     Ec2PostureSummary {
+        status: if rules_failed == 0 {
+            Ec2PostureStatus::Pass
+        } else {
+            Ec2PostureStatus::Fail
+        },
+        rules_evaluated: rules.len(),
+        rules_failed,
+        affected_resources,
+        rules,
+    }
+}
+
+pub fn ec2_security_posture_summary(report: &PillarReport) -> Ec2SecurityPostureSummary {
+    let rules = vec![
+        ec2_security_posture_rule(
+            report,
+            "ec2-security-inventory-freshness",
+            &[REASON_INV_STALE_DATA],
+        ),
+        ec2_security_posture_rule(
+            report,
+            "ec2-security-public-ip-exposure",
+            &[REASON_SEC_PUBLIC_IP],
+        ),
+        ec2_security_posture_rule(
+            report,
+            "ec2-security-owner-routing-present",
+            &[REASON_SEC_MISSING_OWNER_TAG],
+        ),
+        ec2_security_posture_rule(
+            report,
+            "ec2-security-packet-telemetry-present",
+            &[REASON_SEC_MISSING_PACKET_TELEMETRY],
+        ),
+        ec2_security_posture_rule(
+            report,
+            "ec2-security-public-packet-traffic",
+            &[REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY],
+        ),
+    ];
+    let rules_failed = rules
+        .iter()
+        .filter(|rule| rule.status == Ec2PostureStatus::Fail)
+        .count();
+    let affected_resources = sorted_unique_resources(
+        rules
+            .iter()
+            .flat_map(|rule| rule.affected_resources.iter().cloned()),
+    );
+    Ec2SecurityPostureSummary {
         status: if rules_failed == 0 {
             Ec2PostureStatus::Pass
         } else {
@@ -2067,6 +2118,14 @@ fn ec2_cost_posture_rule(
     ec2_posture_rule(report, rule_id, reason_codes)
 }
 
+fn ec2_security_posture_rule(
+    report: &PillarReport,
+    rule_id: &'static str,
+    reason_codes: &[&'static str],
+) -> Ec2PostureRule {
+    ec2_posture_rule(report, rule_id, reason_codes)
+}
+
 fn ec2_resilience_posture_rule(
     report: &PillarReport,
     rule_id: &'static str,
@@ -2967,6 +3026,147 @@ mod tests {
             "unexpected: {:?}",
             report.findings
         );
+    }
+
+    #[test]
+    fn ec2_security_posture_summary_flags_public_owner_and_packet_rules() {
+        let exposed = fixture(
+            "i-sec-exposed",
+            json!({}),
+            json!({
+                "state": "running",
+                "public_ip": "54.0.0.1",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[12.0]),
+                        metric("NetworkPacketsOut", &[6.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let telemetry_gap = fixture(
+            "i-sec-gap",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "private_ip": "10.0.0.5",
+                "availability_zone": "us-east-1a"
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[exposed, telemetry_gap], Pillar::Security, now());
+        let posture = ec2_security_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 5);
+        assert_eq!(posture.rules_failed, 4);
+        assert_eq!(
+            posture.affected_resources,
+            vec!["i-sec-exposed".to_string(), "i-sec-gap".to_string()]
+        );
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-security-public-ip-exposure"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule.reason_codes.contains(&REASON_SEC_PUBLIC_IP)
+                && rule.affected_resources == vec!["i-sec-exposed"]
+                && rule.suppression_supported
+                && rule.assignment_supported
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-security-owner-routing-present"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule.reason_codes.contains(&REASON_SEC_MISSING_OWNER_TAG)
+                && rule.affected_resources == vec!["i-sec-exposed"]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-security-packet-telemetry-present"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule
+                    .reason_codes
+                    .contains(&REASON_SEC_MISSING_PACKET_TELEMETRY)
+                && rule.affected_resources == vec!["i-sec-gap"]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-security-public-packet-traffic"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule
+                    .reason_codes
+                    .contains(&REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY)
+                && rule.affected_resources == vec!["i-sec-exposed"]
+        }));
+    }
+
+    #[test]
+    fn ec2_security_posture_summary_blocks_pass_when_inventory_is_stale() {
+        let stale = fixture(
+            "i-sec-stale",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "private_ip": "10.0.0.5",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[0.0]),
+                        metric("NetworkPacketsOut", &[0.0])
+                    ]
+                }
+            }),
+            48,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Security, now());
+        let posture = ec2_security_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 5);
+        assert_eq!(posture.rules_failed, 1);
+        assert_eq!(posture.affected_resources, vec!["i-sec-stale"]);
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-security-inventory-freshness"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule.reason_codes.contains(&REASON_INV_STALE_DATA)
+                && rule.affected_resources == vec!["i-sec-stale"]
+        }));
+    }
+
+    #[test]
+    fn ec2_security_posture_summary_passes_for_private_owned_packet_telemetry() {
+        let healthy = fixture(
+            "i-sec-healthy",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "private_ip": "10.0.0.5",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[0.0]),
+                        metric("NetworkPacketsOut", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[healthy], Pillar::Security, now());
+        let posture = ec2_security_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Pass);
+        assert_eq!(posture.rules_evaluated, 5);
+        assert_eq!(posture.rules_failed, 0);
+        assert!(posture.affected_resources.is_empty());
+        assert!(posture
+            .rules
+            .iter()
+            .all(|rule| rule.status == Ec2PostureStatus::Pass));
     }
 
     #[test]

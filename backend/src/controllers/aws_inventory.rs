@@ -60,7 +60,7 @@ use crate::services::aws::inventory::ec2_pillar_evaluator::{
     ec2_resilience_posture_summary, ec2_resilience_remediation_workflow,
     ec2_resilience_reporting_bundle, ec2_resilience_slo_policy_snapshot,
     ec2_resilience_triage_context, ec2_scalability_posture_summary, ec2_scalability_triage_context,
-    evaluate_ec2_fleet,
+    ec2_security_posture_summary, evaluate_ec2_fleet,
 };
 use crate::services::aws::inventory::ecs_pillar_evaluator::evaluate_ecs_fleet;
 use crate::services::aws::inventory::efs_pillar_evaluator::evaluate_efs_fleet;
@@ -334,6 +334,16 @@ pub async fn get_ec2_pillar_reports(
                     "slo_policy_tracking": ec2_cost_slo_policy_snapshot(&report),
                     "forecasting": ec2_cost_forecast_snapshot(&report),
                     "reporting": ec2_cost_reporting_bundle(&report),
+                })
+            } else if *pillar == Pillar::Security {
+                json!({
+                    "pillar": report.pillar,
+                    "assessment_scope": "ec2_public_exposure_owner_routing_and_packet_telemetry",
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "posture": ec2_security_posture_summary(&report),
                 })
             } else if *pillar == Pillar::Resilience {
                 json!({

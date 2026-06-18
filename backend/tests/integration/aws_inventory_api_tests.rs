@@ -130,6 +130,62 @@ async fn ec2_pillar_reports_contract() {
 
     let resp = client
         .get(format!(
+            "{}/api/aws/inventory/ec2/pillars?account_id={}&pillar=security",
+            base, account_id
+        ))
+        .send()
+        .await
+        .expect("security pillar request failed");
+    assert_eq!(resp.status(), 200);
+    let body: Value = resp.json().await.expect("invalid JSON body");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0]["pillar"], "security");
+    assert_eq!(
+        reports[0]["assessment_scope"],
+        "ec2_public_exposure_owner_routing_and_packet_telemetry"
+    );
+    assert_eq!(reports[0]["posture"]["rules_evaluated"], 5);
+    assert!(matches!(
+        reports[0]["posture"]["status"].as_str(),
+        Some("pass" | "fail")
+    ));
+    let security_rules = reports[0]["posture"]["rules"]
+        .as_array()
+        .expect("security posture rules");
+    assert_eq!(security_rules.len(), 5);
+    let expected_rules = [
+        ("ec2-security-inventory-freshness", "EC2_INV_STALE_DATA"),
+        (
+            "ec2-security-public-ip-exposure",
+            "EC2_SEC_PUBLIC_IP_ASSIGNED",
+        ),
+        (
+            "ec2-security-owner-routing-present",
+            "EC2_SEC_MISSING_OWNER_TAG",
+        ),
+        (
+            "ec2-security-packet-telemetry-present",
+            "EC2_SEC_MISSING_PACKET_TELEMETRY",
+        ),
+        (
+            "ec2-security-public-packet-traffic",
+            "EC2_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY",
+        ),
+    ];
+    for (rule, (expected_rule_id, expected_reason_code)) in
+        security_rules.iter().zip(expected_rules)
+    {
+        assert_eq!(rule["rule_id"], expected_rule_id);
+        assert_eq!(rule["reason_codes"][0], expected_reason_code);
+        assert!(rule["suppression_supported"].is_boolean());
+        assert!(rule["assignment_supported"].is_boolean());
+        assert!(rule["affected_resources"].is_array());
+    }
+    assert!(reports[0]["posture"]["affected_resources"].is_array());
+
+    let resp = client
+        .get(format!(
             "{}/api/aws/inventory/ec2/pillars?account_id={}&pillar=resilience",
             base, account_id
         ))

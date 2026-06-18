@@ -328,4 +328,95 @@ describe("PillarScorecard", () => {
 
     await view.unmount();
   });
+
+  it("renders EC2 security posture rule gaps for operator review", async () => {
+    const data = {
+      evaluated_at: "2026-06-18T06:10:00Z",
+      stale_after_hours: 24,
+      reports: [
+        {
+          pillar: "security",
+          score: 62,
+          resources_evaluated: 2,
+          stale_resources: 0,
+          posture: {
+            status: "fail",
+            rules_evaluated: 5,
+            rules_failed: 4,
+            affected_resources: ["i-sec-exposed", "i-sec-gap"],
+            rules: [
+              {
+                rule_id: "ec2-security-inventory-freshness",
+                status: "pass",
+                reason_codes: ["EC2_INV_STALE_DATA"],
+                affected_resources: [],
+              },
+              {
+                rule_id: "ec2-security-public-ip-exposure",
+                status: "fail",
+                reason_codes: ["EC2_SEC_PUBLIC_IP_ASSIGNED"],
+                affected_resources: ["i-sec-exposed"],
+              },
+              {
+                rule_id: "ec2-security-owner-routing-present",
+                status: "fail",
+                reason_codes: ["EC2_SEC_MISSING_OWNER_TAG"],
+                affected_resources: ["i-sec-exposed"],
+              },
+              {
+                rule_id: "ec2-security-packet-telemetry-present",
+                status: "fail",
+                reason_codes: ["EC2_SEC_MISSING_PACKET_TELEMETRY"],
+                affected_resources: ["i-sec-gap"],
+              },
+              {
+                rule_id: "ec2-security-public-packet-traffic",
+                status: "fail",
+                reason_codes: ["EC2_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY"],
+                affected_resources: ["i-sec-exposed"],
+              },
+            ],
+          },
+          findings: [
+            {
+              severity: "high",
+              reason_code: "EC2_SEC_PUBLIC_IP_ASSIGNED",
+              resource_id: "i-sec-exposed",
+              message:
+                "Instance i-sec-exposed has a public IP address assigned; verify it is intentionally internet-facing",
+              evidence: { public_ip: "54.0.0.1" },
+            },
+            {
+              severity: "medium",
+              reason_code: "EC2_SEC_MISSING_PACKET_TELEMETRY",
+              resource_id: "i-sec-gap",
+              message:
+                "Instance i-sec-gap is missing EC2 packet telemetry; network exposure cannot be verified from evidence",
+              evidence: { missing_metrics: ["NetworkPacketsIn"] },
+            },
+          ],
+        },
+      ],
+    };
+
+    const view = await render(<PillarScorecard data={data} />);
+    const text = view.container.textContent;
+
+    expect(text).toContain("security");
+    expect(text).toContain("Security Posture");
+    expect(text).toContain("4 failed of 5");
+    expect(text).toContain("ec2-security-public-ip-exposure");
+    expect(text).toContain("ec2-security-owner-routing-present");
+    expect(text).toContain("ec2-security-packet-telemetry-present");
+    expect(text).toContain("ec2-security-public-packet-traffic");
+    expect(text).toContain("EC2_SEC_PUBLIC_IP_ASSIGNED");
+    expect(text).toContain("EC2_SEC_MISSING_OWNER_TAG");
+    expect(text).toContain("EC2_SEC_MISSING_PACKET_TELEMETRY");
+    expect(text).toContain("EC2_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY");
+    expect(text).toContain("i-sec-exposed");
+    expect(text).toContain("i-sec-gap");
+    expect(text).toContain("intentionally internet-facing");
+
+    await view.unmount();
+  });
 });
