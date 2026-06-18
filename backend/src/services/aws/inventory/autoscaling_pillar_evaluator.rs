@@ -124,6 +124,7 @@ pub struct AsgTriageContext {
 
 pub type AsgCostTriageContext = AsgTriageContext;
 pub type AsgResilienceTriageContext = AsgTriageContext;
+pub type AsgSecurityTriageContext = AsgTriageContext;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -2013,6 +2014,79 @@ pub fn asg_resilience_triage_context(report: &PillarReport) -> AsgResilienceTria
     }
 }
 
+pub fn asg_security_triage_context(report: &PillarReport) -> AsgSecurityTriageContext {
+    let mut facts = Vec::new();
+    let mut hypotheses = Vec::new();
+    let mut missing_data_questions = Vec::new();
+    let mut evidence_citations = Vec::new();
+
+    for finding in &report.findings {
+        facts.push(format!(
+            "{} affects {} with {:?} severity",
+            finding.reason_code, finding.resource_id, finding.severity
+        ));
+        evidence_citations.push(AsgEvidenceCitation {
+            reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            evidence: finding.evidence.clone(),
+        });
+
+        match finding.reason_code.as_str() {
+            REASON_INV_STALE_DATA => missing_data_questions.push(format!(
+                "Refresh Auto Scaling inventory for {} before generating security triage",
+                finding.resource_id
+            )),
+            REASON_TEL_MISSING_COLLECTION_METADATA => missing_data_questions.push(format!(
+                "Collect telemetry collection metadata for {} before trusting Auto Scaling security evidence",
+                finding.resource_id
+            )),
+            REASON_TEL_COLLECTION_ERRORS | REASON_SEC_TELEMETRY_COLLECTION_ERRORS => {
+                hypotheses.push(format!(
+                    "{} has telemetry collection errors; inspect collector logs, Auto Scaling API throttling, permissions, and retry evidence before explaining security posture",
+                    finding.resource_id
+                ))
+            }
+            REASON_SEC_MISSING_INSTANCE_TELEMETRY => missing_data_questions.push(format!(
+                "Collect instance health telemetry for {} before explaining Auto Scaling security posture",
+                finding.resource_id
+            )),
+            REASON_SEC_LEGACY_LAUNCH_CONFIGURATION => hypotheses.push(format!(
+                "{} uses a legacy launch configuration; verify AMI source, IAM instance profile, user-data handling, and launch-template migration evidence before recommending security changes",
+                finding.resource_id
+            )),
+            REASON_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED => missing_data_questions.push(format!(
+                "Collect launch template, mixed instances policy, or launch configuration evidence for {} before judging Auto Scaling launch-source security",
+                finding.resource_id
+            )),
+            _ => {}
+        }
+    }
+
+    AsgTriageContext {
+        workflow_id: "autoscaling_security_triage_context",
+        pillar: report.pillar,
+        context_builder_id: "autoscaling-security-deterministic-context-v1",
+        prompt_template_id: "autoscaling-security-ai-triage-v1",
+        generation_mode: "deterministic_no_llm",
+        max_prompt_tokens: 1200,
+        provider_routing: vec!["primary_ops_llm", "fallback_ops_llm"],
+        audit_event_type: "autoscaling_security_ai_triage_context_built",
+        guardrails: AsgAiTriageGuardrails {
+            read_only_mode: true,
+            evidence_required: true,
+            separate_facts_from_hypotheses: true,
+            ask_for_missing_data: true,
+            no_llm_invocation: true,
+            no_mutation_planning: true,
+        },
+        facts,
+        hypotheses,
+        missing_data_questions,
+        evidence_citations,
+    }
+}
+
 pub fn asg_cost_posture_summary(report: &PillarReport) -> AsgCostPostureSummary {
     let rules = vec![
         asg_posture_rule(
@@ -3422,6 +3496,139 @@ mod tests {
             .rules
             .iter()
             .all(|rule| rule.status == AsgPostureStatus::Pass));
+    }
+
+    #[test]
+    fn asg_security_triage_context_separates_facts_hypotheses_and_questions() {
+        let mut legacy_data = healthy_data();
+        legacy_data["launch_configuration_name"] = json!("legacy-lc");
+        legacy_data["uses_launch_template"] = json!(false);
+        let legacy = fixture(
+            "asg-security-legacy-triage",
+            json!({"team": "core"}),
+            legacy_data,
+            now(),
+        );
+
+        let mut missing_instance_data = healthy_data();
+        missing_instance_data
+            .as_object_mut()
+            .expect("object")
+            .remove("instance_health");
+        let missing_instance = fixture(
+            "asg-security-missing-instance-triage",
+            json!({"team": "core"}),
+            missing_instance_data,
+            now(),
+        );
+
+        let mut collection_error_data = healthy_data();
+        collection_error_data["telemetry_collection_success_count"] = json!(0);
+        collection_error_data["telemetry_collection_failure_count"] = json!(1);
+        collection_error_data["telemetry_collection_error_count"] = json!(1);
+        collection_error_data["telemetry_collection_errors"] = json!([
+            {
+                "source": "autoscaling",
+                "operation": "DescribeAutoScalingGroups",
+                "error": "throttled"
+            }
+        ]);
+        let collection_error = fixture(
+            "asg-security-error-triage",
+            json!({"team": "core"}),
+            collection_error_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(
+            &[legacy, missing_instance, collection_error],
+            Pillar::Security,
+            now(),
+        );
+        let triage = asg_security_triage_context(&report);
+
+        assert_eq!(triage.workflow_id, "autoscaling_security_triage_context");
+        assert_eq!(
+            triage.context_builder_id,
+            "autoscaling-security-deterministic-context-v1"
+        );
+        assert_eq!(
+            triage.prompt_template_id,
+            "autoscaling-security-ai-triage-v1"
+        );
+        assert_eq!(triage.generation_mode, "deterministic_no_llm");
+        assert_eq!(triage.max_prompt_tokens, 1200);
+        assert_eq!(
+            triage.provider_routing,
+            vec!["primary_ops_llm", "fallback_ops_llm"]
+        );
+        assert_eq!(
+            triage.audit_event_type,
+            "autoscaling_security_ai_triage_context_built"
+        );
+        assert!(triage.guardrails.read_only_mode);
+        assert!(triage.guardrails.evidence_required);
+        assert!(triage.guardrails.separate_facts_from_hypotheses);
+        assert!(triage.guardrails.ask_for_missing_data);
+        assert!(triage.guardrails.no_llm_invocation);
+        assert!(triage.guardrails.no_mutation_planning);
+        assert!(triage
+            .facts
+            .iter()
+            .any(|fact| fact.contains(REASON_SEC_LEGACY_LAUNCH_CONFIGURATION)));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("legacy launch configuration")));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("collector logs")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("instance health telemetry")));
+        assert_eq!(triage.evidence_citations.len(), report.findings.len());
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_SEC_LEGACY_LAUNCH_CONFIGURATION
+                && citation.resource_id == "asg-security-legacy-triage"
+        }));
+    }
+
+    #[test]
+    fn asg_security_triage_context_tracks_stale_and_missing_launch_source_evidence() {
+        let mut stale = fixture(
+            "asg-security-stale-triage",
+            json!({"team": "core"}),
+            healthy_data(),
+            now(),
+        );
+        stale.last_refreshed = now() - Duration::hours(48);
+
+        let mut launch_gap_data = healthy_data();
+        launch_gap_data["uses_launch_template"] = json!(false);
+        launch_gap_data["uses_mixed_instances_policy"] = json!(false);
+        let launch_gap = fixture(
+            "asg-security-launch-gap-triage",
+            json!({"team": "core"}),
+            launch_gap_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale, launch_gap], Pillar::Security, now());
+        let triage = asg_security_triage_context(&report);
+
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("Refresh Auto Scaling inventory")));
+        assert!(triage.missing_data_questions.iter().any(|question| question
+            .contains("Collect launch template, mixed instances policy, or launch configuration")));
+        assert_eq!(triage.evidence_citations.len(), report.findings.len());
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED
+                && citation.resource_id == "asg-security-launch-gap-triage"
+        }));
     }
 
     #[test]

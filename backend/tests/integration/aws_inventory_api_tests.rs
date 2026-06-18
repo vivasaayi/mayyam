@@ -1317,7 +1317,33 @@ async fn autoscaling_security_pillar_reports_posture_contract() {
     assert_eq!(reports[0]["posture"]["rules_evaluated"], 6);
     assert!(reports[0]["posture"]["rules_failed"].is_number());
     assert!(reports[0]["posture"]["affected_resources"].is_array());
-    assert!(reports[0].get("triage_context").is_none());
+    let triage = &reports[0]["triage_context"];
+    assert_eq!(triage["workflow_id"], "autoscaling_security_triage_context");
+    assert_eq!(
+        triage["context_builder_id"],
+        "autoscaling-security-deterministic-context-v1"
+    );
+    assert_eq!(
+        triage["prompt_template_id"],
+        "autoscaling-security-ai-triage-v1"
+    );
+    assert_eq!(triage["generation_mode"], "deterministic_no_llm");
+    assert_eq!(triage["max_prompt_tokens"], 1200);
+    assert_eq!(triage["provider_routing"][0], "primary_ops_llm");
+    assert_eq!(
+        triage["audit_event_type"],
+        "autoscaling_security_ai_triage_context_built"
+    );
+    assert_eq!(triage["guardrails"]["read_only_mode"], true);
+    assert_eq!(triage["guardrails"]["evidence_required"], true);
+    assert_eq!(triage["guardrails"]["separate_facts_from_hypotheses"], true);
+    assert_eq!(triage["guardrails"]["ask_for_missing_data"], true);
+    assert_eq!(triage["guardrails"]["no_llm_invocation"], true);
+    assert_eq!(triage["guardrails"]["no_mutation_planning"], true);
+    assert!(triage["facts"].is_array());
+    assert!(triage["hypotheses"].is_array());
+    assert!(triage["missing_data_questions"].is_array());
+    assert!(triage["evidence_citations"].is_array());
     assert!(reports[0].get("remediation_workflow").is_none());
 
     let rules = reports[0]["posture"]["rules"]

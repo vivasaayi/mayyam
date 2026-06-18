@@ -899,6 +899,47 @@ describe("PillarScorecard", () => {
               },
             ],
           },
+          triage_context: {
+            workflow_id: "autoscaling_security_triage_context",
+            context_builder_id: "autoscaling-security-deterministic-context-v1",
+            prompt_template_id: "autoscaling-security-ai-triage-v1",
+            generation_mode: "deterministic_no_llm",
+            max_prompt_tokens: 1200,
+            provider_routing: ["primary_ops_llm", "fallback_ops_llm"],
+            guardrails: {
+              read_only_mode: true,
+              evidence_required: true,
+              separate_facts_from_hypotheses: true,
+              ask_for_missing_data: true,
+              no_llm_invocation: true,
+              no_mutation_planning: true,
+            },
+            facts: [
+              "ASG_SEC_LEGACY_LAUNCH_CONFIGURATION affects asg-legacy-launch with Medium severity",
+              "ASG_SEC_MISSING_INSTANCE_TELEMETRY affects asg-missing-instance-telemetry with Medium severity",
+            ],
+            hypotheses: [
+              "asg-legacy-launch uses a legacy launch configuration; verify AMI source, IAM instance profile, user-data handling, and launch-template migration evidence before recommending security changes",
+            ],
+            missing_data_questions: [
+              "Collect instance health telemetry for asg-missing-instance-telemetry before explaining Auto Scaling security posture",
+              "Collect launch template, mixed instances policy, or launch configuration evidence for asg-launch-source-gap before judging Auto Scaling launch-source security",
+            ],
+            evidence_citations: [
+              {
+                reason_code: "ASG_SEC_LEGACY_LAUNCH_CONFIGURATION",
+                resource_id: "asg-legacy-launch",
+                severity: "medium",
+                evidence: { launch_configuration_name: "legacy-lc" },
+              },
+              {
+                reason_code: "ASG_SEC_MISSING_INSTANCE_TELEMETRY",
+                resource_id: "asg-missing-instance-telemetry",
+                severity: "medium",
+                evidence: { required_fields: ["instance_health"] },
+              },
+            ],
+          },
         },
       ],
     };
@@ -917,6 +958,18 @@ describe("PillarScorecard", () => {
     expect(text).toContain("asg-missing-instance-telemetry");
     expect(text).toContain("asg-legacy-launch");
     expect(text).toContain("asg-launch-source-gap");
+    expect(text).toContain("Security Triage Context");
+    expect(text).toContain("autoscaling-security-deterministic-context-v1");
+    expect(text).toContain("autoscaling-security-ai-triage-v1");
+    expect(text).toContain("Provider Routing (not invoked)");
+    expect(text).toContain("primary_ops_llm");
+    expect(text).toContain("1200 token budget");
+    expect(text).toContain("Read only");
+    expect(text).toContain("Deterministic context only");
+    expect(text).toContain("legacy launch configuration");
+    expect(text).toContain("IAM instance profile");
+    expect(text).toContain("Collect instance health telemetry");
+    expect(text).toContain("Collect launch template");
 
     await view.unmount();
   });
