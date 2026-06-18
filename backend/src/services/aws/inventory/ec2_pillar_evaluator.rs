@@ -457,6 +457,44 @@ pub struct Ec2SecurityForecastSnapshot {
     pub evidence_reason_codes: Vec<String>,
 }
 
+pub type Ec2PerformanceForecastRisk = Ec2ResilienceForecastRisk;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2PerformanceForecastBand {
+    pub horizon_days: u16,
+    pub lower_performance_pressure_index: u16,
+    pub expected_performance_pressure_index: u16,
+    pub upper_performance_pressure_index: u16,
+    pub confidence_level: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2PerformanceForecastRiskDriver {
+    pub reason_code: String,
+    pub affected_resources: Vec<String>,
+    pub performance_pressure_index_delta: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2PerformanceForecastSnapshot {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub baseline_window_days: u16,
+    pub forecast_horizon_days: u16,
+    pub confidence_level: u8,
+    pub forecast_band: Ec2PerformanceForecastBand,
+    pub risk_level: Ec2PerformanceForecastRisk,
+    pub performance_capacity_risk: &'static str,
+    pub backtesting_fixture_status: &'static str,
+    pub threshold_controls: Vec<&'static str>,
+    pub what_if_inputs: Vec<&'static str>,
+    pub blocked_by_stale_data: bool,
+    pub blast_radius_summary: &'static str,
+    pub missing_data_reason_codes: Vec<String>,
+    pub risk_drivers: Vec<Ec2PerformanceForecastRiskDriver>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Ec2CostExecutiveSummary {
     pub report_id: &'static str,
@@ -1878,6 +1916,96 @@ pub fn ec2_security_forecast_snapshot(report: &PillarReport) -> Ec2SecurityForec
     }
 }
 
+pub fn ec2_performance_forecast_snapshot(report: &PillarReport) -> Ec2PerformanceForecastSnapshot {
+    const BASELINE_WINDOW_DAYS: u16 = 30;
+    const FORECAST_HORIZON_DAYS: u16 = 30;
+    const CONFIDENCE_LEVEL: u8 = 75;
+
+    let empty_inventory = report.resources_evaluated == 0;
+    let stale_data = report.stale_resources > 0
+        || report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+    let missing_core_count = count_reason(report, REASON_PERF_MISSING_CORE_TELEMETRY);
+    let high_cpu_count = count_reason(report, REASON_PERF_HIGH_CPU_TELEMETRY);
+
+    let expected_performance_pressure_index = bounded_u16(
+        100u32
+            + (high_cpu_count as u32 * 38)
+            + (missing_core_count as u32 * 20)
+            + (report.stale_resources as u32 * 28),
+    );
+    let uncertainty = bounded_u16(
+        10u32
+            + (missing_core_count as u32 * 10)
+            + (report.stale_resources as u32 * 14)
+            + empty_inventory as u32 * 25,
+    );
+    let lower_performance_pressure_index =
+        expected_performance_pressure_index.saturating_sub(uncertainty);
+    let upper_performance_pressure_index =
+        expected_performance_pressure_index.saturating_add(uncertainty);
+    let risk_level = if stale_data || empty_inventory {
+        Ec2PerformanceForecastRisk::Blocked
+    } else if high_cpu_count > 0 || upper_performance_pressure_index >= 160 {
+        Ec2PerformanceForecastRisk::High
+    } else if missing_core_count > 0 || expected_performance_pressure_index > 100 {
+        Ec2PerformanceForecastRisk::Moderate
+    } else {
+        Ec2PerformanceForecastRisk::Low
+    };
+
+    Ec2PerformanceForecastSnapshot {
+        workflow_id: "ec2_performance_forecasting",
+        read_only_mode: true,
+        baseline_window_days: BASELINE_WINDOW_DAYS,
+        forecast_horizon_days: FORECAST_HORIZON_DAYS,
+        confidence_level: CONFIDENCE_LEVEL,
+        forecast_band: Ec2PerformanceForecastBand {
+            horizon_days: FORECAST_HORIZON_DAYS,
+            lower_performance_pressure_index,
+            expected_performance_pressure_index,
+            upper_performance_pressure_index,
+            confidence_level: CONFIDENCE_LEVEL,
+        },
+        risk_level,
+        performance_capacity_risk: ec2_performance_capacity_risk(
+            stale_data,
+            empty_inventory,
+            high_cpu_count,
+            missing_core_count,
+        ),
+        backtesting_fixture_status: if empty_inventory {
+            "blocked_missing_performance_inventory_fixture"
+        } else if report.findings.is_empty() {
+            "ready_clean_performance_baseline"
+        } else if stale_data || missing_core_count > 0 {
+            "needs_fresh_performance_telemetry_fixture"
+        } else {
+            "ready_performance_findings_baseline"
+        },
+        threshold_controls: vec![
+            "performance_pressure_index_warning_threshold",
+            "performance_pressure_index_critical_threshold",
+        ],
+        what_if_inputs: vec![
+            "restore_core_performance_telemetry",
+            "compare_cpu_pressure_to_workload_demand",
+            "review_instance_type_and_burst_credit_headroom",
+        ],
+        blocked_by_stale_data: stale_data,
+        blast_radius_summary: ec2_performance_blast_radius_summary(
+            empty_inventory,
+            high_cpu_count,
+            missing_core_count,
+        ),
+        missing_data_reason_codes: performance_missing_data_reason_codes(report),
+        risk_drivers: ec2_performance_forecast_risk_drivers(report),
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
 pub fn ec2_cost_reporting_bundle(report: &PillarReport) -> Ec2CostReportingBundle {
     let posture = ec2_cost_posture_summary(report);
     let reason_codes = sorted_unique_reason_codes(report);
@@ -2230,6 +2358,87 @@ fn ec2_security_forecast_risk_drivers(report: &PillarReport) -> Vec<Ec2SecurityF
             Some(Ec2SecurityForecastRiskDriver {
                 reason_code: reason_code.to_string(),
                 security_exposure_index_delta: bounded_u16(
+                    delta as u32 * affected_resources.len() as u32,
+                ),
+                affected_resources,
+            })
+        }
+    })
+    .collect()
+}
+
+fn ec2_performance_capacity_risk(
+    stale_data: bool,
+    empty_inventory: bool,
+    high_cpu_count: usize,
+    missing_core_count: usize,
+) -> &'static str {
+    if stale_data {
+        "blocked_until_inventory_refresh"
+    } else if empty_inventory {
+        "blocked_until_performance_inventory_exists"
+    } else if high_cpu_count > 0 {
+        "cpu_constrained_compute_capacity"
+    } else if missing_core_count > 0 {
+        "unknown_due_to_missing_core_performance_telemetry"
+    } else {
+        "within_observed_performance_baseline"
+    }
+}
+
+fn ec2_performance_blast_radius_summary(
+    empty_inventory: bool,
+    high_cpu_count: usize,
+    missing_core_count: usize,
+) -> &'static str {
+    if empty_inventory {
+        "performance_pressure_blast_radius_unknown_until_inventory_exists"
+    } else if high_cpu_count > 0 {
+        "instances_with_high_cpu_can_expand_latency_or_throttle_risk"
+    } else if missing_core_count > 0 {
+        "performance_blast_radius_unknown_until_core_telemetry_is_complete"
+    } else {
+        "no_performance_pressure_blast_radius_detected_from_current_evidence"
+    }
+}
+
+fn performance_missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    if report.resources_evaluated == 0 {
+        return vec![REASON_INV_NO_RESOURCES.to_string()];
+    }
+
+    report
+        .findings
+        .iter()
+        .filter(|finding| {
+            matches!(
+                finding.reason_code.as_str(),
+                REASON_INV_STALE_DATA | REASON_PERF_MISSING_CORE_TELEMETRY
+            )
+        })
+        .map(|finding| finding.reason_code.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn ec2_performance_forecast_risk_drivers(
+    report: &PillarReport,
+) -> Vec<Ec2PerformanceForecastRiskDriver> {
+    [
+        (REASON_INV_STALE_DATA, 28u16),
+        (REASON_PERF_HIGH_CPU_TELEMETRY, 38u16),
+        (REASON_PERF_MISSING_CORE_TELEMETRY, 20u16),
+    ]
+    .into_iter()
+    .filter_map(|(reason_code, delta)| {
+        let affected_resources = resources_for_reason(report, reason_code);
+        if affected_resources.is_empty() {
+            None
+        } else {
+            Some(Ec2PerformanceForecastRiskDriver {
+                reason_code: reason_code.to_string(),
+                performance_pressure_index_delta: bounded_u16(
                     delta as u32 * affected_resources.len() as u32,
                 ),
                 affected_resources,
@@ -5645,6 +5854,184 @@ mod tests {
         assert!(forecast.risk_drivers.iter().any(|driver| {
             driver.reason_code == REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY
                 && driver.security_exposure_index_delta == u16::MAX
+        }));
+    }
+
+    #[test]
+    fn ec2_performance_forecast_snapshot_builds_read_only_pressure_band_from_evidence() {
+        let missing = fixture(
+            "i-perf-missing-forecast",
+            json!({"owner": "ops"}),
+            json!({
+                "state": "running",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[52.0]),
+                        metric("NetworkIn", &[20.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let hot = fixture(
+            "i-perf-hot-forecast",
+            json!({"owner": "ops"}),
+            json!({
+                "state": "running",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[94.0]),
+                        metric("NetworkIn", &[20.0]),
+                        metric("NetworkOut", &[15.0]),
+                        metric("DiskReadOps", &[3.0]),
+                        metric("DiskWriteOps", &[2.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[missing, hot], Pillar::Performance, now());
+        let forecast = ec2_performance_forecast_snapshot(&report);
+
+        assert_eq!(forecast.workflow_id, "ec2_performance_forecasting");
+        assert!(forecast.read_only_mode);
+        assert_eq!(forecast.baseline_window_days, 30);
+        assert_eq!(forecast.forecast_horizon_days, 30);
+        assert_eq!(forecast.confidence_level, 75);
+        assert_eq!(forecast.risk_level, Ec2PerformanceForecastRisk::High);
+        assert_eq!(
+            forecast.performance_capacity_risk,
+            "cpu_constrained_compute_capacity"
+        );
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "needs_fresh_performance_telemetry_fixture"
+        );
+        assert_eq!(forecast.forecast_band.horizon_days, 30);
+        assert!(forecast.forecast_band.expected_performance_pressure_index > 100);
+        assert!(
+            forecast.forecast_band.upper_performance_pressure_index
+                > forecast.forecast_band.lower_performance_pressure_index
+        );
+        assert!(forecast
+            .threshold_controls
+            .contains(&"performance_pressure_index_warning_threshold"));
+        assert!(forecast
+            .what_if_inputs
+            .contains(&"compare_cpu_pressure_to_workload_demand"));
+        assert!(!forecast.blocked_by_stale_data);
+        assert_eq!(
+            forecast.blast_radius_summary,
+            "instances_with_high_cpu_can_expand_latency_or_throttle_risk"
+        );
+        assert!(forecast
+            .missing_data_reason_codes
+            .contains(&REASON_PERF_MISSING_CORE_TELEMETRY.to_string()));
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_PERF_HIGH_CPU_TELEMETRY
+                && driver.affected_resources == vec!["i-perf-hot-forecast"]
+                && driver.performance_pressure_index_delta == 38
+        }));
+        assert!(forecast
+            .evidence_reason_codes
+            .contains(&REASON_PERF_HIGH_CPU_TELEMETRY.to_string()));
+    }
+
+    #[test]
+    fn ec2_performance_forecast_snapshot_blocks_when_data_is_stale_or_empty() {
+        let stale = fixture(
+            "i-perf-stale-forecast",
+            json!({"owner": "ops"}),
+            json!({
+                "state": "running",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[94.0]),
+                        metric("NetworkIn", &[20.0]),
+                        metric("NetworkOut", &[15.0]),
+                        metric("DiskReadOps", &[3.0]),
+                        metric("DiskWriteOps", &[2.0])
+                    ]
+                }
+            }),
+            48,
+            now(),
+        );
+
+        let stale_report = evaluate_ec2_fleet(&[stale], Pillar::Performance, now());
+        let stale_forecast = ec2_performance_forecast_snapshot(&stale_report);
+        assert_eq!(
+            stale_forecast.risk_level,
+            Ec2PerformanceForecastRisk::Blocked
+        );
+        assert!(stale_forecast.blocked_by_stale_data);
+        assert_eq!(
+            stale_forecast.performance_capacity_risk,
+            "blocked_until_inventory_refresh"
+        );
+        assert!(stale_forecast
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+
+        let empty_report = evaluate_ec2_fleet(&[], Pillar::Performance, now());
+        let empty_forecast = ec2_performance_forecast_snapshot(&empty_report);
+        assert_eq!(
+            empty_forecast.risk_level,
+            Ec2PerformanceForecastRisk::Blocked
+        );
+        assert_eq!(
+            empty_forecast.performance_capacity_risk,
+            "blocked_until_performance_inventory_exists"
+        );
+        assert_eq!(
+            empty_forecast.missing_data_reason_codes,
+            vec![REASON_INV_NO_RESOURCES.to_string()]
+        );
+        assert_eq!(
+            empty_forecast.blast_radius_summary,
+            "performance_pressure_blast_radius_unknown_until_inventory_exists"
+        );
+    }
+
+    #[test]
+    fn ec2_performance_forecast_snapshot_saturates_large_fleet_indexes() {
+        let resources = (0..2_500)
+            .map(|index| {
+                fixture(
+                    &format!("i-perf-large-{index}"),
+                    json!({"owner": "ops"}),
+                    json!({
+                        "state": "running",
+                        "cloudwatch_metrics": {
+                            "metrics": [
+                                metric("CPUUtilization", &[95.0])
+                            ]
+                        }
+                    }),
+                    1,
+                    now(),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let report = evaluate_ec2_fleet(&resources, Pillar::Performance, now());
+        let forecast = ec2_performance_forecast_snapshot(&report);
+
+        assert_eq!(forecast.risk_level, Ec2PerformanceForecastRisk::High);
+        assert_eq!(
+            forecast.forecast_band.expected_performance_pressure_index,
+            u16::MAX
+        );
+        assert_eq!(
+            forecast.forecast_band.upper_performance_pressure_index,
+            u16::MAX
+        );
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_PERF_HIGH_CPU_TELEMETRY
+                && driver.performance_pressure_index_delta == u16::MAX
         }));
     }
 

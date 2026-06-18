@@ -153,6 +153,46 @@ describe("PillarScorecard", () => {
               },
             ],
           },
+          forecasting: {
+            workflow_id: "ec2_performance_forecasting",
+            read_only_mode: true,
+            baseline_window_days: 30,
+            forecast_horizon_days: 30,
+            confidence_level: 75,
+            forecast_band: {
+              horizon_days: 30,
+              lower_performance_pressure_index: 128,
+              expected_performance_pressure_index: 158,
+              upper_performance_pressure_index: 188,
+              confidence_level: 75,
+            },
+            risk_level: "high",
+            performance_capacity_risk: "cpu_constrained_compute_capacity",
+            backtesting_fixture_status: "ready_performance_findings_baseline",
+            threshold_controls: [
+              "performance_pressure_index_warning_threshold",
+              "performance_pressure_index_critical_threshold",
+            ],
+            what_if_inputs: [
+              "restore_core_performance_telemetry",
+              "compare_cpu_pressure_to_workload_demand",
+            ],
+            blocked_by_stale_data: false,
+            blast_radius_summary:
+              "instances_with_high_cpu_can_expand_latency_or_throttle_risk",
+            missing_data_reason_codes: ["EC2_PERF_MISSING_CORE_TELEMETRY"],
+            risk_drivers: [
+              {
+                reason_code: "EC2_PERF_HIGH_CPU_TELEMETRY",
+                affected_resources: ["i-perf-hot"],
+                performance_pressure_index_delta: 38,
+              },
+            ],
+            evidence_reason_codes: [
+              "EC2_PERF_MISSING_CORE_TELEMETRY",
+              "EC2_PERF_HIGH_CPU_TELEMETRY",
+            ],
+          },
           findings: [
             {
               severity: "medium",
@@ -193,6 +233,14 @@ describe("PillarScorecard", () => {
     expect(text).toContain("Read only");
     expect(text).toContain("Deterministic context only");
     expect(text).toContain("CPU constrained");
+    expect(text).toContain("Performance Forecast");
+    expect(text).toContain("ec2_performance_forecasting");
+    expect(text).toContain("expected 158");
+    expect(text).toContain("128-188");
+    expect(text).toContain("Cpu Constrained Compute Capacity");
+    expect(text).toContain("Ready Performance Findings Baseline");
+    expect(text).toContain("instances_with_high_cpu_can_expand_latency_or_throttle_risk");
+    expect(text).toContain("Performance Pressure Index Warning Threshold");
     expect(text).toContain("Collect CPUUtilization");
     expect(text).toContain("EC2_PERF_MISSING_CORE_TELEMETRY");
     expect(text).toContain("EC2_PERF_HIGH_CPU_TELEMETRY");

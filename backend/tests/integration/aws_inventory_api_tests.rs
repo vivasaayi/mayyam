@@ -644,6 +644,32 @@ async fn ec2_pillar_reports_contract() {
     assert!(triage["hypotheses"].is_array());
     assert!(triage["missing_data_questions"].is_array());
     assert!(triage["evidence_citations"].is_array());
+    assert_eq!(
+        reports[0]["forecasting"]["workflow_id"],
+        "ec2_performance_forecasting"
+    );
+    assert_eq!(reports[0]["forecasting"]["read_only_mode"], true);
+    assert_eq!(reports[0]["forecasting"]["baseline_window_days"], 30);
+    assert_eq!(reports[0]["forecasting"]["forecast_horizon_days"], 30);
+    assert_eq!(reports[0]["forecasting"]["confidence_level"], 75);
+    assert_eq!(
+        reports[0]["forecasting"]["forecast_band"]["horizon_days"],
+        30
+    );
+    assert!(
+        reports[0]["forecasting"]["forecast_band"]["expected_performance_pressure_index"]
+            .is_number()
+    );
+    assert!(reports[0]["forecasting"]["risk_level"].as_str().is_some());
+    assert!(reports[0]["forecasting"]["performance_capacity_risk"].is_string());
+    assert!(reports[0]["forecasting"]["backtesting_fixture_status"].is_string());
+    assert!(reports[0]["forecasting"]["threshold_controls"].is_array());
+    assert!(reports[0]["forecasting"]["what_if_inputs"].is_array());
+    assert!(reports[0]["forecasting"]["blocked_by_stale_data"].is_boolean());
+    assert!(reports[0]["forecasting"]["blast_radius_summary"].is_string());
+    assert!(reports[0]["forecasting"]["missing_data_reason_codes"].is_array());
+    assert!(reports[0]["forecasting"]["risk_drivers"].is_array());
+    assert!(reports[0]["forecasting"]["evidence_reason_codes"].is_array());
 
     let resp = client
         .get(format!(

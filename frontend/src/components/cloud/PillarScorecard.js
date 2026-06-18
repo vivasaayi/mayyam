@@ -401,18 +401,22 @@ const ForecastSummary = ({ report }) => {
   const forecastBand = forecast.forecast_band || {};
   const expectedIndex =
     forecastBand.expected_security_exposure_index ??
+    forecastBand.expected_performance_pressure_index ??
     forecastBand.expected_recovery_exposure_index ??
     forecastBand.expected_monthly_cost_index;
   const lowerIndex =
     forecastBand.lower_security_exposure_index ??
+    forecastBand.lower_performance_pressure_index ??
     forecastBand.lower_recovery_exposure_index ??
     forecastBand.lower_monthly_cost_index;
   const upperIndex =
     forecastBand.upper_security_exposure_index ??
+    forecastBand.upper_performance_pressure_index ??
     forecastBand.upper_recovery_exposure_index ??
     forecastBand.upper_monthly_cost_index;
   const capacityRisk =
     forecast.exposure_capacity_risk ||
+    forecast.performance_capacity_risk ||
     forecast.recovery_capacity_risk ||
     forecast.capacity_risk;
   const riskColor =
