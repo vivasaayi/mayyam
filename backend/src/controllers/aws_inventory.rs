@@ -39,7 +39,8 @@ use crate::services::aws::inventory::autoscaling_pillar_evaluator::{
     asg_cost_triage_context, asg_resilience_agentic_investigation_plan,
     asg_resilience_forecast_snapshot, asg_resilience_posture_summary,
     asg_resilience_remediation_workflow, asg_resilience_reporting_bundle,
-    asg_resilience_slo_policy_snapshot, asg_resilience_triage_context, evaluate_autoscaling_fleet,
+    asg_resilience_slo_policy_snapshot, asg_resilience_triage_context,
+    asg_security_posture_summary, evaluate_autoscaling_fleet,
 };
 use crate::services::aws::inventory::backup_pillar_evaluator::evaluate_backup_fleet;
 use crate::services::aws::inventory::batch_pillar_evaluator::evaluate_batch_fleet;
@@ -1220,6 +1221,16 @@ pub async fn get_autoscaling_pillar_reports(
                     "slo_policy_tracking": asg_resilience_slo_policy_snapshot(&report),
                     "forecasting": asg_resilience_forecast_snapshot(&report),
                     "reporting": asg_resilience_reporting_bundle(&report),
+                })
+            } else if *pillar == Pillar::Security {
+                json!({
+                    "pillar": report.pillar,
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "assessment_scope": "autoscaling_security_launch_source_and_instance_telemetry",
+                    "posture": asg_security_posture_summary(&report),
                 })
             } else {
                 json!(report)

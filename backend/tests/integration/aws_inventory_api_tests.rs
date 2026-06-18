@@ -1282,6 +1282,81 @@ async fn autoscaling_cost_pillar_reports_posture_contract() {
 }
 
 #[tokio::test]
+async fn autoscaling_security_pillar_reports_posture_contract() {
+    if !aws_tests_enabled() {
+        println!(
+            "Skipping autoscaling_security_pillar_reports_posture_contract because ENABLE_AWS_TESTS is not true"
+        );
+        return;
+    }
+
+    let base = base_url().await;
+    let client = Client::new();
+    let resp = client
+        .get(format!(
+            "{}/api/aws/inventory/autoscaling/pillars?account_id=123456789012&pillar=security",
+            base
+        ))
+        .send()
+        .await
+        .expect("autoscaling security pillar request failed");
+    assert_eq!(resp.status(), 200);
+    let body: Value = resp.json().await.expect("invalid JSON body");
+    assert_eq!(body["resource_type"], "AutoScalingGroup");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0]["pillar"], "security");
+    assert_eq!(
+        reports[0]["assessment_scope"],
+        "autoscaling_security_launch_source_and_instance_telemetry"
+    );
+    assert!(matches!(
+        reports[0]["posture"]["status"].as_str(),
+        Some("pass" | "fail")
+    ));
+    assert_eq!(reports[0]["posture"]["rules_evaluated"], 6);
+    assert!(reports[0]["posture"]["rules_failed"].is_number());
+    assert!(reports[0]["posture"]["affected_resources"].is_array());
+    assert!(reports[0].get("triage_context").is_none());
+    assert!(reports[0].get("remediation_workflow").is_none());
+
+    let rules = reports[0]["posture"]["rules"]
+        .as_array()
+        .expect("autoscaling security posture rules");
+    assert_eq!(rules.len(), 6);
+    let expected_rules = [
+        ("asg-security-inventory-freshness", "ASG_INV_STALE_DATA"),
+        (
+            "asg-security-telemetry-collection-metadata-present",
+            "ASG_TEL_MISSING_COLLECTION_METADATA",
+        ),
+        (
+            "asg-security-telemetry-collection-errors-clear",
+            "ASG_TEL_COLLECTION_ERRORS",
+        ),
+        (
+            "asg-security-instance-telemetry-present",
+            "ASG_SEC_MISSING_INSTANCE_TELEMETRY",
+        ),
+        (
+            "asg-security-launch-source-modern",
+            "ASG_SEC_LEGACY_LAUNCH_CONFIGURATION",
+        ),
+        (
+            "asg-security-launch-source-collected",
+            "ASG_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED",
+        ),
+    ];
+    for (rule, (expected_rule_id, expected_reason_code)) in rules.iter().zip(expected_rules) {
+        assert_eq!(rule["rule_id"], expected_rule_id);
+        assert_eq!(rule["reason_codes"][0], expected_reason_code);
+        assert!(rule["suppression_supported"].is_boolean());
+        assert!(rule["assignment_supported"].is_boolean());
+        assert!(rule["affected_resources"].is_array());
+    }
+}
+
+#[tokio::test]
 async fn autoscaling_resilience_pillar_reports_posture_contract() {
     if !aws_tests_enabled() {
         println!(

@@ -822,6 +822,105 @@ describe("PillarScorecard", () => {
     await view.unmount();
   });
 
+  it("renders Auto Scaling security posture rules", async () => {
+    const data = {
+      evaluated_at: "2026-06-18T05:00:00Z",
+      stale_after_hours: 24,
+      reports: [
+        {
+          pillar: "security",
+          score: 73,
+          resources_evaluated: 3,
+          stale_resources: 0,
+          findings: [],
+          assessment_scope:
+            "autoscaling_security_launch_source_and_instance_telemetry",
+          posture: {
+            status: "fail",
+            rules_evaluated: 6,
+            rules_failed: 3,
+            affected_resources: [
+              "asg-legacy-launch",
+              "asg-launch-source-gap",
+              "asg-missing-instance-telemetry",
+            ],
+            rules: [
+              {
+                rule_id: "asg-security-inventory-freshness",
+                status: "pass",
+                reason_codes: ["ASG_INV_STALE_DATA"],
+                affected_resources: [],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id:
+                  "asg-security-telemetry-collection-metadata-present",
+                status: "pass",
+                reason_codes: ["ASG_TEL_MISSING_COLLECTION_METADATA"],
+                affected_resources: [],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-security-telemetry-collection-errors-clear",
+                status: "pass",
+                reason_codes: [
+                  "ASG_TEL_COLLECTION_ERRORS",
+                  "ASG_SEC_TELEMETRY_COLLECTION_ERRORS",
+                ],
+                affected_resources: [],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-security-instance-telemetry-present",
+                status: "fail",
+                reason_codes: ["ASG_SEC_MISSING_INSTANCE_TELEMETRY"],
+                affected_resources: ["asg-missing-instance-telemetry"],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-security-launch-source-modern",
+                status: "fail",
+                reason_codes: ["ASG_SEC_LEGACY_LAUNCH_CONFIGURATION"],
+                affected_resources: ["asg-legacy-launch"],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-security-launch-source-collected",
+                status: "fail",
+                reason_codes: ["ASG_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED"],
+                affected_resources: ["asg-launch-source-gap"],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const view = await render(<PillarScorecard data={data} />);
+    const text = view.container.textContent;
+
+    expect(text).toContain("Security Posture");
+    expect(text).toContain("3 failed of 6");
+    expect(text).toContain("asg-security-instance-telemetry-present");
+    expect(text).toContain("asg-security-launch-source-modern");
+    expect(text).toContain("asg-security-launch-source-collected");
+    expect(text).toContain("ASG_SEC_MISSING_INSTANCE_TELEMETRY");
+    expect(text).toContain("ASG_SEC_LEGACY_LAUNCH_CONFIGURATION");
+    expect(text).toContain("ASG_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED");
+    expect(text).toContain("asg-missing-instance-telemetry");
+    expect(text).toContain("asg-legacy-launch");
+    expect(text).toContain("asg-launch-source-gap");
+
+    await view.unmount();
+  });
+
   it("renders EC2 resilience reporting status, gaps, and recovery notes", async () => {
     const data = {
       evaluated_at: "2026-06-18T05:00:00Z",

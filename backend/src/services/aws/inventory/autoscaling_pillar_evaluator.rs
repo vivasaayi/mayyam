@@ -85,6 +85,7 @@ pub struct AsgPostureSummary {
 
 pub type AsgCostPostureSummary = AsgPostureSummary;
 pub type AsgResiliencePostureSummary = AsgPostureSummary;
+pub type AsgSecurityPostureSummary = AsgPostureSummary;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct AsgEvidenceCitation {
@@ -2109,6 +2110,45 @@ pub fn asg_resilience_posture_summary(report: &PillarReport) -> AsgResiliencePos
     asg_posture_summary(rules)
 }
 
+pub fn asg_security_posture_summary(report: &PillarReport) -> AsgSecurityPostureSummary {
+    let rules = vec![
+        asg_posture_rule(
+            report,
+            "asg-security-inventory-freshness",
+            &[REASON_INV_STALE_DATA],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-security-telemetry-collection-metadata-present",
+            &[REASON_TEL_MISSING_COLLECTION_METADATA],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-security-telemetry-collection-errors-clear",
+            &[
+                REASON_TEL_COLLECTION_ERRORS,
+                REASON_SEC_TELEMETRY_COLLECTION_ERRORS,
+            ],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-security-instance-telemetry-present",
+            &[REASON_SEC_MISSING_INSTANCE_TELEMETRY],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-security-launch-source-modern",
+            &[REASON_SEC_LEGACY_LAUNCH_CONFIGURATION],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-security-launch-source-collected",
+            &[REASON_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED],
+        ),
+    ];
+    asg_posture_summary(rules)
+}
+
 fn asg_posture_summary(rules: Vec<AsgPostureRule>) -> AsgPostureSummary {
     let affected_resources = sorted_unique_resources(
         rules
@@ -3219,6 +3259,169 @@ mod tests {
                 && rule.reason_codes == vec![REASON_INV_STALE_DATA]
                 && rule.affected_resources == vec!["asg-res-stale".to_string()]
         }));
+    }
+
+    #[test]
+    fn asg_security_posture_summary_flags_security_rules() {
+        let mut legacy_data = healthy_data();
+        legacy_data["launch_configuration_name"] = json!("legacy-lc");
+        legacy_data["uses_launch_template"] = json!(false);
+        let legacy = fixture(
+            "asg-legacy-launch",
+            json!({"team": "core"}),
+            legacy_data,
+            now(),
+        );
+
+        let mut launch_gap_data = healthy_data();
+        launch_gap_data["uses_launch_template"] = json!(false);
+        launch_gap_data["uses_mixed_instances_policy"] = json!(false);
+        let launch_gap = fixture(
+            "asg-launch-source-gap",
+            json!({"team": "core"}),
+            launch_gap_data,
+            now(),
+        );
+
+        let mut missing_instance_data = healthy_data();
+        missing_instance_data
+            .as_object_mut()
+            .unwrap()
+            .remove("instance_health");
+        let missing_instance = fixture(
+            "asg-missing-instance-telemetry",
+            json!({"team": "core"}),
+            missing_instance_data,
+            now(),
+        );
+
+        let mut collection_error_data = healthy_data();
+        collection_error_data["telemetry_collection_success_count"] = json!(0);
+        collection_error_data["telemetry_collection_failure_count"] = json!(1);
+        collection_error_data["telemetry_collection_error_count"] = json!(1);
+        collection_error_data["telemetry_collection_errors"] = json!([
+            {
+                "source": "autoscaling",
+                "operation": "DescribeAutoScalingGroups",
+                "error": "throttled"
+            }
+        ]);
+        let collection_error = fixture(
+            "asg-security-collection-error",
+            json!({"team": "core"}),
+            collection_error_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(
+            &[legacy, launch_gap, missing_instance, collection_error],
+            Pillar::Security,
+            now(),
+        );
+        let posture = asg_security_posture_summary(&report);
+
+        assert_eq!(posture.status, AsgPostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 6);
+        assert_eq!(posture.rules_failed, 4);
+        assert_eq!(
+            posture.affected_resources,
+            vec![
+                "asg-launch-source-gap".to_string(),
+                "asg-legacy-launch".to_string(),
+                "asg-missing-instance-telemetry".to_string(),
+                "asg-security-collection-error".to_string()
+            ]
+        );
+        assert!(posture
+            .rules
+            .iter()
+            .all(|rule| { rule.suppression_supported && rule.assignment_supported }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-security-telemetry-collection-errors-clear"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes
+                    == vec![
+                        REASON_TEL_COLLECTION_ERRORS,
+                        REASON_SEC_TELEMETRY_COLLECTION_ERRORS,
+                    ]
+                && rule.affected_resources == vec!["asg-security-collection-error".to_string()]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-security-instance-telemetry-present"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_SEC_MISSING_INSTANCE_TELEMETRY]
+                && rule.affected_resources == vec!["asg-missing-instance-telemetry".to_string()]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-security-launch-source-modern"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_SEC_LEGACY_LAUNCH_CONFIGURATION]
+                && rule.affected_resources == vec!["asg-legacy-launch".to_string()]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-security-launch-source-collected"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED]
+                && rule.affected_resources == vec!["asg-launch-source-gap".to_string()]
+        }));
+    }
+
+    #[test]
+    fn asg_security_posture_summary_tracks_stale_inventory_and_missing_metadata() {
+        let mut stale = fixture(
+            "asg-security-stale",
+            json!({"team": "core"}),
+            healthy_data(),
+            now(),
+        );
+        stale.last_refreshed = now() - Duration::hours(48);
+
+        let mut missing_metadata_data = healthy_data();
+        missing_metadata_data
+            .as_object_mut()
+            .unwrap()
+            .remove("telemetry_collection_started_at");
+        let missing_metadata = fixture(
+            "asg-security-missing-metadata",
+            json!({"team": "core"}),
+            missing_metadata_data,
+            now(),
+        );
+
+        let report =
+            evaluate_autoscaling_fleet(&[stale, missing_metadata], Pillar::Security, now());
+        let posture = asg_security_posture_summary(&report);
+
+        assert_eq!(posture.status, AsgPostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 6);
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-security-inventory-freshness"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_INV_STALE_DATA]
+                && rule.affected_resources == vec!["asg-security-stale".to_string()]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-security-telemetry-collection-metadata-present"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_TEL_MISSING_COLLECTION_METADATA]
+                && rule.affected_resources == vec!["asg-security-missing-metadata".to_string()]
+        }));
+    }
+
+    #[test]
+    fn asg_security_posture_summary_passes_for_modern_launch_template_group() {
+        let healthy = fixture("asg-sec-ok", json!({"team": "core"}), healthy_data(), now());
+        let report = evaluate_autoscaling_fleet(&[healthy], Pillar::Security, now());
+        let posture = asg_security_posture_summary(&report);
+
+        assert_eq!(posture.status, AsgPostureStatus::Pass);
+        assert_eq!(posture.rules_evaluated, 6);
+        assert_eq!(posture.rules_failed, 0);
+        assert!(posture.affected_resources.is_empty());
+        assert!(posture
+            .rules
+            .iter()
+            .all(|rule| rule.status == AsgPostureStatus::Pass));
     }
 
     #[test]
