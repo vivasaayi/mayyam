@@ -1282,6 +1282,92 @@ async fn autoscaling_cost_pillar_reports_posture_contract() {
 }
 
 #[tokio::test]
+async fn autoscaling_resilience_pillar_reports_posture_contract() {
+    if !aws_tests_enabled() {
+        println!(
+            "Skipping autoscaling_resilience_pillar_reports_posture_contract because ENABLE_AWS_TESTS is not true"
+        );
+        return;
+    }
+
+    let base = base_url().await;
+    let client = Client::new();
+    let resp = client
+        .get(format!(
+            "{}/api/aws/inventory/autoscaling/pillars?account_id=123456789012&pillar=resilience",
+            base
+        ))
+        .send()
+        .await
+        .expect("autoscaling resilience pillar request failed");
+    assert_eq!(resp.status(), 200);
+    let body: Value = resp.json().await.expect("invalid JSON body");
+    assert_eq!(body["resource_type"], "AutoScalingGroup");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0]["pillar"], "resilience");
+    assert_eq!(
+        reports[0]["assessment_scope"],
+        "autoscaling_resilience_replacement_health_and_multi_az"
+    );
+    assert!(matches!(
+        reports[0]["posture"]["status"].as_str(),
+        Some("pass" | "fail")
+    ));
+    assert_eq!(reports[0]["posture"]["rules_evaluated"], 10);
+    assert!(reports[0]["posture"]["rules_failed"].is_number());
+    assert!(reports[0]["posture"]["affected_resources"].is_array());
+
+    let rules = reports[0]["posture"]["rules"]
+        .as_array()
+        .expect("autoscaling resilience posture rules");
+    assert_eq!(rules.len(), 10);
+    let expected_rules = [
+        ("asg-resilience-inventory-freshness", "ASG_INV_STALE_DATA"),
+        (
+            "asg-resilience-telemetry-collection-metadata-present",
+            "ASG_TEL_MISSING_COLLECTION_METADATA",
+        ),
+        (
+            "asg-resilience-telemetry-collection-errors-clear",
+            "ASG_TEL_COLLECTION_ERRORS",
+        ),
+        (
+            "asg-resilience-replacement-telemetry-present",
+            "ASG_RES_MISSING_REPLACEMENT_TELEMETRY",
+        ),
+        (
+            "asg-resilience-instance-health-telemetry-present",
+            "ASG_RES_MISSING_INSTANCE_HEALTH_TELEMETRY",
+        ),
+        (
+            "asg-resilience-instance-health-clean",
+            "ASG_RES_UNHEALTHY_INSTANCE_TELEMETRY",
+        ),
+        ("asg-resilience-multi-az-placement", "ASG_RES_SINGLE_AZ"),
+        (
+            "asg-resilience-elb-health-checks",
+            "ASG_RES_ELB_HEALTH_CHECK_EC2_ONLY",
+        ),
+        (
+            "asg-resilience-scaling-processes-active",
+            "ASG_RES_SUSPENDED_PROCESSES",
+        ),
+        (
+            "asg-resilience-desired-capacity-at-or-above-min",
+            "ASG_RES_DESIRED_BELOW_MIN",
+        ),
+    ];
+    for (rule, (expected_rule_id, expected_reason_code)) in rules.iter().zip(expected_rules) {
+        assert_eq!(rule["rule_id"], expected_rule_id);
+        assert_eq!(rule["reason_codes"][0], expected_reason_code);
+        assert!(rule["suppression_supported"].is_boolean());
+        assert!(rule["assignment_supported"].is_boolean());
+        assert!(rule["affected_resources"].is_array());
+    }
+}
+
+#[tokio::test]
 async fn ec2_pillar_reports_rejects_unknown_pillar() {
     if !aws_tests_enabled() {
         println!(

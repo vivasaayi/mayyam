@@ -36,7 +36,7 @@ use crate::services::aws::inventory::aurora_pillar_evaluator::evaluate_aurora_fl
 use crate::services::aws::inventory::autoscaling_pillar_evaluator::{
     asg_cost_agentic_investigation_plan, asg_cost_forecast_snapshot, asg_cost_posture_summary,
     asg_cost_remediation_workflow, asg_cost_reporting_bundle, asg_cost_slo_policy_snapshot,
-    asg_cost_triage_context, evaluate_autoscaling_fleet,
+    asg_cost_triage_context, asg_resilience_posture_summary, evaluate_autoscaling_fleet,
 };
 use crate::services::aws::inventory::backup_pillar_evaluator::evaluate_backup_fleet;
 use crate::services::aws::inventory::batch_pillar_evaluator::evaluate_batch_fleet;
@@ -1201,6 +1201,16 @@ pub async fn get_autoscaling_pillar_reports(
                     "slo_policy_tracking": asg_cost_slo_policy_snapshot(&report),
                     "forecasting": asg_cost_forecast_snapshot(&report),
                     "reporting": asg_cost_reporting_bundle(&report),
+                })
+            } else if *pillar == Pillar::Resilience {
+                json!({
+                    "pillar": report.pillar,
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "assessment_scope": "autoscaling_resilience_replacement_health_and_multi_az",
+                    "posture": asg_resilience_posture_summary(&report),
                 })
             } else {
                 json!(report)

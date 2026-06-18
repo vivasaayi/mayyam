@@ -444,6 +444,85 @@ describe("PillarScorecard", () => {
     await view.unmount();
   });
 
+  it("renders Auto Scaling resilience posture rules", async () => {
+    const data = {
+      evaluated_at: "2026-06-18T05:00:00Z",
+      stale_after_hours: 24,
+      reports: [
+        {
+          pillar: "resilience",
+          score: 71,
+          resources_evaluated: 2,
+          stale_resources: 0,
+          findings: [],
+          assessment_scope: "autoscaling_resilience_replacement_health_and_multi_az",
+          posture: {
+            status: "fail",
+            rules_evaluated: 10,
+            rules_failed: 3,
+            affected_resources: ["asg-single-az", "asg-unhealthy"],
+            rules: [
+              {
+                rule_id: "asg-resilience-inventory-freshness",
+                status: "pass",
+                reason_codes: ["ASG_INV_STALE_DATA"],
+                affected_resources: [],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-resilience-replacement-telemetry-present",
+                status: "pass",
+                reason_codes: ["ASG_RES_MISSING_REPLACEMENT_TELEMETRY"],
+                affected_resources: [],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-resilience-instance-health-clean",
+                status: "fail",
+                reason_codes: ["ASG_RES_UNHEALTHY_INSTANCE_TELEMETRY"],
+                affected_resources: ["asg-unhealthy"],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-resilience-multi-az-placement",
+                status: "fail",
+                reason_codes: ["ASG_RES_SINGLE_AZ"],
+                affected_resources: ["asg-single-az"],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-resilience-scaling-processes-active",
+                status: "fail",
+                reason_codes: ["ASG_RES_SUSPENDED_PROCESSES"],
+                affected_resources: ["asg-single-az"],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const view = await render(<PillarScorecard data={data} />);
+    const text = view.container.textContent;
+
+    expect(text).toContain("Resilience Posture");
+    expect(text).toContain("3 failed of 10");
+    expect(text).toContain("asg-single-az");
+    expect(text).toContain("asg-unhealthy");
+    expect(text).toContain("asg-resilience-multi-az-placement");
+    expect(text).toContain("asg-resilience-instance-health-clean");
+    expect(text).toContain("ASG_RES_SINGLE_AZ");
+    expect(text).toContain("ASG_RES_UNHEALTHY_INSTANCE_TELEMETRY");
+
+    await view.unmount();
+  });
+
   it("renders EC2 resilience reporting status, gaps, and recovery notes", async () => {
     const data = {
       evaluated_at: "2026-06-18T05:00:00Z",

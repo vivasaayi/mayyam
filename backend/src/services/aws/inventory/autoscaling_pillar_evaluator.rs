@@ -84,6 +84,7 @@ pub struct AsgPostureSummary {
 }
 
 pub type AsgCostPostureSummary = AsgPostureSummary;
+pub type AsgResiliencePostureSummary = AsgPostureSummary;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct AsgEvidenceCitation {
@@ -1162,42 +1163,102 @@ pub fn asg_cost_triage_context(report: &PillarReport) -> AsgCostTriageContext {
 
 pub fn asg_cost_posture_summary(report: &PillarReport) -> AsgCostPostureSummary {
     let rules = vec![
-        asg_cost_posture_rule(
+        asg_posture_rule(
             report,
             "asg-cost-inventory-freshness",
             &[REASON_INV_STALE_DATA],
         ),
-        asg_cost_posture_rule(
+        asg_posture_rule(
             report,
             "asg-cost-telemetry-collection-metadata-present",
             &[REASON_TEL_MISSING_COLLECTION_METADATA],
         ),
-        asg_cost_posture_rule(
+        asg_posture_rule(
             report,
             "asg-cost-telemetry-collection-errors-clear",
             &[REASON_TEL_COLLECTION_ERRORS],
         ),
-        asg_cost_posture_rule(
+        asg_posture_rule(
             report,
             "asg-cost-capacity-telemetry-present",
             &[REASON_COST_MISSING_CAPACITY_TELEMETRY],
         ),
-        asg_cost_posture_rule(
+        asg_posture_rule(
             report,
             "asg-cost-group-metrics-telemetry-present",
             &[REASON_COST_MISSING_GROUP_METRICS_TELEMETRY],
         ),
-        asg_cost_posture_rule(
+        asg_posture_rule(
             report,
             "asg-cost-allocation-tags-present",
             &[REASON_COST_NO_TAGS],
         ),
-        asg_cost_posture_rule(
+        asg_posture_rule(
             report,
             "asg-cost-scale-in-capable",
             &[REASON_COST_FIXED_SIZE],
         ),
     ];
+    asg_posture_summary(rules)
+}
+
+pub fn asg_resilience_posture_summary(report: &PillarReport) -> AsgResiliencePostureSummary {
+    let rules = vec![
+        asg_posture_rule(
+            report,
+            "asg-resilience-inventory-freshness",
+            &[REASON_INV_STALE_DATA],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-resilience-telemetry-collection-metadata-present",
+            &[REASON_TEL_MISSING_COLLECTION_METADATA],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-resilience-telemetry-collection-errors-clear",
+            &[REASON_TEL_COLLECTION_ERRORS],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-resilience-replacement-telemetry-present",
+            &[REASON_RES_MISSING_REPLACEMENT_TELEMETRY],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-resilience-instance-health-telemetry-present",
+            &[REASON_RES_MISSING_INSTANCE_HEALTH_TELEMETRY],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-resilience-instance-health-clean",
+            &[REASON_RES_UNHEALTHY_INSTANCE_TELEMETRY],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-resilience-multi-az-placement",
+            &[REASON_RES_SINGLE_AZ],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-resilience-elb-health-checks",
+            &[REASON_RES_ELB_HEALTH_CHECK_EC2_ONLY],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-resilience-scaling-processes-active",
+            &[REASON_RES_SUSPENDED_PROCESSES],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-resilience-desired-capacity-at-or-above-min",
+            &[REASON_RES_DESIRED_BELOW_MIN],
+        ),
+    ];
+    asg_posture_summary(rules)
+}
+
+fn asg_posture_summary(rules: Vec<AsgPostureRule>) -> AsgPostureSummary {
     let affected_resources = sorted_unique_resources(
         rules
             .iter()
@@ -1208,7 +1269,7 @@ pub fn asg_cost_posture_summary(report: &PillarReport) -> AsgCostPostureSummary 
         .filter(|rule| rule.status == AsgPostureStatus::Fail)
         .count();
 
-    AsgCostPostureSummary {
+    AsgPostureSummary {
         status: if rules_failed == 0 {
             AsgPostureStatus::Pass
         } else {
@@ -1221,7 +1282,7 @@ pub fn asg_cost_posture_summary(report: &PillarReport) -> AsgCostPostureSummary 
     }
 }
 
-fn asg_cost_posture_rule(
+fn asg_posture_rule(
     report: &PillarReport,
     rule_id: &'static str,
     reason_codes: &[&'static str],
@@ -2184,6 +2245,115 @@ mod tests {
             .rules
             .iter()
             .all(|rule| rule.status == AsgPostureStatus::Pass));
+    }
+
+    #[test]
+    fn asg_resilience_posture_summary_flags_replacement_rules() {
+        let mut single_az_data = healthy_data();
+        single_az_data["availability_zones"] = json!(["us-east-1a"]);
+        single_az_data["health_check_type"] = json!("EC2");
+        single_az_data["suspended_process_count"] = json!(1);
+        let single_az = fixture(
+            "asg-single-az",
+            json!({"team": "core"}),
+            single_az_data,
+            now(),
+        );
+
+        let mut unhealthy_data = healthy_data();
+        unhealthy_data["unhealthy_instance_count"] = json!(1);
+        unhealthy_data["instance_health"] = json!([
+            {
+                "instance_id": "i-unhealthy",
+                "health_status": "Unhealthy",
+                "lifecycle_state": "InService"
+            }
+        ]);
+        let unhealthy = fixture(
+            "asg-unhealthy-posture",
+            json!({"team": "core"}),
+            unhealthy_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[single_az, unhealthy], Pillar::Resilience, now());
+        let posture = asg_resilience_posture_summary(&report);
+
+        assert_eq!(posture.status, AsgPostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 10);
+        assert_eq!(posture.rules_failed, 4);
+        assert_eq!(
+            posture.affected_resources,
+            vec![
+                "asg-single-az".to_string(),
+                "asg-unhealthy-posture".to_string()
+            ]
+        );
+        assert!(posture
+            .rules
+            .iter()
+            .all(|rule| { rule.suppression_supported && rule.assignment_supported }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-resilience-multi-az-placement"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_RES_SINGLE_AZ]
+                && rule.affected_resources == vec!["asg-single-az".to_string()]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-resilience-elb-health-checks"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_RES_ELB_HEALTH_CHECK_EC2_ONLY]
+                && rule.affected_resources == vec!["asg-single-az".to_string()]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-resilience-scaling-processes-active"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_RES_SUSPENDED_PROCESSES]
+                && rule.affected_resources == vec!["asg-single-az".to_string()]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-resilience-instance-health-clean"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_RES_UNHEALTHY_INSTANCE_TELEMETRY]
+                && rule.affected_resources == vec!["asg-unhealthy-posture".to_string()]
+        }));
+    }
+
+    #[test]
+    fn asg_resilience_posture_summary_passes_for_healthy_multi_az_group() {
+        let healthy = fixture("asg-res-ok", json!({"team": "core"}), healthy_data(), now());
+        let report = evaluate_autoscaling_fleet(&[healthy], Pillar::Resilience, now());
+        let posture = asg_resilience_posture_summary(&report);
+
+        assert_eq!(posture.status, AsgPostureStatus::Pass);
+        assert_eq!(posture.rules_evaluated, 10);
+        assert_eq!(posture.rules_failed, 0);
+        assert!(posture.affected_resources.is_empty());
+        assert!(posture
+            .rules
+            .iter()
+            .all(|rule| rule.status == AsgPostureStatus::Pass));
+    }
+
+    #[test]
+    fn asg_resilience_posture_summary_tracks_stale_inventory() {
+        let mut stale = fixture(
+            "asg-res-stale",
+            json!({"team": "core"}),
+            healthy_data(),
+            now(),
+        );
+        stale.last_refreshed = now() - Duration::hours(48);
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Resilience, now());
+        let posture = asg_resilience_posture_summary(&report);
+
+        assert_eq!(posture.status, AsgPostureStatus::Fail);
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-resilience-inventory-freshness"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_INV_STALE_DATA]
+                && rule.affected_resources == vec!["asg-res-stale".to_string()]
+        }));
     }
 
     #[test]
