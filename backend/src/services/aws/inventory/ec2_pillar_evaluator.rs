@@ -79,13 +79,16 @@ pub struct Ec2PostureRule {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Ec2CostPostureSummary {
+pub struct Ec2PostureSummary {
     pub status: Ec2PostureStatus,
     pub rules_evaluated: usize,
     pub rules_failed: usize,
     pub affected_resources: Vec<String>,
     pub rules: Vec<Ec2PostureRule>,
 }
+
+pub type Ec2CostPostureSummary = Ec2PostureSummary;
+pub type Ec2ResiliencePostureSummary = Ec2PostureSummary;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Ec2EvidenceCitation {
@@ -397,7 +400,53 @@ pub fn ec2_cost_posture_summary(report: &PillarReport) -> Ec2CostPostureSummary 
         .filter(|rule| rule.status == Ec2PostureStatus::Fail)
         .count();
 
-    Ec2CostPostureSummary {
+    Ec2PostureSummary {
+        status: if rules_failed == 0 {
+            Ec2PostureStatus::Pass
+        } else {
+            Ec2PostureStatus::Fail
+        },
+        rules_evaluated: rules.len(),
+        rules_failed,
+        affected_resources,
+        rules,
+    }
+}
+
+pub fn ec2_resilience_posture_summary(report: &PillarReport) -> Ec2ResiliencePostureSummary {
+    let rules = vec![
+        ec2_resilience_posture_rule(
+            report,
+            "ec2-resilience-availability-zone-recorded",
+            &[REASON_RES_MISSING_AZ],
+        ),
+        ec2_resilience_posture_rule(
+            report,
+            "ec2-resilience-multi-az-placement",
+            &[REASON_RES_SINGLE_AZ_CONCENTRATION],
+        ),
+        ec2_resilience_posture_rule(
+            report,
+            "ec2-resilience-status-check-telemetry",
+            &[REASON_RES_MISSING_STATUS_TELEMETRY],
+        ),
+        ec2_resilience_posture_rule(
+            report,
+            "ec2-resilience-status-check-health",
+            &[REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY],
+        ),
+    ];
+    let affected_resources = sorted_unique_resources(
+        rules
+            .iter()
+            .flat_map(|rule| rule.affected_resources.iter().cloned()),
+    );
+    let rules_failed = rules
+        .iter()
+        .filter(|rule| rule.status == Ec2PostureStatus::Fail)
+        .count();
+
+    Ec2PostureSummary {
         status: if rules_failed == 0 {
             Ec2PostureStatus::Pass
         } else {
@@ -1006,6 +1055,22 @@ fn mutation_gate(
 }
 
 fn ec2_cost_posture_rule(
+    report: &PillarReport,
+    rule_id: &'static str,
+    reason_codes: &[&'static str],
+) -> Ec2PostureRule {
+    ec2_posture_rule(report, rule_id, reason_codes)
+}
+
+fn ec2_resilience_posture_rule(
+    report: &PillarReport,
+    rule_id: &'static str,
+    reason_codes: &[&'static str],
+) -> Ec2PostureRule {
+    ec2_posture_rule(report, rule_id, reason_codes)
+}
+
+fn ec2_posture_rule(
     report: &PillarReport,
     rule_id: &'static str,
     reason_codes: &[&'static str],
@@ -1941,6 +2006,134 @@ mod tests {
             report.findings
         );
         assert_eq!(report.score, 100);
+    }
+
+    #[test]
+    fn ec2_resilience_posture_summary_maps_rules_to_affected_resources() {
+        let missing_az = fixture(
+            "i-noaz",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let status_failed = fixture(
+            "i-status-failed",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0, 1.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[missing_az, status_failed], Pillar::Resilience, now());
+        let posture = ec2_resilience_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 4);
+        assert_eq!(posture.rules_failed, 2);
+        assert_eq!(
+            posture
+                .rules
+                .iter()
+                .map(|rule| rule.rule_id)
+                .collect::<Vec<_>>(),
+            vec![
+                "ec2-resilience-availability-zone-recorded",
+                "ec2-resilience-multi-az-placement",
+                "ec2-resilience-status-check-telemetry",
+                "ec2-resilience-status-check-health",
+            ]
+        );
+        assert_eq!(
+            posture
+                .rules
+                .iter()
+                .map(|rule| rule.reason_codes.clone())
+                .collect::<Vec<_>>(),
+            vec![
+                vec![REASON_RES_MISSING_AZ],
+                vec![REASON_RES_SINGLE_AZ_CONCENTRATION],
+                vec![REASON_RES_MISSING_STATUS_TELEMETRY],
+                vec![REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY],
+            ]
+        );
+        assert!(posture.affected_resources.contains(&"i-noaz".to_string()));
+        assert!(posture
+            .affected_resources
+            .contains(&"i-status-failed".to_string()));
+        let az_rule = posture
+            .rules
+            .iter()
+            .find(|rule| rule.rule_id == "ec2-resilience-availability-zone-recorded")
+            .expect("availability zone rule");
+        assert_eq!(az_rule.status, Ec2PostureStatus::Fail);
+        assert_eq!(az_rule.reason_codes, vec![REASON_RES_MISSING_AZ]);
+        assert!(az_rule.assignment_supported);
+        assert!(az_rule.suppression_supported);
+    }
+
+    #[test]
+    fn ec2_resilience_posture_summary_passes_for_multi_az_healthy_fleet() {
+        let a = fixture(
+            "i-a",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let b = fixture(
+            "i-b",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1b",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[a, b], Pillar::Resilience, now());
+        let posture = ec2_resilience_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Pass);
+        assert_eq!(posture.rules_failed, 0);
+        assert!(posture.affected_resources.is_empty());
     }
 
     #[test]

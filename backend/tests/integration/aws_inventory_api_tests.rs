@@ -127,6 +127,54 @@ async fn ec2_pillar_reports_contract() {
     );
     assert!(reports[0]["reporting"]["engineering_backlog"]["rows"].is_array());
     assert!(reports[0]["reporting"]["evidence_reason_codes"].is_array());
+
+    let resp = client
+        .get(format!(
+            "{}/api/aws/inventory/ec2/pillars?account_id={}&pillar=resilience",
+            base, account_id
+        ))
+        .send()
+        .await
+        .expect("resilience pillar request failed");
+    assert_eq!(resp.status(), 200);
+    let body: Value = resp.json().await.expect("invalid JSON body");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0]["pillar"], "resilience");
+    assert_eq!(
+        reports[0]["assessment_scope"],
+        "ec2_instance_placement_and_status_checks"
+    );
+    assert_eq!(reports[0]["posture"]["rules_evaluated"], 4);
+    let resilience_rules = reports[0]["posture"]["rules"]
+        .as_array()
+        .expect("resilience posture rules");
+    assert_eq!(resilience_rules.len(), 4);
+    let expected_rules = [
+        (
+            "ec2-resilience-availability-zone-recorded",
+            "EC2_RES_MISSING_AVAILABILITY_ZONE",
+        ),
+        (
+            "ec2-resilience-multi-az-placement",
+            "EC2_RES_SINGLE_AZ_CONCENTRATION",
+        ),
+        (
+            "ec2-resilience-status-check-telemetry",
+            "EC2_RES_MISSING_STATUS_CHECK_TELEMETRY",
+        ),
+        (
+            "ec2-resilience-status-check-health",
+            "EC2_RES_STATUS_CHECK_FAILURE_TELEMETRY",
+        ),
+    ];
+    for (rule, (expected_rule_id, expected_reason_code)) in
+        resilience_rules.iter().zip(expected_rules)
+    {
+        assert_eq!(rule["rule_id"], expected_rule_id);
+        assert_eq!(rule["reason_codes"][0], expected_reason_code);
+    }
+    assert!(reports[0]["posture"]["affected_resources"].is_array());
 }
 
 #[tokio::test]
