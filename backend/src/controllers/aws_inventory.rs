@@ -59,7 +59,7 @@ use crate::services::aws::inventory::ec2_pillar_evaluator::{
     ec2_resilience_agentic_investigation_plan, ec2_resilience_forecast_snapshot,
     ec2_resilience_posture_summary, ec2_resilience_remediation_workflow,
     ec2_resilience_reporting_bundle, ec2_resilience_slo_policy_snapshot,
-    ec2_resilience_triage_context, evaluate_ec2_fleet,
+    ec2_resilience_triage_context, ec2_scalability_posture_summary, evaluate_ec2_fleet,
 };
 use crate::services::aws::inventory::ecs_pillar_evaluator::evaluate_ecs_fleet;
 use crate::services::aws::inventory::efs_pillar_evaluator::evaluate_efs_fleet;
@@ -360,6 +360,16 @@ pub async fn get_ec2_pillar_reports(
                     "findings": report.findings,
                     "posture": ec2_performance_posture_summary(&report),
                     "triage_context": ec2_performance_triage_context(&report),
+                })
+            } else if *pillar == Pillar::Scalability {
+                json!({
+                    "pillar": report.pillar,
+                    "assessment_scope": "ec2_demand_telemetry_and_cpu_scaling_pressure",
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "posture": ec2_scalability_posture_summary(&report),
                 })
             } else {
                 json!(report)

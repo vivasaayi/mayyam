@@ -201,4 +201,81 @@ describe("PillarScorecard", () => {
 
     await view.unmount();
   });
+
+  it("renders EC2 scalability posture rule gaps for operator review", async () => {
+    const data = {
+      evaluated_at: "2026-06-18T05:45:00Z",
+      stale_after_hours: 24,
+      reports: [
+        {
+          pillar: "scalability",
+          score: 68,
+          resources_evaluated: 2,
+          stale_resources: 0,
+          posture: {
+            status: "fail",
+            rules_evaluated: 3,
+            rules_failed: 2,
+            affected_resources: ["i-scale-gap", "i-scale-hot"],
+            rules: [
+              {
+                rule_id: "ec2-scalability-inventory-freshness",
+                status: "pass",
+                reason_codes: ["EC2_INV_STALE_DATA"],
+                affected_resources: [],
+              },
+              {
+                rule_id: "ec2-scalability-demand-telemetry-present",
+                status: "fail",
+                reason_codes: ["EC2_SCALE_MISSING_DEMAND_TELEMETRY"],
+                affected_resources: ["i-scale-gap"],
+              },
+              {
+                rule_id: "ec2-scalability-cpu-pressure",
+                status: "fail",
+                reason_codes: ["EC2_SCALE_HIGH_CPU_PRESSURE_TELEMETRY"],
+                affected_resources: ["i-scale-hot"],
+              },
+            ],
+          },
+          findings: [
+            {
+              severity: "medium",
+              reason_code: "EC2_SCALE_MISSING_DEMAND_TELEMETRY",
+              resource_id: "i-scale-gap",
+              message:
+                "Instance i-scale-gap is missing EC2 demand telemetry needed to assess scaling pressure",
+              evidence: { missing_metrics: ["NetworkIn"] },
+            },
+            {
+              severity: "high",
+              reason_code: "EC2_SCALE_HIGH_CPU_PRESSURE_TELEMETRY",
+              resource_id: "i-scale-hot",
+              message:
+                "Instance i-scale-hot has high CPUUtilization telemetry; scale-out or rightsizing pressure is likely",
+              evidence: { metric_name: "CPUUtilization", max: 92 },
+            },
+          ],
+        },
+      ],
+    };
+
+    const view = await render(<PillarScorecard data={data} />);
+    const text = view.container.textContent;
+
+    expect(text).toContain("scalability");
+    expect(text).toContain("Scalability Posture");
+    expect(text).toContain("2 failed of 3");
+    expect(text).toContain("ec2-scalability-inventory-freshness");
+    expect(text).toContain("ec2-scalability-demand-telemetry-present");
+    expect(text).toContain("ec2-scalability-cpu-pressure");
+    expect(text).toContain("EC2_INV_STALE_DATA");
+    expect(text).toContain("EC2_SCALE_MISSING_DEMAND_TELEMETRY");
+    expect(text).toContain("EC2_SCALE_HIGH_CPU_PRESSURE_TELEMETRY");
+    expect(text).toContain("i-scale-gap");
+    expect(text).toContain("i-scale-hot");
+    expect(text).toContain("scale-out or rightsizing pressure");
+
+    await view.unmount();
+  });
 });

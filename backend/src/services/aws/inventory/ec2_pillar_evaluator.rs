@@ -90,6 +90,7 @@ pub struct Ec2PostureSummary {
 pub type Ec2CostPostureSummary = Ec2PostureSummary;
 pub type Ec2ResiliencePostureSummary = Ec2PostureSummary;
 pub type Ec2PerformancePostureSummary = Ec2PostureSummary;
+pub type Ec2ScalabilityPostureSummary = Ec2PostureSummary;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Ec2EvidenceCitation {
@@ -654,6 +655,46 @@ pub fn ec2_performance_posture_summary(report: &PillarReport) -> Ec2PerformanceP
             .flat_map(|rule| rule.affected_resources.iter().cloned()),
     );
     Ec2PerformancePostureSummary {
+        status: if rules_failed == 0 {
+            Ec2PostureStatus::Pass
+        } else {
+            Ec2PostureStatus::Fail
+        },
+        rules_evaluated: rules.len(),
+        rules_failed,
+        affected_resources,
+        rules,
+    }
+}
+
+pub fn ec2_scalability_posture_summary(report: &PillarReport) -> Ec2ScalabilityPostureSummary {
+    let rules = vec![
+        ec2_scalability_posture_rule(
+            report,
+            "ec2-scalability-inventory-freshness",
+            &[REASON_INV_STALE_DATA],
+        ),
+        ec2_scalability_posture_rule(
+            report,
+            "ec2-scalability-demand-telemetry-present",
+            &[REASON_SCALE_MISSING_DEMAND_TELEMETRY],
+        ),
+        ec2_scalability_posture_rule(
+            report,
+            "ec2-scalability-cpu-pressure",
+            &[REASON_SCALE_HIGH_CPU_PRESSURE_TELEMETRY],
+        ),
+    ];
+    let rules_failed = rules
+        .iter()
+        .filter(|rule| rule.status == Ec2PostureStatus::Fail)
+        .count();
+    let affected_resources = sorted_unique_resources(
+        rules
+            .iter()
+            .flat_map(|rule| rule.affected_resources.iter().cloned()),
+    );
+    Ec2ScalabilityPostureSummary {
         status: if rules_failed == 0 {
             Ec2PostureStatus::Pass
         } else {
@@ -1970,6 +2011,14 @@ fn ec2_resilience_posture_rule(
 }
 
 fn ec2_performance_posture_rule(
+    report: &PillarReport,
+    rule_id: &'static str,
+    reason_codes: &[&'static str],
+) -> Ec2PostureRule {
+    ec2_posture_rule(report, rule_id, reason_codes)
+}
+
+fn ec2_scalability_posture_rule(
     report: &PillarReport,
     rule_id: &'static str,
     reason_codes: &[&'static str],
@@ -4697,6 +4746,139 @@ mod tests {
         assert!(triage.evidence_citations.iter().any(|citation| {
             citation.reason_code == REASON_INV_STALE_DATA && citation.resource_id == "i-perf-stale"
         }));
+    }
+
+    #[test]
+    fn ec2_scalability_posture_summary_flags_demand_telemetry_and_cpu_pressure_rules() {
+        let missing = fixture(
+            "i-scale-gap",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[35.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let pressured = fixture(
+            "i-scale-hot",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[88.0, 92.0]),
+                        metric("NetworkIn", &[1024.0]),
+                        metric("NetworkOut", &[2048.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[missing, pressured], Pillar::Scalability, now());
+        let posture = ec2_scalability_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 3);
+        assert_eq!(posture.rules_failed, 2);
+        assert_eq!(
+            posture.affected_resources,
+            vec!["i-scale-gap".to_string(), "i-scale-hot".to_string()]
+        );
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-scalability-demand-telemetry-present"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule
+                    .reason_codes
+                    .contains(&REASON_SCALE_MISSING_DEMAND_TELEMETRY)
+                && rule.affected_resources == vec!["i-scale-gap"]
+                && rule.suppression_supported
+                && rule.assignment_supported
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-scalability-cpu-pressure"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule
+                    .reason_codes
+                    .contains(&REASON_SCALE_HIGH_CPU_PRESSURE_TELEMETRY)
+                && rule.affected_resources == vec!["i-scale-hot"]
+        }));
+    }
+
+    #[test]
+    fn ec2_scalability_posture_summary_blocks_pass_when_inventory_is_stale() {
+        let stale = fixture(
+            "i-scale-stale",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[30.0]),
+                        metric("NetworkIn", &[1024.0]),
+                        metric("NetworkOut", &[2048.0])
+                    ]
+                }
+            }),
+            48,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Scalability, now());
+        let posture = ec2_scalability_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 3);
+        assert_eq!(posture.rules_failed, 1);
+        assert_eq!(posture.affected_resources, vec!["i-scale-stale"]);
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-scalability-inventory-freshness"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule.reason_codes.contains(&REASON_INV_STALE_DATA)
+                && rule.affected_resources == vec!["i-scale-stale"]
+        }));
+    }
+
+    #[test]
+    fn ec2_scalability_posture_summary_passes_for_fresh_complete_demand_telemetry() {
+        let healthy = fixture(
+            "i-scale-healthy",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[30.0, 45.0]),
+                        metric("NetworkIn", &[1024.0]),
+                        metric("NetworkOut", &[2048.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[healthy], Pillar::Scalability, now());
+        let posture = ec2_scalability_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Pass);
+        assert_eq!(posture.rules_evaluated, 3);
+        assert_eq!(posture.rules_failed, 0);
+        assert!(posture.affected_resources.is_empty());
+        assert!(posture
+            .rules
+            .iter()
+            .all(|rule| rule.status == Ec2PostureStatus::Pass));
     }
 
     #[test]
