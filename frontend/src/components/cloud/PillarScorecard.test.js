@@ -2428,6 +2428,31 @@ describe("PillarScorecard", () => {
               },
             ],
           },
+          slo_policy_tracking: {
+            workflow_id: "lambda_cost_slo_policy",
+            read_only_mode: true,
+            freshness_required: true,
+            objective: {
+              objective_id: "lambda-cost-score-min-90",
+              status: "at_risk",
+              target_score_min: 90,
+              current_score: 78,
+              trend_direction: "stable",
+              failed_rule_count: 1,
+              affected_resource_count: 1,
+              owner_filters: ["sre"],
+              environment_filters: ["prod"],
+              application_filters: ["checkout"],
+              notification_targets: ["environment:prod", "owner:sre"],
+              policy_state: "active_with_findings",
+              status_history: [
+                "snapshot_collected",
+                "policy_evaluated",
+                "notification_targets_resolved",
+              ],
+            },
+            evidence_reason_codes: ["LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY"],
+          },
           telemetry: {
             workflow_id: "lambda_cost_telemetry",
             cloudwatch_namespace: "AWS/Lambda",
@@ -2492,6 +2517,19 @@ describe("PillarScorecard", () => {
     expect(text).toContain("Dry run");
     expect(text).toContain("Review Unused Function Cleanup");
     expect(text).toContain("lambda-cost-gate-01");
+    expect(text).toContain("Cost SLO Policy");
+    expect(text).toContain("At Risk");
+    expect(text).toContain("lambda-cost-score-min-90");
+    expect(text).toContain("score 78 / target 90");
+    expect(text).toContain("Active With Findings");
+    expect(text).toContain("Stable trend");
+    expect(text).toContain("sre");
+    expect(text).toContain("prod");
+    expect(text).toContain("environment:prod, owner:sre");
+    expect(text).toContain("checkout");
+    expect(text).toContain("Snapshot Collected");
+    expect(text).toContain("Policy Evaluated");
+    expect(text).toContain("Notification Targets Resolved");
 
     await view.unmount();
   });

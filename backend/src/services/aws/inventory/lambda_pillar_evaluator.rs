@@ -304,6 +304,47 @@ pub struct LambdaCostRemediationWorkflow {
     pub approval_gates: Vec<LambdaMutationApprovalGate>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LambdaCostObjectiveStatus {
+    OnTrack,
+    AtRisk,
+    Breached,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LambdaCostTrendDirection {
+    Stable,
+    Degrading,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct LambdaCostPolicyObjective {
+    pub objective_id: &'static str,
+    pub status: LambdaCostObjectiveStatus,
+    pub target_score_min: u8,
+    pub current_score: u8,
+    pub trend_direction: LambdaCostTrendDirection,
+    pub failed_rule_count: usize,
+    pub affected_resource_count: usize,
+    pub owner_filters: Vec<String>,
+    pub environment_filters: Vec<String>,
+    pub application_filters: Vec<String>,
+    pub notification_targets: Vec<String>,
+    pub policy_state: &'static str,
+    pub status_history: Vec<&'static str>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct LambdaCostSloPolicySnapshot {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub freshness_required: bool,
+    pub objective: LambdaCostPolicyObjective,
+    pub evidence_reason_codes: Vec<String>,
+}
+
 /// Evaluate every Lambda function in the fleet for one pillar.
 pub fn evaluate_lambda_fleet(
     resources: &[AwsResourceModel],
@@ -758,6 +799,50 @@ pub fn lambda_cost_remediation_workflow(report: &PillarReport) -> LambdaCostReme
     }
 }
 
+pub fn lambda_cost_slo_policy_snapshot(report: &PillarReport) -> LambdaCostSloPolicySnapshot {
+    let posture = lambda_cost_posture_summary(report);
+    let failed_rule_count = posture.rules_failed;
+    let affected_resource_count = posture.affected_resources.len();
+    let status =
+        lambda_cost_objective_status(report.score, failed_rule_count, report.stale_resources);
+    let owner_filters = sorted_unique_evidence_values(report, &["owner", "team", "cost-center"]);
+    let environment_filters = sorted_unique_evidence_values(report, &["environment", "env"]);
+    let application_filters = sorted_unique_evidence_values(report, &["application", "app"]);
+    let notification_targets = lambda_notification_targets(&owner_filters, &environment_filters);
+
+    LambdaCostSloPolicySnapshot {
+        workflow_id: "lambda_cost_slo_policy",
+        read_only_mode: true,
+        freshness_required: true,
+        objective: LambdaCostPolicyObjective {
+            objective_id: "lambda-cost-score-min-90",
+            status,
+            target_score_min: 90,
+            current_score: report.score,
+            trend_direction: lambda_cost_trend_direction(status, failed_rule_count),
+            failed_rule_count,
+            affected_resource_count,
+            owner_filters,
+            environment_filters,
+            application_filters,
+            notification_targets,
+            policy_state: if report.stale_resources > 0 {
+                "blocked_stale_data"
+            } else if failed_rule_count > 0 {
+                "active_with_findings"
+            } else {
+                "active"
+            },
+            status_history: vec![
+                "snapshot_collected",
+                "policy_evaluated",
+                "notification_targets_resolved",
+            ],
+        },
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
 pub fn lambda_cost_telemetry_summary(report: &PillarReport) -> LambdaCostTelemetrySummary {
     let missing_data_reason_codes = sorted_unique_reasons(
         report
@@ -844,7 +929,10 @@ fn evaluate_cost(resource: &AwsResourceModel, findings: &mut Vec<InventoryFindin
                 "Function {} runs only on x86_64; evaluate arm64 (Graviton) for lower per-GB-second cost",
                 resource.resource_id
             ),
-            evidence: json!({ "architectures": architectures }),
+            evidence: json!({
+                "architectures": architectures,
+                "tags": resource.tags,
+            }),
         });
     }
 }
@@ -874,6 +962,7 @@ fn evaluate_cost_telemetry(resource: &AwsResourceModel, findings: &mut Vec<Inven
                 "required_fields": required_fields,
                 "missing_fields": missing_fields,
                 "resource_data_keys": resource_data_keys(resource),
+                "tags": resource.tags,
             }),
         });
     }
@@ -900,6 +989,7 @@ fn evaluate_cost_telemetry(resource: &AwsResourceModel, findings: &mut Vec<Inven
             evidence: json!({
                 "telemetry_collection_error_count": error_count,
                 "telemetry_collection_errors": errors,
+                "tags": resource.tags,
             }),
         });
     }
@@ -921,6 +1011,7 @@ fn evaluate_cost_telemetry(resource: &AwsResourceModel, findings: &mut Vec<Inven
                 "required_metrics": lambda_cost_metric_names(),
                 "missing_metrics": missing_metrics,
                 "cloudwatch_metric_names": resource.resource_data.get("cloudwatch_metric_names"),
+                "tags": resource.tags,
             }),
         });
     }
@@ -936,7 +1027,10 @@ fn evaluate_cost_telemetry(resource: &AwsResourceModel, findings: &mut Vec<Inven
                 "Function {} has zero observed invocations in Lambda telemetry; review it as an unused-cost candidate",
                 resource.resource_id
             ),
-            evidence: json!({ "invocations_max": 0.0 }),
+            evidence: json!({
+                "invocations_max": 0.0,
+                "tags": resource.tags,
+            }),
         });
     }
 
@@ -956,6 +1050,7 @@ fn evaluate_cost_telemetry(resource: &AwsResourceModel, findings: &mut Vec<Inven
             evidence: json!({
                 "errors_max": errors_max,
                 "throttles_max": throttles_max,
+                "tags": resource.tags,
             }),
         });
     }
@@ -1214,6 +1309,72 @@ fn lambda_remediation_action(
         ],
         evidence_reason_codes: gate.evidence_reason_codes.clone(),
     }
+}
+
+fn lambda_cost_objective_status(
+    score: u8,
+    failed_rule_count: usize,
+    stale_resources: usize,
+) -> LambdaCostObjectiveStatus {
+    if stale_resources > 0 || score < 70 {
+        LambdaCostObjectiveStatus::Breached
+    } else if failed_rule_count > 0 || score < 90 {
+        LambdaCostObjectiveStatus::AtRisk
+    } else {
+        LambdaCostObjectiveStatus::OnTrack
+    }
+}
+
+fn lambda_cost_trend_direction(
+    status: LambdaCostObjectiveStatus,
+    failed_rule_count: usize,
+) -> LambdaCostTrendDirection {
+    match status {
+        LambdaCostObjectiveStatus::OnTrack => LambdaCostTrendDirection::Stable,
+        LambdaCostObjectiveStatus::AtRisk if failed_rule_count <= 1 => {
+            LambdaCostTrendDirection::Stable
+        }
+        LambdaCostObjectiveStatus::AtRisk | LambdaCostObjectiveStatus::Breached => {
+            LambdaCostTrendDirection::Degrading
+        }
+    }
+}
+
+fn sorted_unique_reason_codes(report: &PillarReport) -> Vec<String> {
+    sorted_unique_reasons(
+        report
+            .findings
+            .iter()
+            .map(|finding| finding.reason_code.clone()),
+    )
+}
+
+fn sorted_unique_evidence_values(report: &PillarReport, keys: &[&str]) -> Vec<String> {
+    report
+        .findings
+        .iter()
+        .filter_map(|finding| finding.evidence.get("tags"))
+        .filter_map(|tags| tag_string(tags, keys))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn lambda_notification_targets(
+    owner_filters: &[String],
+    environment_filters: &[String],
+) -> Vec<String> {
+    let mut targets = Vec::new();
+    targets.extend(
+        environment_filters
+            .iter()
+            .map(|environment| format!("environment:{environment}")),
+    );
+    targets.extend(owner_filters.iter().map(|owner| format!("owner:{owner}")));
+    if targets.is_empty() {
+        targets.push("owner:unassigned".to_string());
+    }
+    targets
 }
 
 fn lambda_cost_metric_names() -> [&'static str; 4] {
@@ -1758,6 +1919,72 @@ mod tests {
         assert!(workflow.actions.iter().all(|action| {
             action.dry_run && action.status == LambdaRemediationStatus::BlockedMissingEvidence
         }));
+    }
+
+    #[test]
+    fn lambda_cost_slo_policy_snapshot_tracks_owner_policy_and_notifications() {
+        let mut spend_data = healthy_data();
+        spend_data["cloudwatch_metrics"]["metrics"][2]["datapoints"] = json!([{ "value": 8.0 }]);
+        spend_data["cloudwatch_metrics"]["metrics"][3]["datapoints"] = json!([{ "value": 2.0 }]);
+        let spend = fixture(
+            "fn-cost-slo",
+            json!({
+                "owner": "sre",
+                "environment": "prod",
+                "application": "checkout"
+            }),
+            spend_data,
+            1,
+            now(),
+        );
+
+        let report = evaluate_lambda_fleet(&[spend], Pillar::Cost, now());
+        let snapshot = lambda_cost_slo_policy_snapshot(&report);
+
+        assert_eq!(snapshot.workflow_id, "lambda_cost_slo_policy");
+        assert!(snapshot.read_only_mode);
+        assert!(snapshot.freshness_required);
+        assert_eq!(snapshot.objective.objective_id, "lambda-cost-score-min-90");
+        assert_eq!(snapshot.objective.status, LambdaCostObjectiveStatus::AtRisk);
+        assert_eq!(snapshot.objective.target_score_min, 90);
+        assert_eq!(snapshot.objective.owner_filters, vec!["sre"]);
+        assert_eq!(snapshot.objective.environment_filters, vec!["prod"]);
+        assert_eq!(snapshot.objective.application_filters, vec!["checkout"]);
+        assert_eq!(
+            snapshot.objective.notification_targets,
+            vec!["environment:prod", "owner:sre"]
+        );
+        assert_eq!(snapshot.objective.policy_state, "active_with_findings");
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_COST_ERROR_OR_THROTTLE_TELEMETRY.to_string()));
+    }
+
+    #[test]
+    fn lambda_cost_slo_policy_snapshot_marks_stale_data_as_breached() {
+        let stale = fixture(
+            "fn-cost-stale-slo",
+            json!({"owner": "sre"}),
+            healthy_data(),
+            1,
+            now() - chrono::Duration::hours(30),
+        );
+
+        let report = evaluate_lambda_fleet(&[stale], Pillar::Cost, now());
+        let snapshot = lambda_cost_slo_policy_snapshot(&report);
+
+        assert_eq!(
+            snapshot.objective.status,
+            LambdaCostObjectiveStatus::Breached
+        );
+        assert_eq!(
+            snapshot.objective.trend_direction,
+            LambdaCostTrendDirection::Degrading
+        );
+        assert_eq!(snapshot.objective.policy_state, "blocked_stale_data");
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
     }
 
     #[test]

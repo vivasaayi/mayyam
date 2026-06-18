@@ -1041,6 +1041,27 @@ async fn lambda_pillar_reports_contract() {
             && action["validation_steps"].is_array()
             && action["evidence_reason_codes"].is_array()
     }));
+    let slo_policy = &cost["slo_policy_tracking"];
+    assert_eq!(slo_policy["workflow_id"], "lambda_cost_slo_policy");
+    assert_eq!(slo_policy["read_only_mode"], true);
+    assert_eq!(slo_policy["freshness_required"], true);
+    assert_eq!(
+        slo_policy["objective"]["objective_id"],
+        "lambda-cost-score-min-90"
+    );
+    assert!(slo_policy["objective"]["status"].is_string());
+    assert_eq!(slo_policy["objective"]["target_score_min"], 90);
+    assert!(slo_policy["objective"]["current_score"].is_number());
+    assert!(slo_policy["objective"]["trend_direction"].is_string());
+    assert!(slo_policy["objective"]["failed_rule_count"].is_number());
+    assert!(slo_policy["objective"]["affected_resource_count"].is_number());
+    assert!(slo_policy["objective"]["owner_filters"].is_array());
+    assert!(slo_policy["objective"]["environment_filters"].is_array());
+    assert!(slo_policy["objective"]["application_filters"].is_array());
+    assert!(slo_policy["objective"]["notification_targets"].is_array());
+    assert!(slo_policy["objective"]["policy_state"].is_string());
+    assert!(slo_policy["objective"]["status_history"].is_array());
+    assert!(slo_policy["evidence_reason_codes"].is_array());
     assert_eq!(cost["telemetry"]["workflow_id"], "lambda_cost_telemetry");
     assert_eq!(cost["telemetry"]["cloudwatch_namespace"], "AWS/Lambda");
     assert_eq!(cost["telemetry"]["cloudwatch_dimension"], "FunctionName");
