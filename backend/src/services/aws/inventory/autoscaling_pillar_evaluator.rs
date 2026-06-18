@@ -122,6 +122,7 @@ pub struct AsgTriageContext {
 }
 
 pub type AsgCostTriageContext = AsgTriageContext;
+pub type AsgResilienceTriageContext = AsgTriageContext;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -1146,6 +1147,93 @@ pub fn asg_cost_triage_context(report: &PillarReport) -> AsgCostTriageContext {
         max_prompt_tokens: 1200,
         provider_routing: vec!["primary_ops_llm", "fallback_ops_llm"],
         audit_event_type: "autoscaling_ai_triage_context_built",
+        guardrails: AsgAiTriageGuardrails {
+            read_only_mode: true,
+            evidence_required: true,
+            separate_facts_from_hypotheses: true,
+            ask_for_missing_data: true,
+            no_llm_invocation: true,
+            no_mutation_planning: true,
+        },
+        facts,
+        hypotheses,
+        missing_data_questions,
+        evidence_citations,
+    }
+}
+
+pub fn asg_resilience_triage_context(report: &PillarReport) -> AsgResilienceTriageContext {
+    let mut facts = Vec::new();
+    let mut hypotheses = Vec::new();
+    let mut missing_data_questions = Vec::new();
+    let mut evidence_citations = Vec::new();
+
+    for finding in &report.findings {
+        facts.push(format!(
+            "{} affects {} with {:?} severity",
+            finding.reason_code, finding.resource_id, finding.severity
+        ));
+        evidence_citations.push(AsgEvidenceCitation {
+            reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            evidence: finding.evidence.clone(),
+        });
+
+        match finding.reason_code.as_str() {
+            REASON_INV_STALE_DATA => missing_data_questions.push(format!(
+                "Refresh Auto Scaling inventory for {} before generating resilience triage",
+                finding.resource_id
+            )),
+            REASON_TEL_MISSING_COLLECTION_METADATA => missing_data_questions.push(format!(
+                "Collect telemetry collection metadata for {} before trusting Auto Scaling resilience evidence",
+                finding.resource_id
+            )),
+            REASON_TEL_COLLECTION_ERRORS => hypotheses.push(format!(
+                "{} has telemetry collection errors; inspect collector logs, Auto Scaling API throttling, permissions, and retry evidence before changing replacement behavior",
+                finding.resource_id
+            )),
+            REASON_RES_MISSING_REPLACEMENT_TELEMETRY => missing_data_questions.push(format!(
+                "Collect replacement telemetry for {} before explaining resilience posture",
+                finding.resource_id
+            )),
+            REASON_RES_MISSING_INSTANCE_HEALTH_TELEMETRY => missing_data_questions.push(format!(
+                "Collect instance health telemetry for {} before explaining replacement behavior",
+                finding.resource_id
+            )),
+            REASON_RES_UNHEALTHY_INSTANCE_TELEMETRY => hypotheses.push(format!(
+                "{} may not be replacing unhealthy instances quickly enough; verify instance health, lifecycle state, and termination policy evidence before recommending changes",
+                finding.resource_id
+            )),
+            REASON_RES_SINGLE_AZ => hypotheses.push(format!(
+                "{} may lose replacement capacity during an AZ outage; verify cross-zone target capacity and load balancer health checks before recommending changes",
+                finding.resource_id
+            )),
+            REASON_RES_ELB_HEALTH_CHECK_EC2_ONLY => hypotheses.push(format!(
+                "{} may keep instances that fail application health checks because the group uses EC2 health checks while load balanced; verify ELB health check configuration before recommending changes",
+                finding.resource_id
+            )),
+            REASON_RES_SUSPENDED_PROCESSES => hypotheses.push(format!(
+                "{} may not replace unhealthy capacity while scaling processes are suspended; verify suspension reason and owner intent before recommending changes",
+                finding.resource_id
+            )),
+            REASON_RES_DESIRED_BELOW_MIN => missing_data_questions.push(format!(
+                "Re-sync capacity telemetry for {} because desired capacity is below min size in the latest snapshot",
+                finding.resource_id
+            )),
+            _ => {}
+        }
+    }
+
+    AsgTriageContext {
+        workflow_id: "autoscaling_resilience_triage_context",
+        pillar: report.pillar,
+        context_builder_id: "autoscaling-resilience-deterministic-context-v1",
+        prompt_template_id: "autoscaling-resilience-ai-triage-v1",
+        generation_mode: "deterministic_no_llm",
+        max_prompt_tokens: 1200,
+        provider_routing: vec!["primary_ops_llm", "fallback_ops_llm"],
+        audit_event_type: "autoscaling_resilience_ai_triage_context_built",
         guardrails: AsgAiTriageGuardrails {
             read_only_mode: true,
             evidence_required: true,
@@ -2353,6 +2441,79 @@ mod tests {
                 && rule.status == AsgPostureStatus::Fail
                 && rule.reason_codes == vec![REASON_INV_STALE_DATA]
                 && rule.affected_resources == vec!["asg-res-stale".to_string()]
+        }));
+    }
+
+    #[test]
+    fn asg_resilience_triage_context_separates_facts_hypotheses_and_questions() {
+        let mut single_az_data = healthy_data();
+        single_az_data["availability_zones"] = json!(["us-east-1a"]);
+        single_az_data["health_check_type"] = json!("EC2");
+        let single_az = fixture(
+            "asg-res-single-az-triage",
+            json!({"team": "core"}),
+            single_az_data,
+            now(),
+        );
+
+        let mut missing_health_data = healthy_data();
+        missing_health_data
+            .as_object_mut()
+            .expect("object")
+            .remove("instance_health");
+        missing_health_data
+            .as_object_mut()
+            .expect("object")
+            .remove("healthy_instance_count");
+        missing_health_data
+            .as_object_mut()
+            .expect("object")
+            .remove("unhealthy_instance_count");
+        let missing_health = fixture(
+            "asg-res-missing-health-triage",
+            json!({"team": "core"}),
+            missing_health_data,
+            now(),
+        );
+
+        let report =
+            evaluate_autoscaling_fleet(&[single_az, missing_health], Pillar::Resilience, now());
+        let triage = asg_resilience_triage_context(&report);
+
+        assert_eq!(triage.workflow_id, "autoscaling_resilience_triage_context");
+        assert_eq!(
+            triage.context_builder_id,
+            "autoscaling-resilience-deterministic-context-v1"
+        );
+        assert_eq!(
+            triage.prompt_template_id,
+            "autoscaling-resilience-ai-triage-v1"
+        );
+        assert_eq!(triage.generation_mode, "deterministic_no_llm");
+        assert_eq!(triage.max_prompt_tokens, 1200);
+        assert_eq!(
+            triage.audit_event_type,
+            "autoscaling_resilience_ai_triage_context_built"
+        );
+        assert!(triage.guardrails.read_only_mode);
+        assert!(triage.guardrails.evidence_required);
+        assert!(triage.guardrails.no_llm_invocation);
+        assert!(triage.guardrails.no_mutation_planning);
+        assert!(triage
+            .facts
+            .iter()
+            .any(|fact| fact.contains(REASON_RES_SINGLE_AZ)));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("AZ outage")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("instance health telemetry")));
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_RES_ELB_HEALTH_CHECK_EC2_ONLY
+                && citation.resource_id == "asg-res-single-az-triage"
         }));
     }
 

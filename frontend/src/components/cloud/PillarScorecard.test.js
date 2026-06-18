@@ -504,6 +504,43 @@ describe("PillarScorecard", () => {
               },
             ],
           },
+          triage_context: {
+            workflow_id: "autoscaling_resilience_triage_context",
+            pillar: "resilience",
+            context_builder_id: "autoscaling-resilience-deterministic-context-v1",
+            prompt_template_id: "autoscaling-resilience-ai-triage-v1",
+            generation_mode: "deterministic_no_llm",
+            max_prompt_tokens: 1200,
+            provider_routing: ["primary_ops_llm", "fallback_ops_llm"],
+            audit_event_type: "autoscaling_resilience_ai_triage_context_built",
+            guardrails: {
+              read_only_mode: true,
+              evidence_required: true,
+              separate_facts_from_hypotheses: true,
+              ask_for_missing_data: true,
+              no_llm_invocation: true,
+              no_mutation_planning: true,
+            },
+            facts: [
+              "ASG_RES_SINGLE_AZ affects asg-single-az with High severity",
+            ],
+            hypotheses: [
+              "asg-single-az may lose replacement capacity during an AZ outage; verify cross-zone target capacity and load balancer health checks before recommending changes",
+            ],
+            missing_data_questions: [
+              "Collect instance health telemetry for asg-unhealthy before explaining replacement behavior",
+            ],
+            evidence_citations: [
+              {
+                reason_code: "ASG_RES_SINGLE_AZ",
+                resource_id: "asg-single-az",
+                severity: "high",
+                evidence: {
+                  availability_zones: ["us-east-1a"],
+                },
+              },
+            ],
+          },
         },
       ],
     };
@@ -519,6 +556,16 @@ describe("PillarScorecard", () => {
     expect(text).toContain("asg-resilience-instance-health-clean");
     expect(text).toContain("ASG_RES_SINGLE_AZ");
     expect(text).toContain("ASG_RES_UNHEALTHY_INSTANCE_TELEMETRY");
+    expect(text).toContain("Resilience Triage Context");
+    expect(text).toContain("autoscaling-resilience-deterministic-context-v1");
+    expect(text).toContain("autoscaling-resilience-ai-triage-v1");
+    expect(text).toContain("Provider Routing (not invoked)");
+    expect(text).toContain("primary_ops_llm");
+    expect(text).toContain("1200 token budget");
+    expect(text).toContain("Read only");
+    expect(text).toContain("Deterministic context only");
+    expect(text).toContain("AZ outage");
+    expect(text).toContain("Collect instance health telemetry");
 
     await view.unmount();
   });
