@@ -161,7 +161,7 @@ async fn ec2_pillar_reports_contract() {
         ),
         (
             "ec2-resilience-status-check-telemetry",
-            "EC2_RES_MISSING_STATUS_CHECK_TELEMETRY",
+            "EC2_RES_MISSING_STATUS_TELEMETRY",
         ),
         (
             "ec2-resilience-status-check-health",
@@ -175,6 +175,38 @@ async fn ec2_pillar_reports_contract() {
         assert_eq!(rule["reason_codes"][0], expected_reason_code);
     }
     assert!(reports[0]["posture"]["affected_resources"].is_array());
+    assert_eq!(
+        reports[0]["triage_context"]["workflow_id"],
+        "ec2_resilience_triage_context"
+    );
+    assert_eq!(
+        reports[0]["triage_context"]["context_builder_id"],
+        "ec2-resilience-deterministic-context-v1"
+    );
+    assert_eq!(
+        reports[0]["triage_context"]["generation_mode"],
+        "deterministic_no_llm"
+    );
+    assert_eq!(
+        reports[0]["triage_context"]["guardrails"]["read_only_mode"],
+        true
+    );
+    assert_eq!(
+        reports[0]["triage_context"]["guardrails"]["evidence_required"],
+        true
+    );
+    assert_eq!(
+        reports[0]["triage_context"]["guardrails"]["no_llm_invocation"],
+        true
+    );
+    assert_eq!(
+        reports[0]["triage_context"]["guardrails"]["no_mutation_planning"],
+        true
+    );
+    assert!(reports[0]["triage_context"]["facts"].is_array());
+    assert!(reports[0]["triage_context"]["hypotheses"].is_array());
+    assert!(reports[0]["triage_context"]["missing_data_questions"].is_array());
+    assert!(reports[0]["triage_context"]["evidence_citations"].is_array());
 }
 
 #[tokio::test]

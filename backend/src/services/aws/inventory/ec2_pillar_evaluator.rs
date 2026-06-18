@@ -99,13 +99,30 @@ pub struct Ec2EvidenceCitation {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Ec2CostTriageContext {
+pub struct Ec2AiTriageGuardrails {
+    pub read_only_mode: bool,
+    pub evidence_required: bool,
+    pub separate_facts_from_hypotheses: bool,
+    pub ask_for_missing_data: bool,
+    pub no_llm_invocation: bool,
+    pub no_mutation_planning: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Ec2TriageContext {
+    pub workflow_id: &'static str,
     pub pillar: Pillar,
+    pub context_builder_id: &'static str,
+    pub generation_mode: &'static str,
+    pub guardrails: Ec2AiTriageGuardrails,
     pub facts: Vec<String>,
     pub hypotheses: Vec<String>,
     pub missing_data_questions: Vec<String>,
     pub evidence_citations: Vec<Ec2EvidenceCitation>,
 }
+
+pub type Ec2CostTriageContext = Ec2TriageContext;
+pub type Ec2ResilienceTriageContext = Ec2TriageContext;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -498,8 +515,88 @@ pub fn ec2_cost_triage_context(report: &PillarReport) -> Ec2CostTriageContext {
         }
     }
 
-    Ec2CostTriageContext {
-        pillar: report.pillar,
+    ec2_triage_context(
+        "ec2_cost_triage_context",
+        report.pillar,
+        "ec2-cost-deterministic-context-v1",
+        facts,
+        hypotheses,
+        missing_data_questions,
+        evidence_citations,
+    )
+}
+
+pub fn ec2_resilience_triage_context(report: &PillarReport) -> Ec2ResilienceTriageContext {
+    let mut facts = Vec::new();
+    let mut hypotheses = Vec::new();
+    let mut missing_data_questions = Vec::new();
+    let mut evidence_citations = Vec::new();
+
+    for finding in &report.findings {
+        facts.push(format!(
+            "{} affects {} with {:?} severity",
+            finding.reason_code, finding.resource_id, finding.severity
+        ));
+        evidence_citations.push(Ec2EvidenceCitation {
+            reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            evidence: finding.evidence.clone(),
+        });
+
+        match finding.reason_code.as_str() {
+            REASON_RES_SINGLE_AZ_CONCENTRATION => hypotheses.push(
+                "Running EC2 capacity is currently observed in one availability zone; confirm whether placement evidence for additional running instances is missing before treating the fleet as concentrated".to_string(),
+            ),
+            REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY => hypotheses.push(format!(
+                "{} has EC2 status-check failure telemetry; inspect StatusCheckFailed, StatusCheckFailed_Instance, and StatusCheckFailed_System evidence before marking reachability healthy",
+                finding.resource_id
+            )),
+            REASON_RES_MISSING_AZ => missing_data_questions.push(format!(
+                "Collect availability zone placement for {} before assessing EC2 placement resilience",
+                finding.resource_id
+            )),
+            REASON_RES_MISSING_STATUS_TELEMETRY => missing_data_questions.push(format!(
+                "Collect StatusCheckFailed, StatusCheckFailed_Instance, and StatusCheckFailed_System telemetry for {} before judging reachability resilience",
+                finding.resource_id
+            )),
+            _ => {}
+        }
+    }
+
+    ec2_triage_context(
+        "ec2_resilience_triage_context",
+        report.pillar,
+        "ec2-resilience-deterministic-context-v1",
+        facts,
+        hypotheses,
+        missing_data_questions,
+        evidence_citations,
+    )
+}
+
+fn ec2_triage_context(
+    workflow_id: &'static str,
+    pillar: Pillar,
+    context_builder_id: &'static str,
+    facts: Vec<String>,
+    hypotheses: Vec<String>,
+    missing_data_questions: Vec<String>,
+    evidence_citations: Vec<Ec2EvidenceCitation>,
+) -> Ec2TriageContext {
+    Ec2TriageContext {
+        workflow_id,
+        pillar,
+        context_builder_id,
+        generation_mode: "deterministic_no_llm",
+        guardrails: Ec2AiTriageGuardrails {
+            read_only_mode: true,
+            evidence_required: true,
+            separate_facts_from_hypotheses: true,
+            ask_for_missing_data: true,
+            no_llm_invocation: true,
+            no_mutation_planning: true,
+        },
         facts,
         hypotheses,
         missing_data_questions,
@@ -2134,6 +2231,76 @@ mod tests {
         assert_eq!(posture.status, Ec2PostureStatus::Pass);
         assert_eq!(posture.rules_failed, 0);
         assert!(posture.affected_resources.is_empty());
+    }
+
+    #[test]
+    fn ec2_resilience_triage_context_separates_facts_hypotheses_and_questions() {
+        let missing_az = fixture(
+            "i-noaz",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let status_failed = fixture(
+            "i-status-failed",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0, 1.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[missing_az, status_failed], Pillar::Resilience, now());
+        let triage = ec2_resilience_triage_context(&report);
+
+        assert_eq!(triage.workflow_id, "ec2_resilience_triage_context");
+        assert_eq!(triage.pillar, Pillar::Resilience);
+        assert_eq!(
+            triage.context_builder_id,
+            "ec2-resilience-deterministic-context-v1"
+        );
+        assert_eq!(triage.generation_mode, "deterministic_no_llm");
+        assert!(triage.guardrails.read_only_mode);
+        assert!(triage.guardrails.evidence_required);
+        assert!(triage.guardrails.separate_facts_from_hypotheses);
+        assert!(triage.guardrails.ask_for_missing_data);
+        assert!(triage.guardrails.no_llm_invocation);
+        assert!(triage.guardrails.no_mutation_planning);
+        assert!(triage
+            .facts
+            .iter()
+            .any(|fact| fact.contains(REASON_RES_MISSING_AZ)));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("EC2 status-check failure telemetry")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("availability zone placement")));
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY
+                && citation.resource_id == "i-status-failed"
+        }));
     }
 
     #[test]
