@@ -1155,6 +1155,32 @@ async fn autoscaling_cost_pillar_reports_posture_contract() {
     assert!(triage["hypotheses"].is_array());
     assert!(triage["missing_data_questions"].is_array());
     assert!(triage["evidence_citations"].is_array());
+    assert_eq!(
+        reports[0]["agentic_investigation"]["workflow_id"],
+        "autoscaling_cost_agentic_investigation"
+    );
+    assert_eq!(
+        reports[0]["agentic_investigation"]["default_tool_mode"],
+        "read_only"
+    );
+    assert_eq!(reports[0]["agentic_investigation"]["replay_required"], true);
+    assert!(reports[0]["agentic_investigation"]["steps"].is_array());
+    assert!(reports[0]["agentic_investigation"]["approval_gates"].is_array());
+    assert!(reports[0]["agentic_investigation"]["evidence_citations"].is_array());
+    let investigation_steps = reports[0]["agentic_investigation"]["steps"]
+        .as_array()
+        .expect("autoscaling investigation steps should be an array");
+    assert!(investigation_steps.iter().all(|step| {
+        let tool_name = step["tool_name"].as_str().unwrap_or_default();
+        tool_name.starts_with("autoscaling.")
+            && !tool_name.contains("execute")
+            && !tool_name.contains("delete")
+    }));
+    assert!(investigation_steps.iter().all(|step| {
+        step["tool_mode"] == "read_only"
+            || (step["tool_mode"] == "approval_required"
+                && step["tool_name"] == "autoscaling.cost.prepare_approval_plan")
+    }));
 }
 
 #[tokio::test]

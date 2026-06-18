@@ -122,6 +122,58 @@ pub struct AsgTriageContext {
 
 pub type AsgCostTriageContext = AsgTriageContext;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AsgInvestigationStepKind {
+    Inspect,
+    Compare,
+    Diagnose,
+    ProposeMutationPlan,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AsgInvestigationToolMode {
+    ReadOnly,
+    ApprovalRequired,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AsgInvestigationStep {
+    pub step_id: String,
+    pub kind: AsgInvestigationStepKind,
+    pub tool_name: &'static str,
+    pub tool_mode: AsgInvestigationToolMode,
+    pub target_resource_id: String,
+    pub reason_code: String,
+    pub stop_condition: String,
+    pub evidence: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AsgMutationApprovalGate {
+    pub gate_id: String,
+    pub target_resource_id: String,
+    pub required_approval: &'static str,
+    pub blast_radius: String,
+    pub rollback_note_required: bool,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AsgAgenticInvestigationPlan {
+    pub workflow_id: &'static str,
+    pub default_tool_mode: AsgInvestigationToolMode,
+    pub max_tool_calls: usize,
+    pub max_evidence_citations: usize,
+    pub replay_required: bool,
+    pub steps: Vec<AsgInvestigationStep>,
+    pub approval_gates: Vec<AsgMutationApprovalGate>,
+    pub evidence_citations: Vec<AsgEvidenceCitation>,
+}
+
+pub type AsgCostAgenticInvestigationPlan = AsgAgenticInvestigationPlan;
+
 /// Evaluate every Auto Scaling group in the fleet for one pillar. Rows whose
 /// `resource_type` is not `AutoScalingGroup` are skipped and not counted.
 pub fn evaluate_autoscaling_fleet(
@@ -168,6 +220,169 @@ pub fn evaluate_autoscaling_fleet(
         stale_resources,
         score,
         findings,
+    }
+}
+
+pub fn asg_cost_agentic_investigation_plan(
+    report: &PillarReport,
+) -> AsgCostAgenticInvestigationPlan {
+    let triage = asg_cost_triage_context(report);
+    let mut steps = Vec::new();
+    let mut approval_gates = Vec::new();
+
+    for citation in &triage.evidence_citations {
+        if citation.resource_id == "fleet" {
+            continue;
+        }
+
+        match citation.reason_code.as_str() {
+            REASON_INV_STALE_DATA => {
+                steps.push(asg_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.describe_group_inventory",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when the Auto Scaling group inventory is refreshed or stale evidence is confirmed",
+                ));
+            }
+            REASON_TEL_MISSING_COLLECTION_METADATA => {
+                steps.push(asg_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.inspect_collection_metadata",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when collection start, completion, duration, success, failure, and error counts are recorded",
+                ));
+            }
+            REASON_TEL_COLLECTION_ERRORS => {
+                steps.push(asg_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Diagnose,
+                    "autoscaling.inspect_collector_errors",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when collector logs, throttling, permissions, and retry evidence explain the collection gap",
+                ));
+            }
+            REASON_COST_MISSING_CAPACITY_TELEMETRY => {
+                steps.push(asg_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.describe_group_capacity",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when min, max, desired, and instance counts are recorded",
+                ));
+            }
+            REASON_COST_MISSING_GROUP_METRICS_TELEMETRY => {
+                steps.push(asg_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.describe_enabled_metrics",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when enabled group metrics are collected or confirmed disabled",
+                ));
+            }
+            REASON_COST_NO_TAGS => {
+                steps.push(asg_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Diagnose,
+                    "autoscaling.resource_groups.get_tagging_context",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when owner, team, project, or cost-center can be inferred or the gap is assigned",
+                ));
+                approval_gates.push(asg_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve tag writes after ownership is verified",
+                ));
+            }
+            REASON_COST_FIXED_SIZE => {
+                steps.push(asg_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Compare,
+                    "autoscaling.compare_scaling_policy_capacity",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when fixed capacity is compared with demand, scheduled scaling, and scaling policy evidence",
+                ));
+                approval_gates.push(asg_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve scaling policy or capacity changes after owner review",
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    steps.push(AsgInvestigationStep {
+        step_id: format!("autoscaling-cost-step-{:02}", steps.len() + 1),
+        kind: AsgInvestigationStepKind::ProposeMutationPlan,
+        tool_name: "autoscaling.cost.prepare_approval_plan",
+        tool_mode: AsgInvestigationToolMode::ApprovalRequired,
+        target_resource_id: "investigation".to_string(),
+        reason_code: "ASG_COST_APPROVAL_PLAN_REQUIRED".to_string(),
+        stop_condition:
+            "stop before mutation; require explicit operator approval, blast-radius summary, and rollback note"
+                .to_string(),
+        evidence: json!({
+            "approval_gate_count": approval_gates.len(),
+            "read_only_step_count": steps.len(),
+        }),
+    });
+
+    AsgCostAgenticInvestigationPlan {
+        workflow_id: "autoscaling_cost_agentic_investigation",
+        default_tool_mode: AsgInvestigationToolMode::ReadOnly,
+        max_tool_calls: steps.len().min(12),
+        max_evidence_citations: triage.evidence_citations.len(),
+        replay_required: true,
+        steps,
+        approval_gates,
+        evidence_citations: triage.evidence_citations,
+    }
+}
+
+fn asg_investigation_step(
+    existing_steps: &[AsgInvestigationStep],
+    kind: AsgInvestigationStepKind,
+    tool_name: &'static str,
+    tool_mode: AsgInvestigationToolMode,
+    citation: &AsgEvidenceCitation,
+    stop_condition: &str,
+) -> AsgInvestigationStep {
+    AsgInvestigationStep {
+        step_id: format!("autoscaling-cost-step-{:02}", existing_steps.len() + 1),
+        kind,
+        tool_name,
+        tool_mode,
+        target_resource_id: citation.resource_id.clone(),
+        reason_code: citation.reason_code.clone(),
+        stop_condition: stop_condition.to_string(),
+        evidence: citation.evidence.clone(),
+    }
+}
+
+fn asg_mutation_gate(
+    existing_gates: &[AsgMutationApprovalGate],
+    citation: &AsgEvidenceCitation,
+    required_approval: &'static str,
+) -> AsgMutationApprovalGate {
+    AsgMutationApprovalGate {
+        gate_id: format!("autoscaling-cost-approval-{:02}", existing_gates.len() + 1),
+        target_resource_id: citation.resource_id.clone(),
+        required_approval,
+        blast_radius: format!(
+            "single Auto Scaling group {}; no mutation is executable from the investigation plan",
+            citation.resource_id
+        ),
+        rollback_note_required: true,
+        evidence_reason_codes: vec![citation.reason_code.clone()],
     }
 }
 
@@ -1363,6 +1578,61 @@ mod tests {
             citation.reason_code == REASON_TEL_COLLECTION_ERRORS
                 && citation.resource_id == "asg-telemetry-error"
         }));
+    }
+
+    #[test]
+    fn asg_cost_agentic_investigation_plan_is_read_only_until_approval() {
+        let mut fixed_data = healthy_data();
+        fixed_data["min_size"] = json!(3);
+        fixed_data["max_size"] = json!(3);
+        fixed_data["desired_capacity"] = json!(3);
+        let fixed = fixture("asg-fixed", json!({"team": "core"}), fixed_data, now());
+
+        let mut missing_data = healthy_data();
+        for field in [
+            "enabled_metrics",
+            "enabled_metric_count",
+            "desired_capacity",
+        ] {
+            missing_data.as_object_mut().expect("object").remove(field);
+        }
+        let missing = fixture("asg-cost-missing", json!({}), missing_data, now());
+
+        let report = evaluate_autoscaling_fleet(&[fixed, missing], Pillar::Cost, now());
+        let plan = asg_cost_agentic_investigation_plan(&report);
+
+        assert_eq!(plan.workflow_id, "autoscaling_cost_agentic_investigation");
+        assert_eq!(plan.default_tool_mode, AsgInvestigationToolMode::ReadOnly);
+        assert!(plan.replay_required);
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "autoscaling.describe_group_capacity"
+                && step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                && step.target_resource_id == "asg-cost-missing"
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "autoscaling.describe_enabled_metrics"
+                && step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                && step.target_resource_id == "asg-cost-missing"
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "autoscaling.compare_scaling_policy_capacity"
+                && step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                && step.target_resource_id == "asg-fixed"
+        }));
+        assert_eq!(
+            plan.steps.last().map(|step| step.tool_mode),
+            Some(AsgInvestigationToolMode::ApprovalRequired)
+        );
+        assert!(plan.steps.iter().all(|step| {
+            step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                || step.tool_name == "autoscaling.cost.prepare_approval_plan"
+        }));
+        assert_eq!(plan.approval_gates.len(), 2);
+        assert!(plan
+            .approval_gates
+            .iter()
+            .all(|gate| gate.rollback_note_required));
+        assert_eq!(plan.max_evidence_citations, report.findings.len());
     }
 
     #[test]
