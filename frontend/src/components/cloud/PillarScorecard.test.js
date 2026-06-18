@@ -642,6 +642,34 @@ describe("PillarScorecard", () => {
               },
             ],
           },
+          slo_policy_tracking: {
+            workflow_id: "autoscaling_resilience_slo_policy",
+            read_only_mode: true,
+            freshness_required: true,
+            objective: {
+              objective_id: "autoscaling-resilience-score-min-95",
+              status: "at_risk",
+              target_score_min: 95,
+              current_score: 62,
+              trend_direction: "degrading",
+              failed_rule_count: 3,
+              affected_resource_count: 2,
+              owner_filters: ["sre"],
+              environment_filters: ["prod"],
+              application_filters: ["checkout"],
+              notification_targets: ["environment:prod", "owner:sre"],
+              policy_state: "active_with_findings",
+              status_history: [
+                "snapshot_collected",
+                "resilience_policy_evaluated",
+                "notification_targets_resolved",
+              ],
+            },
+            evidence_reason_codes: [
+              "ASG_RES_SINGLE_AZ",
+              "ASG_RES_UNHEALTHY_INSTANCE_TELEMETRY",
+            ],
+          },
         },
       ],
     };
@@ -679,6 +707,10 @@ describe("PillarScorecard", () => {
     expect(text).toContain("aws.autoscaling.resilience.remediation.approve");
     expect(text).toContain("autoscaling.resilience.remediation.dry_run_planned");
     expect(text).toContain("autoscaling-resilience-remediation-01");
+    expect(text).toContain("Resilience SLO Policy");
+    expect(text).toContain("autoscaling-resilience-score-min-95");
+    expect(text).toContain("95");
+    expect(text).toContain("Resilience Policy Evaluated");
 
     await view.unmount();
   });

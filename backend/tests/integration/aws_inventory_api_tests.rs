@@ -1448,6 +1448,34 @@ async fn autoscaling_resilience_pillar_reports_posture_contract() {
                 .map(|note| note.contains("rollback"))
                 .unwrap_or(false)
     }));
+
+    let slo = &reports[0]["slo_policy_tracking"];
+    assert_eq!(slo["workflow_id"], "autoscaling_resilience_slo_policy");
+    assert_eq!(slo["read_only_mode"], true);
+    assert_eq!(slo["freshness_required"], true);
+    assert_eq!(
+        slo["objective"]["objective_id"],
+        "autoscaling-resilience-score-min-95"
+    );
+    assert_eq!(slo["objective"]["target_score_min"], 95);
+    assert!(matches!(
+        slo["objective"]["status"].as_str(),
+        Some("on_track" | "at_risk" | "breached")
+    ));
+    assert!(matches!(
+        slo["objective"]["trend_direction"].as_str(),
+        Some("stable" | "degrading")
+    ));
+    assert!(matches!(
+        slo["objective"]["policy_state"].as_str(),
+        Some("active" | "active_with_findings" | "blocked_stale_data")
+    ));
+    assert!(slo["objective"]["owner_filters"].is_array());
+    assert!(slo["objective"]["environment_filters"].is_array());
+    assert!(slo["objective"]["application_filters"].is_array());
+    assert!(slo["objective"]["notification_targets"].is_array());
+    assert!(slo["objective"]["status_history"].is_array());
+    assert!(slo["evidence_reason_codes"].is_array());
 }
 
 #[tokio::test]

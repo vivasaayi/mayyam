@@ -268,6 +268,11 @@ pub struct AsgCostSloPolicySnapshot {
     pub evidence_reason_codes: Vec<String>,
 }
 
+pub type AsgResilienceObjectiveStatus = AsgCostObjectiveStatus;
+pub type AsgResilienceTrendDirection = AsgCostTrendDirection;
+pub type AsgResiliencePolicyObjective = AsgCostPolicyObjective;
+pub type AsgResilienceSloPolicySnapshot = AsgCostSloPolicySnapshot;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AsgCostForecastRisk {
@@ -839,6 +844,49 @@ pub fn asg_cost_slo_policy_snapshot(report: &PillarReport) -> AsgCostSloPolicySn
     }
 }
 
+pub fn asg_resilience_slo_policy_snapshot(report: &PillarReport) -> AsgResilienceSloPolicySnapshot {
+    let posture = asg_resilience_posture_summary(report);
+    let failed_rule_count = posture.rules_failed;
+    let affected_resource_count = posture.affected_resources.len();
+    let status = asg_cost_objective_status(report.score, failed_rule_count, report.stale_resources);
+    let owner_filters = sorted_unique_evidence_values(report, &["owner", "team"]);
+    let environment_filters = sorted_unique_evidence_values(report, &["environment", "env"]);
+    let application_filters = sorted_unique_evidence_values(report, &["application", "app"]);
+    let notification_targets = notification_targets(&owner_filters, &environment_filters);
+
+    AsgResilienceSloPolicySnapshot {
+        workflow_id: "autoscaling_resilience_slo_policy",
+        read_only_mode: true,
+        freshness_required: true,
+        objective: AsgResiliencePolicyObjective {
+            objective_id: "autoscaling-resilience-score-min-95",
+            status,
+            target_score_min: 95,
+            current_score: report.score,
+            trend_direction: asg_resilience_trend_direction(status, failed_rule_count),
+            failed_rule_count,
+            affected_resource_count,
+            owner_filters,
+            environment_filters,
+            application_filters,
+            notification_targets,
+            policy_state: if report.stale_resources > 0 {
+                "blocked_stale_data"
+            } else if failed_rule_count > 0 {
+                "active_with_findings"
+            } else {
+                "active"
+            },
+            status_history: vec![
+                "snapshot_collected",
+                "resilience_policy_evaluated",
+                "notification_targets_resolved",
+            ],
+        },
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
 pub fn asg_cost_forecast_snapshot(report: &PillarReport) -> AsgCostForecastSnapshot {
     const BASELINE_WINDOW_DAYS: u16 = 30;
     const FORECAST_HORIZON_DAYS: u16 = 30;
@@ -1024,6 +1072,21 @@ fn asg_cost_trend_direction(
         AsgCostObjectiveStatus::AtRisk if failed_rule_count <= 1 => AsgCostTrendDirection::Stable,
         AsgCostObjectiveStatus::AtRisk | AsgCostObjectiveStatus::Breached => {
             AsgCostTrendDirection::Degrading
+        }
+    }
+}
+
+fn asg_resilience_trend_direction(
+    status: AsgResilienceObjectiveStatus,
+    failed_rule_count: usize,
+) -> AsgResilienceTrendDirection {
+    match status {
+        AsgResilienceObjectiveStatus::OnTrack => AsgResilienceTrendDirection::Stable,
+        AsgResilienceObjectiveStatus::AtRisk if failed_rule_count == 0 => {
+            AsgResilienceTrendDirection::Stable
+        }
+        AsgResilienceObjectiveStatus::AtRisk | AsgResilienceObjectiveStatus::Breached => {
+            AsgResilienceTrendDirection::Degrading
         }
     }
 }
@@ -2040,6 +2103,7 @@ fn evaluate_resilience(resource: &AwsResourceModel, findings: &mut Vec<Inventory
                 "required_fields": instance_health_fields,
                 "missing_fields": missing_instance_health,
                 "resource_data_keys": resource_data_keys(resource),
+                "tags": resource.tags,
             }),
         });
     }
@@ -2059,6 +2123,7 @@ fn evaluate_resilience(resource: &AwsResourceModel, findings: &mut Vec<Inventory
             evidence: json!({
                 "unhealthy_instance_count": unhealthy,
                 "instance_health": resource.resource_data.get("instance_health"),
+                "tags": resource.tags,
             }),
         });
     }
@@ -2076,7 +2141,8 @@ fn evaluate_resilience(resource: &AwsResourceModel, findings: &mut Vec<Inventory
                     resource.resource_id, az_count
                 ),
                 evidence: json!({
-                    "availability_zones": resource.resource_data.get("availability_zones")
+                    "availability_zones": resource.resource_data.get("availability_zones"),
+                    "tags": resource.tags,
                 }),
             });
         }
@@ -2096,7 +2162,11 @@ fn evaluate_resilience(resource: &AwsResourceModel, findings: &mut Vec<Inventory
                 "Auto Scaling group {} is attached to a load balancer but uses EC2-only health checks; instances failing application health checks are not replaced",
                 resource.resource_id
             ),
-            evidence: json!({ "health_check_type": "EC2", "elb_attached": true }),
+            evidence: json!({
+                "health_check_type": "EC2",
+                "elb_attached": true,
+                "tags": resource.tags,
+            }),
         });
     }
 
@@ -2112,7 +2182,10 @@ fn evaluate_resilience(resource: &AwsResourceModel, findings: &mut Vec<Inventory
                 "Auto Scaling group {} has {} scaling process(es) suspended; unhealthy instances may not be replaced while suspension is in effect",
                 resource.resource_id, suspended
             ),
-            evidence: json!({ "suspended_process_count": suspended }),
+            evidence: json!({
+                "suspended_process_count": suspended,
+                "tags": resource.tags,
+            }),
         });
     }
 
@@ -2130,7 +2203,11 @@ fn evaluate_resilience(resource: &AwsResourceModel, findings: &mut Vec<Inventory
                     "Auto Scaling group {} reports desired capacity {} below min size {}; this is an inconsistent collection snapshot worth re-syncing",
                     resource.resource_id, desired, min
                 ),
-                evidence: json!({ "desired_capacity": desired, "min_size": min }),
+                evidence: json!({
+                    "desired_capacity": desired,
+                    "min_size": min,
+                    "tags": resource.tags,
+                }),
             });
         }
     }
@@ -3004,6 +3081,85 @@ mod tests {
         assert!(workflow.actions.iter().all(|action| {
             action.dry_run && action.status == AsgRemediationStatus::BlockedMissingEvidence
         }));
+    }
+
+    #[test]
+    fn asg_resilience_slo_policy_snapshot_tracks_owner_policy_and_notifications() {
+        let mut single_az_data = healthy_data();
+        single_az_data["availability_zones"] = json!(["us-east-1a"]);
+        let single_az = fixture(
+            "asg-res-slo-single-az",
+            json!({
+                "owner": "sre",
+                "environment": "prod",
+                "application": "checkout"
+            }),
+            single_az_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[single_az], Pillar::Resilience, now());
+        let snapshot = asg_resilience_slo_policy_snapshot(&report);
+
+        assert_eq!(snapshot.workflow_id, "autoscaling_resilience_slo_policy");
+        assert!(snapshot.read_only_mode);
+        assert!(snapshot.freshness_required);
+        assert_eq!(
+            snapshot.objective.objective_id,
+            "autoscaling-resilience-score-min-95"
+        );
+        assert_eq!(
+            snapshot.objective.status,
+            AsgResilienceObjectiveStatus::AtRisk
+        );
+        assert_eq!(snapshot.objective.target_score_min, 95);
+        assert_eq!(snapshot.objective.failed_rule_count, 1);
+        assert_eq!(snapshot.objective.affected_resource_count, 1);
+        assert_eq!(
+            snapshot.objective.trend_direction,
+            AsgResilienceTrendDirection::Degrading
+        );
+        assert_eq!(snapshot.objective.owner_filters, vec!["sre"]);
+        assert_eq!(snapshot.objective.environment_filters, vec!["prod"]);
+        assert_eq!(snapshot.objective.application_filters, vec!["checkout"]);
+        assert_eq!(
+            snapshot.objective.notification_targets,
+            vec!["environment:prod", "owner:sre"]
+        );
+        assert_eq!(snapshot.objective.policy_state, "active_with_findings");
+        assert!(snapshot
+            .objective
+            .status_history
+            .contains(&"resilience_policy_evaluated"));
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_RES_SINGLE_AZ.to_string()));
+    }
+
+    #[test]
+    fn asg_resilience_slo_policy_snapshot_marks_stale_data_as_breached() {
+        let stale = fixture(
+            "asg-res-slo-stale",
+            json!({"owner": "sre"}),
+            healthy_data(),
+            now() - Duration::hours(30),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Resilience, now());
+        let snapshot = asg_resilience_slo_policy_snapshot(&report);
+
+        assert_eq!(
+            snapshot.objective.status,
+            AsgResilienceObjectiveStatus::Breached
+        );
+        assert_eq!(
+            snapshot.objective.trend_direction,
+            AsgResilienceTrendDirection::Degrading
+        );
+        assert_eq!(snapshot.objective.policy_state, "blocked_stale_data");
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
     }
 
     #[test]
