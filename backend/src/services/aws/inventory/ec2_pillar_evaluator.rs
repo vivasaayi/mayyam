@@ -238,6 +238,50 @@ pub struct Ec2CostSloPolicySnapshot {
     pub evidence_reason_codes: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Ec2CostForecastRisk {
+    Low,
+    Moderate,
+    High,
+    Blocked,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2CostForecastBand {
+    pub horizon_days: u16,
+    pub lower_monthly_cost_index: u16,
+    pub expected_monthly_cost_index: u16,
+    pub upper_monthly_cost_index: u16,
+    pub confidence_level: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2CostForecastRiskDriver {
+    pub reason_code: String,
+    pub affected_resources: Vec<String>,
+    pub monthly_cost_index_delta: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2CostForecastSnapshot {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub baseline_window_days: u16,
+    pub forecast_horizon_days: u16,
+    pub confidence_level: u8,
+    pub forecast_band: Ec2CostForecastBand,
+    pub risk_level: Ec2CostForecastRisk,
+    pub capacity_risk: &'static str,
+    pub backtesting_fixture_status: &'static str,
+    pub threshold_controls: Vec<&'static str>,
+    pub what_if_inputs: Vec<&'static str>,
+    pub blocked_by_stale_data: bool,
+    pub missing_data_reason_codes: Vec<String>,
+    pub risk_drivers: Vec<Ec2CostForecastRiskDriver>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
 /// Evaluate every EC2 instance in the fleet for one pillar.
 pub fn evaluate_ec2_fleet(
     resources: &[AwsResourceModel],
@@ -516,6 +560,163 @@ pub fn ec2_cost_slo_policy_snapshot(report: &PillarReport) -> Ec2CostSloPolicySn
         },
         evidence_reason_codes: sorted_unique_reason_codes(report),
     }
+}
+
+pub fn ec2_cost_forecast_snapshot(report: &PillarReport) -> Ec2CostForecastSnapshot {
+    const BASELINE_WINDOW_DAYS: u16 = 30;
+    const FORECAST_HORIZON_DAYS: u16 = 30;
+    const CONFIDENCE_LEVEL: u8 = 80;
+
+    let stale_data = report.stale_resources > 0
+        || report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+    let low_utilization_count = count_reason(report, REASON_COST_LOW_UTILIZATION_TELEMETRY);
+    let stopped_count = count_reason(report, REASON_COST_STOPPED_INSTANCE);
+    let missing_telemetry_count = count_reason(report, REASON_COST_MISSING_UTILIZATION_TELEMETRY);
+    let missing_tag_count = count_reason(report, REASON_COST_MISSING_ALLOCATION_TAGS);
+
+    let expected_monthly_cost_index = 100u16
+        + (low_utilization_count as u16 * 18)
+        + (stopped_count as u16 * 10)
+        + (missing_telemetry_count as u16 * 15)
+        + (missing_tag_count as u16 * 4)
+        + (report.stale_resources as u16 * 25);
+    let uncertainty = 8u16
+        + (missing_telemetry_count as u16 * 6)
+        + (report.stale_resources as u16 * 10)
+        + (report.resources_evaluated == 0) as u16 * 20;
+    let lower_monthly_cost_index = expected_monthly_cost_index.saturating_sub(uncertainty);
+    let upper_monthly_cost_index = expected_monthly_cost_index + uncertainty;
+    let risk_level = if stale_data {
+        Ec2CostForecastRisk::Blocked
+    } else if upper_monthly_cost_index >= 145 {
+        Ec2CostForecastRisk::High
+    } else if expected_monthly_cost_index > 100 {
+        Ec2CostForecastRisk::Moderate
+    } else {
+        Ec2CostForecastRisk::Low
+    };
+
+    Ec2CostForecastSnapshot {
+        workflow_id: "ec2_cost_forecasting",
+        read_only_mode: true,
+        baseline_window_days: BASELINE_WINDOW_DAYS,
+        forecast_horizon_days: FORECAST_HORIZON_DAYS,
+        confidence_level: CONFIDENCE_LEVEL,
+        forecast_band: Ec2CostForecastBand {
+            horizon_days: FORECAST_HORIZON_DAYS,
+            lower_monthly_cost_index,
+            expected_monthly_cost_index,
+            upper_monthly_cost_index,
+            confidence_level: CONFIDENCE_LEVEL,
+        },
+        risk_level,
+        capacity_risk: ec2_cost_capacity_risk(
+            stale_data,
+            low_utilization_count,
+            stopped_count,
+            missing_telemetry_count,
+        ),
+        backtesting_fixture_status: if report.findings.is_empty() {
+            "ready_clean_baseline"
+        } else if stale_data || missing_telemetry_count > 0 {
+            "needs_fresh_telemetry_fixture"
+        } else {
+            "ready_findings_baseline"
+        },
+        threshold_controls: vec![
+            "monthly_cost_index_warning_threshold",
+            "monthly_cost_index_critical_threshold",
+        ],
+        what_if_inputs: vec![
+            "rightsize_low_utilization_instances",
+            "release_stopped_instance_artifacts",
+            "restore_missing_utilization_telemetry",
+        ],
+        blocked_by_stale_data: stale_data,
+        missing_data_reason_codes: missing_data_reason_codes(report),
+        risk_drivers: ec2_cost_forecast_risk_drivers(report),
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
+fn count_reason(report: &PillarReport, reason_code: &str) -> usize {
+    report
+        .findings
+        .iter()
+        .filter(|finding| finding.reason_code == reason_code)
+        .count()
+}
+
+fn ec2_cost_capacity_risk(
+    stale_data: bool,
+    low_utilization_count: usize,
+    stopped_count: usize,
+    missing_telemetry_count: usize,
+) -> &'static str {
+    if stale_data {
+        "blocked_until_inventory_refresh"
+    } else if missing_telemetry_count > 0 {
+        "unknown_due_to_missing_utilization"
+    } else if low_utilization_count > 0 {
+        "overprovisioned_compute_capacity"
+    } else if stopped_count > 0 {
+        "stopped_capacity_storage_artifacts"
+    } else {
+        "within_observed_cost_baseline"
+    }
+}
+
+fn missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    report
+        .findings
+        .iter()
+        .filter(|finding| {
+            matches!(
+                finding.reason_code.as_str(),
+                REASON_INV_STALE_DATA | REASON_COST_MISSING_UTILIZATION_TELEMETRY
+            )
+        })
+        .map(|finding| finding.reason_code.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn ec2_cost_forecast_risk_drivers(report: &PillarReport) -> Vec<Ec2CostForecastRiskDriver> {
+    [
+        (REASON_INV_STALE_DATA, 25u16),
+        (REASON_COST_LOW_UTILIZATION_TELEMETRY, 18u16),
+        (REASON_COST_MISSING_UTILIZATION_TELEMETRY, 15u16),
+        (REASON_COST_STOPPED_INSTANCE, 10u16),
+        (REASON_COST_MISSING_ALLOCATION_TAGS, 4u16),
+    ]
+    .into_iter()
+    .filter_map(|(reason_code, delta)| {
+        let affected_resources = resources_for_reason(report, reason_code);
+        if affected_resources.is_empty() {
+            None
+        } else {
+            Some(Ec2CostForecastRiskDriver {
+                reason_code: reason_code.to_string(),
+                monthly_cost_index_delta: delta * affected_resources.len() as u16,
+                affected_resources,
+            })
+        }
+    })
+    .collect()
+}
+
+fn resources_for_reason(report: &PillarReport, reason_code: &str) -> Vec<String> {
+    sorted_unique_resources(
+        report
+            .findings
+            .iter()
+            .filter(|finding| finding.reason_code == reason_code)
+            .map(|finding| finding.resource_id.clone()),
+    )
 }
 
 fn cost_objective_status(
@@ -2058,6 +2259,98 @@ mod tests {
         assert!(snapshot
             .evidence_reason_codes
             .contains(&REASON_INV_STALE_DATA.to_string()));
+    }
+
+    #[test]
+    fn ec2_cost_forecast_snapshot_builds_read_only_cost_band_from_evidence() {
+        let idle = fixture(
+            "i-idle",
+            json!({"cost-center": "cc-42", "owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[1.2, 2.4, 3.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let stopped = fixture(
+            "i-stopped",
+            json!({}),
+            json!({
+                "state": "stopped",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[12.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[idle, stopped], Pillar::Cost, now());
+        let forecast = ec2_cost_forecast_snapshot(&report);
+
+        assert_eq!(forecast.workflow_id, "ec2_cost_forecasting");
+        assert!(forecast.read_only_mode);
+        assert_eq!(forecast.baseline_window_days, 30);
+        assert_eq!(forecast.forecast_horizon_days, 30);
+        assert_eq!(forecast.confidence_level, 80);
+        assert_eq!(forecast.risk_level, Ec2CostForecastRisk::Moderate);
+        assert_eq!(forecast.capacity_risk, "overprovisioned_compute_capacity");
+        assert_eq!(forecast.forecast_band.expected_monthly_cost_index, 132);
+        assert!(forecast.forecast_band.upper_monthly_cost_index > 132);
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "ready_findings_baseline"
+        );
+        assert!(forecast
+            .what_if_inputs
+            .contains(&"rightsize_low_utilization_instances"));
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_COST_LOW_UTILIZATION_TELEMETRY
+                && driver.affected_resources == vec!["i-idle".to_string()]
+                && driver.monthly_cost_index_delta == 18
+        }));
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_COST_STOPPED_INSTANCE
+                && driver.affected_resources == vec!["i-stopped".to_string()]
+        }));
+    }
+
+    #[test]
+    fn ec2_cost_forecast_snapshot_blocks_on_stale_or_missing_telemetry() {
+        let stale = fixture(
+            "i-stale",
+            json!({"cost-center": "cc-42", "owner": "sre"}),
+            json!({"state": "running", "availability_zone": "us-east-1a"}),
+            30,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Cost, now());
+        let forecast = ec2_cost_forecast_snapshot(&report);
+
+        assert_eq!(forecast.risk_level, Ec2CostForecastRisk::Blocked);
+        assert!(forecast.blocked_by_stale_data);
+        assert_eq!(forecast.capacity_risk, "blocked_until_inventory_refresh");
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "needs_fresh_telemetry_fixture"
+        );
+        assert!(forecast
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(forecast
+            .missing_data_reason_codes
+            .contains(&REASON_COST_MISSING_UTILIZATION_TELEMETRY.to_string()));
+        assert!(forecast.forecast_band.upper_monthly_cost_index > 100);
     }
 
     #[test]

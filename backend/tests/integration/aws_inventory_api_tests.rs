@@ -99,6 +99,16 @@ async fn ec2_pillar_reports_contract() {
     );
     assert!(reports[0]["slo_policy_tracking"]["objective"]["status_history"].is_array());
     assert!(reports[0]["slo_policy_tracking"]["evidence_reason_codes"].is_array());
+    assert_eq!(
+        reports[0]["forecasting"]["workflow_id"],
+        "ec2_cost_forecasting"
+    );
+    assert_eq!(reports[0]["forecasting"]["read_only_mode"], true);
+    assert_eq!(reports[0]["forecasting"]["baseline_window_days"], 30);
+    assert_eq!(reports[0]["forecasting"]["forecast_horizon_days"], 30);
+    assert!(reports[0]["forecasting"]["forecast_band"]["expected_monthly_cost_index"].is_number());
+    assert!(reports[0]["forecasting"]["risk_drivers"].is_array());
+    assert!(reports[0]["forecasting"]["missing_data_reason_codes"].is_array());
 }
 
 #[tokio::test]
