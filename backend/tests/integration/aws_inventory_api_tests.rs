@@ -88,6 +88,17 @@ async fn ec2_pillar_reports_contract() {
     );
     assert!(reports[0]["remediation_workflow"]["actions"].is_array());
     assert!(reports[0]["remediation_workflow"]["approval_gates"].is_array());
+    assert_eq!(
+        reports[0]["slo_policy_tracking"]["workflow_id"],
+        "ec2_cost_slo_policy"
+    );
+    assert_eq!(reports[0]["slo_policy_tracking"]["read_only_mode"], true);
+    assert_eq!(
+        reports[0]["slo_policy_tracking"]["objective"]["objective_id"],
+        "ec2-cost-score-min-90"
+    );
+    assert!(reports[0]["slo_policy_tracking"]["objective"]["status_history"].is_array());
+    assert!(reports[0]["slo_policy_tracking"]["evidence_reason_codes"].is_array());
 }
 
 #[tokio::test]

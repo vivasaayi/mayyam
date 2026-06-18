@@ -197,6 +197,47 @@ pub struct Ec2CostRemediationWorkflow {
     pub approval_gates: Vec<Ec2MutationApprovalGate>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Ec2CostObjectiveStatus {
+    OnTrack,
+    AtRisk,
+    Breached,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Ec2CostTrendDirection {
+    Stable,
+    Degrading,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Ec2CostPolicyObjective {
+    pub objective_id: &'static str,
+    pub status: Ec2CostObjectiveStatus,
+    pub target_score_min: u8,
+    pub current_score: u8,
+    pub trend_direction: Ec2CostTrendDirection,
+    pub failed_rule_count: usize,
+    pub affected_resource_count: usize,
+    pub owner_filters: Vec<String>,
+    pub environment_filters: Vec<String>,
+    pub application_filters: Vec<String>,
+    pub notification_targets: Vec<String>,
+    pub policy_state: &'static str,
+    pub status_history: Vec<&'static str>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Ec2CostSloPolicySnapshot {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub freshness_required: bool,
+    pub objective: Ec2CostPolicyObjective,
+    pub evidence_reason_codes: Vec<String>,
+}
+
 /// Evaluate every EC2 instance in the fleet for one pillar.
 pub fn evaluate_ec2_fleet(
     resources: &[AwsResourceModel],
@@ -434,6 +475,125 @@ pub fn ec2_cost_agentic_investigation_plan(
     }
 }
 
+pub fn ec2_cost_slo_policy_snapshot(report: &PillarReport) -> Ec2CostSloPolicySnapshot {
+    let posture = ec2_cost_posture_summary(report);
+    let failed_rule_count = posture.rules_failed;
+    let affected_resource_count = posture.affected_resources.len();
+    let status = cost_objective_status(report.score, failed_rule_count, report.stale_resources);
+    let owner_filters = sorted_unique_evidence_values(report, &["owner", "team"]);
+    let environment_filters = sorted_unique_evidence_values(report, &["environment", "env"]);
+    let application_filters = sorted_unique_evidence_values(report, &["application", "app"]);
+    let notification_targets = notification_targets(&owner_filters, &environment_filters);
+
+    Ec2CostSloPolicySnapshot {
+        workflow_id: "ec2_cost_slo_policy",
+        read_only_mode: true,
+        freshness_required: true,
+        objective: Ec2CostPolicyObjective {
+            objective_id: "ec2-cost-score-min-90",
+            status,
+            target_score_min: 90,
+            current_score: report.score,
+            trend_direction: cost_trend_direction(status, failed_rule_count),
+            failed_rule_count,
+            affected_resource_count,
+            owner_filters,
+            environment_filters,
+            application_filters,
+            notification_targets,
+            policy_state: if report.stale_resources > 0 {
+                "blocked_stale_data"
+            } else if failed_rule_count > 0 {
+                "active_with_findings"
+            } else {
+                "active"
+            },
+            status_history: vec![
+                "snapshot_collected",
+                "policy_evaluated",
+                "notification_targets_resolved",
+            ],
+        },
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
+fn cost_objective_status(
+    score: u8,
+    failed_rule_count: usize,
+    stale_resources: usize,
+) -> Ec2CostObjectiveStatus {
+    if stale_resources > 0 || score < 70 {
+        Ec2CostObjectiveStatus::Breached
+    } else if failed_rule_count > 0 || score < 90 {
+        Ec2CostObjectiveStatus::AtRisk
+    } else {
+        Ec2CostObjectiveStatus::OnTrack
+    }
+}
+
+fn cost_trend_direction(
+    status: Ec2CostObjectiveStatus,
+    failed_rule_count: usize,
+) -> Ec2CostTrendDirection {
+    match status {
+        Ec2CostObjectiveStatus::OnTrack => Ec2CostTrendDirection::Stable,
+        Ec2CostObjectiveStatus::AtRisk if failed_rule_count <= 1 => Ec2CostTrendDirection::Stable,
+        Ec2CostObjectiveStatus::AtRisk | Ec2CostObjectiveStatus::Breached => {
+            Ec2CostTrendDirection::Degrading
+        }
+    }
+}
+
+fn sorted_unique_evidence_values(report: &PillarReport, keys: &[&str]) -> Vec<String> {
+    report
+        .findings
+        .iter()
+        .flat_map(|finding| {
+            keys.iter()
+                .filter_map(|key| evidence_string(&finding.evidence, key))
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn evidence_string(evidence: &Value, key: &str) -> Option<String> {
+    evidence
+        .get("tags")
+        .and_then(|tags| tags.get(key))
+        .or_else(|| evidence.get(key))
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| value.trim().to_string())
+}
+
+fn notification_targets(owner_filters: &[String], environment_filters: &[String]) -> Vec<String> {
+    let mut targets: BTreeSet<String> = owner_filters
+        .iter()
+        .map(|owner| format!("owner:{}", owner))
+        .collect();
+    targets.extend(
+        environment_filters
+            .iter()
+            .map(|environment| format!("environment:{}", environment)),
+    );
+    if targets.is_empty() {
+        targets.insert("cost-operations".to_string());
+    }
+    targets.into_iter().collect()
+}
+
+fn sorted_unique_reason_codes(report: &PillarReport) -> Vec<String> {
+    report
+        .findings
+        .iter()
+        .map(|finding| finding.reason_code.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
 pub fn ec2_cost_remediation_workflow(report: &PillarReport) -> Ec2CostRemediationWorkflow {
     let investigation = ec2_cost_agentic_investigation_plan(report);
     let has_stale_data = report
@@ -622,7 +782,10 @@ fn evaluate_cost(resource: &AwsResourceModel, findings: &mut Vec<InventoryFindin
                 "Instance {} is stopped but still accrues EBS and IP charges; review for termination or snapshot",
                 resource.resource_id
             ),
-            evidence: json!({ "state": state }),
+            evidence: json!({
+                "state": state,
+                "tags": resource.tags,
+            }),
         });
     }
 
@@ -639,6 +802,7 @@ fn evaluate_cost(resource: &AwsResourceModel, findings: &mut Vec<InventoryFindin
             ),
             evidence: json!({
                 "required_metric": "CPUUtilization",
+                "tags": resource.tags,
                 "resource_data_keys": resource_data_keys(resource),
             }),
         }),
@@ -659,6 +823,7 @@ fn evaluate_cost(resource: &AwsResourceModel, findings: &mut Vec<InventoryFindin
                     "metric_name": "CPUUtilization",
                     "max": max_cpu,
                     "low_utilization_max": LOW_CPU_UTILIZATION_MAX,
+                    "tags": resource.tags,
                 }),
             });
         }
@@ -1799,6 +1964,100 @@ mod tests {
         assert!(workflow.actions.iter().all(|action| {
             action.dry_run && action.status == Ec2RemediationStatus::BlockedMissingEvidence
         }));
+    }
+
+    #[test]
+    fn ec2_cost_slo_policy_snapshot_tracks_owner_policy_and_notifications() {
+        let tagged = fixture(
+            "i-tagged",
+            json!({
+                "cost-center": "cc-42",
+                "owner": "sre",
+                "environment": "prod",
+                "application": "payments"
+            }),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[1.2, 2.4, 3.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let unowned = fixture(
+            "i-unowned",
+            json!({}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[44.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[tagged, unowned], Pillar::Cost, now());
+        let snapshot = ec2_cost_slo_policy_snapshot(&report);
+
+        assert_eq!(snapshot.workflow_id, "ec2_cost_slo_policy");
+        assert!(snapshot.read_only_mode);
+        assert!(snapshot.freshness_required);
+        assert_eq!(snapshot.objective.objective_id, "ec2-cost-score-min-90");
+        assert_eq!(snapshot.objective.status, Ec2CostObjectiveStatus::AtRisk);
+        assert_eq!(snapshot.objective.target_score_min, 90);
+        assert_eq!(snapshot.objective.failed_rule_count, 2);
+        assert!(snapshot.objective.affected_resource_count >= 2);
+        assert_eq!(snapshot.objective.owner_filters, vec!["sre"]);
+        assert_eq!(snapshot.objective.environment_filters, vec!["prod"]);
+        assert_eq!(snapshot.objective.application_filters, vec!["payments"]);
+        assert_eq!(
+            snapshot.objective.notification_targets,
+            vec!["environment:prod", "owner:sre"]
+        );
+        assert_eq!(snapshot.objective.policy_state, "active_with_findings");
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_COST_LOW_UTILIZATION_TELEMETRY.to_string()));
+    }
+
+    #[test]
+    fn ec2_cost_slo_policy_snapshot_marks_stale_data_as_breached() {
+        let stale = fixture(
+            "i-stale",
+            json!({"cost-center": "cc-42", "owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[44.0])
+                    ]
+                }
+            }),
+            30,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Cost, now());
+        let snapshot = ec2_cost_slo_policy_snapshot(&report);
+
+        assert_eq!(snapshot.objective.status, Ec2CostObjectiveStatus::Breached);
+        assert_eq!(
+            snapshot.objective.trend_direction,
+            Ec2CostTrendDirection::Degrading
+        );
+        assert_eq!(snapshot.objective.policy_state, "blocked_stale_data");
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
     }
 
     #[test]
