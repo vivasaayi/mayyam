@@ -1181,6 +1181,33 @@ async fn autoscaling_cost_pillar_reports_posture_contract() {
             || (step["tool_mode"] == "approval_required"
                 && step["tool_name"] == "autoscaling.cost.prepare_approval_plan")
     }));
+    assert_eq!(
+        reports[0]["remediation_workflow"]["workflow_id"],
+        "autoscaling_cost_safe_remediation"
+    );
+    assert_eq!(reports[0]["remediation_workflow"]["read_only_mode"], true);
+    assert_eq!(
+        reports[0]["remediation_workflow"]["rbac_permission"],
+        "aws.autoscaling.cost.remediation.approve"
+    );
+    assert_eq!(
+        reports[0]["remediation_workflow"]["audit_stream"],
+        "autoscaling_cost_remediation_audit"
+    );
+    assert!(reports[0]["remediation_workflow"]["actions"].is_array());
+    assert!(reports[0]["remediation_workflow"]["approval_gates"].is_array());
+    let remediation_actions = reports[0]["remediation_workflow"]["actions"]
+        .as_array()
+        .expect("autoscaling remediation actions should be an array");
+    assert!(remediation_actions.iter().all(|action| {
+        action["dry_run"] == true
+            && action["requires_approval"] == true
+            && action["audit_event_type"] == "autoscaling.cost.remediation.dry_run_planned"
+            && action["idempotency_key"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("autoscaling-cost-")
+    }));
 }
 
 #[tokio::test]

@@ -197,6 +197,50 @@ describe("PillarScorecard", () => {
               },
             ],
           },
+          remediation_workflow: {
+            workflow_id: "autoscaling_cost_safe_remediation",
+            read_only_mode: true,
+            rbac_permission: "aws.autoscaling.cost.remediation.approve",
+            audit_stream: "autoscaling_cost_remediation_audit",
+            stale_data_blocks_execution: false,
+            actions: [
+              {
+                action_id: "autoscaling-cost-action-01",
+                kind: "review_scaling_policy_capacity",
+                status: "dry_run_pending_approval",
+                target_resource_id: "asg-fixed",
+                dry_run: true,
+                requires_approval: true,
+                approval_gate_id: "autoscaling-cost-approval-01",
+                audit_event_type:
+                  "autoscaling.cost.remediation.dry_run_planned",
+                idempotency_key:
+                  "autoscaling-cost-asg-fixed-review-scaling-policy-capacity",
+                blast_radius:
+                  "single Auto Scaling group asg-fixed; no mutation is executable from the investigation plan",
+                rollback_note:
+                  "rollback requires restoring the previous Auto Scaling capacity or scaling policy after validation",
+                validation_steps: [
+                  "refresh Auto Scaling capacity, tag, and group metric evidence",
+                  "verify owner, blast radius, budget impact, and scaling-policy intent",
+                  "capture operator approval, rollback note, and audit id before execution",
+                ],
+                evidence_reason_codes: ["ASG_COST_FIXED_SIZE"],
+              },
+            ],
+            approval_gates: [
+              {
+                gate_id: "autoscaling-cost-approval-01",
+                target_resource_id: "asg-fixed",
+                required_approval:
+                  "Approve scaling policy or capacity changes after owner review",
+                blast_radius:
+                  "single Auto Scaling group asg-fixed; no mutation is executable from the investigation plan",
+                rollback_note_required: true,
+                evidence_reason_codes: ["ASG_COST_FIXED_SIZE"],
+              },
+            ],
+          },
         },
       ],
     };
@@ -237,6 +281,15 @@ describe("PillarScorecard", () => {
     expect(text).toContain("autoscaling-cost-approval-01");
     expect(text).toContain("no mutation is executable from the investigation plan");
     expect(text).toContain("Rollback note required");
+    expect(text).toContain("Cost Remediation");
+    expect(text).toContain("autoscaling_cost_safe_remediation");
+    expect(text).toContain("Dry Run");
+    expect(text).toContain("aws.autoscaling.cost.remediation.approve");
+    expect(text).toContain("autoscaling_cost_remediation_audit");
+    expect(text).toContain("Review Scaling Policy Capacity");
+    expect(text).toContain("Dry Run Pending Approval");
+    expect(text).toContain("autoscaling.cost.remediation.dry_run_planned");
+    expect(text).toContain("rollback requires restoring the previous Auto Scaling capacity");
 
     await view.unmount();
   });

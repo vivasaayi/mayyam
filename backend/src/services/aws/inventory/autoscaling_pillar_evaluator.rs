@@ -174,6 +174,48 @@ pub struct AsgAgenticInvestigationPlan {
 
 pub type AsgCostAgenticInvestigationPlan = AsgAgenticInvestigationPlan;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AsgRemediationActionKind {
+    ReviewCostAllocationTags,
+    ReviewScalingPolicyCapacity,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AsgRemediationStatus {
+    DryRunPendingApproval,
+    BlockedMissingEvidence,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AsgCostRemediationAction {
+    pub action_id: String,
+    pub kind: AsgRemediationActionKind,
+    pub status: AsgRemediationStatus,
+    pub target_resource_id: String,
+    pub dry_run: bool,
+    pub requires_approval: bool,
+    pub approval_gate_id: Option<String>,
+    pub audit_event_type: &'static str,
+    pub idempotency_key: String,
+    pub blast_radius: String,
+    pub rollback_note: String,
+    pub validation_steps: Vec<&'static str>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AsgCostRemediationWorkflow {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub rbac_permission: &'static str,
+    pub audit_stream: &'static str,
+    pub stale_data_blocks_execution: bool,
+    pub actions: Vec<AsgCostRemediationAction>,
+    pub approval_gates: Vec<AsgMutationApprovalGate>,
+}
+
 /// Evaluate every Auto Scaling group in the fleet for one pillar. Rows whose
 /// `resource_type` is not `AutoScalingGroup` are skipped and not counted.
 pub fn evaluate_autoscaling_fleet(
@@ -345,6 +387,89 @@ pub fn asg_cost_agentic_investigation_plan(
         steps,
         approval_gates,
         evidence_citations: triage.evidence_citations,
+    }
+}
+
+pub fn asg_cost_remediation_workflow(report: &PillarReport) -> AsgCostRemediationWorkflow {
+    let investigation = asg_cost_agentic_investigation_plan(report);
+    let has_stale_data = report
+        .findings
+        .iter()
+        .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+    let mut actions = Vec::new();
+
+    for gate in &investigation.approval_gates {
+        for reason_code in &gate.evidence_reason_codes {
+            if let Some(kind) = asg_remediation_action_kind(reason_code) {
+                actions.push(asg_remediation_action(
+                    &actions,
+                    kind,
+                    gate,
+                    if has_stale_data {
+                        AsgRemediationStatus::BlockedMissingEvidence
+                    } else {
+                        AsgRemediationStatus::DryRunPendingApproval
+                    },
+                ));
+            }
+        }
+    }
+
+    AsgCostRemediationWorkflow {
+        workflow_id: "autoscaling_cost_safe_remediation",
+        read_only_mode: true,
+        rbac_permission: "aws.autoscaling.cost.remediation.approve",
+        audit_stream: "autoscaling_cost_remediation_audit",
+        stale_data_blocks_execution: has_stale_data,
+        actions,
+        approval_gates: investigation.approval_gates,
+    }
+}
+
+fn asg_remediation_action_kind(reason_code: &str) -> Option<AsgRemediationActionKind> {
+    match reason_code {
+        REASON_COST_NO_TAGS => Some(AsgRemediationActionKind::ReviewCostAllocationTags),
+        REASON_COST_FIXED_SIZE => Some(AsgRemediationActionKind::ReviewScalingPolicyCapacity),
+        _ => None,
+    }
+}
+
+fn asg_remediation_action(
+    existing_actions: &[AsgCostRemediationAction],
+    kind: AsgRemediationActionKind,
+    gate: &AsgMutationApprovalGate,
+    status: AsgRemediationStatus,
+) -> AsgCostRemediationAction {
+    let action_number = existing_actions.len() + 1;
+    let action_slug = match kind {
+        AsgRemediationActionKind::ReviewCostAllocationTags => "review-cost-allocation-tags",
+        AsgRemediationActionKind::ReviewScalingPolicyCapacity => "review-scaling-policy-capacity",
+    };
+
+    AsgCostRemediationAction {
+        action_id: format!("autoscaling-cost-remediation-{:02}", action_number),
+        kind,
+        status,
+        target_resource_id: gate.target_resource_id.clone(),
+        dry_run: true,
+        requires_approval: true,
+        approval_gate_id: Some(gate.gate_id.clone()),
+        audit_event_type: "autoscaling.cost.remediation.dry_run_planned",
+        idempotency_key: format!(
+            "autoscaling-cost-{}-{}",
+            gate.target_resource_id, action_slug
+        ),
+        blast_radius: gate.blast_radius.clone(),
+        rollback_note: format!(
+            "Before approval, record rollback or recovery notes for {} on {}.",
+            action_slug, gate.target_resource_id
+        ),
+        validation_steps: vec![
+            "refresh Auto Scaling capacity, tag, and group metric evidence",
+            "verify owner, blast radius, budget impact, and scaling-policy intent",
+            "capture operator approval, rollback note, and audit id before execution",
+        ],
+        evidence_reason_codes: gate.evidence_reason_codes.clone(),
     }
 }
 
@@ -1633,6 +1758,72 @@ mod tests {
             .iter()
             .all(|gate| gate.rollback_note_required));
         assert_eq!(plan.max_evidence_citations, report.findings.len());
+    }
+
+    #[test]
+    fn asg_cost_remediation_workflow_plans_dry_run_actions_until_approved() {
+        let mut fixed_data = healthy_data();
+        fixed_data["min_size"] = json!(3);
+        fixed_data["max_size"] = json!(3);
+        fixed_data["desired_capacity"] = json!(3);
+        let fixed = fixture("asg-fixed", json!({"team": "core"}), fixed_data, now());
+
+        let mut missing_tags_data = healthy_data();
+        missing_tags_data["enabled_metric_count"] = json!(2);
+        let missing_tags = fixture("asg-missing-tags", json!({}), missing_tags_data, now());
+
+        let report = evaluate_autoscaling_fleet(&[fixed, missing_tags], Pillar::Cost, now());
+        let workflow = asg_cost_remediation_workflow(&report);
+
+        assert_eq!(workflow.workflow_id, "autoscaling_cost_safe_remediation");
+        assert!(workflow.read_only_mode);
+        assert_eq!(
+            workflow.rbac_permission,
+            "aws.autoscaling.cost.remediation.approve"
+        );
+        assert_eq!(workflow.audit_stream, "autoscaling_cost_remediation_audit");
+        assert!(!workflow.stale_data_blocks_execution);
+        assert_eq!(workflow.actions.len(), 2);
+        assert!(workflow.actions.iter().all(|action| {
+            action.dry_run
+                && action.requires_approval
+                && action.approval_gate_id.is_some()
+                && action.status == AsgRemediationStatus::DryRunPendingApproval
+                && action.audit_event_type == "autoscaling.cost.remediation.dry_run_planned"
+                && action.rollback_note.contains("rollback")
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == AsgRemediationActionKind::ReviewCostAllocationTags
+                && action.target_resource_id == "asg-missing-tags"
+                && action
+                    .evidence_reason_codes
+                    .contains(&REASON_COST_NO_TAGS.to_string())
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == AsgRemediationActionKind::ReviewScalingPolicyCapacity
+                && action.target_resource_id == "asg-fixed"
+                && action
+                    .evidence_reason_codes
+                    .contains(&REASON_COST_FIXED_SIZE.to_string())
+        }));
+    }
+
+    #[test]
+    fn asg_cost_remediation_workflow_blocks_execution_when_cost_data_is_stale() {
+        let stale = fixture(
+            "asg-stale",
+            json!({"team": "core"}),
+            healthy_data(),
+            now() - chrono::Duration::hours(30),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Cost, now());
+        let workflow = asg_cost_remediation_workflow(&report);
+
+        assert!(workflow.stale_data_blocks_execution);
+        assert!(workflow.actions.iter().all(|action| {
+            action.dry_run && action.status == AsgRemediationStatus::BlockedMissingEvidence
+        }));
     }
 
     #[test]
