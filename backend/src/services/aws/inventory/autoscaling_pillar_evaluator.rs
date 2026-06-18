@@ -485,6 +485,28 @@ pub struct AsgResilienceReportingBundle {
     pub evidence_reason_codes: Vec<String>,
 }
 
+pub type AsgSecurityReportRow = AsgCostReportRow;
+pub type AsgSecurityExecutiveSummary = AsgCostExecutiveSummary;
+pub type AsgSecurityEngineeringBacklog = AsgCostEngineeringBacklog;
+pub type AsgSecurityIncidentReview = AsgCostIncidentReview;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgSecurityReportingBundle {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub scheduled_delivery_state: &'static str,
+    pub stale_data_blocks_delivery: bool,
+    pub portfolio_summary_ready: bool,
+    pub workload_summary_ready: bool,
+    pub export_formats: Vec<&'static str>,
+    pub saved_view_id: &'static str,
+    pub executive_summary: AsgSecurityExecutiveSummary,
+    pub engineering_backlog: AsgSecurityEngineeringBacklog,
+    pub incident_review: AsgSecurityIncidentReview,
+    pub missing_data_reason_codes: Vec<String>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
 /// Evaluate every Auto Scaling group in the fleet for one pillar. Rows whose
 /// `resource_type` is not `AutoScalingGroup` are skipped and not counted.
 pub fn evaluate_autoscaling_fleet(
@@ -1637,6 +1659,62 @@ pub fn asg_resilience_reporting_bundle(report: &PillarReport) -> AsgResilienceRe
     }
 }
 
+pub fn asg_security_reporting_bundle(report: &PillarReport) -> AsgSecurityReportingBundle {
+    let posture = asg_security_posture_summary(report);
+    let forecast = asg_security_forecast_snapshot(report);
+    let reason_codes = sorted_unique_reason_codes(report);
+    let missing_data_reason_codes = asg_security_reporting_missing_data_reason_codes(report);
+    let rows = asg_security_report_rows(report);
+    let stale_data_blocks_delivery = report.stale_resources > 0
+        || report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+
+    AsgSecurityReportingBundle {
+        workflow_id: "autoscaling_security_reporting",
+        read_only_mode: true,
+        scheduled_delivery_state: if stale_data_blocks_delivery {
+            "blocked_until_fresh_security_evidence"
+        } else if !missing_data_reason_codes.is_empty() {
+            "ready_with_security_evidence_gaps"
+        } else {
+            "ready_for_schedule"
+        },
+        stale_data_blocks_delivery,
+        portfolio_summary_ready: !stale_data_blocks_delivery,
+        workload_summary_ready: !stale_data_blocks_delivery && report.resources_evaluated > 0,
+        export_formats: vec!["json", "csv"],
+        saved_view_id: "autoscaling-security-posture-report",
+        executive_summary: AsgSecurityExecutiveSummary {
+            report_id: "autoscaling-security-executive-summary",
+            score: report.score,
+            resources_evaluated: report.resources_evaluated,
+            stale_resources: report.stale_resources,
+            rules_failed: posture.rules_failed,
+            affected_resources: posture.affected_resources,
+            top_reason_codes: reason_codes.clone(),
+            blast_radius_summary: forecast.blast_radius_summary,
+        },
+        engineering_backlog: AsgSecurityEngineeringBacklog {
+            report_id: "autoscaling-security-engineering-backlog",
+            page: 0,
+            page_size: 50,
+            total: rows.len(),
+            rows: rows.clone(),
+        },
+        incident_review: AsgSecurityIncidentReview {
+            report_id: "autoscaling-security-incident-review",
+            page: 0,
+            page_size: 50,
+            total: rows.len(),
+            rows,
+        },
+        missing_data_reason_codes,
+        evidence_reason_codes: reason_codes,
+    }
+}
+
 fn asg_cost_objective_status(
     score: u8,
     failed_rule_count: usize,
@@ -2087,6 +2165,26 @@ fn asg_resilience_reporting_missing_data_reason_codes(report: &PillarReport) -> 
     .collect()
 }
 
+fn asg_security_reporting_missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    [
+        REASON_INV_STALE_DATA,
+        REASON_TEL_MISSING_COLLECTION_METADATA,
+        REASON_TEL_COLLECTION_ERRORS,
+        REASON_SEC_TELEMETRY_COLLECTION_ERRORS,
+        REASON_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED,
+        REASON_SEC_MISSING_INSTANCE_TELEMETRY,
+    ]
+    .into_iter()
+    .filter(|reason_code| {
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == *reason_code)
+    })
+    .map(str::to_string)
+    .collect()
+}
+
 fn asg_cost_report_rows(report: &PillarReport) -> Vec<AsgCostReportRow> {
     report
         .findings
@@ -2113,6 +2211,22 @@ fn asg_resilience_report_rows(report: &PillarReport) -> Vec<AsgResilienceReportR
             reason_code: finding.reason_code.clone(),
             message: finding.message.clone(),
             recovery_note: asg_resilience_reporting_recovery_note(&finding.reason_code).to_string(),
+            suppression_supported: true,
+            evidence: finding.evidence.clone(),
+        })
+        .collect()
+}
+
+fn asg_security_report_rows(report: &PillarReport) -> Vec<AsgSecurityReportRow> {
+    report
+        .findings
+        .iter()
+        .map(|finding| AsgSecurityReportRow {
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            reason_code: finding.reason_code.clone(),
+            message: finding.message.clone(),
+            recovery_note: asg_security_reporting_recovery_note(&finding.reason_code).to_string(),
             suppression_supported: true,
             evidence: finding.evidence.clone(),
         })
@@ -2176,6 +2290,30 @@ fn asg_resilience_reporting_recovery_note(reason_code: &str) -> &'static str {
             "Review desired and minimum capacity evidence before adjusting capacity bounds."
         }
         _ => "Review Auto Scaling resilience evidence and owner context before action.",
+    }
+}
+
+fn asg_security_reporting_recovery_note(reason_code: &str) -> &'static str {
+    match reason_code {
+        REASON_INV_STALE_DATA => {
+            "Refresh Auto Scaling security inventory before scheduling report delivery."
+        }
+        REASON_TEL_MISSING_COLLECTION_METADATA => {
+            "Collect telemetry run metadata before publishing security report findings."
+        }
+        REASON_TEL_COLLECTION_ERRORS | REASON_SEC_TELEMETRY_COLLECTION_ERRORS => {
+            "Resolve Auto Scaling collector errors before sharing the security report."
+        }
+        REASON_SEC_MISSING_INSTANCE_TELEMETRY => {
+            "Refresh instance security telemetry before incident review."
+        }
+        REASON_SEC_LEGACY_LAUNCH_CONFIGURATION => {
+            "Review launch-template migration, security owner, and rollback notes before action."
+        }
+        REASON_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED => {
+            "Collect launch source evidence before reporting security posture."
+        }
+        _ => "Review Auto Scaling security evidence and owner context before action.",
     }
 }
 
@@ -4608,6 +4746,100 @@ mod tests {
             driver.reason_code == REASON_INV_STALE_DATA
                 && driver.affected_resources == vec!["asg-security-forecast-stale"]
         }));
+    }
+
+    #[test]
+    fn asg_security_reporting_bundle_materializes_executive_engineering_and_incident_views() {
+        let mut legacy_data = healthy_data();
+        legacy_data["launch_configuration_name"] = json!("legacy-lc");
+        legacy_data["uses_launch_template"] = json!(false);
+        let legacy = fixture(
+            "asg-security-report-legacy",
+            json!({"owner": "security", "environment": "prod"}),
+            legacy_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[legacy], Pillar::Security, now());
+        let bundle = asg_security_reporting_bundle(&report);
+
+        assert_eq!(bundle.workflow_id, "autoscaling_security_reporting");
+        assert!(bundle.read_only_mode);
+        assert_eq!(bundle.scheduled_delivery_state, "ready_for_schedule");
+        assert!(bundle.portfolio_summary_ready);
+        assert!(bundle.workload_summary_ready);
+        assert_eq!(bundle.export_formats, vec!["json", "csv"]);
+        assert_eq!(bundle.saved_view_id, "autoscaling-security-posture-report");
+        assert_eq!(
+            bundle.executive_summary.report_id,
+            "autoscaling-security-executive-summary"
+        );
+        assert_eq!(bundle.executive_summary.score, report.score);
+        assert_eq!(bundle.executive_summary.resources_evaluated, 1);
+        assert_eq!(bundle.executive_summary.stale_resources, 0);
+        assert!(bundle
+            .executive_summary
+            .affected_resources
+            .contains(&"asg-security-report-legacy".to_string()));
+        assert!(bundle
+            .executive_summary
+            .top_reason_codes
+            .contains(&REASON_SEC_LEGACY_LAUNCH_CONFIGURATION.to_string()));
+        assert!(bundle
+            .executive_summary
+            .blast_radius_summary
+            .contains("legacy launch-source security exposure"));
+        assert_eq!(
+            bundle.engineering_backlog.report_id,
+            "autoscaling-security-engineering-backlog"
+        );
+        assert_eq!(bundle.engineering_backlog.page, 0);
+        assert_eq!(bundle.engineering_backlog.page_size, 50);
+        assert_eq!(bundle.engineering_backlog.total, report.findings.len());
+        assert_eq!(
+            bundle.incident_review.report_id,
+            "autoscaling-security-incident-review"
+        );
+        assert!(bundle.incident_review.rows.iter().any(|row| {
+            row.resource_id == "asg-security-report-legacy"
+                && row.reason_code == REASON_SEC_LEGACY_LAUNCH_CONFIGURATION
+                && row.suppression_supported
+                && row
+                    .recovery_note
+                    .contains("Review launch-template migration")
+        }));
+        assert!(bundle.missing_data_reason_codes.is_empty());
+        assert!(bundle
+            .evidence_reason_codes
+            .contains(&REASON_SEC_LEGACY_LAUNCH_CONFIGURATION.to_string()));
+    }
+
+    #[test]
+    fn asg_security_reporting_bundle_blocks_delivery_for_stale_security_evidence() {
+        let stale = fixture(
+            "asg-security-report-stale",
+            json!({"owner": "security"}),
+            healthy_data(),
+            now() - Duration::hours(30),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Security, now());
+        let bundle = asg_security_reporting_bundle(&report);
+
+        assert_eq!(
+            bundle.scheduled_delivery_state,
+            "blocked_until_fresh_security_evidence"
+        );
+        assert!(bundle.stale_data_blocks_delivery);
+        assert!(!bundle.portfolio_summary_ready);
+        assert!(!bundle.workload_summary_ready);
+        assert_eq!(bundle.executive_summary.stale_resources, 1);
+        assert!(bundle
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(bundle
+            .evidence_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
     }
 
     #[test]

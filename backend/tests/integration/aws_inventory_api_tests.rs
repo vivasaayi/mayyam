@@ -1408,6 +1408,26 @@ async fn autoscaling_security_pillar_reports_posture_contract() {
     assert!(forecast["missing_data_reason_codes"].is_array());
     assert!(forecast["risk_drivers"].is_array());
     assert!(forecast["evidence_reason_codes"].is_array());
+    let reporting = &reports[0]["reporting"];
+    assert_eq!(reporting["workflow_id"], "autoscaling_security_reporting");
+    assert_eq!(reporting["read_only_mode"], true);
+    assert!(reporting["scheduled_delivery_state"].as_str().is_some());
+    assert!(reporting["stale_data_blocks_delivery"].is_boolean());
+    assert!(reporting["portfolio_summary_ready"].is_boolean());
+    assert!(reporting["workload_summary_ready"].is_boolean());
+    assert!(reporting["export_formats"].is_array());
+    assert_eq!(
+        reporting["saved_view_id"],
+        "autoscaling-security-posture-report"
+    );
+    assert_eq!(
+        reporting["executive_summary"]["report_id"],
+        "autoscaling-security-executive-summary"
+    );
+    assert!(reporting["engineering_backlog"]["rows"].is_array());
+    assert!(reporting["incident_review"]["rows"].is_array());
+    assert!(reporting["missing_data_reason_codes"].is_array());
+    assert!(reporting["evidence_reason_codes"].is_array());
 
     let rules = reports[0]["posture"]["rules"]
         .as_array()

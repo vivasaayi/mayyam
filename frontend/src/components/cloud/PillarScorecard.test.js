@@ -1114,6 +1114,66 @@ describe("PillarScorecard", () => {
             ],
             evidence_reason_codes: ["ASG_SEC_LEGACY_LAUNCH_CONFIGURATION"],
           },
+          reporting: {
+            workflow_id: "autoscaling_security_reporting",
+            read_only_mode: true,
+            scheduled_delivery_state: "ready_for_schedule",
+            stale_data_blocks_delivery: false,
+            portfolio_summary_ready: true,
+            workload_summary_ready: true,
+            export_formats: ["json", "csv"],
+            saved_view_id: "autoscaling-security-posture-report",
+            executive_summary: {
+              report_id: "autoscaling-security-executive-summary",
+              score: 82,
+              resources_evaluated: 3,
+              stale_resources: 0,
+              rules_failed: 3,
+              affected_resources: [
+                "asg-missing-instance-telemetry",
+                "asg-legacy-launch",
+                "asg-launch-source-gap",
+              ],
+              top_reason_codes: [
+                "ASG_SEC_MISSING_INSTANCE_TELEMETRY",
+                "ASG_SEC_LEGACY_LAUNCH_CONFIGURATION",
+                "ASG_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED",
+              ],
+              blast_radius_summary:
+                "1 Auto Scaling group(s) have legacy launch-source security exposure requiring launch-template migration review.",
+            },
+            engineering_backlog: {
+              report_id: "autoscaling-security-engineering-backlog",
+              page: 0,
+              page_size: 50,
+              total: 3,
+              rows: [],
+            },
+            incident_review: {
+              report_id: "autoscaling-security-incident-review",
+              page: 0,
+              page_size: 50,
+              total: 1,
+              rows: [
+                {
+                  resource_id: "asg-legacy-launch",
+                  reason_code: "ASG_SEC_LEGACY_LAUNCH_CONFIGURATION",
+                  recovery_note:
+                    "Review launch-template migration, security owner, and rollback notes before action.",
+                  suppression_supported: true,
+                },
+              ],
+            },
+            missing_data_reason_codes: [
+              "ASG_SEC_MISSING_INSTANCE_TELEMETRY",
+              "ASG_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED",
+            ],
+            evidence_reason_codes: [
+              "ASG_SEC_MISSING_INSTANCE_TELEMETRY",
+              "ASG_SEC_LEGACY_LAUNCH_CONFIGURATION",
+              "ASG_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED",
+            ],
+          },
         },
       ],
     };
@@ -1182,6 +1242,15 @@ describe("PillarScorecard", () => {
     expect(text).toContain("1 risk driver");
     expect(text).toContain("legacy launch-source security exposure");
     expect(text).toContain("Security Exposure Index Warning Threshold");
+    expect(text).toContain("Security Reporting");
+    expect(text).toContain("Ready For Schedule");
+    expect(text).toContain("autoscaling-security-executive-summary");
+    expect(text).toContain("3 failed rule");
+    expect(text).toContain("3 affected");
+    expect(text).toContain("2 missing signal");
+    expect(text).toContain("autoscaling-security-incident-review");
+    expect(text).toContain("Review launch-template migration");
+    expect(text).toContain("Supported");
 
     await view.unmount();
   });
