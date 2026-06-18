@@ -68,25 +68,104 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .service(web::resource("/mysql/performance-schema/pillars").route(
                 web::get().to(database::get_mysql_performance_schema_inventory_pillar_reports),
             ))
+            .service(web::resource("/postgres/pg-stat-activity/pillars").route(
+                web::get().to(database::get_postgres_pg_stat_activity_inventory_pillar_reports),
+            ))
+            .service(web::resource("/postgres/pg-stat-statements/pillars").route(
+                web::get().to(database::get_postgres_pg_stat_statements_inventory_pillar_reports),
+            ))
+            .service(web::resource("/postgres/pg-stat-database/pillars").route(
+                web::get().to(database::get_postgres_pg_stat_database_inventory_pillar_reports),
+            ))
+            .service(
+                web::resource("/postgres/pg-stat-io/pillars").route(
+                    web::get().to(database::get_postgres_pg_stat_io_inventory_pillar_reports),
+                ),
+            )
+            .service(
+                web::resource("/postgres/pg-stat-wal/pillars").route(
+                    web::get().to(database::get_postgres_pg_stat_wal_inventory_pillar_reports),
+                ),
+            )
+            .service(
+                web::resource("/postgres/pg-locks/pillars")
+                    .route(web::get().to(database::get_postgres_pg_locks_inventory_pillar_reports)),
+            )
+            .service(
+                web::resource("/mysql/performance-schema/health/pillars").route(
+                    web::get().to(database::get_mysql_performance_schema_health_pillar_reports),
+                ),
+            )
             .service(
                 web::resource("/mysql/sys-schema/pillars")
                     .route(web::get().to(database::get_mysql_sys_schema_inventory_pillar_reports)),
+            )
+            .service(
+                web::resource("/mysql/sys-schema/health/pillars")
+                    .route(web::get().to(database::get_mysql_sys_schema_health_pillar_reports)),
             )
             .service(
                 web::resource("/mysql/slow-query-log/pillars").route(
                     web::get().to(database::get_mysql_slow_query_log_inventory_pillar_reports),
                 ),
             )
+            .service(
+                web::resource("/mysql/slow-query-log/health/pillars")
+                    .route(web::get().to(database::get_mysql_slow_query_log_health_pillar_reports)),
+            )
             .service(web::resource("/mysql/digest-statistics/pillars").route(
                 web::get().to(database::get_mysql_digest_statistics_inventory_pillar_reports),
             ))
+            .service(
+                web::resource("/mysql/digest-statistics/health/pillars").route(
+                    web::get().to(database::get_mysql_digest_statistics_health_pillar_reports),
+                ),
+            )
             .service(web::resource("/mysql/innodb-buffer-pool/pillars").route(
                 web::get().to(database::get_mysql_innodb_buffer_pool_inventory_pillar_reports),
             ))
             .service(
+                web::resource("/mysql/innodb-buffer-pool/health/pillars").route(
+                    web::get().to(database::get_mysql_innodb_buffer_pool_health_pillar_reports),
+                ),
+            )
+            .service(
                 web::resource("/mysql/binary-log/pillars")
                     .route(web::get().to(database::get_mysql_binary_log_inventory_pillar_reports)),
             )
+            .service(
+                web::resource("/mysql/binary-log/health/pillars")
+                    .route(web::get().to(database::get_mysql_binary_log_health_pillar_reports)),
+            )
+            .service(
+                web::resource("/mysql/redo-log/health/pillars")
+                    .route(web::get().to(database::get_mysql_redo_log_health_pillar_reports)),
+            )
+            .service(
+                web::resource("/mysql/backup-posture/pillars").route(
+                    web::get().to(database::get_mysql_backup_posture_inventory_pillar_reports),
+                ),
+            )
+            .service(
+                web::resource("/mysql/restore-drills/pillars").route(
+                    web::get().to(database::get_mysql_restore_drills_inventory_pillar_reports),
+                ),
+            )
+            .service(
+                web::resource("/mysql/undo-log/health/pillars")
+                    .route(web::get().to(database::get_mysql_undo_log_health_pillar_reports)),
+            )
+            .service(
+                web::resource("/mysql/parameter-drift/pillars").route(
+                    web::get().to(database::get_mysql_parameter_drift_inventory_pillar_reports),
+                ),
+            )
+            .service(web::resource("/mysql/cost-attribution/pillars").route(
+                web::get().to(database::get_mysql_cost_attribution_inventory_pillar_reports),
+            ))
+            .service(web::resource("/mysql/ai-prompt-templates/pillars").route(
+                web::get().to(database::get_mysql_ai_prompt_templates_inventory_pillar_reports),
+            ))
             .service(web::resource("/mysql/replication-status/pillars").route(
                 web::get().to(database::get_mysql_replication_status_inventory_pillar_reports),
             ))
@@ -117,6 +196,55 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
                 web::get().to(database::get_mysql_index_cardinality_inventory_pillar_reports),
             ))
             .service(
+                web::resource("/mysql/unused-indexes/pillars").route(
+                    web::get().to(database::get_mysql_unused_indexes_inventory_pillar_reports),
+                ),
+            )
+            .service(
+                web::resource("/mysql/missing-indexes/pillars").route(
+                    web::get().to(database::get_mysql_missing_indexes_inventory_pillar_reports),
+                ),
+            )
+            .service(
+                web::resource("/mysql/table-bloat/pillars")
+                    .route(web::get().to(database::get_mysql_table_bloat_inventory_pillar_reports)),
+            )
+            .service(
+                web::resource("/mysql/partitioning/pillars").route(
+                    web::get().to(database::get_mysql_partitioning_inventory_pillar_reports),
+                ),
+            )
+            .service(web::resource("/mysql/temporary-tables/pillars").route(
+                web::get().to(database::get_mysql_temporary_tables_inventory_pillar_reports),
+            ))
+            .service(
+                web::resource("/mysql/sort-operations/pillars").route(
+                    web::get().to(database::get_mysql_sort_operations_inventory_pillar_reports),
+                ),
+            )
+            .service(
+                web::resource("/mysql/join-buffers/pillars").route(
+                    web::get().to(database::get_mysql_join_buffers_inventory_pillar_reports),
+                ),
+            )
+            .service(
+                web::resource("/mysql/query-plans/pillars")
+                    .route(web::get().to(database::get_mysql_query_plans_inventory_pillar_reports)),
+            )
+            .service(
+                web::resource("/mysql/schema-explorer/pillars").route(
+                    web::get().to(database::get_mysql_schema_explorer_inventory_pillar_reports),
+                ),
+            )
+            .service(
+                web::resource("/mysql/privilege-audit/pillars").route(
+                    web::get().to(database::get_mysql_privilege_audit_inventory_pillar_reports),
+                ),
+            )
+            .service(web::resource("/mysql/tls-configuration/pillars").route(
+                web::get().to(database::get_mysql_tls_configuration_inventory_pillar_reports),
+            ))
+            .service(
                 web::resource("/mysql/redo-log/pillars")
                     .route(web::get().to(database::get_mysql_redo_log_inventory_pillar_reports)),
             )
@@ -127,6 +255,10 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .service(
                 web::resource("/mysql/wait-events/pillars")
                     .route(web::get().to(database::get_mysql_wait_events_inventory_pillar_reports)),
+            )
+            .service(
+                web::resource("/mysql/wait-events/health/pillars")
+                    .route(web::get().to(database::get_mysql_wait_events_health_pillar_reports)),
             )
             .service(
                 web::resource("/{id}/table/{table_name}/details")

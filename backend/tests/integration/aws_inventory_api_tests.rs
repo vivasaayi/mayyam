@@ -72,6 +72,11 @@ async fn ec2_pillar_reports_contract() {
     let reports = body["reports"].as_array().expect("reports array");
     assert_eq!(reports.len(), 1);
     assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[0]["posture"]["rules_evaluated"], 4);
+    assert!(reports[0]["posture"]["rules"].is_array());
+    assert!(reports[0]["triage_context"]["facts"].is_array());
+    assert!(reports[0]["triage_context"]["hypotheses"].is_array());
+    assert!(reports[0]["triage_context"]["missing_data_questions"].is_array());
 }
 
 #[tokio::test]

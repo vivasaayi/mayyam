@@ -17,20 +17,39 @@
 use actix_web::{dev::Service as _, http::StatusCode, test, web, App, HttpMessage};
 use mayyam::config::Config;
 use mayyam::controllers::database::{
-    get_mysql_aurora_inventory_pillar_reports, get_mysql_binary_log_inventory_pillar_reports,
+    get_mysql_ai_prompt_templates_inventory_pillar_reports,
+    get_mysql_aurora_inventory_pillar_reports, get_mysql_backup_posture_inventory_pillar_reports,
+    get_mysql_binary_log_health_pillar_reports, get_mysql_binary_log_inventory_pillar_reports,
     get_mysql_connection_threads_inventory_pillar_reports,
+    get_mysql_cost_attribution_inventory_pillar_reports,
     get_mysql_deadlocks_inventory_pillar_reports,
+    get_mysql_digest_statistics_health_pillar_reports,
     get_mysql_digest_statistics_inventory_pillar_reports,
     get_mysql_group_replication_inventory_pillar_reports,
     get_mysql_index_cardinality_inventory_pillar_reports,
+    get_mysql_innodb_buffer_pool_health_pillar_reports,
     get_mysql_innodb_buffer_pool_inventory_pillar_reports,
+    get_mysql_join_buffers_inventory_pillar_reports,
     get_mysql_metadata_locks_inventory_pillar_reports,
-    get_mysql_performance_schema_inventory_pillar_reports, get_mysql_rds_inventory_pillar_reports,
-    get_mysql_redo_log_inventory_pillar_reports,
+    get_mysql_missing_indexes_inventory_pillar_reports,
+    get_mysql_parameter_drift_inventory_pillar_reports,
+    get_mysql_partitioning_inventory_pillar_reports,
+    get_mysql_performance_schema_health_pillar_reports,
+    get_mysql_performance_schema_inventory_pillar_reports,
+    get_mysql_privilege_audit_inventory_pillar_reports,
+    get_mysql_query_plans_inventory_pillar_reports, get_mysql_rds_inventory_pillar_reports,
+    get_mysql_redo_log_health_pillar_reports, get_mysql_redo_log_inventory_pillar_reports,
     get_mysql_replication_status_inventory_pillar_reports,
+    get_mysql_restore_drills_inventory_pillar_reports,
+    get_mysql_schema_explorer_inventory_pillar_reports,
+    get_mysql_slow_query_log_health_pillar_reports,
     get_mysql_slow_query_log_inventory_pillar_reports,
-    get_mysql_sys_schema_inventory_pillar_reports, get_mysql_undo_log_inventory_pillar_reports,
-    get_mysql_wait_events_inventory_pillar_reports,
+    get_mysql_sort_operations_inventory_pillar_reports, get_mysql_sys_schema_health_pillar_reports,
+    get_mysql_sys_schema_inventory_pillar_reports, get_mysql_table_bloat_inventory_pillar_reports,
+    get_mysql_temporary_tables_inventory_pillar_reports,
+    get_mysql_tls_configuration_inventory_pillar_reports, get_mysql_undo_log_health_pillar_reports,
+    get_mysql_undo_log_inventory_pillar_reports, get_mysql_unused_indexes_inventory_pillar_reports,
+    get_mysql_wait_events_health_pillar_reports, get_mysql_wait_events_inventory_pillar_reports,
 };
 use mayyam::middleware::auth::Claims;
 use sea_orm::DatabaseConnection;
@@ -61,24 +80,68 @@ async fn mysql_performance_schema_inventory_pillar_reports_contract() {
                 web::get().to(get_mysql_performance_schema_inventory_pillar_reports),
             )
             .route(
+                "/api/databases/mysql/performance-schema/health/pillars",
+                web::get().to(get_mysql_performance_schema_health_pillar_reports),
+            )
+            .route(
                 "/api/databases/mysql/sys-schema/pillars",
                 web::get().to(get_mysql_sys_schema_inventory_pillar_reports),
+            )
+            .route(
+                "/api/databases/mysql/sys-schema/health/pillars",
+                web::get().to(get_mysql_sys_schema_health_pillar_reports),
             )
             .route(
                 "/api/databases/mysql/slow-query-log/pillars",
                 web::get().to(get_mysql_slow_query_log_inventory_pillar_reports),
             )
             .route(
+                "/api/databases/mysql/slow-query-log/health/pillars",
+                web::get().to(get_mysql_slow_query_log_health_pillar_reports),
+            )
+            .route(
                 "/api/databases/mysql/digest-statistics/pillars",
                 web::get().to(get_mysql_digest_statistics_inventory_pillar_reports),
+            )
+            .route(
+                "/api/databases/mysql/digest-statistics/health/pillars",
+                web::get().to(get_mysql_digest_statistics_health_pillar_reports),
             )
             .route(
                 "/api/databases/mysql/innodb-buffer-pool/pillars",
                 web::get().to(get_mysql_innodb_buffer_pool_inventory_pillar_reports),
             )
             .route(
+                "/api/databases/mysql/innodb-buffer-pool/health/pillars",
+                web::get().to(get_mysql_innodb_buffer_pool_health_pillar_reports),
+            )
+            .route(
                 "/api/databases/mysql/binary-log/pillars",
                 web::get().to(get_mysql_binary_log_inventory_pillar_reports),
+            )
+            .route(
+                "/api/databases/mysql/binary-log/health/pillars",
+                web::get().to(get_mysql_binary_log_health_pillar_reports),
+            )
+            .route(
+                "/api/databases/mysql/backup-posture/pillars",
+                web::get().to(get_mysql_backup_posture_inventory_pillar_reports),
+            )
+            .route(
+                "/api/databases/mysql/restore-drills/pillars",
+                web::get().to(get_mysql_restore_drills_inventory_pillar_reports),
+            )
+            .route(
+                "/api/databases/mysql/parameter-drift/pillars",
+                web::get().to(get_mysql_parameter_drift_inventory_pillar_reports),
+            )
+            .route(
+                "/api/databases/mysql/cost-attribution/pillars",
+                web::get().to(get_mysql_cost_attribution_inventory_pillar_reports),
+            )
+            .route(
+                "/api/databases/mysql/ai-prompt-templates/pillars",
+                web::get().to(get_mysql_ai_prompt_templates_inventory_pillar_reports),
             )
             .route(
                 "/api/databases/mysql/replication-status/pillars",
@@ -113,16 +176,72 @@ async fn mysql_performance_schema_inventory_pillar_reports_contract() {
                 web::get().to(get_mysql_index_cardinality_inventory_pillar_reports),
             )
             .route(
+                "/api/databases/mysql/unused-indexes/pillars",
+                web::get().to(get_mysql_unused_indexes_inventory_pillar_reports),
+            )
+            .route(
+                "/api/databases/mysql/missing-indexes/pillars",
+                web::get().to(get_mysql_missing_indexes_inventory_pillar_reports),
+            )
+            .route(
+                "/api/databases/mysql/table-bloat/pillars",
+                web::get().to(get_mysql_table_bloat_inventory_pillar_reports),
+            )
+            .route(
+                "/api/databases/mysql/partitioning/pillars",
+                web::get().to(get_mysql_partitioning_inventory_pillar_reports),
+            )
+            .route(
+                "/api/databases/mysql/temporary-tables/pillars",
+                web::get().to(get_mysql_temporary_tables_inventory_pillar_reports),
+            )
+            .route(
+                "/api/databases/mysql/sort-operations/pillars",
+                web::get().to(get_mysql_sort_operations_inventory_pillar_reports),
+            )
+            .route(
+                "/api/databases/mysql/join-buffers/pillars",
+                web::get().to(get_mysql_join_buffers_inventory_pillar_reports),
+            )
+            .route(
+                "/api/databases/mysql/query-plans/pillars",
+                web::get().to(get_mysql_query_plans_inventory_pillar_reports),
+            )
+            .route(
+                "/api/databases/mysql/schema-explorer/pillars",
+                web::get().to(get_mysql_schema_explorer_inventory_pillar_reports),
+            )
+            .route(
+                "/api/databases/mysql/privilege-audit/pillars",
+                web::get().to(get_mysql_privilege_audit_inventory_pillar_reports),
+            )
+            .route(
+                "/api/databases/mysql/tls-configuration/pillars",
+                web::get().to(get_mysql_tls_configuration_inventory_pillar_reports),
+            )
+            .route(
                 "/api/databases/mysql/redo-log/pillars",
                 web::get().to(get_mysql_redo_log_inventory_pillar_reports),
+            )
+            .route(
+                "/api/databases/mysql/redo-log/health/pillars",
+                web::get().to(get_mysql_redo_log_health_pillar_reports),
             )
             .route(
                 "/api/databases/mysql/undo-log/pillars",
                 web::get().to(get_mysql_undo_log_inventory_pillar_reports),
             )
             .route(
+                "/api/databases/mysql/undo-log/health/pillars",
+                web::get().to(get_mysql_undo_log_health_pillar_reports),
+            )
+            .route(
                 "/api/databases/mysql/wait-events/pillars",
                 web::get().to(get_mysql_wait_events_inventory_pillar_reports),
+            )
+            .route(
+                "/api/databases/mysql/wait-events/health/pillars",
+                web::get().to(get_mysql_wait_events_health_pillar_reports),
             ),
     )
     .await;
@@ -163,6 +282,28 @@ async fn mysql_performance_schema_inventory_pillar_reports_contract() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 
     let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/performance-schema/health/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlPerformanceSchemaHealth");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/performance-schema/health/pillars?pillar=cost,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "security");
+
+    let request = test::TestRequest::get()
         .uri("/api/databases/mysql/sys-schema/pillars")
         .to_request();
     let response = test::call_service(&app, request).await;
@@ -184,6 +325,28 @@ async fn mysql_performance_schema_inventory_pillar_reports_contract() {
     assert_eq!(reports[0]["pillar"], "security");
 
     let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/sys-schema/health/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlSysSchemaHealth");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/sys-schema/health/pillars?pillar=cost,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "security");
+
+    let request = test::TestRequest::get()
         .uri("/api/databases/mysql/slow-query-log/pillars")
         .to_request();
     let response = test::call_service(&app, request).await;
@@ -203,6 +366,28 @@ async fn mysql_performance_schema_inventory_pillar_reports_contract() {
     let reports = body["reports"].as_array().expect("reports array");
     assert_eq!(reports.len(), 1);
     assert_eq!(reports[0]["pillar"], "resilience");
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/slow-query-log/health/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlSlowQueryLogHealth");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/slow-query-log/health/pillars?pillar=cost,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "security");
 
     let request = test::TestRequest::get()
         .uri("/api/databases/mysql/digest-statistics/pillars")
@@ -227,6 +412,27 @@ async fn mysql_performance_schema_inventory_pillar_reports_contract() {
     assert_eq!(reports[1]["pillar"], "security");
 
     let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/digest-statistics/health/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlDigestStatisticsHealth");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/digest-statistics/health/pillars?pillar=resilience")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0]["pillar"], "resilience");
+
+    let request = test::TestRequest::get()
         .uri("/api/databases/mysql/innodb-buffer-pool/pillars")
         .to_request();
     let response = test::call_service(&app, request).await;
@@ -248,6 +454,28 @@ async fn mysql_performance_schema_inventory_pillar_reports_contract() {
     assert_eq!(reports[0]["pillar"], "resilience");
 
     let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/innodb-buffer-pool/health/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlInnoDbBufferPoolHealth");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/innodb-buffer-pool/health/pillars?pillar=cost,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "security");
+
+    let request = test::TestRequest::get()
         .uri("/api/databases/mysql/binary-log/pillars")
         .to_request();
     let response = test::call_service(&app, request).await;
@@ -260,6 +488,138 @@ async fn mysql_performance_schema_inventory_pillar_reports_contract() {
 
     let request = test::TestRequest::get()
         .uri("/api/databases/mysql/binary-log/pillars?pillar=cost,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "security");
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/binary-log/health/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlBinaryLogHealth");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/binary-log/health/pillars?pillar=cost,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "security");
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/backup-posture/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlBackupPosture");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/backup-posture/pillars?pillar=cost,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "security");
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/restore-drills/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlRestoreDrill");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/restore-drills/pillars?pillar=cost,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "security");
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/parameter-drift/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlParameterDrift");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/parameter-drift/pillars?pillar=cost,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "security");
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/cost-attribution/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlCostAttribution");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/cost-attribution/pillars?pillar=cost,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "security");
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/ai-prompt-templates/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlAiPromptTemplate");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/ai-prompt-templates/pillars?pillar=cost,security")
         .to_request();
     let response = test::call_service(&app, request).await;
     assert_eq!(response.status(), StatusCode::OK);
@@ -441,6 +801,248 @@ async fn mysql_performance_schema_inventory_pillar_reports_contract() {
     assert_eq!(reports[1]["pillar"], "resilience");
 
     let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/unused-indexes/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlUnusedIndexes");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/unused-indexes/pillars?pillar=cost,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "security");
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/missing-indexes/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlMissingIndexes");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/missing-indexes/pillars?pillar=resilience,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "resilience");
+    assert_eq!(reports[1]["pillar"], "security");
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/table-bloat/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlTableBloat");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/table-bloat/pillars?pillar=cost,resilience")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "resilience");
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/partitioning/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlPartitioning");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/partitioning/pillars?pillar=resilience,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "resilience");
+    assert_eq!(reports[1]["pillar"], "security");
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/temporary-tables/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlTemporaryTables");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/temporary-tables/pillars?pillar=cost,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "security");
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/sort-operations/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlSortOperations");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/sort-operations/pillars?pillar=cost,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "security");
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/join-buffers/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlJoinBuffers");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/join-buffers/pillars?pillar=cost,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "security");
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/query-plans/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlQueryPlans");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/query-plans/pillars?pillar=cost,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "security");
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/schema-explorer/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlSchemaExplorer");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/schema-explorer/pillars?pillar=cost,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "security");
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/privilege-audit/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlPrivilegeAudit");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/privilege-audit/pillars?pillar=cost,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "security");
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/tls-configuration/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlTlsConfiguration");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/tls-configuration/pillars?pillar=cost,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "security");
+
+    let request = test::TestRequest::get()
         .uri("/api/databases/mysql/redo-log/pillars")
         .to_request();
     let response = test::call_service(&app, request).await;
@@ -453,6 +1055,28 @@ async fn mysql_performance_schema_inventory_pillar_reports_contract() {
 
     let request = test::TestRequest::get()
         .uri("/api/databases/mysql/redo-log/pillars?pillar=cost,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "security");
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/redo-log/health/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlRedoLogHealth");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/redo-log/health/pillars?pillar=cost,security")
         .to_request();
     let response = test::call_service(&app, request).await;
     assert_eq!(response.status(), StatusCode::OK);
@@ -484,6 +1108,28 @@ async fn mysql_performance_schema_inventory_pillar_reports_contract() {
     assert_eq!(reports[0]["pillar"], "resilience");
 
     let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/undo-log/health/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlUndoLogHealth");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/undo-log/health/pillars?pillar=cost,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "security");
+
+    let request = test::TestRequest::get()
         .uri("/api/databases/mysql/wait-events/pillars")
         .to_request();
     let response = test::call_service(&app, request).await;
@@ -503,4 +1149,26 @@ async fn mysql_performance_schema_inventory_pillar_reports_contract() {
     let reports = body["reports"].as_array().expect("reports array");
     assert_eq!(reports.len(), 1);
     assert_eq!(reports[0]["pillar"], "security");
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/wait-events/health/pillars")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body: Value = test::read_body_json(response).await;
+    assert_eq!(body["resource_type"], "MySqlWaitEventsHealth");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 3);
+
+    let request = test::TestRequest::get()
+        .uri("/api/databases/mysql/wait-events/health/pillars?pillar=cost,security")
+        .to_request();
+    let response = test::call_service(&app, request).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = test::read_body_json(response).await;
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 2);
+    assert_eq!(reports[0]["pillar"], "cost");
+    assert_eq!(reports[1]["pillar"], "security");
 }

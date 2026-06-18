@@ -206,7 +206,10 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     llm_manager_init.initialize_common_providers().await?;
     let unified_llm_manager = Arc::new(llm_manager_init);
 
-    let llm_model_controller = Arc::new(LlmModelController::new(llm_provider_model_repo.clone()));
+    let llm_model_controller = Arc::new(LlmModelController::with_prompt_template_repository(
+        llm_provider_model_repo.clone(),
+        prompt_template_repo.clone(),
+    ));
 
     let llm_analytics_service = Arc::new(LlmAnalyticsService::new(
         unified_llm_manager.clone(),

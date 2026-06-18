@@ -33,6 +33,46 @@ pub fn configure(
             .app_data(web::Data::from(model_controller))
             .route("", web::get().to(list_llm_providers))
             .route("", web::post().to(create_llm_provider))
+            .route(
+                "/agent-inventory/pillars",
+                web::get().to(agent_inventory_pillar_reports),
+            )
+            .route(
+                "/error-rate-inventory/pillars",
+                web::get().to(error_rate_inventory_pillar_reports),
+            )
+            .route(
+                "/evaluation-dataset-inventory/pillars",
+                web::get().to(evaluation_dataset_inventory_pillar_reports),
+            )
+            .route(
+                "/grounding-score-inventory/pillars",
+                web::get().to(grounding_score_inventory_pillar_reports),
+            )
+            .route(
+                "/latency-inventory/pillars",
+                web::get().to(latency_inventory_pillar_reports),
+            )
+            .route(
+                "/model-inventory/pillars",
+                web::get().to(model_inventory_pillar_reports),
+            )
+            .route(
+                "/model-cost-inventory/pillars",
+                web::get().to(model_cost_inventory_pillar_reports),
+            )
+            .route(
+                "/response-quality-score-inventory/pillars",
+                web::get().to(response_quality_score_inventory_pillar_reports),
+            )
+            .route(
+                "/token-usage-inventory/pillars",
+                web::get().to(token_usage_inventory_pillar_reports),
+            )
+            .route(
+                "/tool-call-trace-inventory/pillars",
+                web::get().to(tool_call_trace_inventory_pillar_reports),
+            )
             .route("/{id}", web::get().to(get_llm_provider))
             .route("/{id}", web::put().to(update_llm_provider))
             .route("/{id}", web::delete().to(delete_llm_provider))
@@ -140,4 +180,75 @@ async fn search_llm_providers(
 ) -> Result<HttpResponse> {
     // Use the list function for now as search functionality
     LlmProviderController::list_llm_providers(controller, query).await
+}
+
+async fn model_inventory_pillar_reports(
+    model_controller: web::Data<LlmModelController>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    LlmModelController::model_inventory_pillar_reports(model_controller, query).await
+}
+
+async fn agent_inventory_pillar_reports(
+    model_controller: web::Data<LlmModelController>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    LlmModelController::agent_inventory_pillar_reports(model_controller, query).await
+}
+
+async fn latency_inventory_pillar_reports(
+    model_controller: web::Data<LlmModelController>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    LlmModelController::latency_inventory_pillar_reports(model_controller, query).await
+}
+
+async fn error_rate_inventory_pillar_reports(
+    model_controller: web::Data<LlmModelController>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    LlmModelController::error_rate_inventory_pillar_reports(model_controller, query).await
+}
+
+async fn token_usage_inventory_pillar_reports(
+    model_controller: web::Data<LlmModelController>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    LlmModelController::token_usage_inventory_pillar_reports(model_controller, query).await
+}
+
+async fn model_cost_inventory_pillar_reports(
+    model_controller: web::Data<LlmModelController>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    LlmModelController::model_cost_inventory_pillar_reports(model_controller, query).await
+}
+
+async fn evaluation_dataset_inventory_pillar_reports(
+    model_controller: web::Data<LlmModelController>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    LlmModelController::evaluation_dataset_inventory_pillar_reports(model_controller, query).await
+}
+
+async fn response_quality_score_inventory_pillar_reports(
+    model_controller: web::Data<LlmModelController>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    LlmModelController::response_quality_score_inventory_pillar_reports(model_controller, query)
+        .await
+}
+
+async fn grounding_score_inventory_pillar_reports(
+    model_controller: web::Data<LlmModelController>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    LlmModelController::grounding_score_inventory_pillar_reports(model_controller, query).await
+}
+
+async fn tool_call_trace_inventory_pillar_reports(
+    model_controller: web::Data<LlmModelController>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    LlmModelController::tool_call_trace_inventory_pillar_reports(model_controller, query).await
 }

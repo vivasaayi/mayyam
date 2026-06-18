@@ -52,7 +52,9 @@ use crate::services::aws::inventory::documentdb_pillar_evaluator::evaluate_docum
 use crate::services::aws::inventory::drs_pillar_evaluator::evaluate_drs_fleet;
 use crate::services::aws::inventory::dynamodb_pillar_evaluator::evaluate_dynamodb_fleet;
 use crate::services::aws::inventory::ebs_pillar_evaluator::evaluate_ebs_fleet;
-use crate::services::aws::inventory::ec2_pillar_evaluator::evaluate_ec2_fleet;
+use crate::services::aws::inventory::ec2_pillar_evaluator::{
+    ec2_cost_posture_summary, ec2_cost_triage_context, evaluate_ec2_fleet,
+};
 use crate::services::aws::inventory::ecs_pillar_evaluator::evaluate_ecs_fleet;
 use crate::services::aws::inventory::efs_pillar_evaluator::evaluate_efs_fleet;
 use crate::services::aws::inventory::eks_pillar_evaluator::evaluate_eks_fleet;
@@ -301,14 +303,43 @@ pub async fn get_ec2_pillar_reports(
 ) -> Result<HttpResponse, AppError> {
     let query = query.into_inner();
     debug!("EC2 pillar report request: {:?}", query);
-    pillar_reports_for(
-        &controller,
-        query,
-        AwsResourceType::EC2Instance,
-        EC2_PILLARS,
-        evaluate_ec2_fleet,
-    )
-    .await
+    let pillars = parse_pillars(&query.pillar, EC2_PILLARS)?;
+    let resources = controller
+        .aws_resource_repo
+        .find_by_account_and_type(&query.account_id, &AwsResourceType::EC2Instance.to_string())
+        .await?;
+
+    let now = Utc::now();
+    let reports: Vec<_> = pillars
+        .iter()
+        .map(|pillar| {
+            let report = evaluate_ec2_fleet(&resources, *pillar, now);
+            if *pillar == Pillar::Cost {
+                json!({
+                    "pillar": report.pillar,
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "posture": ec2_cost_posture_summary(&report),
+                    "triage_context": ec2_cost_triage_context(&report),
+                })
+            } else {
+                json!(report)
+            }
+        })
+        .collect();
+    let oldest_refresh = resources.iter().map(|r| r.last_refreshed).min();
+
+    Ok(HttpResponse::Ok().json(json!({
+        "account_id": query.account_id,
+        "resource_type": AwsResourceType::EC2Instance.to_string(),
+        "evaluated_at": now,
+        "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
+        "resources_evaluated": resources.len(),
+        "oldest_refresh": oldest_refresh,
+        "reports": reports,
+    })))
 }
 
 pub async fn get_lambda_pillar_reports(

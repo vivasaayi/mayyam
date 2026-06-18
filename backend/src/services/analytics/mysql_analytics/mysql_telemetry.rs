@@ -27,7 +27,9 @@ pub struct MySqlTelemetrySnapshot {
     pub innodb: MySqlInnoDbSnapshot,
     pub statements: Vec<MySqlStatementDigest>,
     pub tables: Vec<MySqlTableTelemetry>,
+    pub partitions: Vec<MySqlPartitionTelemetry>,
     pub indexes: Vec<MySqlIndexTelemetry>,
+    pub privileges: Vec<MySqlPrivilegeTelemetry>,
     pub waits: Vec<MySqlWaitTelemetry>,
     pub locks: MySqlLockSnapshot,
     pub findings: Vec<MySqlFinding>,
@@ -37,6 +39,12 @@ pub struct MySqlTelemetrySnapshot {
 pub struct MySqlServerContext {
     pub version: Option<String>,
     pub uptime_seconds: i64,
+    pub have_ssl: Option<String>,
+    pub require_secure_transport: Option<String>,
+    pub log_bin: Option<String>,
+    pub binlog_expire_logs_seconds: Option<i64>,
+    pub expire_logs_days: Option<i64>,
+    pub gtid_mode: Option<String>,
     pub performance_schema_enabled: Option<String>,
     pub slow_query_log_enabled: Option<String>,
     pub long_query_time_seconds: Option<f64>,
@@ -52,6 +60,22 @@ pub struct MySqlWorkloadSnapshot {
     pub com_update: i64,
     pub com_delete: i64,
     pub slow_queries: i64,
+    pub created_tmp_tables: i64,
+    pub created_tmp_disk_tables: i64,
+    pub created_tmp_files: i64,
+    pub tmp_disk_table_pct: Option<f64>,
+    pub sort_merge_passes: i64,
+    pub sort_range: i64,
+    pub sort_rows: i64,
+    pub sort_scan: i64,
+    pub sort_merge_pass_pct: Option<f64>,
+    pub select_full_join: i64,
+    pub select_full_range_join: i64,
+    pub select_range_check: i64,
+    pub full_join_select_pct: Option<f64>,
+    pub ssl_accepts: i64,
+    pub ssl_finished_accepts: i64,
+    pub ssl_accept_pct: Option<f64>,
     pub qps_since_start: f64,
     pub read_write_ratio: Option<f64>,
 }
@@ -116,6 +140,20 @@ pub struct MySqlTableTelemetry {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct MySqlPartitionTelemetry {
+    pub schema_name: String,
+    pub table_name: String,
+    pub partition_name: String,
+    pub partition_method: Option<String>,
+    pub partition_expression: Option<String>,
+    pub partition_description: Option<String>,
+    pub table_rows: i64,
+    pub data_length: i64,
+    pub index_length: i64,
+    pub data_free: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct MySqlIndexTelemetry {
     pub schema_name: String,
     pub table_name: String,
@@ -125,6 +163,22 @@ pub struct MySqlIndexTelemetry {
     pub columns: Vec<String>,
     pub read_count: i64,
     pub write_count: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct MySqlPrivilegeTelemetry {
+    pub user: String,
+    pub host: String,
+    pub account_locked: Option<bool>,
+    pub password_expired: Option<bool>,
+    pub ssl_type: Option<String>,
+    pub super_priv: bool,
+    pub grant_priv: bool,
+    pub create_user_priv: bool,
+    pub file_priv: bool,
+    pub process_priv: bool,
+    pub shutdown_priv: bool,
+    pub reload_priv: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -188,7 +242,9 @@ impl MySqlTelemetryCollector {
         let innodb = Self::innodb_snapshot(&status);
         let statements = Self::collect_statement_digests(conn).await?;
         let tables = Self::collect_table_telemetry(conn).await?;
+        let partitions = Self::collect_partition_telemetry(conn).await?;
         let indexes = Self::collect_index_telemetry(conn).await?;
+        let privileges = Self::collect_privilege_telemetry(conn).await?;
         let waits = Self::collect_waits(conn).await?;
         let locks = Self::collect_locks(conn).await?;
 
@@ -200,7 +256,9 @@ impl MySqlTelemetryCollector {
             innodb,
             statements,
             tables,
+            partitions,
             indexes,
+            privileges,
             waits,
             locks,
             findings: Vec::new(),
@@ -240,6 +298,8 @@ impl MySqlTelemetryCollector {
                 'Questions',
                 'Queries',
                 'Slow_queries',
+                'Ssl_accepts',
+                'Ssl_finished_accepts',
                 'Threads_cached',
                 'Threads_connected',
                 'Threads_running',
@@ -272,6 +332,12 @@ impl MySqlTelemetryCollector {
                 'long_query_time',
                 'max_connections',
                 'performance_schema',
+                'binlog_expire_logs_seconds',
+                'expire_logs_days',
+                'gtid_mode',
+                'have_ssl',
+                'log_bin',
+                'require_secure_transport',
                 'slow_query_log',
                 'thread_cache_size',
                 'version'
@@ -307,6 +373,16 @@ impl MySqlTelemetryCollector {
         MySqlServerContext {
             version: variables.get("version").cloned(),
             uptime_seconds: get_i64(status, "Uptime"),
+            have_ssl: variables.get("have_ssl").cloned(),
+            require_secure_transport: variables.get("require_secure_transport").cloned(),
+            log_bin: variables.get("log_bin").cloned(),
+            binlog_expire_logs_seconds: variables
+                .get("binlog_expire_logs_seconds")
+                .and_then(|value| value.parse::<i64>().ok()),
+            expire_logs_days: variables
+                .get("expire_logs_days")
+                .and_then(|value| value.parse::<i64>().ok()),
+            gtid_mode: variables.get("gtid_mode").cloned(),
             performance_schema_enabled: variables.get("performance_schema").cloned(),
             slow_query_log_enabled: variables.get("slow_query_log").cloned(),
             long_query_time_seconds: variables
@@ -323,6 +399,16 @@ impl MySqlTelemetryCollector {
         let writes = get_i64(status, "Com_insert")
             + get_i64(status, "Com_update")
             + get_i64(status, "Com_delete");
+        let created_tmp_tables = get_i64(status, "Created_tmp_tables");
+        let created_tmp_disk_tables = get_i64(status, "Created_tmp_disk_tables");
+        let sort_merge_passes = get_i64(status, "Sort_merge_passes");
+        let sort_range = get_i64(status, "Sort_range");
+        let sort_scan = get_i64(status, "Sort_scan");
+        let sort_operations = sort_range + sort_scan;
+        let select_full_join = get_i64(status, "Select_full_join");
+        let select_full_range_join = get_i64(status, "Select_full_range_join");
+        let ssl_accepts = get_i64(status, "Ssl_accepts");
+        let ssl_finished_accepts = get_i64(status, "Ssl_finished_accepts");
 
         MySqlWorkloadSnapshot {
             questions,
@@ -332,6 +418,34 @@ impl MySqlTelemetryCollector {
             com_update: get_i64(status, "Com_update"),
             com_delete: get_i64(status, "Com_delete"),
             slow_queries: get_i64(status, "Slow_queries"),
+            created_tmp_tables,
+            created_tmp_disk_tables,
+            created_tmp_files: get_i64(status, "Created_tmp_files"),
+            tmp_disk_table_pct: if created_tmp_tables > 0 {
+                Some(created_tmp_disk_tables as f64 / created_tmp_tables as f64 * 100.0)
+            } else {
+                None
+            },
+            sort_merge_passes,
+            sort_range,
+            sort_rows: get_i64(status, "Sort_rows"),
+            sort_scan,
+            sort_merge_pass_pct: if sort_operations > 0 {
+                Some(sort_merge_passes as f64 / sort_operations as f64 * 100.0)
+            } else {
+                None
+            },
+            select_full_join,
+            select_full_range_join,
+            select_range_check: get_i64(status, "Select_range_check"),
+            full_join_select_pct: if selects > 0 {
+                Some((select_full_join + select_full_range_join) as f64 / selects as f64 * 100.0)
+            } else {
+                None
+            },
+            ssl_accepts,
+            ssl_finished_accepts,
+            ssl_accept_pct: pct(ssl_accepts, ssl_finished_accepts),
             qps_since_start: if uptime > 0 {
                 questions as f64 / uptime as f64
             } else {
@@ -508,6 +622,50 @@ impl MySqlTelemetryCollector {
         Ok(tables)
     }
 
+    async fn collect_partition_telemetry(
+        conn: &DatabaseConnection,
+    ) -> Result<Vec<MySqlPartitionTelemetry>, AppError> {
+        const SQL: &str = r#"
+            SELECT
+                p.TABLE_SCHEMA,
+                p.TABLE_NAME,
+                p.PARTITION_NAME,
+                p.PARTITION_METHOD,
+                p.PARTITION_EXPRESSION,
+                p.PARTITION_DESCRIPTION,
+                p.TABLE_ROWS,
+                p.DATA_LENGTH,
+                p.INDEX_LENGTH,
+                p.DATA_FREE
+            FROM information_schema.partitions p
+            JOIN information_schema.tables t
+              ON t.TABLE_SCHEMA = p.TABLE_SCHEMA
+             AND t.TABLE_NAME = p.TABLE_NAME
+            WHERE p.TABLE_SCHEMA = DATABASE()
+              AND p.PARTITION_NAME IS NOT NULL
+              AND t.TABLE_TYPE = 'BASE TABLE'
+            ORDER BY p.TABLE_NAME, p.PARTITION_ORDINAL_POSITION
+            LIMIT 500
+        "#;
+
+        let mut partitions = Vec::new();
+        for row in query_all(conn, SQL).await? {
+            partitions.push(MySqlPartitionTelemetry {
+                schema_name: string_value(&row, "TABLE_SCHEMA").unwrap_or_default(),
+                table_name: string_value(&row, "TABLE_NAME").unwrap_or_default(),
+                partition_name: string_value(&row, "PARTITION_NAME").unwrap_or_default(),
+                partition_method: string_value(&row, "PARTITION_METHOD"),
+                partition_expression: string_value(&row, "PARTITION_EXPRESSION"),
+                partition_description: string_value(&row, "PARTITION_DESCRIPTION"),
+                table_rows: i64_value(&row, "TABLE_ROWS").unwrap_or(0),
+                data_length: i64_value(&row, "DATA_LENGTH").unwrap_or(0),
+                index_length: i64_value(&row, "INDEX_LENGTH").unwrap_or(0),
+                data_free: i64_value(&row, "DATA_FREE").unwrap_or(0),
+            });
+        }
+        Ok(partitions)
+    }
+
     async fn collect_index_telemetry(
         conn: &DatabaseConnection,
     ) -> Result<Vec<MySqlIndexTelemetry>, AppError> {
@@ -553,6 +711,56 @@ impl MySqlTelemetryCollector {
             });
         }
         Ok(indexes)
+    }
+
+    async fn collect_privilege_telemetry(
+        conn: &DatabaseConnection,
+    ) -> Result<Vec<MySqlPrivilegeTelemetry>, AppError> {
+        const SQL: &str = r#"
+            SELECT
+                User,
+                Host,
+                account_locked,
+                password_expired,
+                ssl_type,
+                Super_priv,
+                Grant_priv,
+                Create_user_priv,
+                File_priv,
+                Process_priv,
+                Shutdown_priv,
+                Reload_priv
+            FROM mysql.user
+            ORDER BY User, Host
+            LIMIT 200
+        "#;
+
+        let rows = match query_all(conn, SQL).await {
+            Ok(rows) => rows,
+            Err(err) => {
+                tracing::warn!("Unable to collect MySQL privilege telemetry: {}", err);
+                return Ok(Vec::new());
+            }
+        };
+
+        let mut privileges = Vec::new();
+        for row in rows {
+            privileges.push(MySqlPrivilegeTelemetry {
+                user: string_value(&row, "User").unwrap_or_default(),
+                host: string_value(&row, "Host").unwrap_or_default(),
+                account_locked: optional_yes_no_value(&row, "account_locked"),
+                password_expired: optional_yes_no_value(&row, "password_expired"),
+                ssl_type: string_value(&row, "ssl_type"),
+                super_priv: yes_no_value(&row, "Super_priv"),
+                grant_priv: yes_no_value(&row, "Grant_priv"),
+                create_user_priv: yes_no_value(&row, "Create_user_priv"),
+                file_priv: yes_no_value(&row, "File_priv"),
+                process_priv: yes_no_value(&row, "Process_priv"),
+                shutdown_priv: yes_no_value(&row, "Shutdown_priv"),
+                reload_priv: yes_no_value(&row, "Reload_priv"),
+            });
+        }
+        Ok(privileges)
     }
 
     async fn collect_waits(conn: &DatabaseConnection) -> Result<Vec<MySqlWaitTelemetry>, AppError> {
@@ -891,6 +1099,14 @@ fn string_value(row: &QueryResult, column: &str) -> Option<String> {
         .or_else(|| row.try_get::<Option<String>>("", column).ok().flatten())
 }
 
+fn optional_yes_no_value(row: &QueryResult, column: &str) -> Option<bool> {
+    string_value(row, column).map(|value| value.eq_ignore_ascii_case("Y"))
+}
+
+fn yes_no_value(row: &QueryResult, column: &str) -> bool {
+    optional_yes_no_value(row, column).unwrap_or(false)
+}
+
 fn i64_value(row: &QueryResult, column: &str) -> Option<i64> {
     row.try_get::<i64>("", column)
         .ok()
@@ -948,6 +1164,12 @@ mod tests {
             server: MySqlServerContext {
                 version: Some("8.0".to_string()),
                 uptime_seconds: 3600,
+                have_ssl: Some("YES".to_string()),
+                require_secure_transport: Some("ON".to_string()),
+                log_bin: Some("ON".to_string()),
+                binlog_expire_logs_seconds: Some(604800),
+                expire_logs_days: None,
+                gtid_mode: Some("ON".to_string()),
                 performance_schema_enabled: Some("ON".to_string()),
                 slow_query_log_enabled: Some("ON".to_string()),
                 long_query_time_seconds: Some(2.0),
@@ -961,6 +1183,22 @@ mod tests {
                 com_update: 50,
                 com_delete: 50,
                 slow_queries: 0,
+                created_tmp_tables: 0,
+                created_tmp_disk_tables: 0,
+                created_tmp_files: 0,
+                tmp_disk_table_pct: None,
+                sort_merge_passes: 0,
+                sort_range: 0,
+                sort_rows: 0,
+                sort_scan: 0,
+                sort_merge_pass_pct: None,
+                select_full_join: 0,
+                select_full_range_join: 0,
+                select_range_check: 0,
+                full_join_select_pct: None,
+                ssl_accepts: 0,
+                ssl_finished_accepts: 0,
+                ssl_accept_pct: None,
                 qps_since_start: 1.0,
                 read_write_ratio: Some(4.0),
             },
@@ -990,7 +1228,9 @@ mod tests {
             },
             statements: Vec::new(),
             tables: Vec::new(),
+            partitions: Vec::new(),
             indexes: Vec::new(),
+            privileges: Vec::new(),
             waits: Vec::new(),
             locks: MySqlLockSnapshot {
                 blocked_processes: 0,

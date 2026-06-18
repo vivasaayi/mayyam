@@ -45,6 +45,14 @@ impl LlmProviderModelRepository {
         Ok(models)
     }
 
+    pub async fn list_all(&self) -> Result<Vec<LlmProviderModel>, AppError> {
+        let models = LlmProviderModelEntity::find()
+            .all(&*self.db)
+            .await
+            .map_err(AppError::from)?;
+        Ok(models)
+    }
+
     pub async fn create(
         &self,
         provider_id: Uuid,

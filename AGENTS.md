@@ -1,6 +1,6 @@
 # Mayyam Agent Instructions
 
-Use this file as persistent project guidance for Codex and other coding agents working in this repository.
+Use this file as persistent project guidance for Codex runs in this repository. These instructions apply to the whole repo unless a nested `AGENTS.md` or `AGENTS.override.md` provides more specific guidance.
 
 ## Mission
 
@@ -10,8 +10,6 @@ Mayyam is an SRE, cloud, database, Kafka, Kubernetes, Linux, FinOps, and operati
 
 - Backend: Rust with Actix Web in `backend/`.
 - Frontend: React with CoreUI and AG Grid in `frontend/`.
-- Product roadmap: `docs/product-roadmap/`.
-- Roadmap generator: `scripts/generate-product-roadmap.js`.
 - Docker and local bootstrap scripts live at the repository root and under `scripts/`.
 
 ## Autonomous Operating Mode
@@ -55,8 +53,6 @@ Use the smallest validation set that matches the change.
 - Frontend tests: run `CI=true npm test -- --watchAll=false` from `frontend/` for testable UI behavior.
 - Frontend e2e: run `npm run test:e2e` from `frontend/` when changing browser workflows covered by Playwright.
 - Full local tests: run `make test` from the repo root when both backend and frontend behavior changed.
-- Roadmap generator: run `node --check scripts/generate-product-roadmap.js` and `node scripts/generate-product-roadmap.js`.
-- Generated roadmap sanity: scan generated docs for `undefined`, `[object Object]`, `TODO`, and `NaN`.
 
 Warnings may already exist. Treat command exit codes and new failures as the signal.
 
@@ -87,139 +83,149 @@ Warnings may already exist. Treat command exit codes and new failures as the sig
 - Make states explicit: loading, empty, success, partial failure, validation errors, and permission or connectivity errors where applicable.
 - Verify responsive layouts for user-facing UI changes.
 
+## Aruvi Task Tracker MCP
+
+Use Aruvi Studio's tasktracker MCP as the only product planning, claim, evidence, task selection, and checkpoint mechanism for roadmap or backlog work.
+
+- Start roadmap, backlog, migration, and "pick up next task" work from the MCP task tracker.
+- Prefer the typed MCP tools when available: `agent_work_runs_health`, `aruvi_agent_work`, `agent_work_items_claim_next`, `agent_work_evidence_append`, `agent_work_evidence_list`, and catalog/product tools.
+- If typed tools are unavailable but the HTTP MCP bridge is reachable, use the bridge and the running server's `tools/list` result rather than assuming tool names from memory.
+- Use Aruvi catalog entities as the product-management source of truth: product areas, capabilities, feature nodes, and work items belong in Aruvi Studio.
+- Use Aruvi agent-work entities as the delivery source of truth: runs, ready items, claims, conflict zones, batches, leases, evidence, status transitions, and commit links belong in the tasktracker MCP.
+- When selecting work, inspect run health and ready items, then atomically claim through MCP.
+- Do not select roadmap or backlog work outside MCP.
+- Use MCP conflict zones and leases for coordination. Keep heartbeats current during long work, and release or requeue claims if you cannot continue.
+- Append implementation, validation, review, blocker, and commit evidence through MCP as the work progresses. Evidence should include changed files, commands, exit codes, and concise product outcome.
+- Update item status through MCP. Use `in_progress` for partial vertical slices, `implemented` only when code is complete but not fully verified/committed, `tests_passed` after required validation, `committed` after the implementation commit is linked, and `blocked` only for a real blocker.
+- If the MCP task tracker is unavailable, do not pick, claim, continue, or checkpoint roadmap/backlog work. Treat MCP unavailability as a blocker for task selection and durable progress.
+
 ## Roadmap One-Shot Execution
 
 When the task is to execute the Mayyam product roadmap, do not ask the user which roadmap item to start with.
 
-- Start from `docs/product-roadmap/README.md`, `implementation-sequencing.md`, `requirements-rigor.md`, every `release-plan.md`, and every `feature-backlog.csv`.
-- Enumerate all roadmap folders and count backlog rows before selecting work.
-- Process the backlog in deterministic batches. Do not attempt to load all rows into context at once.
+- Start from Aruvi tasktracker MCP run health and ready items.
+- If no active MCP run exists, report that MCP has no active run to claim from.
+- Process large or cross-domain roadmap runs through the Roadmap MapReduce Execution Model below. Do not attempt to load all rows into context at once.
 - Prioritize P0, then P1, then P2. Within each priority, prefer M1 inventory and M2 observable foundations before M3, M4, and M5 work.
-- Use a progress ledger or checkpoint so a later run can resume exactly.
-- If sub-agents are available, use them for backlog triage, Rust backend, React UI, tests, and independent verification. If sub-agents are unavailable, run those passes sequentially.
+- Use Aruvi tasktracker MCP as the progress ledger so a later run can resume exactly.
+- If subagents are available, use them for backlog triage, Rust backend, React UI, tests, and independent verification. If subagents are unavailable, run those passes sequentially.
 - Commit each completed, verified batch when the task definition requires commits.
 - Never claim the whole roadmap is complete unless every row has been processed and verified.
 
-## Roadmap Batch Loop
+## Roadmap MapReduce Execution Model
 
-When a roadmap execution prompt asks for loop behavior, continue across completed and committed batches until the roadmap is finished or a hard stop condition is reached. Do not stop merely because a batch was completed, a checkpoint was written, a commit succeeded, or a concise status update could be reported.
+Use this model for large roadmap runs. The goal is to reason globally, execute independently, integrate centrally, and verify continuously.
 
-- After each verified batch commit, update `checkpoint.sqlite` and `RESUME.md`.
-- Re-read the active checkpoint before choosing more work.
-- Verify `git status --short`, `runs.last_commit`, `current_batch_id`, `next_action`, and the roadmap hash.
-- Select and atomically claim the next deterministic batch using the same P0, then P1, then P2 priority rules.
-- Implement, validate, checkpoint, commit, and repeat until a hard stop condition is hit.
+### Map Phase: Roadmap Decomposition
 
-Stop the loop only when one of these hard stop conditions is true:
+Before implementation, the coordinator reads MCP run health, ready items, feature context, existing evidence, and current repository state, then maps the available work into candidate macro-batches. This phase is non-mutating unless an MCP run must be initialized or repaired.
 
-- No pending roadmap rows remain.
-- Validation fails and cannot be fixed within the current batch.
-- Unrelated worktree changes conflict with the next batch.
-- A real blocker prevents progress.
-- Context, token, rate-limit, or timeout pressure makes another implementation batch unsafe.
+Identify:
 
-Treat context, token, rate-limit, and timeout pressure as hard stop conditions only when there is concrete evidence that continuing another batch would likely lose work or prevent a checkpoint. Do not stop speculatively.
+- Product capabilities and feature IDs.
+- Dependency relationships and critical-path blockers.
+- Shared contracts, domain foundations, and acceptance gates.
+- Affected backend modules, routes, controllers, schemas, migrations, generated outputs, frontend screens, components, and tests.
+- Candidate macro-batches and safe parallel lanes.
+- Conflict zones that must be serialized.
 
-Before stopping, write a complete checkpoint with the current batch, feature IDs, changed files, commands run, verification state, last commit, blocker if any, and exact next action. Codex cannot restart itself after API token, context, process, or network limits; for multi-hour unattended execution, run Codex from an external harness that relaunches it with the one-shot prompt until the checkpoint reports no pending roadmap rows. SQLite and `RESUME.md` are the handoff contract.
+The Map phase must not produce implementation code unless the roadmap graph and candidate macro-batches are already known or valid in MCP.
+
+### Shuffle Phase: Claiming and Coordination
+
+Group dependency-ready work into macro-batches and assign lanes through Aruvi tasktracker MCP.
+
+Rules:
+
+- Every lane must atomically claim feature IDs through MCP before implementation.
+- Do not assign two lanes to the same Rust module, route, controller, migration, generated file, React screen, shared UI component, or shared contract at the same time.
+- Prefer independent lanes: backend domain/service work, provider integrations, React UI, roadmap/test fixtures, validation, and independent verification.
+- If work overlaps, serialize it through the coordinator.
+- If a conflict appears, pause the lower-priority lane, record the event in MCP, and requeue, merge, or split the work.
+
+### Worker Phase: Independent Implementation
+
+Each worker lane implements only its claimed macro-batch.
+
+Workers must return compact evidence:
+
+- Claimed feature IDs and batch ID.
+- Files changed.
+- Contracts or APIs changed.
+- Tests added or updated.
+- Commands run and results.
+- Failures encountered.
+- Product outcome achieved.
+- Commit readiness.
+- Exact next action.
+
+Workers must avoid broad speculative scaffolding. Code is valuable only when it supports a verified workflow, shared foundation, acceptance gate, test fixture, or critical-path dependency.
+
+### Reduce Phase: Integration
+
+The coordinator integrates worker outputs.
+
+The coordinator must:
+
+- Review worker evidence.
+- Resolve integration conflicts.
+- Remove duplicate or incompatible models.
+- Ensure shared contracts are authoritative.
+- Prune speculative code not required by the accepted workflow.
+- Run required validation commands.
+- Stage only files that belong to the verified batch.
+- Commit one verified batch at a time.
+- Append evidence, update statuses, and link commits in MCP.
+
+Commits remain serialized even when implementation work is parallel.
+
+### Verify Phase: Acceptance and Metrics
+
+A MapReduce cycle is complete only when the integrated batch is verified.
+
+Record:
+
+- Accepted workflow or critical-path foundation completed.
+- Validation commands and results.
+- Files changed.
+- Net lines added/deleted when available.
+- Downstream items unblocked.
+- Product progress score when available.
+- Last commit SHA.
+- Exact next action.
+
+A cycle is not successful because it generated code. A cycle is successful only when it increases accepted Mayyam product capability.
+
+Operating principle: Map the roadmap globally. Shuffle work safely through MCP. Implement in independent lanes. Reduce through one coordinator. Verify before commit. Checkpoint in MCP after every accepted product slice. Maximize accepted product capability per token, not code volume per hour.
+
+## Roadmap Batch Loop Mode
+
+Use this mode only when the user or one-shot prompt explicitly asks the agent to continue through multiple roadmap batches in a loop. Do not impose a discretionary batch-count limit.
+
+- Continue selecting and executing deterministic batches until every roadmap row is processed and verified, or until a hard stop condition is reached.
+- After each verified commit, update MCP evidence/status/commit links, then re-read MCP run health before selecting the next batch.
+- Before starting each next batch, verify `git status --short`, MCP run status, active claim/lock state, last commit, current batch, and next action.
+- Select, claim, implement, validate, commit, and checkpoint the next batch using the Roadmap MapReduce Execution Model and the same P0 -> P1 -> P2 priority rules.
+- Do not stop merely because a batch completed, the next batch is larger, or the worktree is clean after a checkpoint.
+- Stop the loop only when there are no pending rows, validation fails and cannot be fixed within the current batch, unrelated worktree changes create a conflict, a real blocker prevents progress, the user explicitly stops the run, or context/token/rate-limit/timeout pressure makes it impossible to continue safely.
+- Treat context, token, rate-limit, and timeout pressure as hard stop conditions only when there is concrete evidence that continuing another batch would likely lose work or prevent a checkpoint. Do not stop speculatively.
+- Before stopping, write durable MCP evidence/status with the current batch, feature IDs, changed files, commands run, verification state, last commit, blocker if any, and exact next action. If MCP is unavailable, stop and report that durable progress cannot be recorded.
+- Codex cannot restart itself after API token, context, process, or network limits. If an external runtime reset is required, Aruvi tasktracker MCP is the handoff contract for the harness to relaunch Codex and continue from the exact next action.
 
 ## Parallel Batch Execution
 
 Speed matters, but parallelism must not corrupt the worktree.
 
-- Prefer 2-4 parallel lanes when the runtime supports sub-agents or background agents.
-- Use SQLite as the coordination source of truth. Every agent must atomically claim feature IDs before work begins.
-- Parallelize only independent slices: different services, different files, or analysis/test work that will not edit the same modules.
-- Do not let two agents edit the same Rust module, route, controller, React file, migration, or generated file at the same time.
-- Keep one coordinator responsible for batch selection, conflict checks, final integration, validation, staging, commits, and checkpoint updates.
-- Agents should return compact evidence: claimed feature IDs, files changed, tests run, failures, commit readiness, and exact next action.
-- Run expensive validations in parallel only when they do not compete for the same build lock or mutate shared output. Otherwise serialize validation.
+- Prefer 2-4 parallel lanes when the runtime supports subagents or background agents.
+- Use Aruvi tasktracker MCP as the coordination source of truth. Every agent must atomically claim feature IDs before work begins.
+- Parallelize only independent MapReduce lanes: different backend services, frontend surfaces, files, or analysis/test work that will not edit the same modules.
+- Do not let two agents edit the same Rust module, route, controller, React file, migration, shared contract, or generated file at the same time.
+- Keep one coordinator responsible for Map, Shuffle, Reduce, Verify, conflict checks, staging, commits, and checkpoint updates.
+- Agents should return compact worker evidence: claimed feature IDs, batch ID, files changed, contracts or APIs changed, tests run, failures, product outcome, commit readiness, and exact next action.
+- Run expensive validations in parallel only when they do not compete for the same build lock or mutate shared output. Otherwise serialize validation. The Rust `target/` build lock is shared within `backend/`.
 - Commits must be serialized. One committed, verified batch at a time.
-- If parallel lanes conflict, pause the lower-priority lane, write an event to SQLite, and let the coordinator decide whether to rebase, merge manually, or requeue.
-- If sub-agents are unavailable, simulate parallel roles sequentially but keep the same SQLite claim/checkpoint protocol.
-
-## SQLite Checkpointing Protocol
-
-For roadmap one-shot execution, use SQLite checkpointing. This is preferred over long prose checkpoints because the backlog has tens of thousands of feature rows and may be processed by multiple agents.
-
-Checkpoint location for new agent runs:
-
-- Database: `.agents/checkpoints/roadmap-run/checkpoint.sqlite`
-- Human/model resume file: `.agents/checkpoints/roadmap-run/RESUME.md`
-
-If resuming a legacy Claude-run roadmap task, first inspect `.claude/checkpoints/roadmap-run/RESUME.md` and `.claude/checkpoints/roadmap-run/checkpoint.sqlite`, then continue in the existing checkpoint location unless the user asks to migrate it.
-
-Initialize SQLite with:
-
-```sql
-PRAGMA journal_mode=WAL;
-PRAGMA busy_timeout=5000;
-
-CREATE TABLE IF NOT EXISTS runs (
-  id TEXT PRIMARY KEY,
-  roadmap_hash TEXT NOT NULL,
-  started_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  last_commit TEXT,
-  current_batch_id TEXT,
-  next_action TEXT
-);
-
-CREATE TABLE IF NOT EXISTS feature_progress (
-  feature_id TEXT PRIMARY KEY,
-  module TEXT NOT NULL,
-  service_or_domain TEXT,
-  priority TEXT,
-  release_phase TEXT,
-  status TEXT NOT NULL,
-  batch_id TEXT,
-  agent TEXT,
-  commit_sha TEXT,
-  updated_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS batches (
-  id TEXT PRIMARY KEY,
-  status TEXT NOT NULL,
-  selection_rule TEXT,
-  agent TEXT,
-  started_at TEXT,
-  completed_at TEXT,
-  commit_sha TEXT
-);
-
-CREATE TABLE IF NOT EXISTS events (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  ts TEXT NOT NULL,
-  event_type TEXT NOT NULL,
-  batch_id TEXT,
-  feature_id TEXT,
-  agent TEXT,
-  command TEXT,
-  status TEXT,
-  details TEXT
-);
-```
-
-Use these feature statuses:
-
-- `pending`
-- `claimed`
-- `in_progress`
-- `implemented`
-- `tests_passed`
-- `committed`
-- `blocked`
-- `skipped`
-
-Rules:
-
-- Hash roadmap inputs before selecting work: all `feature-backlog.csv`, all `release-plan.md`, and `scripts/generate-product-roadmap.js`.
-- Store one row per feature ID in `feature_progress`; do not store the full CSV row body unless needed.
-- Claim work atomically so agents do not duplicate work: update from `pending` to `claimed` only when the row is still pending.
-- Append every important action to `events`: batch selection, claim, file edit, test command, failure, verifier result, commit, pause, resume, and blocker.
-- Treat a git commit as the strongest checkpoint. After each verified batch commit, update `runs.last_commit`, `batches.commit_sha`, and all completed `feature_progress.commit_sha` values.
-- Keep `RESUME.md` tiny: current run ID, roadmap hash, last commit, current batch, completed batch count, blocker if any, and exact next action.
-- On resume, read `RESUME.md`, verify `checkpoint.sqlite`, verify the roadmap hash, verify `last_commit`, check `git status --short`, then continue from `runs.next_action`.
+- If parallel lanes conflict, pause the lower-priority lane, write an MCP event/evidence record, and let the coordinator decide whether to rebase, merge manually, or requeue.
+- If subagents are unavailable, simulate parallel roles sequentially but keep the same MCP claim/checkpoint protocol.
 
 ## Git Discipline
 
@@ -236,20 +242,23 @@ Rules:
 - Do not work around git sandbox failures by copying the repository, manually editing `.git`, using `sudo`, or running destructive cleanup.
 - Stage explicitly with `git add <path>...`, review `git status --short`, then commit with a clear message.
 
-## Context and Resume Discipline
+## Context Budget and Resume Discipline
 
-For long roadmap execution runs, context pressure is expected. Do not keep dragging stale context after a completed batch.
+For long roadmap execution runs, context pressure is expected. Checkpoint in Aruvi tasktracker MCP after each completed batch so an external runtime reset can resume exactly; do not voluntarily stop solely to get a clean context.
 
-- After every committed batch, update `checkpoint.sqlite` and `RESUME.md`. If the active prompt requests loop behavior and the next batch is safe, continue until the roadmap is finished or a hard stop condition is reached.
-- If context is running low, stop doing new implementation work and write a complete checkpoint before ending.
-- Before stopping for context pressure, write objective, current batch, feature IDs, changed files, commands run, verification state, last commit, blocker if any, and exact next action.
-- On resume, read `AGENTS.md`, the active `RESUME.md`, and the SQLite checkpoint. Verify roadmap hash, last commit, and `git status --short`, then continue from `runs.next_action`.
-- Do not re-enumerate the full roadmap after resume unless the roadmap hash changed or the checkpoint is invalid.
-- Keep progress updates short. Put durable state in SQLite and `RESUME.md`, not in chat.
+- After every committed batch, append MCP evidence, update item/batch/run status, link the commit, then select and claim the next deterministic batch unless a hard stop condition applies.
+- Do not stop solely because the context is large, a batch boundary is clean, or a context compaction may occur. Stop starting new implementation work only when the remaining context is insufficient to complete, validate, and checkpoint the next batch safely, or the runtime is about to hit a hard token/rate/timeout limit.
+- Before stopping for context pressure, write a complete MCP evidence/status handoff: current batch, feature IDs, changed files, commands run, verification state, last commit, blocker if any, and exact next action.
+- Do not use permissions changes as a fix for token/context pressure. Permissions affect tool access, not context size.
+- After a context reset, resume by reading this `AGENTS.md`, then MCP run health, active claims, latest evidence, and ready items. Verify last commit and `git status --short`, then continue from MCP `nextAction` or the active claimed item.
+- After a context reset, use MCP only. If MCP context is invalid or unavailable, stop and report the blocker.
+- Keep progress updates short. Put durable state in MCP evidence/status records, not in chat.
 
-## Long-Running and Rate-Limit Behavior
+## Long-Running and Limit Behavior
 
-If a token/rate limit, context interruption, or external timeout happens, write a checkpoint before stopping:
+Codex cannot restart itself after an API token, rate, context, process, or external timeout limit. The external harness must catch the limit response and requeue the task after the reset window.
+
+If a token/rate limit, context interruption, or external timeout happens, write an MCP handoff before stopping:
 
 - Objective.
 - Completed work.
@@ -260,7 +269,7 @@ If a token/rate limit, context interruption, or external timeout happens, write 
 - Exact next action.
 - Resume instructions.
 
-On resume, read the checkpoint and continue from the exact next action instead of restarting from scratch.
+On resume, read MCP run health and latest evidence, then continue from the exact next action instead of restarting from scratch. If MCP is unavailable, stop and report the blocker.
 
 ## Final Response
 
