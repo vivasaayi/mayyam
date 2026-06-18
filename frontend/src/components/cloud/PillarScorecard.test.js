@@ -230,6 +230,42 @@ describe("PillarScorecard", () => {
               },
             ],
           },
+          triage_context: {
+            workflow_id: "ec2_operational_excellence_triage_context",
+            context_builder_id:
+              "ec2-operational-excellence-deterministic-context-v1",
+            prompt_template_id: "ec2-operational-excellence-ai-triage-v1",
+            generation_mode: "deterministic_no_llm",
+            max_prompt_tokens: 1200,
+            provider_routing: ["primary_ops_llm", "fallback_ops_llm"],
+            guardrails: {
+              read_only_mode: true,
+              evidence_required: true,
+              separate_facts_from_hypotheses: true,
+              ask_for_missing_data: true,
+              no_llm_invocation: true,
+              no_mutation_planning: true,
+            },
+            facts: [
+              "EC2_OE_MISSING_TELEMETRY_COLLECTION_METADATA affects i-no-collection-metadata with Medium severity",
+              "EC2_OE_TELEMETRY_COLLECTION_ERRORS affects i-collection-error with High severity",
+            ],
+            hypotheses: [
+              "i-collection-error has telemetry collection errors; inspect collector logs before changing runbook workflow",
+              "i-collection-error uses basic EC2 monitoring; operational diagnosis may rely on lower-resolution telemetry",
+            ],
+            missing_data_questions: [
+              "Collect telemetry collection metadata for i-no-collection-metadata before generating operational runbook triage",
+            ],
+            evidence_citations: [
+              {
+                reason_code: "EC2_OE_TELEMETRY_COLLECTION_ERRORS",
+                resource_id: "i-collection-error",
+                severity: "high",
+                evidence: { telemetry_collection_error_count: 1 },
+              },
+            ],
+          },
         },
       ],
     };
@@ -246,6 +282,13 @@ describe("PillarScorecard", () => {
     );
     expect(text).toContain("ec2-operational-excellence-collection-errors-clear");
     expect(text).toContain("EC2_OE_TELEMETRY_COLLECTION_ERRORS");
+    expect(text).toContain("Operational-Excellence Triage Context");
+    expect(text).toContain(
+      "ec2-operational-excellence-deterministic-context-v1",
+    );
+    expect(text).toContain("ec2-operational-excellence-ai-triage-v1");
+    expect(text).toContain("collector logs");
+    expect(text).toContain("telemetry collection metadata");
     expect(text).toContain("i-collection-error");
 
     await view.unmount();

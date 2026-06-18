@@ -137,6 +137,7 @@ pub type Ec2ResilienceTriageContext = Ec2TriageContext;
 pub type Ec2PerformanceTriageContext = Ec2TriageContext;
 pub type Ec2ScalabilityTriageContext = Ec2TriageContext;
 pub type Ec2DisasterRecoveryTriageContext = Ec2TriageContext;
+pub type Ec2OperationalExcellenceTriageContext = Ec2TriageContext;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -1292,6 +1293,61 @@ pub fn ec2_disaster_recovery_triage_context(
         report.pillar,
         "ec2-disaster-recovery-deterministic-context-v1",
         "ec2-disaster-recovery-ai-triage-v1",
+        facts,
+        hypotheses,
+        missing_data_questions,
+        evidence_citations,
+    )
+}
+
+pub fn ec2_operational_excellence_triage_context(
+    report: &PillarReport,
+) -> Ec2OperationalExcellenceTriageContext {
+    let mut facts = Vec::new();
+    let mut hypotheses = Vec::new();
+    let mut missing_data_questions = Vec::new();
+    let mut evidence_citations = Vec::new();
+
+    for finding in &report.findings {
+        facts.push(format!(
+            "{} affects {} with {:?} severity",
+            finding.reason_code, finding.resource_id, finding.severity
+        ));
+        evidence_citations.push(Ec2EvidenceCitation {
+            reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            evidence: finding.evidence.clone(),
+        });
+
+        match finding.reason_code.as_str() {
+            REASON_OE_MISSING_TELEMETRY_COLLECTION_METADATA => {
+                missing_data_questions.push(format!(
+                    "Collect telemetry collection metadata for {} before generating operational runbook triage",
+                    finding.resource_id
+                ));
+            }
+            REASON_OE_TELEMETRY_COLLECTION_ERRORS => hypotheses.push(format!(
+                "{} has telemetry collection errors; inspect collector logs, CloudWatch API throttling, permissions, and retry evidence before changing runbook workflow",
+                finding.resource_id
+            )),
+            REASON_OE_BASIC_MONITORING => hypotheses.push(format!(
+                "{} uses basic EC2 monitoring; operational diagnosis may rely on lower-resolution telemetry until detailed monitoring evidence is collected",
+                finding.resource_id
+            )),
+            REASON_INV_STALE_DATA => missing_data_questions.push(format!(
+                "Refresh EC2 inventory for {} before generating operational-excellence triage",
+                finding.resource_id
+            )),
+            _ => {}
+        }
+    }
+
+    ec2_triage_context(
+        "ec2_operational_excellence_triage_context",
+        report.pillar,
+        "ec2-operational-excellence-deterministic-context-v1",
+        "ec2-operational-excellence-ai-triage-v1",
         facts,
         hypotheses,
         missing_data_questions,
@@ -7624,6 +7680,127 @@ mod tests {
                 && rule.status == Ec2PostureStatus::Fail
                 && rule.reason_codes.contains(&REASON_INV_STALE_DATA)
                 && rule.affected_resources == vec!["i-stale-oe"]
+        }));
+    }
+
+    #[test]
+    fn ec2_operational_excellence_triage_context_separates_facts_hypotheses_and_missing_data() {
+        let missing_metadata = fixture(
+            "i-no-collection-metadata",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "monitoring_state": "enabled"
+            }),
+            1,
+            now(),
+        );
+        let collection_error = fixture(
+            "i-collection-error",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1b",
+                "monitoring_state": "disabled",
+                "telemetry_collection_started_at": "2026-06-10T00:00:00Z",
+                "telemetry_collection_completed_at": "2026-06-10T00:00:03Z",
+                "telemetry_collection_duration_ms": 3000,
+                "telemetry_collection_success_count": 1,
+                "telemetry_collection_failure_count": 0,
+                "telemetry_collection_error_count": 1,
+                "telemetry_collection_errors": [
+                    {
+                        "source": "cloudwatch",
+                        "operation": "GetMetricData",
+                        "error": "throttled"
+                    }
+                ]
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(
+            &[missing_metadata, collection_error],
+            Pillar::OperationalExcellence,
+            now(),
+        );
+        let triage = ec2_operational_excellence_triage_context(&report);
+
+        assert_eq!(
+            triage.workflow_id,
+            "ec2_operational_excellence_triage_context"
+        );
+        assert_eq!(triage.pillar, Pillar::OperationalExcellence);
+        assert_eq!(
+            triage.context_builder_id,
+            "ec2-operational-excellence-deterministic-context-v1"
+        );
+        assert_eq!(
+            triage.prompt_template_id,
+            "ec2-operational-excellence-ai-triage-v1"
+        );
+        assert_eq!(triage.generation_mode, "deterministic_no_llm");
+        assert!(triage.guardrails.read_only_mode);
+        assert!(triage.guardrails.evidence_required);
+        assert!(triage.guardrails.separate_facts_from_hypotheses);
+        assert!(triage.guardrails.ask_for_missing_data);
+        assert!(triage.guardrails.no_llm_invocation);
+        assert!(triage.guardrails.no_mutation_planning);
+        assert!(triage
+            .facts
+            .iter()
+            .any(|fact| fact.contains(REASON_OE_MISSING_TELEMETRY_COLLECTION_METADATA)));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("collection errors")));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("lower-resolution telemetry")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("telemetry collection metadata")));
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_OE_TELEMETRY_COLLECTION_ERRORS
+                && citation.resource_id == "i-collection-error"
+                && citation.evidence["telemetry_collection_error_count"] == 1
+        }));
+    }
+
+    #[test]
+    fn ec2_operational_excellence_triage_context_asks_for_refresh_when_inventory_is_stale() {
+        let stale = fixture(
+            "i-stale-oe",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "monitoring_state": "enabled",
+                "telemetry_collection_started_at": "2026-06-10T00:00:00Z",
+                "telemetry_collection_completed_at": "2026-06-10T00:00:03Z",
+                "telemetry_collection_duration_ms": 3000,
+                "telemetry_collection_success_count": 1,
+                "telemetry_collection_failure_count": 0,
+                "telemetry_collection_error_count": 0,
+                "telemetry_collection_errors": []
+            }),
+            1,
+            now() - Duration::hours(49),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::OperationalExcellence, now());
+        let triage = ec2_operational_excellence_triage_context(&report);
+
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("Refresh EC2 inventory for i-stale-oe")));
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_INV_STALE_DATA && citation.resource_id == "i-stale-oe"
         }));
     }
 
