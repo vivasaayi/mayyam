@@ -256,6 +256,9 @@ const TriageSummary = ({ report }) => {
   }
 
   const guardrails = triage.guardrails || {};
+  const freshness = triage.freshness || {};
+  const pagination = triage.pagination || {};
+  const feedback = triage.feedback_capture || {};
   const deterministicOnly = guardrails.no_llm_invocation;
   return (
     <CCard className="mb-3">
@@ -272,6 +275,7 @@ const TriageSummary = ({ report }) => {
             <div className="text-medium-emphasis small">Context</div>
             <div className="fw-semibold">{triage.context_builder_id}</div>
             <div className="small">{triage.prompt_template_id}</div>
+            {triage.api_path && <div className="small">{triage.api_path}</div>}
           </CCol>
           <CCol md={4}>
             <div className="text-medium-emphasis small">
@@ -292,8 +296,58 @@ const TriageSummary = ({ report }) => {
                 ? "Deterministic context only"
                 : "LLM invocation allowed"}
             </div>
+            {triage.audit_id_prefix && (
+              <div className="small">{triage.audit_id_prefix}</div>
+            )}
           </CCol>
         </CRow>
+        {(triage.runbook_copy_markdown || feedback.supported || pagination.default_limit) && (
+          <CRow className="g-3 mb-3">
+            <CCol md={4}>
+              <div className="text-medium-emphasis small">Runbook Copy</div>
+              <div className="small">{triage.runbook_copy_markdown}</div>
+            </CCol>
+            <CCol md={4}>
+              <div className="text-medium-emphasis small">Workflow Controls</div>
+              <div className="small">
+                {(triage.export_formats || []).join(", ") || "No exports"}
+              </div>
+              <div className="small">
+                {pagination.default_limit || 0} default /{" "}
+                {pagination.max_limit || 0} max evidence rows
+              </div>
+            </CCol>
+            <CCol md={4}>
+              <div className="text-medium-emphasis small">Feedback</div>
+              <div className="small">
+                {feedback.supported ? "Feedback capture enabled" : "Feedback disabled"}
+              </div>
+              <div className="small">{feedback.feedback_event_type}</div>
+            </CCol>
+          </CRow>
+        )}
+        {(freshness.freshness_source || (triage.error_codes || []).length > 0) && (
+          <CRow className="g-3 mb-3">
+            <CCol md={6}>
+              <div className="text-medium-emphasis small">Freshness</div>
+              <div className="small">
+                {freshness.stale_data_blocks_ai_summary
+                  ? "Stale data blocks AI summary"
+                  : "Fresh enough for AI summary"}
+              </div>
+              <div className="small">
+                {freshness.stale_resources || 0} stale resource(s) ·{" "}
+                {freshness.freshness_source}
+              </div>
+            </CCol>
+            <CCol md={6}>
+              <div className="text-medium-emphasis small">Error Codes</div>
+              <div className="small">
+                {(triage.error_codes || []).join(", ") || "None"}
+              </div>
+            </CCol>
+          </CRow>
+        )}
         <CRow className="g-3">
           <CCol md={4}>
             <div className="text-medium-emphasis small">Facts</div>
@@ -320,6 +374,16 @@ const TriageSummary = ({ report }) => {
             ))}
           </CCol>
         </CRow>
+        {(triage.follow_up_questions || []).length > 0 && (
+          <div className="mt-3">
+            <div className="text-medium-emphasis small">Follow-up Questions</div>
+            {(triage.follow_up_questions || []).map((question, idx) => (
+              <div className="small" key={`follow-up-${idx}`}>
+                {question}
+              </div>
+            ))}
+          </div>
+        )}
         {(triage.evidence_citations || []).length > 0 && (
           <div className="mt-3">
             <div className="text-medium-emphasis small">Evidence Citations</div>

@@ -167,17 +167,47 @@ pub struct LambdaEvidenceCitation {
 pub struct LambdaCostTriageContext {
     pub workflow_id: &'static str,
     pub pillar: Pillar,
+    pub api_path: &'static str,
     pub context_builder_id: &'static str,
     pub prompt_template_id: &'static str,
     pub generation_mode: &'static str,
     pub max_prompt_tokens: u16,
     pub provider_routing: Vec<&'static str>,
     pub audit_event_type: &'static str,
+    pub audit_id_prefix: &'static str,
+    pub pagination: LambdaTriagePagination,
+    pub freshness: LambdaTriageFreshness,
+    pub export_formats: Vec<&'static str>,
+    pub error_codes: Vec<&'static str>,
     pub guardrails: LambdaAiTriageGuardrails,
     pub facts: Vec<String>,
     pub hypotheses: Vec<String>,
     pub missing_data_questions: Vec<String>,
+    pub follow_up_questions: Vec<String>,
+    pub runbook_copy_markdown: String,
+    pub feedback_capture: LambdaTriageFeedbackCapture,
     pub evidence_citations: Vec<LambdaEvidenceCitation>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LambdaTriagePagination {
+    pub default_limit: u16,
+    pub max_limit: u16,
+    pub evidence_cursor: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LambdaTriageFreshness {
+    pub stale_data_blocks_ai_summary: bool,
+    pub stale_resources: usize,
+    pub freshness_source: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LambdaTriageFeedbackCapture {
+    pub supported: bool,
+    pub feedback_event_type: &'static str,
+    pub fields: Vec<&'static str>,
 }
 
 /// Evaluate every Lambda function in the fleet for one pillar.
@@ -217,6 +247,7 @@ pub fn lambda_cost_triage_context(report: &PillarReport) -> LambdaCostTriageCont
     let mut facts = Vec::new();
     let mut hypotheses = Vec::new();
     let mut missing_data_questions = Vec::new();
+    let mut follow_up_questions = Vec::new();
     let mut evidence_citations = Vec::new();
 
     for finding in &report.findings {
@@ -268,17 +299,37 @@ pub fn lambda_cost_triage_context(report: &PillarReport) -> LambdaCostTriageCont
             )),
             _ => {}
         }
+
+        follow_up_questions.push(lambda_cost_follow_up_question(finding.reason_code.as_str()));
     }
 
     LambdaCostTriageContext {
         workflow_id: "lambda_cost_triage_context",
         pillar: report.pillar,
+        api_path: "/api/aws/inventory/lambda/pillars",
         context_builder_id: "lambda-cost-deterministic-context-v1",
         prompt_template_id: "lambda-cost-ai-triage-v1",
         generation_mode: "deterministic_no_llm",
         max_prompt_tokens: 1200,
         provider_routing: vec!["primary_ops_llm", "fallback_ops_llm"],
         audit_event_type: "lambda_cost_ai_triage_context_built",
+        audit_id_prefix: "lambda-cost-ai-triage",
+        pagination: LambdaTriagePagination {
+            default_limit: 50,
+            max_limit: 200,
+            evidence_cursor: "evidence_citations",
+        },
+        freshness: LambdaTriageFreshness {
+            stale_data_blocks_ai_summary: report.stale_resources > 0,
+            stale_resources: report.stale_resources,
+            freshness_source: "lambda_inventory_last_synced_at",
+        },
+        export_formats: vec!["json", "markdown_runbook"],
+        error_codes: vec![
+            "LAMBDA_COST_AI_TRIAGE_STALE_DATA",
+            "LAMBDA_COST_AI_TRIAGE_MISSING_EVIDENCE",
+            "LAMBDA_COST_AI_TRIAGE_RBAC_DENIED",
+        ],
         guardrails: LambdaAiTriageGuardrails {
             read_only_mode: true,
             evidence_required: true,
@@ -290,8 +341,67 @@ pub fn lambda_cost_triage_context(report: &PillarReport) -> LambdaCostTriageCont
         facts,
         hypotheses,
         missing_data_questions,
+        follow_up_questions: sorted_unique_strings(follow_up_questions),
+        runbook_copy_markdown: lambda_cost_runbook_copy(report),
+        feedback_capture: LambdaTriageFeedbackCapture {
+            supported: true,
+            feedback_event_type: "lambda_cost_ai_triage_feedback_captured",
+            fields: vec!["helpful", "accuracy", "missing_evidence", "operator_note"],
+        },
         evidence_citations,
     }
+}
+
+fn lambda_cost_follow_up_question(reason_code: &str) -> String {
+    match reason_code {
+        REASON_INV_STALE_DATA => {
+            "Has Lambda inventory and CloudWatch telemetry been refreshed in the current sync window?"
+        }
+        REASON_COST_MISSING_TELEMETRY_COLLECTION_METADATA => {
+            "Which collector run should be used as evidence for Lambda cost telemetry completeness?"
+        }
+        REASON_COST_TELEMETRY_COLLECTION_ERRORS => {
+            "Which CloudWatch permission, throttling, or retry failure prevented Lambda cost telemetry collection?"
+        }
+        REASON_COST_MISSING_CLOUDWATCH_TELEMETRY => {
+            "Which Invocations, Duration, Errors, and Throttles datapoints are missing for the affected Lambda function?"
+        }
+        REASON_COST_MISSING_ALLOCATION_TAGS => {
+            "Who owns the Lambda savings review when owner, team, project, or cost-center tags are missing?"
+        }
+        REASON_COST_X86_ONLY_ARCHITECTURE => {
+            "Do runtime dependencies and native extensions allow an arm64 compatibility test?"
+        }
+        REASON_COST_NO_INVOCATIONS_TELEMETRY => {
+            "Is the Lambda function intentionally dormant, scheduled rarely, or safe to retire after owner confirmation?"
+        }
+        REASON_COST_ERROR_OR_THROTTLE_TELEMETRY => {
+            "Which retry, timeout, or concurrency setting is driving error or throttle-related Lambda spend?"
+        }
+        _ => "What additional evidence is required before explaining this Lambda cost finding?",
+    }
+    .to_string()
+}
+
+fn lambda_cost_runbook_copy(report: &PillarReport) -> String {
+    let reason_codes = sorted_unique_strings(
+        report
+            .findings
+            .iter()
+            .map(|finding| finding.reason_code.clone())
+            .collect(),
+    );
+    format!(
+        "Lambda cost AI triage: score {} across {} function(s), {} stale. Evidence reason codes: {}.",
+        report.score,
+        report.resources_evaluated,
+        report.stale_resources,
+        if reason_codes.is_empty() {
+            "none".to_string()
+        } else {
+            reason_codes.join(", ")
+        }
+    )
 }
 
 pub fn lambda_cost_posture_summary(report: &PillarReport) -> LambdaCostPostureSummary {
@@ -865,6 +975,14 @@ fn sorted_unique_reasons(reasons: impl Iterator<Item = String>) -> Vec<String> {
     reasons.collect::<BTreeSet<_>>().into_iter().collect()
 }
 
+fn sorted_unique_strings(values: Vec<String>) -> Vec<String> {
+    values
+        .into_iter()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1107,6 +1225,7 @@ mod tests {
         let triage = lambda_cost_triage_context(&report);
 
         assert_eq!(triage.workflow_id, "lambda_cost_triage_context");
+        assert_eq!(triage.api_path, "/api/aws/inventory/lambda/pillars");
         assert_eq!(
             triage.context_builder_id,
             "lambda-cost-deterministic-context-v1"
@@ -1114,6 +1233,19 @@ mod tests {
         assert_eq!(triage.prompt_template_id, "lambda-cost-ai-triage-v1");
         assert_eq!(triage.generation_mode, "deterministic_no_llm");
         assert_eq!(triage.max_prompt_tokens, 1200);
+        assert_eq!(triage.audit_id_prefix, "lambda-cost-ai-triage");
+        assert_eq!(triage.pagination.default_limit, 50);
+        assert_eq!(triage.pagination.max_limit, 200);
+        assert_eq!(triage.pagination.evidence_cursor, "evidence_citations");
+        assert!(!triage.freshness.stale_data_blocks_ai_summary);
+        assert_eq!(
+            triage.freshness.freshness_source,
+            "lambda_inventory_last_synced_at"
+        );
+        assert!(triage.export_formats.contains(&"markdown_runbook"));
+        assert!(triage
+            .error_codes
+            .contains(&"LAMBDA_COST_AI_TRIAGE_MISSING_EVIDENCE"));
         assert!(triage.guardrails.read_only_mode);
         assert!(triage.guardrails.evidence_required);
         assert!(triage.guardrails.separate_facts_from_hypotheses);
@@ -1136,6 +1268,18 @@ mod tests {
             .missing_data_questions
             .iter()
             .any(|question| question.contains("owner, team, project, or cost-center")));
+        assert!(triage
+            .follow_up_questions
+            .iter()
+            .any(|question| { question.contains("Invocations, Duration, Errors, and Throttles") }));
+        assert!(triage
+            .runbook_copy_markdown
+            .contains("Lambda cost AI triage"));
+        assert!(triage.feedback_capture.supported);
+        assert_eq!(
+            triage.feedback_capture.feedback_event_type,
+            "lambda_cost_ai_triage_feedback_captured"
+        );
         assert!(triage.evidence_citations.iter().any(|citation| {
             citation.reason_code == REASON_COST_TELEMETRY_COLLECTION_ERRORS
                 && citation.resource_id == "fn-collection-error"

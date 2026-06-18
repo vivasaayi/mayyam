@@ -943,6 +943,10 @@ async fn lambda_pillar_reports_contract() {
         "lambda_cost_triage_context"
     );
     assert_eq!(
+        cost["triage_context"]["api_path"],
+        "/api/aws/inventory/lambda/pillars"
+    );
+    assert_eq!(
         cost["triage_context"]["context_builder_id"],
         "lambda-cost-deterministic-context-v1"
     );
@@ -954,6 +958,23 @@ async fn lambda_pillar_reports_contract() {
         cost["triage_context"]["generation_mode"],
         "deterministic_no_llm"
     );
+    assert_eq!(
+        cost["triage_context"]["audit_id_prefix"],
+        "lambda-cost-ai-triage"
+    );
+    assert_eq!(cost["triage_context"]["pagination"]["default_limit"], 50);
+    assert_eq!(cost["triage_context"]["pagination"]["max_limit"], 200);
+    assert_eq!(
+        cost["triage_context"]["pagination"]["evidence_cursor"],
+        "evidence_citations"
+    );
+    assert!(cost["triage_context"]["freshness"]["stale_data_blocks_ai_summary"].is_boolean());
+    assert_eq!(
+        cost["triage_context"]["freshness"]["freshness_source"],
+        "lambda_inventory_last_synced_at"
+    );
+    assert!(cost["triage_context"]["export_formats"].is_array());
+    assert!(cost["triage_context"]["error_codes"].is_array());
     assert_eq!(cost["triage_context"]["guardrails"]["read_only_mode"], true);
     assert_eq!(
         cost["triage_context"]["guardrails"]["evidence_required"],
@@ -962,6 +983,12 @@ async fn lambda_pillar_reports_contract() {
     assert!(cost["triage_context"]["facts"].is_array());
     assert!(cost["triage_context"]["hypotheses"].is_array());
     assert!(cost["triage_context"]["missing_data_questions"].is_array());
+    assert!(cost["triage_context"]["follow_up_questions"].is_array());
+    assert!(cost["triage_context"]["runbook_copy_markdown"].is_string());
+    assert_eq!(
+        cost["triage_context"]["feedback_capture"]["supported"],
+        true
+    );
     assert!(cost["triage_context"]["evidence_citations"].is_array());
     assert_eq!(cost["telemetry"]["workflow_id"], "lambda_cost_telemetry");
     assert_eq!(cost["telemetry"]["cloudwatch_namespace"], "AWS/Lambda");

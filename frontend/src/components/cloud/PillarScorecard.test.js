@@ -2284,12 +2284,29 @@ describe("PillarScorecard", () => {
           triage_context: {
             workflow_id: "lambda_cost_triage_context",
             pillar: "cost",
+            api_path: "/api/aws/inventory/lambda/pillars",
             context_builder_id: "lambda-cost-deterministic-context-v1",
             prompt_template_id: "lambda-cost-ai-triage-v1",
             generation_mode: "deterministic_no_llm",
             max_prompt_tokens: 1200,
             provider_routing: ["primary_ops_llm", "fallback_ops_llm"],
             audit_event_type: "lambda_cost_ai_triage_context_built",
+            audit_id_prefix: "lambda-cost-ai-triage",
+            pagination: {
+              default_limit: 50,
+              max_limit: 200,
+              evidence_cursor: "evidence_citations",
+            },
+            freshness: {
+              stale_data_blocks_ai_summary: false,
+              stale_resources: 0,
+              freshness_source: "lambda_inventory_last_synced_at",
+            },
+            export_formats: ["json", "markdown_runbook"],
+            error_codes: [
+              "LAMBDA_COST_AI_TRIAGE_STALE_DATA",
+              "LAMBDA_COST_AI_TRIAGE_MISSING_EVIDENCE",
+            ],
             guardrails: {
               read_only_mode: true,
               evidence_required: true,
@@ -2305,6 +2322,16 @@ describe("PillarScorecard", () => {
             missing_data_questions: [
               "Collect Invocations, Duration, Errors, and Throttles telemetry for fn-no-telemetry before explaining Lambda cost behavior",
             ],
+            follow_up_questions: [
+              "Which Invocations, Duration, Errors, and Throttles datapoints are missing for the affected Lambda function?",
+            ],
+            runbook_copy_markdown:
+              "Lambda cost AI triage: score 78 across 1 function(s), 0 stale. Evidence reason codes: LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY.",
+            feedback_capture: {
+              supported: true,
+              feedback_event_type: "lambda_cost_ai_triage_feedback_captured",
+              fields: ["helpful", "accuracy", "missing_evidence"],
+            },
             evidence_citations: [
               {
                 reason_code: "LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY",
@@ -2341,11 +2368,23 @@ describe("PillarScorecard", () => {
     expect(text).toContain("Cost Triage Context");
     expect(text).toContain("lambda-cost-deterministic-context-v1");
     expect(text).toContain("lambda-cost-ai-triage-v1");
+    expect(text).toContain("/api/aws/inventory/lambda/pillars");
     expect(text).toContain("Provider Routing (not invoked)");
     expect(text).toContain("primary_ops_llm");
     expect(text).toContain("1200 token budget");
     expect(text).toContain("Read only");
     expect(text).toContain("Deterministic context only");
+    expect(text).toContain("lambda-cost-ai-triage");
+    expect(text).toContain("Runbook Copy");
+    expect(text).toContain("Lambda cost AI triage: score 78");
+    expect(text).toContain("markdown_runbook");
+    expect(text).toContain("50 default / 200 max evidence rows");
+    expect(text).toContain("Feedback capture enabled");
+    expect(text).toContain("lambda_cost_ai_triage_feedback_captured");
+    expect(text).toContain("Fresh enough for AI summary");
+    expect(text).toContain("lambda_inventory_last_synced_at");
+    expect(text).toContain("LAMBDA_COST_AI_TRIAGE_MISSING_EVIDENCE");
+    expect(text).toContain("Follow-up Questions");
     expect(text).toContain("Invocations, Duration, Errors, and Throttles");
 
     await view.unmount();
