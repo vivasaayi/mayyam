@@ -990,6 +990,32 @@ async fn lambda_pillar_reports_contract() {
         true
     );
     assert!(cost["triage_context"]["evidence_citations"].is_array());
+    let investigation = &cost["agentic_investigation"];
+    assert_eq!(
+        investigation["workflow_id"],
+        "lambda_cost_agentic_investigation"
+    );
+    assert_eq!(investigation["default_tool_mode"], "read_only");
+    assert_eq!(investigation["replay_required"], true);
+    assert!(investigation["max_tool_calls"].is_number());
+    assert!(investigation["steps"].is_array());
+    assert!(investigation["approval_gates"].is_array());
+    assert!(investigation["evidence_citations"].is_array());
+    let investigation_steps = investigation["steps"]
+        .as_array()
+        .expect("lambda cost investigation steps should be an array");
+    assert!(investigation_steps.iter().all(|step| {
+        let tool_name = step["tool_name"].as_str().unwrap_or_default();
+        tool_name.starts_with("lambda.")
+            && !tool_name.contains("execute")
+            && !tool_name.contains("delete")
+            && !tool_name.contains("update_function")
+    }));
+    assert!(investigation_steps.iter().all(|step| {
+        step["tool_mode"] == "read_only"
+            || (step["tool_mode"] == "approval_required"
+                && step["tool_name"] == "lambda.cost.prepare_approval_plan")
+    }));
     assert_eq!(cost["telemetry"]["workflow_id"], "lambda_cost_telemetry");
     assert_eq!(cost["telemetry"]["cloudwatch_namespace"], "AWS/Lambda");
     assert_eq!(cost["telemetry"]["cloudwatch_dimension"], "FunctionName");

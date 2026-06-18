@@ -2343,6 +2343,53 @@ describe("PillarScorecard", () => {
               },
             ],
           },
+          agentic_investigation: {
+            workflow_id: "lambda_cost_agentic_investigation",
+            default_tool_mode: "read_only",
+            max_tool_calls: 2,
+            max_evidence_citations: 1,
+            replay_required: true,
+            steps: [
+              {
+                step_id: "lambda-cost-step-01",
+                kind: "inspect",
+                tool_name: "lambda.event_sources.inspect_invocation_paths",
+                tool_mode: "read_only",
+                target_resource_id: "fn-no-telemetry",
+                reason_code: "LAMBDA_COST_NO_INVOCATIONS_TELEMETRY",
+                stop_condition:
+                  "stop when schedules, event source mappings, and retention expectations explain zero invocation telemetry",
+              },
+              {
+                step_id: "lambda-cost-step-02",
+                kind: "propose_mutation_plan",
+                tool_name: "lambda.cost.prepare_approval_plan",
+                tool_mode: "approval_required",
+                target_resource_id: "investigation",
+                reason_code: "LAMBDA_COST_APPROVAL_PLAN_REQUIRED",
+                stop_condition:
+                  "stop before mutation; require explicit operator approval, blast-radius summary, and rollback note",
+              },
+            ],
+            approval_gates: [
+              {
+                gate_id: "lambda-cost-gate-01",
+                target_resource_id: "fn-no-telemetry",
+                required_approval:
+                  "Approve disable or cleanup plan after owner confirmation",
+                blast_radius:
+                  "Potential Lambda cost mutation affects fn-no-telemetry for LAMBDA_COST_NO_INVOCATIONS_TELEMETRY",
+                rollback_note_required: true,
+                evidence_reason_codes: ["LAMBDA_COST_NO_INVOCATIONS_TELEMETRY"],
+              },
+            ],
+            evidence_citations: [
+              {
+                reason_code: "LAMBDA_COST_NO_INVOCATIONS_TELEMETRY",
+                resource_id: "fn-no-telemetry",
+              },
+            ],
+          },
           telemetry: {
             workflow_id: "lambda_cost_telemetry",
             cloudwatch_namespace: "AWS/Lambda",
@@ -2386,6 +2433,16 @@ describe("PillarScorecard", () => {
     expect(text).toContain("LAMBDA_COST_AI_TRIAGE_MISSING_EVIDENCE");
     expect(text).toContain("Follow-up Questions");
     expect(text).toContain("Invocations, Duration, Errors, and Throttles");
+    expect(text).toContain("Cost Agentic Investigation");
+    expect(text).toContain("lambda_cost_agentic_investigation");
+    expect(text).toContain("Replay required");
+    expect(text).toContain("2 max tool call");
+    expect(text).toContain("lambda.event_sources.inspect_invocation_paths");
+    expect(text).toContain("lambda.cost.prepare_approval_plan");
+    expect(text).toContain("Approval Required");
+    expect(text).toContain("Mutation planning requires approval");
+    expect(text).toContain("Rollback note required");
+    expect(text).toContain("Investigation Evidence");
 
     await view.unmount();
   });

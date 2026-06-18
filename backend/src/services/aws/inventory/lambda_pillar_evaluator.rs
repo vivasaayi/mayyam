@@ -155,7 +155,7 @@ pub struct LambdaAiTriageGuardrails {
     pub no_mutation_planning: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct LambdaEvidenceCitation {
     pub reason_code: String,
     pub resource_id: String,
@@ -208,6 +208,56 @@ pub struct LambdaTriageFeedbackCapture {
     pub supported: bool,
     pub feedback_event_type: &'static str,
     pub fields: Vec<&'static str>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LambdaInvestigationStepKind {
+    Inspect,
+    Compare,
+    Diagnose,
+    ProposeMutationPlan,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LambdaInvestigationToolMode {
+    ReadOnly,
+    ApprovalRequired,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct LambdaInvestigationStep {
+    pub step_id: String,
+    pub kind: LambdaInvestigationStepKind,
+    pub tool_name: &'static str,
+    pub tool_mode: LambdaInvestigationToolMode,
+    pub target_resource_id: String,
+    pub reason_code: String,
+    pub stop_condition: String,
+    pub evidence: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct LambdaMutationApprovalGate {
+    pub gate_id: String,
+    pub target_resource_id: String,
+    pub required_approval: &'static str,
+    pub blast_radius: String,
+    pub rollback_note_required: bool,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct LambdaCostAgenticInvestigationPlan {
+    pub workflow_id: &'static str,
+    pub default_tool_mode: LambdaInvestigationToolMode,
+    pub max_tool_calls: usize,
+    pub max_evidence_citations: usize,
+    pub replay_required: bool,
+    pub steps: Vec<LambdaInvestigationStep>,
+    pub approval_gates: Vec<LambdaMutationApprovalGate>,
+    pub evidence_citations: Vec<LambdaEvidenceCitation>,
 }
 
 /// Evaluate every Lambda function in the fleet for one pillar.
@@ -484,6 +534,147 @@ pub fn lambda_cost_posture_summary(report: &PillarReport) -> LambdaCostPostureSu
             audit_event_type: "lambda_cost_posture_assignment_requested",
         },
         recommendations: lambda_cost_posture_recommendations(report),
+    }
+}
+
+pub fn lambda_cost_agentic_investigation_plan(
+    report: &PillarReport,
+) -> LambdaCostAgenticInvestigationPlan {
+    let triage = lambda_cost_triage_context(report);
+    let mut steps = Vec::new();
+    let mut approval_gates = Vec::new();
+
+    for citation in &triage.evidence_citations {
+        match citation.reason_code.as_str() {
+            REASON_INV_STALE_DATA => {
+                steps.push(lambda_investigation_step(
+                    &steps,
+                    LambdaInvestigationStepKind::Inspect,
+                    "lambda.inventory.refresh_status",
+                    LambdaInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when Lambda inventory and CloudWatch telemetry freshness are confirmed",
+                ));
+            }
+            REASON_COST_MISSING_TELEMETRY_COLLECTION_METADATA => {
+                steps.push(lambda_investigation_step(
+                    &steps,
+                    LambdaInvestigationStepKind::Inspect,
+                    "lambda.telemetry.inspect_collection_metadata",
+                    LambdaInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when collection start, completion, duration, success, failure, and error counts are recorded",
+                ));
+            }
+            REASON_COST_TELEMETRY_COLLECTION_ERRORS => {
+                steps.push(lambda_investigation_step(
+                    &steps,
+                    LambdaInvestigationStepKind::Diagnose,
+                    "lambda.cloudwatch.inspect_collection_errors",
+                    LambdaInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when CloudWatch permissions, throttling, and collector retry evidence explain the telemetry gap",
+                ));
+            }
+            REASON_COST_MISSING_CLOUDWATCH_TELEMETRY => {
+                steps.push(lambda_investigation_step(
+                    &steps,
+                    LambdaInvestigationStepKind::Inspect,
+                    "lambda.cloudwatch.get_cost_metrics",
+                    LambdaInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when Invocations, Duration, Errors, and Throttles datapoints are collected or confirmed absent",
+                ));
+            }
+            REASON_COST_MISSING_ALLOCATION_TAGS => {
+                steps.push(lambda_investigation_step(
+                    &steps,
+                    LambdaInvestigationStepKind::Diagnose,
+                    "lambda.resource_groups.get_tagging_context",
+                    LambdaInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when owner, team, project, or cost-center can be inferred or the gap is assigned",
+                ));
+                approval_gates.push(lambda_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve Lambda tag writes after ownership is verified",
+                ));
+            }
+            REASON_COST_X86_ONLY_ARCHITECTURE => {
+                steps.push(lambda_investigation_step(
+                    &steps,
+                    LambdaInvestigationStepKind::Compare,
+                    "lambda.compare_architecture_cost",
+                    LambdaInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when arm64 compatibility, native dependencies, and GB-second cost deltas are recorded",
+                ));
+                approval_gates.push(lambda_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve arm64 migration plan after compatibility testing",
+                ));
+            }
+            REASON_COST_NO_INVOCATIONS_TELEMETRY => {
+                steps.push(lambda_investigation_step(
+                    &steps,
+                    LambdaInvestigationStepKind::Diagnose,
+                    "lambda.event_sources.inspect_invocation_paths",
+                    LambdaInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when schedules, event source mappings, and retention expectations explain zero invocation telemetry",
+                ));
+                approval_gates.push(lambda_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve disable or cleanup plan after owner confirmation",
+                ));
+            }
+            REASON_COST_ERROR_OR_THROTTLE_TELEMETRY => {
+                steps.push(lambda_investigation_step(
+                    &steps,
+                    LambdaInvestigationStepKind::Diagnose,
+                    "lambda.cloudwatch.diagnose_retry_throttle_spend",
+                    LambdaInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when retry policy, timeout, reserved concurrency, and error budget evidence explain cost waste",
+                ));
+                approval_gates.push(lambda_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve concurrency, timeout, or retry changes after blast-radius review",
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    steps.push(LambdaInvestigationStep {
+        step_id: format!("lambda-cost-step-{:02}", steps.len() + 1),
+        kind: LambdaInvestigationStepKind::ProposeMutationPlan,
+        tool_name: "lambda.cost.prepare_approval_plan",
+        tool_mode: LambdaInvestigationToolMode::ApprovalRequired,
+        target_resource_id: "investigation".to_string(),
+        reason_code: "LAMBDA_COST_APPROVAL_PLAN_REQUIRED".to_string(),
+        stop_condition:
+            "stop before mutation; require explicit operator approval, blast-radius summary, and rollback note"
+                .to_string(),
+        evidence: json!({
+            "approval_gate_count": approval_gates.len(),
+            "read_only_step_count": steps.len(),
+        }),
+    });
+
+    LambdaCostAgenticInvestigationPlan {
+        workflow_id: "lambda_cost_agentic_investigation",
+        default_tool_mode: LambdaInvestigationToolMode::ReadOnly,
+        max_tool_calls: steps.len().min(12),
+        max_evidence_citations: triage.evidence_citations.len(),
+        replay_required: true,
+        steps,
+        approval_gates,
+        evidence_citations: triage.evidence_citations,
     }
 }
 
@@ -849,6 +1040,44 @@ fn tag_string(tags: &Value, keys: &[&str]) -> Option<String> {
         .map(str::trim)
         .find(|value| !value.is_empty())
         .map(str::to_string)
+}
+
+fn lambda_investigation_step(
+    existing_steps: &[LambdaInvestigationStep],
+    kind: LambdaInvestigationStepKind,
+    tool_name: &'static str,
+    tool_mode: LambdaInvestigationToolMode,
+    citation: &LambdaEvidenceCitation,
+    stop_condition: &'static str,
+) -> LambdaInvestigationStep {
+    LambdaInvestigationStep {
+        step_id: format!("lambda-cost-step-{:02}", existing_steps.len() + 1),
+        kind,
+        tool_name,
+        tool_mode,
+        target_resource_id: citation.resource_id.clone(),
+        reason_code: citation.reason_code.clone(),
+        stop_condition: stop_condition.to_string(),
+        evidence: citation.evidence.clone(),
+    }
+}
+
+fn lambda_mutation_gate(
+    existing_gates: &[LambdaMutationApprovalGate],
+    citation: &LambdaEvidenceCitation,
+    required_approval: &'static str,
+) -> LambdaMutationApprovalGate {
+    LambdaMutationApprovalGate {
+        gate_id: format!("lambda-cost-gate-{:02}", existing_gates.len() + 1),
+        target_resource_id: citation.resource_id.clone(),
+        required_approval,
+        blast_radius: format!(
+            "Potential Lambda cost mutation affects {} for {}",
+            citation.resource_id, citation.reason_code
+        ),
+        rollback_note_required: true,
+        evidence_reason_codes: vec![citation.reason_code.clone()],
+    }
 }
 
 fn lambda_cost_metric_names() -> [&'static str; 4] {
@@ -1284,6 +1513,51 @@ mod tests {
             citation.reason_code == REASON_COST_TELEMETRY_COLLECTION_ERRORS
                 && citation.resource_id == "fn-collection-error"
                 && citation.evidence["telemetry_collection_error_count"] == 1
+        }));
+    }
+
+    #[test]
+    fn lambda_cost_agentic_investigation_plan_is_read_only_until_approval() {
+        let mut data = healthy_data();
+        data["cloudwatch_metrics"]["metrics"][2]["datapoints"] = json!([{ "value": 8.0 }]);
+        data["cloudwatch_metrics"]["metrics"][3]["datapoints"] = json!([{ "value": 2.0 }]);
+        let resource = fixture("fn-cost-investigate", json!({}), data, 1, now());
+        let report = evaluate_lambda_fleet(&[resource], Pillar::Cost, now());
+        let plan = lambda_cost_agentic_investigation_plan(&report);
+
+        assert_eq!(plan.workflow_id, "lambda_cost_agentic_investigation");
+        assert_eq!(
+            plan.default_tool_mode,
+            LambdaInvestigationToolMode::ReadOnly
+        );
+        assert!(plan.replay_required);
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "lambda.resource_groups.get_tagging_context"
+                && step.tool_mode == LambdaInvestigationToolMode::ReadOnly
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "lambda.cloudwatch.diagnose_retry_throttle_spend"
+                && step.tool_mode == LambdaInvestigationToolMode::ReadOnly
+        }));
+        assert_eq!(
+            plan.steps.last().map(|step| step.tool_mode),
+            Some(LambdaInvestigationToolMode::ApprovalRequired)
+        );
+        assert_eq!(
+            plan.steps.last().map(|step| step.tool_name),
+            Some("lambda.cost.prepare_approval_plan")
+        );
+        assert!(plan.steps.iter().all(|step| {
+            step.tool_mode == LambdaInvestigationToolMode::ReadOnly
+                || step.tool_name == "lambda.cost.prepare_approval_plan"
+        }));
+        assert!(plan.steps.iter().all(|step| {
+            !step.tool_name.contains("execute")
+                && !step.tool_name.contains("delete")
+                && !step.tool_name.contains("update_function")
+        }));
+        assert!(plan.approval_gates.iter().any(|gate| {
+            gate.target_resource_id == "fn-cost-investigate" && gate.rollback_note_required
         }));
     }
 
