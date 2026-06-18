@@ -367,6 +367,44 @@ pub struct AsgResilienceForecastSnapshot {
     pub evidence_reason_codes: Vec<String>,
 }
 
+pub type AsgSecurityForecastRisk = AsgCostForecastRisk;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgSecurityForecastBand {
+    pub horizon_days: u16,
+    pub lower_security_exposure_index: u16,
+    pub expected_security_exposure_index: u16,
+    pub upper_security_exposure_index: u16,
+    pub confidence_level: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgSecurityForecastRiskDriver {
+    pub reason_code: String,
+    pub affected_resources: Vec<String>,
+    pub security_exposure_index_delta: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgSecurityForecastSnapshot {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub baseline_window_days: u16,
+    pub forecast_horizon_days: u16,
+    pub confidence_level: u8,
+    pub forecast_band: AsgSecurityForecastBand,
+    pub risk_level: AsgSecurityForecastRisk,
+    pub exposure_capacity_risk: &'static str,
+    pub backtesting_fixture_status: &'static str,
+    pub threshold_controls: Vec<&'static str>,
+    pub what_if_inputs: Vec<&'static str>,
+    pub blocked_by_stale_data: bool,
+    pub blast_radius_summary: String,
+    pub missing_data_reason_codes: Vec<String>,
+    pub risk_drivers: Vec<AsgSecurityForecastRiskDriver>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct AsgCostExecutiveSummary {
     pub report_id: &'static str,
@@ -1376,6 +1414,113 @@ pub fn asg_resilience_forecast_snapshot(report: &PillarReport) -> AsgResilienceF
     }
 }
 
+pub fn asg_security_forecast_snapshot(report: &PillarReport) -> AsgSecurityForecastSnapshot {
+    const BASELINE_WINDOW_DAYS: u16 = 30;
+    const FORECAST_HORIZON_DAYS: u16 = 30;
+    const CONFIDENCE_LEVEL: u8 = 75;
+
+    let empty_inventory = report.resources_evaluated == 0;
+    let stale_count = count_reason(report, REASON_INV_STALE_DATA);
+    let telemetry_error_count = count_reason(report, REASON_TEL_COLLECTION_ERRORS)
+        + count_reason(report, REASON_SEC_TELEMETRY_COLLECTION_ERRORS);
+    let legacy_launch_count = count_reason(report, REASON_SEC_LEGACY_LAUNCH_CONFIGURATION);
+    let launch_source_gap_count = count_reason(report, REASON_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED);
+    let missing_instance_telemetry_count =
+        count_reason(report, REASON_SEC_MISSING_INSTANCE_TELEMETRY);
+    let missing_collection_metadata_count =
+        count_reason(report, REASON_TEL_MISSING_COLLECTION_METADATA);
+    let blocked_by_stale_data = report.stale_resources > 0 || stale_count > 0;
+
+    let expected_security_exposure_index = 100u16
+        + (legacy_launch_count as u16 * 34)
+        + (telemetry_error_count as u16 * 26)
+        + (launch_source_gap_count as u16 * 20)
+        + (missing_instance_telemetry_count as u16 * 16)
+        + (missing_collection_metadata_count as u16 * 8)
+        + (report.stale_resources as u16 * 30);
+    let uncertainty = 10u16
+        + (launch_source_gap_count as u16 * 9)
+        + (missing_instance_telemetry_count as u16 * 8)
+        + (missing_collection_metadata_count as u16 * 5)
+        + (telemetry_error_count as u16 * 8)
+        + (report.stale_resources as u16 * 14)
+        + (empty_inventory as u16 * 25);
+    let lower_security_exposure_index =
+        expected_security_exposure_index.saturating_sub(uncertainty);
+    let upper_security_exposure_index = expected_security_exposure_index + uncertainty;
+    let risk_level = if blocked_by_stale_data || empty_inventory {
+        AsgSecurityForecastRisk::Blocked
+    } else if legacy_launch_count > 0 || upper_security_exposure_index >= 160 {
+        AsgSecurityForecastRisk::High
+    } else if launch_source_gap_count > 0
+        || missing_instance_telemetry_count > 0
+        || telemetry_error_count > 0
+        || expected_security_exposure_index > 100
+    {
+        AsgSecurityForecastRisk::Moderate
+    } else {
+        AsgSecurityForecastRisk::Low
+    };
+    let risk_drivers = asg_security_forecast_risk_drivers(report);
+
+    AsgSecurityForecastSnapshot {
+        workflow_id: "autoscaling_security_forecasting",
+        read_only_mode: true,
+        baseline_window_days: BASELINE_WINDOW_DAYS,
+        forecast_horizon_days: FORECAST_HORIZON_DAYS,
+        confidence_level: CONFIDENCE_LEVEL,
+        forecast_band: AsgSecurityForecastBand {
+            horizon_days: FORECAST_HORIZON_DAYS,
+            lower_security_exposure_index,
+            expected_security_exposure_index,
+            upper_security_exposure_index,
+            confidence_level: CONFIDENCE_LEVEL,
+        },
+        risk_level,
+        exposure_capacity_risk: asg_security_exposure_capacity_risk(
+            blocked_by_stale_data,
+            empty_inventory,
+            legacy_launch_count,
+            launch_source_gap_count,
+            missing_instance_telemetry_count,
+            telemetry_error_count,
+        ),
+        backtesting_fixture_status: if empty_inventory {
+            "blocked_missing_security_inventory_fixture"
+        } else if report.findings.is_empty() {
+            "ready_clean_security_baseline"
+        } else if blocked_by_stale_data
+            || launch_source_gap_count > 0
+            || missing_instance_telemetry_count > 0
+            || telemetry_error_count > 0
+        {
+            "needs_fresh_security_telemetry_fixture"
+        } else {
+            "ready_security_findings_baseline"
+        },
+        threshold_controls: vec![
+            "security_exposure_index_warning_threshold",
+            "security_exposure_index_critical_threshold",
+        ],
+        what_if_inputs: vec![
+            "migrate_legacy_launch_configuration_to_launch_template",
+            "restore_launch_source_collection",
+            "refresh_instance_security_telemetry",
+            "route_security_findings_to_owner",
+        ],
+        blocked_by_stale_data,
+        blast_radius_summary: asg_security_forecast_blast_radius_summary(
+            empty_inventory,
+            legacy_launch_count,
+            launch_source_gap_count,
+            missing_instance_telemetry_count,
+        ),
+        missing_data_reason_codes: asg_security_forecast_missing_data_reason_codes(report),
+        risk_drivers,
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
 pub fn asg_cost_reporting_bundle(report: &PillarReport) -> AsgCostReportingBundle {
     let posture = asg_cost_posture_summary(report);
     let reason_codes = sorted_unique_reason_codes(report);
@@ -1716,6 +1861,26 @@ fn asg_resilience_forecast_missing_data_reason_codes(report: &PillarReport) -> V
     .collect()
 }
 
+fn asg_security_forecast_missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    [
+        REASON_INV_STALE_DATA,
+        REASON_TEL_MISSING_COLLECTION_METADATA,
+        REASON_TEL_COLLECTION_ERRORS,
+        REASON_SEC_TELEMETRY_COLLECTION_ERRORS,
+        REASON_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED,
+        REASON_SEC_MISSING_INSTANCE_TELEMETRY,
+    ]
+    .into_iter()
+    .filter(|reason_code| {
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == *reason_code)
+    })
+    .map(str::to_string)
+    .collect()
+}
+
 fn asg_resilience_forecast_risk_drivers(
     report: &PillarReport,
 ) -> Vec<AsgResilienceForecastRiskDriver> {
@@ -1747,6 +1912,32 @@ fn asg_resilience_forecast_risk_drivers(
     .collect()
 }
 
+fn asg_security_forecast_risk_drivers(report: &PillarReport) -> Vec<AsgSecurityForecastRiskDriver> {
+    [
+        (REASON_INV_STALE_DATA, 30u16),
+        (REASON_SEC_LEGACY_LAUNCH_CONFIGURATION, 34u16),
+        (REASON_SEC_TELEMETRY_COLLECTION_ERRORS, 26u16),
+        (REASON_TEL_COLLECTION_ERRORS, 26u16),
+        (REASON_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED, 20u16),
+        (REASON_SEC_MISSING_INSTANCE_TELEMETRY, 16u16),
+        (REASON_TEL_MISSING_COLLECTION_METADATA, 8u16),
+    ]
+    .into_iter()
+    .filter_map(|(reason_code, delta)| {
+        let affected_resources = resources_for_reason(report, reason_code);
+        if affected_resources.is_empty() {
+            None
+        } else {
+            Some(AsgSecurityForecastRiskDriver {
+                reason_code: reason_code.to_string(),
+                security_exposure_index_delta: delta * affected_resources.len() as u16,
+                affected_resources,
+            })
+        }
+    })
+    .collect()
+}
+
 fn asg_resilience_recovery_capacity_risk(
     forecast_blocked: bool,
     unhealthy_count: usize,
@@ -1767,6 +1958,51 @@ fn asg_resilience_recovery_capacity_risk(
         "missing_recovery_telemetry"
     } else {
         "low_recovery_exposure"
+    }
+}
+
+fn asg_security_exposure_capacity_risk(
+    forecast_blocked: bool,
+    empty_inventory: bool,
+    legacy_launch_count: usize,
+    launch_source_gap_count: usize,
+    missing_instance_telemetry_count: usize,
+    telemetry_error_count: usize,
+) -> &'static str {
+    if forecast_blocked {
+        "blocked_until_inventory_refresh"
+    } else if empty_inventory {
+        "blocked_until_security_inventory_exists"
+    } else if legacy_launch_count > 0 {
+        "legacy_launch_configuration_security_exposure"
+    } else if telemetry_error_count > 0 {
+        "collector_errors_hide_security_exposure"
+    } else if launch_source_gap_count > 0 {
+        "unknown_due_to_missing_launch_source_evidence"
+    } else if missing_instance_telemetry_count > 0 {
+        "unknown_due_to_missing_instance_security_telemetry"
+    } else {
+        "within_observed_security_baseline"
+    }
+}
+
+fn asg_security_forecast_blast_radius_summary(
+    empty_inventory: bool,
+    legacy_launch_count: usize,
+    launch_source_gap_count: usize,
+    missing_instance_telemetry_count: usize,
+) -> String {
+    if empty_inventory {
+        "Auto Scaling security blast radius is unknown until inventory exists.".to_string()
+    } else if legacy_launch_count > 0 {
+        format!(
+            "{} Auto Scaling group(s) have legacy launch-source security exposure requiring launch-template migration review.",
+            legacy_launch_count
+        )
+    } else if launch_source_gap_count > 0 || missing_instance_telemetry_count > 0 {
+        "Auto Scaling security blast radius is incomplete until launch-source and instance telemetry gaps are refreshed.".to_string()
+    } else {
+        "No Auto Scaling groups have security forecast risk in the current evidence.".to_string()
     }
 }
 
@@ -4282,6 +4518,96 @@ mod tests {
         assert!(snapshot
             .evidence_reason_codes
             .contains(&REASON_INV_STALE_DATA.to_string()));
+    }
+
+    #[test]
+    fn asg_security_forecast_snapshot_builds_read_only_exposure_band_from_evidence() {
+        let mut legacy_data = healthy_data();
+        legacy_data["launch_configuration_name"] = json!("legacy-lc");
+        legacy_data["uses_launch_template"] = json!(false);
+        let legacy = fixture(
+            "asg-security-forecast-legacy",
+            json!({"owner": "security"}),
+            legacy_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[legacy], Pillar::Security, now());
+        let forecast = asg_security_forecast_snapshot(&report);
+
+        assert_eq!(forecast.workflow_id, "autoscaling_security_forecasting");
+        assert!(forecast.read_only_mode);
+        assert_eq!(forecast.baseline_window_days, 30);
+        assert_eq!(forecast.forecast_horizon_days, 30);
+        assert_eq!(forecast.confidence_level, 75);
+        assert_eq!(forecast.risk_level, AsgSecurityForecastRisk::High);
+        assert_eq!(
+            forecast.exposure_capacity_risk,
+            "legacy_launch_configuration_security_exposure"
+        );
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "ready_security_findings_baseline"
+        );
+        assert_eq!(forecast.forecast_band.horizon_days, 30);
+        assert!(forecast.forecast_band.expected_security_exposure_index > 100);
+        assert!(
+            forecast.forecast_band.upper_security_exposure_index
+                > forecast.forecast_band.lower_security_exposure_index
+        );
+        assert!(forecast
+            .threshold_controls
+            .contains(&"security_exposure_index_warning_threshold"));
+        assert!(forecast
+            .what_if_inputs
+            .contains(&"migrate_legacy_launch_configuration_to_launch_template"));
+        assert!(!forecast.blocked_by_stale_data);
+        assert!(forecast
+            .blast_radius_summary
+            .contains("legacy launch-source security exposure"));
+        assert!(forecast.missing_data_reason_codes.is_empty());
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_SEC_LEGACY_LAUNCH_CONFIGURATION
+                && driver.affected_resources == vec!["asg-security-forecast-legacy"]
+                && driver.security_exposure_index_delta == 34
+        }));
+        assert!(forecast
+            .evidence_reason_codes
+            .contains(&REASON_SEC_LEGACY_LAUNCH_CONFIGURATION.to_string()));
+    }
+
+    #[test]
+    fn asg_security_forecast_snapshot_blocks_when_security_data_is_stale() {
+        let mut stale_data = healthy_data();
+        stale_data["launch_configuration_name"] = json!("legacy-lc");
+        stale_data["uses_launch_template"] = json!(false);
+        let stale = fixture(
+            "asg-security-forecast-stale",
+            json!({"owner": "security"}),
+            stale_data,
+            now() - Duration::hours(30),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Security, now());
+        let forecast = asg_security_forecast_snapshot(&report);
+
+        assert_eq!(forecast.risk_level, AsgSecurityForecastRisk::Blocked);
+        assert!(forecast.blocked_by_stale_data);
+        assert_eq!(
+            forecast.exposure_capacity_risk,
+            "blocked_until_inventory_refresh"
+        );
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "needs_fresh_security_telemetry_fixture"
+        );
+        assert!(forecast
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_INV_STALE_DATA
+                && driver.affected_resources == vec!["asg-security-forecast-stale"]
+        }));
     }
 
     #[test]

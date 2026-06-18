@@ -1390,6 +1390,24 @@ async fn autoscaling_security_pillar_reports_posture_contract() {
     assert!(slo["objective"]["notification_targets"].is_array());
     assert!(slo["objective"]["status_history"].is_array());
     assert!(slo["evidence_reason_codes"].is_array());
+    let forecast = &reports[0]["forecasting"];
+    assert_eq!(forecast["workflow_id"], "autoscaling_security_forecasting");
+    assert_eq!(forecast["read_only_mode"], true);
+    assert_eq!(forecast["baseline_window_days"], 30);
+    assert_eq!(forecast["forecast_horizon_days"], 30);
+    assert_eq!(forecast["confidence_level"], 75);
+    assert_eq!(forecast["forecast_band"]["horizon_days"], 30);
+    assert!(forecast["forecast_band"]["expected_security_exposure_index"].is_number());
+    assert!(forecast["risk_level"].as_str().is_some());
+    assert!(forecast["exposure_capacity_risk"].is_string());
+    assert!(forecast["backtesting_fixture_status"].is_string());
+    assert!(forecast["threshold_controls"].is_array());
+    assert!(forecast["what_if_inputs"].is_array());
+    assert!(forecast["blocked_by_stale_data"].is_boolean());
+    assert!(forecast["blast_radius_summary"].is_string());
+    assert!(forecast["missing_data_reason_codes"].is_array());
+    assert!(forecast["risk_drivers"].is_array());
+    assert!(forecast["evidence_reason_codes"].is_array());
 
     let rules = reports[0]["posture"]["rules"]
         .as_array()

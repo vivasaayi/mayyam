@@ -1076,6 +1076,44 @@ describe("PillarScorecard", () => {
             },
             evidence_reason_codes: ["ASG_SEC_LEGACY_LAUNCH_CONFIGURATION"],
           },
+          forecasting: {
+            workflow_id: "autoscaling_security_forecasting",
+            read_only_mode: true,
+            baseline_window_days: 30,
+            forecast_horizon_days: 30,
+            confidence_level: 75,
+            forecast_band: {
+              horizon_days: 30,
+              lower_security_exposure_index: 124,
+              expected_security_exposure_index: 134,
+              upper_security_exposure_index: 144,
+              confidence_level: 75,
+            },
+            risk_level: "high",
+            exposure_capacity_risk:
+              "legacy_launch_configuration_security_exposure",
+            backtesting_fixture_status: "ready_security_findings_baseline",
+            threshold_controls: [
+              "security_exposure_index_warning_threshold",
+              "security_exposure_index_critical_threshold",
+            ],
+            what_if_inputs: [
+              "migrate_legacy_launch_configuration_to_launch_template",
+              "restore_launch_source_collection",
+            ],
+            blocked_by_stale_data: false,
+            blast_radius_summary:
+              "1 Auto Scaling group(s) have legacy launch-source security exposure requiring launch-template migration review.",
+            missing_data_reason_codes: [],
+            risk_drivers: [
+              {
+                reason_code: "ASG_SEC_LEGACY_LAUNCH_CONFIGURATION",
+                affected_resources: ["asg-legacy-launch"],
+                security_exposure_index_delta: 34,
+              },
+            ],
+            evidence_reason_codes: ["ASG_SEC_LEGACY_LAUNCH_CONFIGURATION"],
+          },
         },
       ],
     };
@@ -1130,6 +1168,20 @@ describe("PillarScorecard", () => {
     expect(text).toContain("Degrading trend");
     expect(text).toContain("environment:prod, owner:security");
     expect(text).toContain("Security Policy Evaluated");
+    expect(text).toContain("Security Forecast");
+    expect(text).toContain("autoscaling_security_forecasting");
+    expect(text).toContain("High");
+    expect(text).toContain("30d baseline");
+    expect(text).toContain("30d horizon");
+    expect(text).toContain("expected 134");
+    expect(text).toContain("124-144");
+    expect(text).toContain("75% confidence");
+    expect(text).toContain("Legacy Launch Configuration Security Exposure");
+    expect(text).toContain("Fresh enough");
+    expect(text).toContain("Ready Security Findings Baseline");
+    expect(text).toContain("1 risk driver");
+    expect(text).toContain("legacy launch-source security exposure");
+    expect(text).toContain("Security Exposure Index Warning Threshold");
 
     await view.unmount();
   });
