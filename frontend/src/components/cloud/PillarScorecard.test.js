@@ -2205,4 +2205,76 @@ describe("PillarScorecard", () => {
 
     await view.unmount();
   });
+
+  it("renders Lambda cost telemetry posture rules", async () => {
+    const data = {
+      evaluated_at: "2026-06-18T05:00:00Z",
+      stale_after_hours: 24,
+      reports: [
+        {
+          pillar: "cost",
+          score: 78,
+          resources_evaluated: 1,
+          stale_resources: 0,
+          findings: [
+            {
+              severity: "medium",
+              reason_code: "LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY",
+              resource_id: "fn-no-telemetry",
+              message:
+                "Function fn-no-telemetry is missing Lambda CloudWatch cost telemetry for Invocations",
+              evidence: {
+                missing_metrics: ["Invocations"],
+              },
+            },
+          ],
+          assessment_scope:
+            "lambda_cost_invocation_duration_error_and_throttle_telemetry",
+          posture: {
+            status: "fail",
+            rules_evaluated: 7,
+            rules_failed: 1,
+            affected_resources: ["fn-no-telemetry"],
+            rules: [
+              {
+                rule_id: "lambda-cost-cloudwatch-metrics-present",
+                status: "fail",
+                reason_codes: ["LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY"],
+                affected_resources: ["fn-no-telemetry"],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "lambda-cost-allocation-tags-present",
+                status: "pass",
+                reason_codes: ["LAMBDA_COST_MISSING_ALLOCATION_TAGS"],
+                affected_resources: [],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+            ],
+          },
+          telemetry: {
+            workflow_id: "lambda_cost_telemetry",
+            cloudwatch_namespace: "AWS/Lambda",
+            cloudwatch_dimension: "FunctionName",
+            required_metrics: ["Invocations", "Duration", "Errors", "Throttles"],
+          },
+        },
+      ],
+    };
+
+    const view = await render(<PillarScorecard data={data} />);
+    const text = view.container.textContent;
+
+    expect(text).toContain("cost");
+    expect(text).toContain("78");
+    expect(text).toContain("Posture");
+    expect(text).toContain("1 failed of 7");
+    expect(text).toContain("fn-no-telemetry");
+    expect(text).toContain("lambda-cost-cloudwatch-metrics-present");
+    expect(text).toContain("LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY");
+
+    await view.unmount();
+  });
 });

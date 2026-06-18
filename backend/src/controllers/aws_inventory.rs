@@ -99,7 +99,9 @@ use crate::services::aws::inventory::kinesis_pillar_evaluator::evaluate_kinesis_
 use crate::services::aws::inventory::kinesisanalytics_pillar_evaluator::evaluate_kinesisanalytics_fleet;
 use crate::services::aws::inventory::kms_pillar_evaluator::evaluate_kms_fleet;
 use crate::services::aws::inventory::lakeformation_pillar_evaluator::evaluate_lakeformation_fleet;
-use crate::services::aws::inventory::lambda_pillar_evaluator::evaluate_lambda_fleet;
+use crate::services::aws::inventory::lambda_pillar_evaluator::{
+    evaluate_lambda_fleet, lambda_cost_posture_summary, lambda_cost_telemetry_summary,
+};
 use crate::services::aws::inventory::lightsail_pillar_evaluator::evaluate_lightsail_fleet;
 use crate::services::aws::inventory::load_balancer_pillar_evaluator::evaluate_load_balancer_fleet;
 use crate::services::aws::inventory::macie_pillar_evaluator::evaluate_macie_fleet;
@@ -450,13 +452,47 @@ pub async fn get_lambda_pillar_reports(
 ) -> Result<HttpResponse, AppError> {
     let query = query.into_inner();
     debug!("Lambda pillar report request: {:?}", query);
-    pillar_reports(
-        &controller,
-        query,
-        AwsResourceType::LambdaFunction,
-        evaluate_lambda_fleet,
-    )
-    .await
+    let pillars = parse_pillars(&query.pillar, BASE_PILLARS)?;
+    let resources = controller
+        .aws_resource_repo
+        .find_by_account_and_type(
+            &query.account_id,
+            &AwsResourceType::LambdaFunction.to_string(),
+        )
+        .await?;
+
+    let now = Utc::now();
+    let reports: Vec<_> = pillars
+        .iter()
+        .map(|pillar| {
+            let report = evaluate_lambda_fleet(&resources, *pillar, now);
+            if *pillar == Pillar::Cost {
+                json!({
+                    "pillar": report.pillar,
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "assessment_scope": "lambda_cost_invocation_duration_error_and_throttle_telemetry",
+                    "posture": lambda_cost_posture_summary(&report),
+                    "telemetry": lambda_cost_telemetry_summary(&report),
+                })
+            } else {
+                json!(report)
+            }
+        })
+        .collect();
+    let oldest_refresh = resources.iter().map(|r| r.last_refreshed).min();
+
+    Ok(HttpResponse::Ok().json(json!({
+        "account_id": query.account_id,
+        "resource_type": AwsResourceType::LambdaFunction.to_string(),
+        "evaluated_at": now,
+        "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
+        "resources_evaluated": resources.len(),
+        "oldest_refresh": oldest_refresh,
+        "reports": reports,
+    })))
 }
 
 pub async fn get_s3_pillar_reports(

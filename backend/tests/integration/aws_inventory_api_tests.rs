@@ -916,6 +916,19 @@ async fn lambda_pillar_reports_contract() {
     assert_eq!(body["resource_type"], "LambdaFunction");
     let reports = body["reports"].as_array().expect("reports array");
     assert_eq!(reports.len(), 3);
+    let cost = reports
+        .iter()
+        .find(|report| report["pillar"] == "cost")
+        .expect("cost report");
+    assert_eq!(
+        cost["assessment_scope"],
+        "lambda_cost_invocation_duration_error_and_throttle_telemetry"
+    );
+    assert_eq!(cost["posture"]["rules_evaluated"], 7);
+    assert_eq!(cost["telemetry"]["workflow_id"], "lambda_cost_telemetry");
+    assert_eq!(cost["telemetry"]["cloudwatch_namespace"], "AWS/Lambda");
+    assert_eq!(cost["telemetry"]["cloudwatch_dimension"], "FunctionName");
+    assert_eq!(cost["telemetry"]["read_only_mode"], true);
 }
 
 #[tokio::test]
