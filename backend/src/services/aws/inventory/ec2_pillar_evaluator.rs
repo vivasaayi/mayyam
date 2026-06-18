@@ -154,6 +154,49 @@ pub struct Ec2CostAgenticInvestigationPlan {
     pub evidence_citations: Vec<Ec2EvidenceCitation>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Ec2RemediationActionKind {
+    AssignCostTags,
+    ReviewStoppedInstanceArtifacts,
+    RightSizeInstance,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Ec2RemediationStatus {
+    DryRunPendingApproval,
+    BlockedMissingEvidence,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Ec2CostRemediationAction {
+    pub action_id: String,
+    pub kind: Ec2RemediationActionKind,
+    pub status: Ec2RemediationStatus,
+    pub target_resource_id: String,
+    pub dry_run: bool,
+    pub requires_approval: bool,
+    pub approval_gate_id: Option<String>,
+    pub audit_event_type: &'static str,
+    pub idempotency_key: String,
+    pub blast_radius: String,
+    pub rollback_note: String,
+    pub validation_steps: Vec<&'static str>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Ec2CostRemediationWorkflow {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub rbac_permission: &'static str,
+    pub audit_stream: &'static str,
+    pub stale_data_blocks_execution: bool,
+    pub actions: Vec<Ec2CostRemediationAction>,
+    pub approval_gates: Vec<Ec2MutationApprovalGate>,
+}
+
 /// Evaluate every EC2 instance in the fleet for one pillar.
 pub fn evaluate_ec2_fleet(
     resources: &[AwsResourceModel],
@@ -388,6 +431,92 @@ pub fn ec2_cost_agentic_investigation_plan(
         steps,
         approval_gates,
         evidence_citations: triage.evidence_citations,
+    }
+}
+
+pub fn ec2_cost_remediation_workflow(report: &PillarReport) -> Ec2CostRemediationWorkflow {
+    let investigation = ec2_cost_agentic_investigation_plan(report);
+    let has_stale_data = report
+        .findings
+        .iter()
+        .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+    let mut actions = Vec::new();
+
+    for gate in &investigation.approval_gates {
+        for reason_code in &gate.evidence_reason_codes {
+            if let Some(kind) = remediation_action_kind(reason_code) {
+                actions.push(remediation_action(
+                    &actions,
+                    kind,
+                    gate,
+                    if has_stale_data {
+                        Ec2RemediationStatus::BlockedMissingEvidence
+                    } else {
+                        Ec2RemediationStatus::DryRunPendingApproval
+                    },
+                ));
+            }
+        }
+    }
+
+    Ec2CostRemediationWorkflow {
+        workflow_id: "ec2_cost_safe_remediation",
+        read_only_mode: true,
+        rbac_permission: "aws.ec2.cost.remediation.approve",
+        audit_stream: "ec2_cost_remediation_audit",
+        stale_data_blocks_execution: has_stale_data,
+        actions,
+        approval_gates: investigation.approval_gates,
+    }
+}
+
+fn remediation_action_kind(reason_code: &str) -> Option<Ec2RemediationActionKind> {
+    match reason_code {
+        REASON_COST_MISSING_ALLOCATION_TAGS => Some(Ec2RemediationActionKind::AssignCostTags),
+        REASON_COST_STOPPED_INSTANCE => {
+            Some(Ec2RemediationActionKind::ReviewStoppedInstanceArtifacts)
+        }
+        REASON_COST_LOW_UTILIZATION_TELEMETRY => Some(Ec2RemediationActionKind::RightSizeInstance),
+        _ => None,
+    }
+}
+
+fn remediation_action(
+    existing_actions: &[Ec2CostRemediationAction],
+    kind: Ec2RemediationActionKind,
+    gate: &Ec2MutationApprovalGate,
+    status: Ec2RemediationStatus,
+) -> Ec2CostRemediationAction {
+    let action_number = existing_actions.len() + 1;
+    let action_slug = match kind {
+        Ec2RemediationActionKind::AssignCostTags => "assign-cost-tags",
+        Ec2RemediationActionKind::ReviewStoppedInstanceArtifacts => {
+            "review-stopped-instance-artifacts"
+        }
+        Ec2RemediationActionKind::RightSizeInstance => "rightsize-instance",
+    };
+
+    Ec2CostRemediationAction {
+        action_id: format!("ec2-cost-remediation-{:02}", action_number),
+        kind,
+        status,
+        target_resource_id: gate.target_resource_id.clone(),
+        dry_run: true,
+        requires_approval: true,
+        approval_gate_id: Some(gate.gate_id.clone()),
+        audit_event_type: "ec2.cost.remediation.dry_run_planned",
+        idempotency_key: format!("{}:{}", gate.target_resource_id, action_slug),
+        blast_radius: gate.blast_radius.clone(),
+        rollback_note: format!(
+            "Before approval, record rollback or recovery notes for {} on {}.",
+            action_slug, gate.target_resource_id
+        ),
+        validation_steps: vec![
+            "refresh EC2 inventory and cost telemetry",
+            "verify resource ownership and suppression policy",
+            "capture operator approval and audit id before execution",
+        ],
+        evidence_reason_codes: gate.evidence_reason_codes.clone(),
     }
 }
 
@@ -1570,6 +1699,106 @@ mod tests {
             .approval_gates
             .iter()
             .all(|gate| gate.rollback_note_required));
+    }
+
+    #[test]
+    fn ec2_cost_remediation_workflow_plans_dry_run_actions_until_approved() {
+        let idle = fixture(
+            "i-idle",
+            json!({"cost-center": "cc-42", "owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[1.2, 2.4, 3.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let stopped = fixture(
+            "i-stopped",
+            json!({}),
+            json!({
+                "state": "stopped",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[12.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[idle, stopped], Pillar::Cost, now());
+        let workflow = ec2_cost_remediation_workflow(&report);
+
+        assert_eq!(workflow.workflow_id, "ec2_cost_safe_remediation");
+        assert!(workflow.read_only_mode);
+        assert_eq!(workflow.rbac_permission, "aws.ec2.cost.remediation.approve");
+        assert_eq!(workflow.audit_stream, "ec2_cost_remediation_audit");
+        assert!(!workflow.stale_data_blocks_execution);
+        assert_eq!(workflow.actions.len(), 3);
+        assert!(workflow.actions.iter().all(|action| {
+            action.dry_run
+                && action.requires_approval
+                && action.approval_gate_id.is_some()
+                && action.status == Ec2RemediationStatus::DryRunPendingApproval
+                && action.audit_event_type == "ec2.cost.remediation.dry_run_planned"
+                && action.rollback_note.contains("rollback")
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == Ec2RemediationActionKind::RightSizeInstance
+                && action.target_resource_id == "i-idle"
+                && action
+                    .evidence_reason_codes
+                    .contains(&REASON_COST_LOW_UTILIZATION_TELEMETRY.to_string())
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == Ec2RemediationActionKind::ReviewStoppedInstanceArtifacts
+                && action.target_resource_id == "i-stopped"
+                && action
+                    .evidence_reason_codes
+                    .contains(&REASON_COST_STOPPED_INSTANCE.to_string())
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == Ec2RemediationActionKind::AssignCostTags
+                && action.target_resource_id == "i-stopped"
+                && action
+                    .evidence_reason_codes
+                    .contains(&REASON_COST_MISSING_ALLOCATION_TAGS.to_string())
+        }));
+    }
+
+    #[test]
+    fn ec2_cost_remediation_workflow_blocks_execution_when_cost_data_is_stale() {
+        let stale = fixture(
+            "i-stale",
+            json!({"cost-center": "cc-42", "owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[1.2, 2.4, 3.0])
+                    ]
+                }
+            }),
+            30,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Cost, now());
+        let workflow = ec2_cost_remediation_workflow(&report);
+
+        assert!(workflow.stale_data_blocks_execution);
+        assert!(workflow.actions.iter().all(|action| {
+            action.dry_run && action.status == Ec2RemediationStatus::BlockedMissingEvidence
+        }));
     }
 
     #[test]

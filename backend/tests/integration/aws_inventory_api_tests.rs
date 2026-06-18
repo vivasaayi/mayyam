@@ -77,6 +77,17 @@ async fn ec2_pillar_reports_contract() {
     assert!(reports[0]["triage_context"]["facts"].is_array());
     assert!(reports[0]["triage_context"]["hypotheses"].is_array());
     assert!(reports[0]["triage_context"]["missing_data_questions"].is_array());
+    assert_eq!(
+        reports[0]["remediation_workflow"]["workflow_id"],
+        "ec2_cost_safe_remediation"
+    );
+    assert_eq!(reports[0]["remediation_workflow"]["read_only_mode"], true);
+    assert_eq!(
+        reports[0]["remediation_workflow"]["rbac_permission"],
+        "aws.ec2.cost.remediation.approve"
+    );
+    assert!(reports[0]["remediation_workflow"]["actions"].is_array());
+    assert!(reports[0]["remediation_workflow"]["approval_gates"].is_array());
 }
 
 #[tokio::test]

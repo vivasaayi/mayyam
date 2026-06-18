@@ -53,7 +53,8 @@ use crate::services::aws::inventory::drs_pillar_evaluator::evaluate_drs_fleet;
 use crate::services::aws::inventory::dynamodb_pillar_evaluator::evaluate_dynamodb_fleet;
 use crate::services::aws::inventory::ebs_pillar_evaluator::evaluate_ebs_fleet;
 use crate::services::aws::inventory::ec2_pillar_evaluator::{
-    ec2_cost_posture_summary, ec2_cost_triage_context, evaluate_ec2_fleet,
+    ec2_cost_posture_summary, ec2_cost_remediation_workflow, ec2_cost_triage_context,
+    evaluate_ec2_fleet,
 };
 use crate::services::aws::inventory::ecs_pillar_evaluator::evaluate_ecs_fleet;
 use crate::services::aws::inventory::efs_pillar_evaluator::evaluate_efs_fleet;
@@ -323,6 +324,7 @@ pub async fn get_ec2_pillar_reports(
                     "findings": report.findings,
                     "posture": ec2_cost_posture_summary(&report),
                     "triage_context": ec2_cost_triage_context(&report),
+                    "remediation_workflow": ec2_cost_remediation_workflow(&report),
                 })
             } else {
                 json!(report)
