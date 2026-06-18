@@ -940,6 +940,69 @@ describe("PillarScorecard", () => {
               },
             ],
           },
+          agentic_investigation: {
+            workflow_id: "autoscaling_security_agentic_investigation",
+            default_tool_mode: "read_only",
+            max_tool_calls: 2,
+            max_evidence_citations: 2,
+            replay_required: true,
+            steps: [
+              {
+                step_id: "autoscaling-security-step-01",
+                kind: "compare",
+                tool_name: "autoscaling.inspect_launch_configuration_security",
+                tool_mode: "read_only",
+                target_resource_id: "asg-legacy-launch",
+                reason_code: "ASG_SEC_LEGACY_LAUNCH_CONFIGURATION",
+                stop_condition:
+                  "stop when launch configuration is compared with launch template migration, AMI source, IAM instance profile, user-data, and cost side-effect evidence",
+                evidence: { launch_configuration_name: "legacy-lc" },
+              },
+              {
+                step_id: "autoscaling-security-step-02",
+                kind: "propose_mutation_plan",
+                tool_name: "autoscaling.security.prepare_approval_plan",
+                tool_mode: "approval_required",
+                target_resource_id: "investigation",
+                reason_code: "ASG_SECURITY_APPROVAL_PLAN_REQUIRED",
+                stop_condition:
+                  "stop before mutation; require explicit operator approval, blast-radius summary, rollback note, replayable evidence, and cost side-effect review",
+                evidence: {
+                  approval_gate_count: 1,
+                  read_only_step_count: 1,
+                  mutation_execution: "not_available_from_investigation_plan",
+                },
+              },
+            ],
+            approval_gates: [
+              {
+                gate_id: "autoscaling-security-approval-01",
+                target_resource_id: "asg-legacy-launch",
+                required_approval:
+                  "Approve launch-template migration or launch source changes after security owner review",
+                blast_radius:
+                  "single Auto Scaling group asg-legacy-launch; no mutation is executable from the investigation plan",
+                rollback_note_required: true,
+                evidence_reason_codes: [
+                  "ASG_SEC_LEGACY_LAUNCH_CONFIGURATION",
+                ],
+              },
+            ],
+            evidence_citations: [
+              {
+                reason_code: "ASG_SEC_LEGACY_LAUNCH_CONFIGURATION",
+                resource_id: "asg-legacy-launch",
+                severity: "medium",
+                evidence: { launch_configuration_name: "legacy-lc" },
+              },
+              {
+                reason_code: "ASG_SEC_MISSING_INSTANCE_TELEMETRY",
+                resource_id: "asg-missing-instance-telemetry",
+                severity: "medium",
+                evidence: { required_fields: ["instance_health"] },
+              },
+            ],
+          },
         },
       ],
     };
@@ -970,6 +1033,16 @@ describe("PillarScorecard", () => {
     expect(text).toContain("IAM instance profile");
     expect(text).toContain("Collect instance health telemetry");
     expect(text).toContain("Collect launch template");
+    expect(text).toContain("Security Agentic Investigation");
+    expect(text).toContain("autoscaling_security_agentic_investigation");
+    expect(text).toContain("Replay required");
+    expect(text).toContain("autoscaling.inspect_launch_configuration_security");
+    expect(text).toContain("autoscaling.security.prepare_approval_plan");
+    expect(text).toContain("Mutation planning requires approval");
+    expect(text).toContain("autoscaling-security-approval-01");
+    expect(text).toContain("Rollback note required");
+    expect(text).toContain("ASG_SECURITY_APPROVAL_PLAN_REQUIRED");
+    expect(text).toContain("no mutation is executable from the investigation plan");
 
     await view.unmount();
   });

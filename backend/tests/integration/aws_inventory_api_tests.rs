@@ -1344,6 +1344,18 @@ async fn autoscaling_security_pillar_reports_posture_contract() {
     assert!(triage["hypotheses"].is_array());
     assert!(triage["missing_data_questions"].is_array());
     assert!(triage["evidence_citations"].is_array());
+    let investigation = &reports[0]["agentic_investigation"];
+    assert_eq!(
+        investigation["workflow_id"],
+        "autoscaling_security_agentic_investigation"
+    );
+    assert_eq!(investigation["default_tool_mode"], "read_only");
+    assert_eq!(investigation["replay_required"], true);
+    assert!(investigation["max_tool_calls"].is_number());
+    assert!(investigation["max_evidence_citations"].is_number());
+    assert!(investigation["steps"].is_array());
+    assert!(investigation["approval_gates"].is_array());
+    assert!(investigation["evidence_citations"].is_array());
     assert!(reports[0].get("remediation_workflow").is_none());
 
     let rules = reports[0]["posture"]["rules"]

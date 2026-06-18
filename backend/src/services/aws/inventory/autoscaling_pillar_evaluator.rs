@@ -178,6 +178,7 @@ pub struct AsgAgenticInvestigationPlan {
 
 pub type AsgCostAgenticInvestigationPlan = AsgAgenticInvestigationPlan;
 pub type AsgResilienceAgenticInvestigationPlan = AsgAgenticInvestigationPlan;
+pub type AsgSecurityAgenticInvestigationPlan = AsgAgenticInvestigationPlan;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -773,6 +774,119 @@ pub fn asg_resilience_agentic_investigation_plan(
 
     AsgAgenticInvestigationPlan {
         workflow_id: "autoscaling_resilience_agentic_investigation",
+        default_tool_mode: AsgInvestigationToolMode::ReadOnly,
+        max_tool_calls: steps.len().min(12),
+        max_evidence_citations: triage.evidence_citations.len(),
+        replay_required: true,
+        steps,
+        approval_gates,
+        evidence_citations: triage.evidence_citations,
+    }
+}
+
+pub fn asg_security_agentic_investigation_plan(
+    report: &PillarReport,
+) -> AsgSecurityAgenticInvestigationPlan {
+    let triage = asg_security_triage_context(report);
+    let mut steps = Vec::new();
+    let mut approval_gates = Vec::new();
+
+    for citation in &triage.evidence_citations {
+        if citation.resource_id == "fleet" {
+            continue;
+        }
+
+        match citation.reason_code.as_str() {
+            REASON_INV_STALE_DATA => {
+                steps.push(asg_security_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.describe_group_inventory",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when the Auto Scaling group inventory is refreshed or stale evidence is confirmed",
+                ));
+            }
+            REASON_TEL_MISSING_COLLECTION_METADATA => {
+                steps.push(asg_security_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.inspect_collection_metadata",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when collection start, completion, duration, success, failure, and error counts are recorded",
+                ));
+            }
+            REASON_TEL_COLLECTION_ERRORS | REASON_SEC_TELEMETRY_COLLECTION_ERRORS => {
+                steps.push(asg_security_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Diagnose,
+                    "autoscaling.inspect_collector_errors",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when collector logs, throttling, permissions, and retry evidence explain the security evidence gap",
+                ));
+            }
+            REASON_SEC_MISSING_INSTANCE_TELEMETRY => {
+                steps.push(asg_security_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.describe_instance_health",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when instance health, lifecycle, protected instance, and launch source evidence are recorded",
+                ));
+            }
+            REASON_SEC_LEGACY_LAUNCH_CONFIGURATION => {
+                steps.push(asg_security_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Compare,
+                    "autoscaling.inspect_launch_configuration_security",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when launch configuration is compared with launch template migration, AMI source, IAM instance profile, user-data, and cost side-effect evidence",
+                ));
+                approval_gates.push(asg_security_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve launch-template migration or launch source changes after security owner review",
+                ));
+            }
+            REASON_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED => {
+                steps.push(asg_security_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.inspect_launch_source_configuration",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when launch template, mixed instances policy, launch configuration, and cost side-effect evidence are recorded",
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    if !approval_gates.is_empty() {
+        steps.push(AsgInvestigationStep {
+            step_id: format!("autoscaling-security-step-{:02}", steps.len() + 1),
+            kind: AsgInvestigationStepKind::ProposeMutationPlan,
+            tool_name: "autoscaling.security.prepare_approval_plan",
+            tool_mode: AsgInvestigationToolMode::ApprovalRequired,
+            target_resource_id: "investigation".to_string(),
+            reason_code: "ASG_SECURITY_APPROVAL_PLAN_REQUIRED".to_string(),
+            stop_condition:
+                "stop before mutation; require explicit operator approval, blast-radius summary, rollback note, replayable evidence, and cost side-effect review"
+                    .to_string(),
+            evidence: json!({
+                "approval_gate_count": approval_gates.len(),
+                "read_only_step_count": steps.len(),
+                "mutation_execution": "not_available_from_investigation_plan",
+            }),
+        });
+    }
+
+    AsgAgenticInvestigationPlan {
+        workflow_id: "autoscaling_security_agentic_investigation",
         default_tool_mode: AsgInvestigationToolMode::ReadOnly,
         max_tool_calls: steps.len().min(12),
         max_evidence_citations: triage.evidence_citations.len(),
@@ -1813,6 +1927,26 @@ fn asg_resilience_investigation_step(
     }
 }
 
+fn asg_security_investigation_step(
+    existing_steps: &[AsgInvestigationStep],
+    kind: AsgInvestigationStepKind,
+    tool_name: &'static str,
+    tool_mode: AsgInvestigationToolMode,
+    citation: &AsgEvidenceCitation,
+    stop_condition: &str,
+) -> AsgInvestigationStep {
+    AsgInvestigationStep {
+        step_id: format!("autoscaling-security-step-{:02}", existing_steps.len() + 1),
+        kind,
+        tool_name,
+        tool_mode,
+        target_resource_id: citation.resource_id.clone(),
+        reason_code: citation.reason_code.clone(),
+        stop_condition: stop_condition.to_string(),
+        evidence: citation.evidence.clone(),
+    }
+}
+
 fn asg_mutation_gate(
     existing_gates: &[AsgMutationApprovalGate],
     citation: &AsgEvidenceCitation,
@@ -1839,6 +1973,27 @@ fn asg_resilience_mutation_gate(
     AsgMutationApprovalGate {
         gate_id: format!(
             "autoscaling-resilience-approval-{:02}",
+            existing_gates.len() + 1
+        ),
+        target_resource_id: citation.resource_id.clone(),
+        required_approval,
+        blast_radius: format!(
+            "single Auto Scaling group {}; no mutation is executable from the investigation plan",
+            citation.resource_id
+        ),
+        rollback_note_required: true,
+        evidence_reason_codes: vec![citation.reason_code.clone()],
+    }
+}
+
+fn asg_security_mutation_gate(
+    existing_gates: &[AsgMutationApprovalGate],
+    citation: &AsgEvidenceCitation,
+    required_approval: &'static str,
+) -> AsgMutationApprovalGate {
+    AsgMutationApprovalGate {
+        gate_id: format!(
+            "autoscaling-security-approval-{:02}",
             existing_gates.len() + 1
         ),
         target_resource_id: citation.resource_id.clone(),
@@ -3629,6 +3784,153 @@ mod tests {
             citation.reason_code == REASON_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED
                 && citation.resource_id == "asg-security-launch-gap-triage"
         }));
+    }
+
+    #[test]
+    fn asg_security_agentic_investigation_plan_is_read_only_until_approval() {
+        let mut legacy_data = healthy_data();
+        legacy_data["launch_configuration_name"] = json!("legacy-lc");
+        legacy_data["uses_launch_template"] = json!(false);
+        let legacy = fixture(
+            "asg-security-legacy-plan",
+            json!({"team": "core"}),
+            legacy_data,
+            now(),
+        );
+
+        let mut missing_instance_data = healthy_data();
+        missing_instance_data
+            .as_object_mut()
+            .expect("object")
+            .remove("instance_health");
+        let missing_instance = fixture(
+            "asg-security-missing-instance-plan",
+            json!({"team": "core"}),
+            missing_instance_data,
+            now(),
+        );
+
+        let mut launch_gap_data = healthy_data();
+        launch_gap_data["uses_launch_template"] = json!(false);
+        launch_gap_data["uses_mixed_instances_policy"] = json!(false);
+        let launch_gap = fixture(
+            "asg-security-launch-gap-plan",
+            json!({"team": "core"}),
+            launch_gap_data,
+            now(),
+        );
+
+        let mut collection_error_data = healthy_data();
+        collection_error_data["telemetry_collection_success_count"] = json!(0);
+        collection_error_data["telemetry_collection_failure_count"] = json!(1);
+        collection_error_data["telemetry_collection_error_count"] = json!(1);
+        collection_error_data["telemetry_collection_errors"] = json!([
+            {
+                "source": "autoscaling",
+                "operation": "DescribeAutoScalingGroups",
+                "error": "throttled"
+            }
+        ]);
+        let collection_error = fixture(
+            "asg-security-collection-error-plan",
+            json!({"team": "core"}),
+            collection_error_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(
+            &[legacy, missing_instance, launch_gap, collection_error],
+            Pillar::Security,
+            now(),
+        );
+        let plan = asg_security_agentic_investigation_plan(&report);
+
+        assert_eq!(
+            plan.workflow_id,
+            "autoscaling_security_agentic_investigation"
+        );
+        assert_eq!(plan.default_tool_mode, AsgInvestigationToolMode::ReadOnly);
+        assert!(plan.replay_required);
+        assert_eq!(plan.evidence_citations.len(), report.findings.len());
+        assert_eq!(plan.approval_gates.len(), 1);
+        assert_eq!(
+            plan.approval_gates[0].gate_id,
+            "autoscaling-security-approval-01"
+        );
+        assert_eq!(
+            plan.approval_gates[0].target_resource_id,
+            "asg-security-legacy-plan"
+        );
+        assert!(plan.approval_gates[0].rollback_note_required);
+        assert_eq!(
+            plan.approval_gates[0].evidence_reason_codes,
+            vec![REASON_SEC_LEGACY_LAUNCH_CONFIGURATION.to_string()]
+        );
+
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "autoscaling.inspect_launch_configuration_security"
+                && step.kind == AsgInvestigationStepKind::Compare
+                && step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                && step.target_resource_id == "asg-security-legacy-plan"
+                && step.stop_condition.contains("cost side-effect evidence")
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "autoscaling.describe_instance_health"
+                && step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                && step.target_resource_id == "asg-security-missing-instance-plan"
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "autoscaling.inspect_launch_source_configuration"
+                && step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                && step.target_resource_id == "asg-security-launch-gap-plan"
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "autoscaling.inspect_collector_errors"
+                && step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                && step.target_resource_id == "asg-security-collection-error-plan"
+        }));
+        let final_step = plan.steps.last().expect("approval planning step");
+        assert_eq!(
+            final_step.tool_name,
+            "autoscaling.security.prepare_approval_plan"
+        );
+        assert_eq!(
+            final_step.tool_mode,
+            AsgInvestigationToolMode::ApprovalRequired
+        );
+        assert_eq!(
+            final_step.reason_code,
+            "ASG_SECURITY_APPROVAL_PLAN_REQUIRED"
+        );
+        assert_eq!(final_step.evidence["approval_gate_count"], 1);
+        assert!(plan.steps.iter().all(|step| {
+            step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                || step.tool_name == "autoscaling.security.prepare_approval_plan"
+        }));
+    }
+
+    #[test]
+    fn asg_security_agentic_investigation_plan_omits_approval_step_without_gates() {
+        let mut stale = fixture(
+            "asg-security-stale-plan",
+            json!({"team": "core"}),
+            healthy_data(),
+            now(),
+        );
+        stale.last_refreshed = now() - Duration::hours(48);
+
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Security, now());
+        let plan = asg_security_agentic_investigation_plan(&report);
+
+        assert!(plan.approval_gates.is_empty());
+        assert!(plan
+            .steps
+            .iter()
+            .all(|step| step.tool_mode == AsgInvestigationToolMode::ReadOnly));
+        assert!(!plan
+            .steps
+            .iter()
+            .any(|step| step.tool_name == "autoscaling.security.prepare_approval_plan"));
     }
 
     #[test]
