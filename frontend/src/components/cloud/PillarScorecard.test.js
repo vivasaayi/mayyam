@@ -569,6 +569,46 @@ describe("PillarScorecard", () => {
               "EC2_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY",
             ],
           },
+          forecasting: {
+            workflow_id: "ec2_security_forecasting",
+            read_only_mode: true,
+            baseline_window_days: 30,
+            forecast_horizon_days: 30,
+            confidence_level: 75,
+            forecast_band: {
+              horizon_days: 30,
+              lower_security_exposure_index: 140,
+              expected_security_exposure_index: 168,
+              upper_security_exposure_index: 196,
+              confidence_level: 75,
+            },
+            risk_level: "high",
+            exposure_capacity_risk: "public_exposure_with_observed_packet_traffic",
+            backtesting_fixture_status: "ready_security_findings_baseline",
+            threshold_controls: [
+              "security_exposure_index_warning_threshold",
+              "security_exposure_index_critical_threshold",
+            ],
+            what_if_inputs: [
+              "verify_public_ip_business_intent",
+              "restore_packet_telemetry",
+            ],
+            blocked_by_stale_data: false,
+            blast_radius_summary:
+              "public_ip_instances_with_packet_traffic_need_sg_nacl_route_verification",
+            missing_data_reason_codes: [],
+            risk_drivers: [
+              {
+                reason_code: "EC2_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY",
+                affected_resources: ["i-sec-exposed"],
+                security_exposure_index_delta: 40,
+              },
+            ],
+            evidence_reason_codes: [
+              "EC2_SEC_PUBLIC_IP_ASSIGNED",
+              "EC2_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY",
+            ],
+          },
           findings: [
             {
               severity: "high",
@@ -616,6 +656,22 @@ describe("PillarScorecard", () => {
     expect(text).toContain("environment:prod, owner:security");
     expect(text).toContain("payments");
     expect(text).toContain("Security Policy Evaluated");
+    expect(text).toContain("Security Forecast");
+    expect(text).toContain("High");
+    expect(text).toContain("ec2_security_forecasting");
+    expect(text).toContain("30d baseline");
+    expect(text).toContain("30d horizon");
+    expect(text).toContain("expected 168");
+    expect(text).toContain("140-196");
+    expect(text).toContain("75% confidence");
+    expect(text).toContain("Public Exposure With Observed Packet Traffic");
+    expect(text).toContain("Fresh enough");
+    expect(text).toContain("Ready Security Findings Baseline");
+    expect(text).toContain("1 risk driver");
+    expect(text).toContain(
+      "public_ip_instances_with_packet_traffic_need_sg_nacl_route_verification"
+    );
+    expect(text).toContain("Security Exposure Index Warning Threshold");
     expect(text).toContain("Security Triage Context");
     expect(text).toContain("ec2-security-deterministic-context-v1");
     expect(text).toContain("ec2-security-ai-triage-v1");

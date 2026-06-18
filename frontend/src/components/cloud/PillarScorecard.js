@@ -392,6 +392,92 @@ const SloPolicySummary = ({ report }) => {
   );
 };
 
+const ForecastSummary = ({ report }) => {
+  const forecast = report.forecasting;
+  if (!forecast) {
+    return null;
+  }
+
+  const forecastBand = forecast.forecast_band || {};
+  const expectedIndex =
+    forecastBand.expected_security_exposure_index ??
+    forecastBand.expected_recovery_exposure_index ??
+    forecastBand.expected_monthly_cost_index;
+  const lowerIndex =
+    forecastBand.lower_security_exposure_index ??
+    forecastBand.lower_recovery_exposure_index ??
+    forecastBand.lower_monthly_cost_index;
+  const upperIndex =
+    forecastBand.upper_security_exposure_index ??
+    forecastBand.upper_recovery_exposure_index ??
+    forecastBand.upper_monthly_cost_index;
+  const capacityRisk =
+    forecast.exposure_capacity_risk ||
+    forecast.recovery_capacity_risk ||
+    forecast.capacity_risk;
+  const riskColor =
+    forecast.risk_level === "low"
+      ? "success"
+      : forecast.risk_level === "blocked" || forecast.risk_level === "high"
+        ? "danger"
+        : "warning";
+
+  return (
+    <CCard className="mb-3">
+      <CCardHeader>
+        {formatToken(report.pillar)} Forecast
+        <CBadge color={riskColor} className="ms-2">
+          {formatToken(forecast.risk_level)}
+        </CBadge>
+      </CCardHeader>
+      <CCardBody>
+        <CRow className="g-3 mb-3">
+          <CCol md={3}>
+            <div className="text-medium-emphasis small">Workflow</div>
+            <div className="fw-semibold">{forecast.workflow_id}</div>
+            <div className="small">
+              {forecast.baseline_window_days}d baseline ·{" "}
+              {forecast.forecast_horizon_days}d horizon
+            </div>
+          </CCol>
+          <CCol md={3}>
+            <div className="text-medium-emphasis small">Forecast Band</div>
+            <div className="fw-semibold">expected {expectedIndex ?? "n/a"}</div>
+            <div className="small">
+              {lowerIndex ?? "n/a"}-{upperIndex ?? "n/a"} ·{" "}
+              {forecast.confidence_level}% confidence
+            </div>
+          </CCol>
+          <CCol md={3}>
+            <div className="text-medium-emphasis small">Capacity Risk</div>
+            <div className="fw-semibold">{formatToken(capacityRisk)}</div>
+            <div className="small">
+              {forecast.blocked_by_stale_data ? "Blocked by stale data" : "Fresh enough"}
+            </div>
+          </CCol>
+          <CCol md={3}>
+            <div className="text-medium-emphasis small">Backtesting</div>
+            <div className="fw-semibold">
+              {formatToken(forecast.backtesting_fixture_status)}
+            </div>
+            <div className="small">
+              {(forecast.risk_drivers || []).length} risk driver(s)
+            </div>
+          </CCol>
+        </CRow>
+        <div className="small mb-2">{forecast.blast_radius_summary}</div>
+        <div className="small">
+          {(forecast.threshold_controls || []).map((control) => (
+            <CBadge color="secondary" className="me-1" key={control}>
+              {formatToken(control)}
+            </CBadge>
+          ))}
+        </div>
+      </CCardBody>
+    </CCard>
+  );
+};
+
 const AgenticInvestigationSummary = ({ report }) => {
   const investigation = report.agentic_investigation;
   if (!investigation) {
@@ -629,6 +715,9 @@ const PillarScorecard = ({ data }) => {
       ))}
       {data.reports.map((report) => (
         <SloPolicySummary key={`${report.pillar}-slo-policy`} report={report} />
+      ))}
+      {data.reports.map((report) => (
+        <ForecastSummary key={`${report.pillar}-forecast`} report={report} />
       ))}
       {data.reports.map((report) => (
         <TriageSummary key={`${report.pillar}-triage`} report={report} />

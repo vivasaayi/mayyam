@@ -60,6 +60,7 @@ pub const REASON_OE_MISSING_TELEMETRY_COLLECTION_METADATA: &str =
 pub const REASON_OE_TELEMETRY_COLLECTION_ERRORS: &str = "EC2_OE_TELEMETRY_COLLECTION_ERRORS";
 pub const REASON_OE_BASIC_MONITORING: &str = "EC2_OE_BASIC_MONITORING";
 pub const REASON_INV_STALE_DATA: &str = "EC2_INV_STALE_DATA";
+pub const REASON_INV_NO_RESOURCES: &str = "EC2_INV_NO_RESOURCES";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -415,6 +416,44 @@ pub struct Ec2ResilienceForecastSnapshot {
     pub recovery_note: &'static str,
     pub missing_data_reason_codes: Vec<String>,
     pub risk_drivers: Vec<Ec2ResilienceForecastRiskDriver>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+pub type Ec2SecurityForecastRisk = Ec2ResilienceForecastRisk;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2SecurityForecastBand {
+    pub horizon_days: u16,
+    pub lower_security_exposure_index: u16,
+    pub expected_security_exposure_index: u16,
+    pub upper_security_exposure_index: u16,
+    pub confidence_level: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2SecurityForecastRiskDriver {
+    pub reason_code: String,
+    pub affected_resources: Vec<String>,
+    pub security_exposure_index_delta: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2SecurityForecastSnapshot {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub baseline_window_days: u16,
+    pub forecast_horizon_days: u16,
+    pub confidence_level: u8,
+    pub forecast_band: Ec2SecurityForecastBand,
+    pub risk_level: Ec2SecurityForecastRisk,
+    pub exposure_capacity_risk: &'static str,
+    pub backtesting_fixture_status: &'static str,
+    pub threshold_controls: Vec<&'static str>,
+    pub what_if_inputs: Vec<&'static str>,
+    pub blocked_by_stale_data: bool,
+    pub blast_radius_summary: &'static str,
+    pub missing_data_reason_codes: Vec<String>,
+    pub risk_drivers: Vec<Ec2SecurityForecastRiskDriver>,
     pub evidence_reason_codes: Vec<String>,
 }
 
@@ -1737,6 +1776,108 @@ pub fn ec2_resilience_forecast_snapshot(report: &PillarReport) -> Ec2ResilienceF
     }
 }
 
+pub fn ec2_security_forecast_snapshot(report: &PillarReport) -> Ec2SecurityForecastSnapshot {
+    const BASELINE_WINDOW_DAYS: u16 = 30;
+    const FORECAST_HORIZON_DAYS: u16 = 30;
+    const CONFIDENCE_LEVEL: u8 = 75;
+
+    let empty_inventory = report.resources_evaluated == 0;
+    let stale_data = report.stale_resources > 0
+        || report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+    let public_ip_count = count_reason(report, REASON_SEC_PUBLIC_IP);
+    let public_packet_count = count_reason(report, REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY);
+    let missing_packet_count = count_reason(report, REASON_SEC_MISSING_PACKET_TELEMETRY);
+    let missing_owner_count = count_reason(report, REASON_SEC_MISSING_OWNER_TAG);
+
+    let expected_security_exposure_index = bounded_u16(
+        100u32
+            + (public_packet_count as u32 * 40)
+            + (public_ip_count as u32 * 28)
+            + (missing_packet_count as u32 * 18)
+            + (missing_owner_count as u32 * 8)
+            + (report.stale_resources as u32 * 30),
+    );
+    let uncertainty = bounded_u16(
+        12u32
+            + (missing_packet_count as u32 * 9)
+            + (missing_owner_count as u32 * 3)
+            + (report.stale_resources as u32 * 14)
+            + empty_inventory as u32 * 25,
+    );
+    let lower_security_exposure_index =
+        expected_security_exposure_index.saturating_sub(uncertainty);
+    let upper_security_exposure_index =
+        expected_security_exposure_index.saturating_add(uncertainty);
+    let risk_level = if stale_data || empty_inventory {
+        Ec2SecurityForecastRisk::Blocked
+    } else if public_packet_count > 0 || upper_security_exposure_index >= 160 {
+        Ec2SecurityForecastRisk::High
+    } else if public_ip_count > 0
+        || missing_packet_count > 0
+        || missing_owner_count > 0
+        || expected_security_exposure_index > 100
+    {
+        Ec2SecurityForecastRisk::Moderate
+    } else {
+        Ec2SecurityForecastRisk::Low
+    };
+
+    Ec2SecurityForecastSnapshot {
+        workflow_id: "ec2_security_forecasting",
+        read_only_mode: true,
+        baseline_window_days: BASELINE_WINDOW_DAYS,
+        forecast_horizon_days: FORECAST_HORIZON_DAYS,
+        confidence_level: CONFIDENCE_LEVEL,
+        forecast_band: Ec2SecurityForecastBand {
+            horizon_days: FORECAST_HORIZON_DAYS,
+            lower_security_exposure_index,
+            expected_security_exposure_index,
+            upper_security_exposure_index,
+            confidence_level: CONFIDENCE_LEVEL,
+        },
+        risk_level,
+        exposure_capacity_risk: ec2_security_exposure_capacity_risk(
+            stale_data,
+            empty_inventory,
+            public_packet_count,
+            public_ip_count,
+            missing_packet_count,
+            missing_owner_count,
+        ),
+        backtesting_fixture_status: if empty_inventory {
+            "blocked_missing_security_inventory_fixture"
+        } else if report.findings.is_empty() {
+            "ready_clean_security_baseline"
+        } else if stale_data || missing_packet_count > 0 {
+            "needs_fresh_security_telemetry_fixture"
+        } else {
+            "ready_security_findings_baseline"
+        },
+        threshold_controls: vec![
+            "security_exposure_index_warning_threshold",
+            "security_exposure_index_critical_threshold",
+        ],
+        what_if_inputs: vec![
+            "verify_public_ip_business_intent",
+            "restore_packet_telemetry",
+            "route_security_findings_to_owner",
+        ],
+        blocked_by_stale_data: stale_data,
+        blast_radius_summary: ec2_security_blast_radius_summary(
+            empty_inventory,
+            public_packet_count,
+            public_ip_count,
+            missing_packet_count,
+        ),
+        missing_data_reason_codes: security_missing_data_reason_codes(report),
+        risk_drivers: ec2_security_forecast_risk_drivers(report),
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
 pub fn ec2_cost_reporting_bundle(report: &PillarReport) -> Ec2CostReportingBundle {
     let posture = ec2_cost_posture_summary(report);
     let reason_codes = sorted_unique_reason_codes(report);
@@ -2004,6 +2145,102 @@ fn ec2_resilience_forecast_risk_drivers(
         }
     })
     .collect()
+}
+
+fn ec2_security_exposure_capacity_risk(
+    stale_data: bool,
+    empty_inventory: bool,
+    public_packet_count: usize,
+    public_ip_count: usize,
+    missing_packet_count: usize,
+    missing_owner_count: usize,
+) -> &'static str {
+    if stale_data {
+        "blocked_until_inventory_refresh"
+    } else if empty_inventory {
+        "blocked_until_security_inventory_exists"
+    } else if public_packet_count > 0 {
+        "public_exposure_with_observed_packet_traffic"
+    } else if public_ip_count > 0 {
+        "public_ip_exposure_requires_network_path_verification"
+    } else if missing_packet_count > 0 {
+        "unknown_due_to_missing_packet_telemetry"
+    } else if missing_owner_count > 0 {
+        "routing_gap_for_security_findings"
+    } else {
+        "within_observed_security_baseline"
+    }
+}
+
+fn ec2_security_blast_radius_summary(
+    empty_inventory: bool,
+    public_packet_count: usize,
+    public_ip_count: usize,
+    missing_packet_count: usize,
+) -> &'static str {
+    if empty_inventory {
+        "security_exposure_blast_radius_unknown_until_inventory_exists"
+    } else if public_packet_count > 0 {
+        "public_ip_instances_with_packet_traffic_need_sg_nacl_route_verification"
+    } else if public_ip_count > 0 {
+        "public_ip_instances_may_expand_internet_exposure_if_network_paths_allow"
+    } else if missing_packet_count > 0 {
+        "exposure_blast_radius_unknown_until_packet_telemetry_is_complete"
+    } else {
+        "no_security_exposure_blast_radius_detected_from_current_evidence"
+    }
+}
+
+fn security_missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    if report.resources_evaluated == 0 {
+        return vec![REASON_INV_NO_RESOURCES.to_string()];
+    }
+
+    report
+        .findings
+        .iter()
+        .filter(|finding| {
+            matches!(
+                finding.reason_code.as_str(),
+                REASON_INV_STALE_DATA
+                    | REASON_SEC_MISSING_OWNER_TAG
+                    | REASON_SEC_MISSING_PACKET_TELEMETRY
+            )
+        })
+        .map(|finding| finding.reason_code.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn ec2_security_forecast_risk_drivers(report: &PillarReport) -> Vec<Ec2SecurityForecastRiskDriver> {
+    [
+        (REASON_INV_STALE_DATA, 30u16),
+        (REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY, 40u16),
+        (REASON_SEC_PUBLIC_IP, 28u16),
+        (REASON_SEC_MISSING_PACKET_TELEMETRY, 18u16),
+        (REASON_SEC_MISSING_OWNER_TAG, 8u16),
+    ]
+    .into_iter()
+    .filter_map(|(reason_code, delta)| {
+        let affected_resources = resources_for_reason(report, reason_code);
+        if affected_resources.is_empty() {
+            None
+        } else {
+            Some(Ec2SecurityForecastRiskDriver {
+                reason_code: reason_code.to_string(),
+                security_exposure_index_delta: bounded_u16(
+                    delta as u32 * affected_resources.len() as u32,
+                ),
+                affected_resources,
+            })
+        }
+    })
+    .collect()
+}
+
+fn bounded_u16(value: u32) -> u16 {
+    value.min(u16::MAX as u32) as u16
 }
 
 fn resources_for_reason(report: &PillarReport, reason_code: &str) -> Vec<String> {
@@ -5236,6 +5473,179 @@ mod tests {
             snapshot.objective.notification_targets,
             vec!["environment:prod"]
         );
+    }
+
+    #[test]
+    fn ec2_security_forecast_snapshot_builds_read_only_exposure_band_from_evidence() {
+        let exposed = fixture(
+            "i-sec-forecast",
+            json!({"owner": "security"}),
+            json!({
+                "state": "running",
+                "public_ip": "54.0.0.1",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[12.0]),
+                        metric("NetworkPacketsOut", &[6.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[exposed], Pillar::Security, now());
+        let forecast = ec2_security_forecast_snapshot(&report);
+
+        assert_eq!(forecast.workflow_id, "ec2_security_forecasting");
+        assert!(forecast.read_only_mode);
+        assert_eq!(forecast.baseline_window_days, 30);
+        assert_eq!(forecast.forecast_horizon_days, 30);
+        assert_eq!(forecast.confidence_level, 75);
+        assert_eq!(forecast.risk_level, Ec2SecurityForecastRisk::High);
+        assert_eq!(
+            forecast.exposure_capacity_risk,
+            "public_exposure_with_observed_packet_traffic"
+        );
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "ready_security_findings_baseline"
+        );
+        assert_eq!(forecast.forecast_band.horizon_days, 30);
+        assert!(forecast.forecast_band.expected_security_exposure_index > 100);
+        assert!(
+            forecast.forecast_band.upper_security_exposure_index
+                > forecast.forecast_band.lower_security_exposure_index
+        );
+        assert!(forecast
+            .threshold_controls
+            .contains(&"security_exposure_index_warning_threshold"));
+        assert!(forecast
+            .what_if_inputs
+            .contains(&"verify_public_ip_business_intent"));
+        assert!(!forecast.blocked_by_stale_data);
+        assert!(forecast
+            .blast_radius_summary
+            .contains("packet_traffic_need_sg_nacl_route_verification"));
+        assert!(forecast.missing_data_reason_codes.is_empty());
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY
+                && driver.affected_resources == vec!["i-sec-forecast"]
+                && driver.security_exposure_index_delta == 40
+        }));
+        assert!(forecast
+            .evidence_reason_codes
+            .contains(&REASON_SEC_PUBLIC_IP.to_string()));
+    }
+
+    #[test]
+    fn ec2_security_forecast_snapshot_blocks_when_security_data_is_stale() {
+        let stale = fixture(
+            "i-sec-stale-forecast",
+            json!({"owner": "security"}),
+            json!({
+                "state": "running",
+                "public_ip": "54.0.0.1",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[12.0]),
+                        metric("NetworkPacketsOut", &[6.0])
+                    ]
+                }
+            }),
+            48,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Security, now());
+        let forecast = ec2_security_forecast_snapshot(&report);
+
+        assert_eq!(forecast.risk_level, Ec2SecurityForecastRisk::Blocked);
+        assert!(forecast.blocked_by_stale_data);
+        assert_eq!(
+            forecast.exposure_capacity_risk,
+            "blocked_until_inventory_refresh"
+        );
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "needs_fresh_security_telemetry_fixture"
+        );
+        assert!(forecast
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_INV_STALE_DATA
+                && driver.affected_resources == vec!["i-sec-stale-forecast"]
+        }));
+    }
+
+    #[test]
+    fn ec2_security_forecast_snapshot_blocks_empty_inventory() {
+        let report = evaluate_ec2_fleet(&[], Pillar::Security, now());
+        let forecast = ec2_security_forecast_snapshot(&report);
+
+        assert_eq!(forecast.risk_level, Ec2SecurityForecastRisk::Blocked);
+        assert!(!forecast.blocked_by_stale_data);
+        assert_eq!(
+            forecast.exposure_capacity_risk,
+            "blocked_until_security_inventory_exists"
+        );
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "blocked_missing_security_inventory_fixture"
+        );
+        assert_eq!(
+            forecast.blast_radius_summary,
+            "security_exposure_blast_radius_unknown_until_inventory_exists"
+        );
+        assert_eq!(
+            forecast.missing_data_reason_codes,
+            vec![REASON_INV_NO_RESOURCES.to_string()]
+        );
+    }
+
+    #[test]
+    fn ec2_security_forecast_snapshot_saturates_large_fleet_indexes() {
+        let resources = (0..2_500)
+            .map(|index| {
+                fixture(
+                    &format!("i-sec-large-{index}"),
+                    json!({}),
+                    json!({
+                        "state": "running",
+                        "public_ip": format!("54.0.{}.{}", index / 255, index % 255),
+                        "availability_zone": "us-east-1a",
+                        "cloudwatch_metrics": {
+                            "metrics": [
+                                metric("NetworkPacketsIn", &[12.0]),
+                                metric("NetworkPacketsOut", &[6.0])
+                            ]
+                        }
+                    }),
+                    1,
+                    now(),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let report = evaluate_ec2_fleet(&resources, Pillar::Security, now());
+        let forecast = ec2_security_forecast_snapshot(&report);
+
+        assert_eq!(forecast.risk_level, Ec2SecurityForecastRisk::High);
+        assert_eq!(
+            forecast.forecast_band.expected_security_exposure_index,
+            u16::MAX
+        );
+        assert_eq!(
+            forecast.forecast_band.upper_security_exposure_index,
+            u16::MAX
+        );
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY
+                && driver.security_exposure_index_delta == u16::MAX
+        }));
     }
 
     #[test]
