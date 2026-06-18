@@ -241,6 +241,35 @@ describe("PillarScorecard", () => {
               },
             ],
           },
+          slo_policy_tracking: {
+            workflow_id: "autoscaling_cost_slo_policy",
+            read_only_mode: true,
+            freshness_required: true,
+            objective: {
+              objective_id: "autoscaling-cost-score-min-90",
+              status: "at_risk",
+              target_score_min: 90,
+              current_score: 64,
+              trend_direction: "degrading",
+              failed_rule_count: 3,
+              affected_resource_count: 2,
+              owner_filters: ["sre"],
+              environment_filters: ["prod"],
+              application_filters: ["checkout"],
+              notification_targets: ["environment:prod", "owner:sre"],
+              policy_state: "active_with_findings",
+              status_history: [
+                "snapshot_collected",
+                "policy_evaluated",
+                "notification_targets_resolved",
+              ],
+            },
+            evidence_reason_codes: [
+              "ASG_COST_MISSING_CAPACITY_TELEMETRY",
+              "ASG_COST_NO_TAGS",
+              "ASG_COST_FIXED_SIZE",
+            ],
+          },
         },
       ],
     };
@@ -290,6 +319,15 @@ describe("PillarScorecard", () => {
     expect(text).toContain("Dry Run Pending Approval");
     expect(text).toContain("autoscaling.cost.remediation.dry_run_planned");
     expect(text).toContain("rollback requires restoring the previous Auto Scaling capacity");
+    expect(text).toContain("Cost SLO Policy");
+    expect(text).toContain("At Risk");
+    expect(text).toContain("autoscaling-cost-score-min-90");
+    expect(text).toContain("score 64 / target 90");
+    expect(text).toContain("Active With Findings");
+    expect(text).toContain("Degrading trend");
+    expect(text).toContain("sre");
+    expect(text).toContain("environment:prod, owner:sre");
+    expect(text).toContain("Snapshot Collected");
 
     await view.unmount();
   });

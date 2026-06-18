@@ -1208,6 +1208,28 @@ async fn autoscaling_cost_pillar_reports_posture_contract() {
                 .unwrap_or_default()
                 .starts_with("autoscaling-cost-")
     }));
+    assert_eq!(
+        reports[0]["slo_policy_tracking"]["workflow_id"],
+        "autoscaling_cost_slo_policy"
+    );
+    assert_eq!(reports[0]["slo_policy_tracking"]["read_only_mode"], true);
+    assert_eq!(
+        reports[0]["slo_policy_tracking"]["objective"]["objective_id"],
+        "autoscaling-cost-score-min-90"
+    );
+    assert_eq!(
+        reports[0]["slo_policy_tracking"]["objective"]["target_score_min"],
+        90
+    );
+    assert!(reports[0]["slo_policy_tracking"]["objective"]["status"]
+        .as_str()
+        .is_some());
+    assert!(reports[0]["slo_policy_tracking"]["objective"]["owner_filters"].is_array());
+    assert!(reports[0]["slo_policy_tracking"]["objective"]["environment_filters"].is_array());
+    assert!(reports[0]["slo_policy_tracking"]["objective"]["application_filters"].is_array());
+    assert!(reports[0]["slo_policy_tracking"]["objective"]["notification_targets"].is_array());
+    assert!(reports[0]["slo_policy_tracking"]["objective"]["status_history"].is_array());
+    assert!(reports[0]["slo_policy_tracking"]["evidence_reason_codes"].is_array());
 }
 
 #[tokio::test]
