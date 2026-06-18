@@ -670,6 +670,48 @@ describe("PillarScorecard", () => {
               "ASG_RES_UNHEALTHY_INSTANCE_TELEMETRY",
             ],
           },
+          forecasting: {
+            workflow_id: "autoscaling_resilience_forecasting",
+            read_only_mode: true,
+            baseline_window_days: 30,
+            forecast_horizon_days: 30,
+            confidence_level: 75,
+            forecast_band: {
+              horizon_days: 30,
+              lower_recovery_exposure_index: 112,
+              expected_recovery_exposure_index: 142,
+              upper_recovery_exposure_index: 172,
+              confidence_level: 75,
+            },
+            risk_level: "high",
+            recovery_capacity_risk:
+              "active_unhealthy_instance_replacement_exposure",
+            backtesting_fixture_status: "ready_resilience_findings_baseline",
+            threshold_controls: [
+              "recovery_exposure_index_warning_threshold",
+              "recovery_exposure_index_critical_threshold",
+            ],
+            what_if_inputs: [
+              "distribute_auto_scaling_capacity_across_availability_zones",
+            ],
+            blocked_by_stale_data: false,
+            blast_radius_summary:
+              "2 Auto Scaling group(s) have resilience recovery forecast risk across placement, replacement, health, or scaling-process evidence.",
+            recovery_note:
+              "Forecast is read-only; recovery actions require remediation approval and rollback notes.",
+            missing_data_reason_codes: [],
+            risk_drivers: [
+              {
+                reason_code: "ASG_RES_SINGLE_AZ",
+                affected_resources: ["asg-single-az"],
+                recovery_exposure_index_delta: 30,
+              },
+            ],
+            evidence_reason_codes: [
+              "ASG_RES_SINGLE_AZ",
+              "ASG_RES_UNHEALTHY_INSTANCE_TELEMETRY",
+            ],
+          },
         },
       ],
     };
@@ -711,6 +753,12 @@ describe("PillarScorecard", () => {
     expect(text).toContain("autoscaling-resilience-score-min-95");
     expect(text).toContain("95");
     expect(text).toContain("Resilience Policy Evaluated");
+    expect(text).toContain("Resilience Forecast");
+    expect(text).toContain("autoscaling_resilience_forecasting");
+    expect(text).toContain("expected 142");
+    expect(text).toContain("75% confidence");
+    expect(text).toContain("Active Unhealthy Instance Replacement Exposure");
+    expect(text).toContain("Recovery Exposure Index Warning Threshold");
 
     await view.unmount();
   });

@@ -318,6 +318,45 @@ pub struct AsgCostForecastSnapshot {
     pub evidence_reason_codes: Vec<String>,
 }
 
+pub type AsgResilienceForecastRisk = AsgCostForecastRisk;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgResilienceForecastBand {
+    pub horizon_days: u16,
+    pub lower_recovery_exposure_index: u16,
+    pub expected_recovery_exposure_index: u16,
+    pub upper_recovery_exposure_index: u16,
+    pub confidence_level: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgResilienceForecastRiskDriver {
+    pub reason_code: String,
+    pub affected_resources: Vec<String>,
+    pub recovery_exposure_index_delta: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgResilienceForecastSnapshot {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub baseline_window_days: u16,
+    pub forecast_horizon_days: u16,
+    pub confidence_level: u8,
+    pub forecast_band: AsgResilienceForecastBand,
+    pub risk_level: AsgResilienceForecastRisk,
+    pub recovery_capacity_risk: &'static str,
+    pub backtesting_fixture_status: &'static str,
+    pub threshold_controls: Vec<&'static str>,
+    pub what_if_inputs: Vec<&'static str>,
+    pub blocked_by_stale_data: bool,
+    pub blast_radius_summary: String,
+    pub recovery_note: &'static str,
+    pub missing_data_reason_codes: Vec<String>,
+    pub risk_drivers: Vec<AsgResilienceForecastRiskDriver>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct AsgCostExecutiveSummary {
     pub report_id: &'static str,
@@ -989,6 +1028,117 @@ pub fn asg_cost_forecast_snapshot(report: &PillarReport) -> AsgCostForecastSnaps
     }
 }
 
+pub fn asg_resilience_forecast_snapshot(report: &PillarReport) -> AsgResilienceForecastSnapshot {
+    const BASELINE_WINDOW_DAYS: u16 = 30;
+    const FORECAST_HORIZON_DAYS: u16 = 30;
+    const CONFIDENCE_LEVEL: u8 = 75;
+
+    let stale_count = count_reason(report, REASON_INV_STALE_DATA);
+    let telemetry_error_count = count_reason(report, REASON_TEL_COLLECTION_ERRORS);
+    let missing_replacement_count = count_reason(report, REASON_RES_MISSING_REPLACEMENT_TELEMETRY);
+    let missing_health_count = count_reason(report, REASON_RES_MISSING_INSTANCE_HEALTH_TELEMETRY);
+    let unhealthy_count = count_reason(report, REASON_RES_UNHEALTHY_INSTANCE_TELEMETRY);
+    let single_az_count = count_reason(report, REASON_RES_SINGLE_AZ);
+    let ec2_health_check_count = count_reason(report, REASON_RES_ELB_HEALTH_CHECK_EC2_ONLY);
+    let suspended_process_count = count_reason(report, REASON_RES_SUSPENDED_PROCESSES);
+    let desired_below_min_count = count_reason(report, REASON_RES_DESIRED_BELOW_MIN);
+    let missing_collection_metadata_count =
+        count_reason(report, REASON_TEL_MISSING_COLLECTION_METADATA);
+    let blocked_by_stale_data = report.stale_resources > 0 || stale_count > 0;
+
+    let expected_recovery_exposure_index = 100u16
+        + (unhealthy_count as u16 * 35)
+        + (single_az_count as u16 * 30)
+        + (suspended_process_count as u16 * 24)
+        + (ec2_health_check_count as u16 * 18)
+        + (missing_health_count as u16 * 16)
+        + (missing_replacement_count as u16 * 14)
+        + (desired_below_min_count as u16 * 12)
+        + (missing_collection_metadata_count as u16 * 8)
+        + (telemetry_error_count as u16 * 20)
+        + (report.stale_resources as u16 * 28);
+    let uncertainty = 10u16
+        + (missing_health_count as u16 * 8)
+        + (missing_replacement_count as u16 * 6)
+        + (missing_collection_metadata_count as u16 * 5)
+        + (telemetry_error_count as u16 * 8)
+        + (report.stale_resources as u16 * 12)
+        + (report.resources_evaluated == 0) as u16 * 25;
+    let lower_recovery_exposure_index =
+        expected_recovery_exposure_index.saturating_sub(uncertainty);
+    let upper_recovery_exposure_index = expected_recovery_exposure_index + uncertainty;
+    let risk_level = if blocked_by_stale_data {
+        AsgResilienceForecastRisk::Blocked
+    } else if unhealthy_count > 0 || upper_recovery_exposure_index >= 155 {
+        AsgResilienceForecastRisk::High
+    } else if single_az_count > 0
+        || suspended_process_count > 0
+        || ec2_health_check_count > 0
+        || missing_health_count > 0
+        || missing_replacement_count > 0
+        || desired_below_min_count > 0
+        || telemetry_error_count > 0
+        || expected_recovery_exposure_index > 100
+    {
+        AsgResilienceForecastRisk::Moderate
+    } else {
+        AsgResilienceForecastRisk::Low
+    };
+    let risk_drivers = asg_resilience_forecast_risk_drivers(report);
+
+    AsgResilienceForecastSnapshot {
+        workflow_id: "autoscaling_resilience_forecasting",
+        read_only_mode: true,
+        baseline_window_days: BASELINE_WINDOW_DAYS,
+        forecast_horizon_days: FORECAST_HORIZON_DAYS,
+        confidence_level: CONFIDENCE_LEVEL,
+        forecast_band: AsgResilienceForecastBand {
+            horizon_days: FORECAST_HORIZON_DAYS,
+            lower_recovery_exposure_index,
+            expected_recovery_exposure_index,
+            upper_recovery_exposure_index,
+            confidence_level: CONFIDENCE_LEVEL,
+        },
+        risk_level,
+        recovery_capacity_risk: asg_resilience_recovery_capacity_risk(
+            blocked_by_stale_data,
+            unhealthy_count,
+            single_az_count,
+            suspended_process_count,
+            missing_health_count,
+            missing_replacement_count,
+        ),
+        backtesting_fixture_status: if report.findings.is_empty() {
+            "ready_clean_resilience_baseline"
+        } else if blocked_by_stale_data
+            || missing_health_count > 0
+            || missing_replacement_count > 0
+            || telemetry_error_count > 0
+        {
+            "needs_fresh_resilience_telemetry_fixture"
+        } else {
+            "ready_resilience_findings_baseline"
+        },
+        threshold_controls: vec![
+            "recovery_exposure_index_warning_threshold",
+            "recovery_exposure_index_critical_threshold",
+        ],
+        what_if_inputs: vec![
+            "distribute_auto_scaling_capacity_across_availability_zones",
+            "restore_instance_health_and_replacement_telemetry",
+            "review_suspended_scaling_process_recovery",
+            "switch_load_balanced_groups_to_elb_health_checks",
+        ],
+        blocked_by_stale_data,
+        blast_radius_summary: asg_resilience_forecast_blast_radius_summary(&risk_drivers),
+        recovery_note:
+            "Forecast is read-only; recovery actions require remediation approval and rollback notes.",
+        missing_data_reason_codes: asg_resilience_forecast_missing_data_reason_codes(report),
+        risk_drivers,
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
 pub fn asg_cost_reporting_bundle(report: &PillarReport) -> AsgCostReportingBundle {
     let posture = asg_cost_posture_summary(report);
     let reason_codes = sorted_unique_reason_codes(report);
@@ -1201,6 +1351,98 @@ fn asg_cost_forecast_risk_drivers(report: &PillarReport) -> Vec<AsgCostForecastR
         }
     })
     .collect()
+}
+
+fn asg_resilience_forecast_missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    [
+        REASON_INV_STALE_DATA,
+        REASON_TEL_MISSING_COLLECTION_METADATA,
+        REASON_TEL_COLLECTION_ERRORS,
+        REASON_RES_MISSING_REPLACEMENT_TELEMETRY,
+        REASON_RES_MISSING_INSTANCE_HEALTH_TELEMETRY,
+    ]
+    .into_iter()
+    .filter(|reason_code| {
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == *reason_code)
+    })
+    .map(str::to_string)
+    .collect()
+}
+
+fn asg_resilience_forecast_risk_drivers(
+    report: &PillarReport,
+) -> Vec<AsgResilienceForecastRiskDriver> {
+    [
+        (REASON_INV_STALE_DATA, 28u16),
+        (REASON_TEL_COLLECTION_ERRORS, 20u16),
+        (REASON_RES_UNHEALTHY_INSTANCE_TELEMETRY, 35u16),
+        (REASON_RES_SINGLE_AZ, 30u16),
+        (REASON_RES_SUSPENDED_PROCESSES, 24u16),
+        (REASON_RES_ELB_HEALTH_CHECK_EC2_ONLY, 18u16),
+        (REASON_RES_MISSING_INSTANCE_HEALTH_TELEMETRY, 16u16),
+        (REASON_RES_MISSING_REPLACEMENT_TELEMETRY, 14u16),
+        (REASON_RES_DESIRED_BELOW_MIN, 12u16),
+        (REASON_TEL_MISSING_COLLECTION_METADATA, 8u16),
+    ]
+    .into_iter()
+    .filter_map(|(reason_code, delta)| {
+        let affected_resources = resources_for_reason(report, reason_code);
+        if affected_resources.is_empty() {
+            None
+        } else {
+            Some(AsgResilienceForecastRiskDriver {
+                reason_code: reason_code.to_string(),
+                recovery_exposure_index_delta: delta * affected_resources.len() as u16,
+                affected_resources,
+            })
+        }
+    })
+    .collect()
+}
+
+fn asg_resilience_recovery_capacity_risk(
+    forecast_blocked: bool,
+    unhealthy_count: usize,
+    single_az_count: usize,
+    suspended_process_count: usize,
+    missing_health_count: usize,
+    missing_replacement_count: usize,
+) -> &'static str {
+    if forecast_blocked {
+        "blocked_until_inventory_refresh"
+    } else if unhealthy_count > 0 {
+        "active_unhealthy_instance_replacement_exposure"
+    } else if suspended_process_count > 0 {
+        "scaling_process_recovery_exposure"
+    } else if single_az_count > 0 {
+        "single_az_recovery_exposure"
+    } else if missing_health_count > 0 || missing_replacement_count > 0 {
+        "missing_recovery_telemetry"
+    } else {
+        "low_recovery_exposure"
+    }
+}
+
+fn asg_resilience_forecast_blast_radius_summary(
+    risk_drivers: &[AsgResilienceForecastRiskDriver],
+) -> String {
+    let impacted_groups = sorted_unique_resources(
+        risk_drivers
+            .iter()
+            .flat_map(|driver| driver.affected_resources.iter().cloned()),
+    );
+
+    if impacted_groups.is_empty() {
+        "No Auto Scaling groups have resilience forecast risk in the current evidence.".to_string()
+    } else {
+        format!(
+            "{} Auto Scaling group(s) have resilience recovery forecast risk across placement, replacement, health, or scaling-process evidence.",
+            impacted_groups.len()
+        )
+    }
 }
 
 fn asg_cost_capacity_risk(
@@ -3160,6 +3402,109 @@ mod tests {
         assert!(snapshot
             .evidence_reason_codes
             .contains(&REASON_INV_STALE_DATA.to_string()));
+    }
+
+    #[test]
+    fn asg_resilience_forecast_snapshot_builds_read_only_recovery_exposure() {
+        let mut single_az_data = healthy_data();
+        single_az_data["availability_zones"] = json!(["us-east-1a"]);
+        let single_az = fixture(
+            "asg-res-forecast-single-az",
+            json!({"owner": "sre"}),
+            single_az_data,
+            now(),
+        );
+
+        let mut unhealthy_data = healthy_data();
+        unhealthy_data["unhealthy_instance_count"] = json!(2);
+        unhealthy_data["instance_health"] = json!([
+            {"instance_id": "i-1", "health_status": "Unhealthy"},
+            {"instance_id": "i-2", "health_status": "Unhealthy"}
+        ]);
+        let unhealthy = fixture(
+            "asg-res-forecast-unhealthy",
+            json!({"owner": "sre"}),
+            unhealthy_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[single_az, unhealthy], Pillar::Resilience, now());
+        let forecast = asg_resilience_forecast_snapshot(&report);
+
+        assert_eq!(forecast.workflow_id, "autoscaling_resilience_forecasting");
+        assert!(forecast.read_only_mode);
+        assert_eq!(forecast.baseline_window_days, 30);
+        assert_eq!(forecast.forecast_horizon_days, 30);
+        assert_eq!(forecast.confidence_level, 75);
+        assert_eq!(forecast.risk_level, AsgResilienceForecastRisk::High);
+        assert_eq!(
+            forecast.recovery_capacity_risk,
+            "active_unhealthy_instance_replacement_exposure"
+        );
+        assert!(!forecast.blocked_by_stale_data);
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "ready_resilience_findings_baseline"
+        );
+        assert!(forecast
+            .threshold_controls
+            .contains(&"recovery_exposure_index_warning_threshold"));
+        assert!(forecast
+            .what_if_inputs
+            .contains(&"distribute_auto_scaling_capacity_across_availability_zones"));
+        assert!(forecast.forecast_band.expected_recovery_exposure_index > 100);
+        assert!(forecast.blast_radius_summary.contains("Auto Scaling group"));
+        assert!(forecast.recovery_note.contains("read-only"));
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_RES_SINGLE_AZ
+                && driver.affected_resources == vec!["asg-res-forecast-single-az"]
+        }));
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_RES_UNHEALTHY_INSTANCE_TELEMETRY
+                && driver.affected_resources == vec!["asg-res-forecast-unhealthy"]
+        }));
+        assert!(forecast.missing_data_reason_codes.is_empty());
+        assert!(forecast
+            .evidence_reason_codes
+            .contains(&REASON_RES_UNHEALTHY_INSTANCE_TELEMETRY.to_string()));
+    }
+
+    #[test]
+    fn asg_resilience_forecast_snapshot_blocks_on_stale_or_missing_recovery_data() {
+        let mut missing_data = healthy_data();
+        for field in [
+            "availability_zones",
+            "unhealthy_instance_count",
+            "in_service_instance_count",
+        ] {
+            missing_data.as_object_mut().expect("object").remove(field);
+        }
+        let stale_missing = fixture(
+            "asg-res-forecast-stale",
+            json!({"owner": "sre"}),
+            missing_data,
+            now() - Duration::hours(30),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale_missing], Pillar::Resilience, now());
+        let forecast = asg_resilience_forecast_snapshot(&report);
+
+        assert_eq!(forecast.risk_level, AsgResilienceForecastRisk::Blocked);
+        assert!(forecast.blocked_by_stale_data);
+        assert_eq!(
+            forecast.recovery_capacity_risk,
+            "blocked_until_inventory_refresh"
+        );
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "needs_fresh_resilience_telemetry_fixture"
+        );
+        assert!(forecast
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(forecast
+            .missing_data_reason_codes
+            .contains(&REASON_RES_MISSING_INSTANCE_HEALTH_TELEMETRY.to_string()));
     }
 
     #[test]
