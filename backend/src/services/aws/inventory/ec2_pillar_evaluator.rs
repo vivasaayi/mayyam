@@ -130,6 +130,7 @@ pub struct Ec2TriageContext {
 pub type Ec2CostTriageContext = Ec2TriageContext;
 pub type Ec2ResilienceTriageContext = Ec2TriageContext;
 pub type Ec2PerformanceTriageContext = Ec2TriageContext;
+pub type Ec2ScalabilityTriageContext = Ec2TriageContext;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -850,6 +851,70 @@ pub fn ec2_performance_triage_context(report: &PillarReport) -> Ec2PerformanceTr
         report.pillar,
         "ec2-performance-deterministic-context-v1",
         "ec2-performance-ai-triage-v1",
+        facts,
+        hypotheses,
+        missing_data_questions,
+        evidence_citations,
+    )
+}
+
+pub fn ec2_scalability_triage_context(report: &PillarReport) -> Ec2ScalabilityTriageContext {
+    let mut facts = Vec::new();
+    let mut hypotheses = Vec::new();
+    let mut missing_data_questions = Vec::new();
+    let mut evidence_citations = Vec::new();
+    let stale_resource_ids: BTreeSet<&str> = report
+        .findings
+        .iter()
+        .filter(|finding| finding.reason_code == REASON_INV_STALE_DATA)
+        .map(|finding| finding.resource_id.as_str())
+        .collect();
+
+    for finding in &report.findings {
+        facts.push(format!(
+            "{} affects {} with {:?} severity",
+            finding.reason_code, finding.resource_id, finding.severity
+        ));
+        evidence_citations.push(Ec2EvidenceCitation {
+            reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            evidence: finding.evidence.clone(),
+        });
+
+        match finding.reason_code.as_str() {
+            REASON_SCALE_MISSING_DEMAND_TELEMETRY => {
+                missing_data_questions.push(format!(
+                    "Collect CPUUtilization, NetworkIn, and NetworkOut telemetry for {} before diagnosing EC2 scaling pressure",
+                    finding.resource_id
+                ));
+            }
+            REASON_SCALE_HIGH_CPU_PRESSURE_TELEMETRY => {
+                if stale_resource_ids.contains(finding.resource_id.as_str()) {
+                    missing_data_questions.push(format!(
+                        "Refresh EC2 inventory for {} before interpreting high CPUUtilization as current scaling pressure",
+                        finding.resource_id
+                    ));
+                } else {
+                    hypotheses.push(format!(
+                        "{} may need scale-out, workload distribution, or rightsizing; compare CPUUtilization with request, network, autoscaling, and deployment evidence before recommending capacity changes",
+                        finding.resource_id
+                    ));
+                }
+            }
+            REASON_INV_STALE_DATA => missing_data_questions.push(format!(
+                "Refresh EC2 inventory for {} before generating scalability triage",
+                finding.resource_id
+            )),
+            _ => {}
+        }
+    }
+
+    ec2_triage_context(
+        "ec2_scalability_triage_context",
+        report.pillar,
+        "ec2-scalability-deterministic-context-v1",
+        "ec2-scalability-ai-triage-v1",
         facts,
         hypotheses,
         missing_data_questions,
@@ -4745,6 +4810,122 @@ mod tests {
             .any(|question| question.contains("Refresh EC2 inventory")));
         assert!(triage.evidence_citations.iter().any(|citation| {
             citation.reason_code == REASON_INV_STALE_DATA && citation.resource_id == "i-perf-stale"
+        }));
+    }
+
+    #[test]
+    fn ec2_scalability_triage_context_separates_facts_hypotheses_and_missing_data() {
+        let missing = fixture(
+            "i-scale-gap",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[35.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let pressured = fixture(
+            "i-scale-hot",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[88.0, 92.0]),
+                        metric("NetworkIn", &[1024.0]),
+                        metric("NetworkOut", &[2048.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[missing, pressured], Pillar::Scalability, now());
+        let triage = ec2_scalability_triage_context(&report);
+
+        assert_eq!(triage.workflow_id, "ec2_scalability_triage_context");
+        assert_eq!(triage.pillar, Pillar::Scalability);
+        assert_eq!(
+            triage.context_builder_id,
+            "ec2-scalability-deterministic-context-v1"
+        );
+        assert_eq!(triage.prompt_template_id, "ec2-scalability-ai-triage-v1");
+        assert_eq!(triage.generation_mode, "deterministic_no_llm");
+        assert_eq!(triage.max_prompt_tokens, 1200);
+        assert_eq!(
+            triage.provider_routing,
+            vec!["primary_ops_llm", "fallback_ops_llm"]
+        );
+        assert!(triage.guardrails.read_only_mode);
+        assert!(triage.guardrails.separate_facts_from_hypotheses);
+        assert!(triage.guardrails.ask_for_missing_data);
+        assert!(triage.guardrails.no_llm_invocation);
+        assert!(triage.guardrails.no_mutation_planning);
+        assert_eq!(triage.facts.len(), 2);
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("scale-out")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("NetworkIn")));
+        assert_eq!(triage.evidence_citations.len(), 2);
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_SCALE_HIGH_CPU_PRESSURE_TELEMETRY
+                && citation.resource_id == "i-scale-hot"
+        }));
+    }
+
+    #[test]
+    fn ec2_scalability_triage_context_asks_for_refresh_when_inventory_is_stale() {
+        let stale = fixture(
+            "i-scale-stale",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[91.0, 93.0]),
+                        metric("NetworkIn", &[1024.0]),
+                        metric("NetworkOut", &[2048.0])
+                    ]
+                }
+            }),
+            48,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Scalability, now());
+        let triage = ec2_scalability_triage_context(&report);
+
+        assert!(triage
+            .facts
+            .iter()
+            .any(|fact| fact.contains(REASON_INV_STALE_DATA)));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("Refresh EC2 inventory")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("before interpreting high CPUUtilization")));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .all(|hypothesis| !hypothesis.contains("scale-out")));
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_INV_STALE_DATA && citation.resource_id == "i-scale-stale"
         }));
     }
 

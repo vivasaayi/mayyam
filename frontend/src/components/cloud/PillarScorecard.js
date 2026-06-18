@@ -29,6 +29,13 @@ const scoreColor = (score) => {
   return "danger";
 };
 
+const formatEvidence = (evidence) => {
+  if (!evidence || Object.keys(evidence).length === 0) {
+    return "No evidence payload";
+  }
+  return JSON.stringify(evidence);
+};
+
 const FindingRow = ({ finding }) => {
   const [open, setOpen] = useState(false);
   return (
@@ -233,10 +240,12 @@ const TriageSummary = ({ report }) => {
   }
 
   const guardrails = triage.guardrails || {};
+  const deterministicOnly = guardrails.no_llm_invocation;
   return (
     <CCard className="mb-3">
       <CCardHeader>
-        {formatToken(report.pillar)} AI Triage
+        {formatToken(report.pillar)}{" "}
+        {deterministicOnly ? "Triage Context" : "AI Triage"}
         <CBadge color="info" className="ms-2">
           {formatToken(triage.generation_mode)}
         </CBadge>
@@ -249,7 +258,9 @@ const TriageSummary = ({ report }) => {
             <div className="small">{triage.prompt_template_id}</div>
           </CCol>
           <CCol md={4}>
-            <div className="text-medium-emphasis small">Routing</div>
+            <div className="text-medium-emphasis small">
+              {deterministicOnly ? "Provider Routing (not invoked)" : "Routing"}
+            </div>
             <div className="fw-semibold">
               {(triage.provider_routing || []).join(", ") || "None"}
             </div>
@@ -293,6 +304,20 @@ const TriageSummary = ({ report }) => {
             ))}
           </CCol>
         </CRow>
+        {(triage.evidence_citations || []).length > 0 && (
+          <div className="mt-3">
+            <div className="text-medium-emphasis small">Evidence Citations</div>
+            {(triage.evidence_citations || []).map((citation, idx) => (
+              <div className="small" key={`citation-${idx}`}>
+                {citation.reason_code} · {citation.resource_id} ·{" "}
+                {formatToken(citation.severity)}
+                <pre className="small mb-2">
+                  {formatEvidence(citation.evidence)}
+                </pre>
+              </div>
+            ))}
+          </div>
+        )}
       </CCardBody>
     </CCard>
   );

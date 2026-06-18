@@ -183,10 +183,11 @@ describe("PillarScorecard", () => {
     expect(text).toContain("ec2-performance-core-telemetry-present");
     expect(text).toContain("ec2-performance-cpu-headroom");
     expect(text).toContain("EC2_INV_STALE_DATA");
-    expect(text).toContain("Performance AI Triage");
+    expect(text).toContain("Performance Triage Context");
     expect(text).toContain("Deterministic No Llm");
     expect(text).toContain("ec2-performance-deterministic-context-v1");
     expect(text).toContain("ec2-performance-ai-triage-v1");
+    expect(text).toContain("Provider Routing (not invoked)");
     expect(text).toContain("primary_ops_llm");
     expect(text).toContain("1200 token budget");
     expect(text).toContain("Read only");
@@ -238,6 +239,42 @@ describe("PillarScorecard", () => {
               },
             ],
           },
+          triage_context: {
+            workflow_id: "ec2_scalability_triage_context",
+            context_builder_id: "ec2-scalability-deterministic-context-v1",
+            prompt_template_id: "ec2-scalability-ai-triage-v1",
+            generation_mode: "deterministic_no_llm",
+            max_prompt_tokens: 1200,
+            provider_routing: ["primary_ops_llm", "fallback_ops_llm"],
+            guardrails: {
+              read_only_mode: true,
+              no_llm_invocation: true,
+            },
+            facts: [
+              "EC2_SCALE_MISSING_DEMAND_TELEMETRY affects i-scale-gap with Medium severity",
+              "EC2_SCALE_HIGH_CPU_PRESSURE_TELEMETRY affects i-scale-hot with High severity",
+            ],
+            hypotheses: [
+              "i-scale-hot may need scale-out, workload distribution, or rightsizing",
+            ],
+            missing_data_questions: [
+              "Collect CPUUtilization, NetworkIn, and NetworkOut telemetry for i-scale-gap before diagnosing EC2 scaling pressure",
+            ],
+            evidence_citations: [
+              {
+                reason_code: "EC2_SCALE_MISSING_DEMAND_TELEMETRY",
+                resource_id: "i-scale-gap",
+                severity: "medium",
+                evidence: { missing_metrics: ["NetworkIn"] },
+              },
+              {
+                reason_code: "EC2_SCALE_HIGH_CPU_PRESSURE_TELEMETRY",
+                resource_id: "i-scale-hot",
+                severity: "high",
+                evidence: { metric_name: "CPUUtilization", max: 92 },
+              },
+            ],
+          },
           findings: [
             {
               severity: "medium",
@@ -275,6 +312,19 @@ describe("PillarScorecard", () => {
     expect(text).toContain("i-scale-gap");
     expect(text).toContain("i-scale-hot");
     expect(text).toContain("scale-out or rightsizing pressure");
+    expect(text).toContain("Scalability Triage Context");
+    expect(text).toContain("ec2-scalability-deterministic-context-v1");
+    expect(text).toContain("ec2-scalability-ai-triage-v1");
+    expect(text).toContain("Deterministic No Llm");
+    expect(text).toContain("Provider Routing (not invoked)");
+    expect(text).toContain("Read only");
+    expect(text).toContain("Deterministic context only");
+    expect(text).toContain("workload distribution");
+    expect(text).toContain("before diagnosing EC2 scaling pressure");
+    expect(text).toContain("Evidence Citations");
+    expect(text).toContain("EC2_SCALE_HIGH_CPU_PRESSURE_TELEMETRY");
+    expect(text).toContain('"metric_name":"CPUUtilization"');
+    expect(text).toContain('"missing_metrics":["NetworkIn"]');
 
     await view.unmount();
   });
