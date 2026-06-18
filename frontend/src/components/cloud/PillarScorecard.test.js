@@ -377,6 +377,48 @@ describe("PillarScorecard", () => {
               },
             ],
           },
+          triage_context: {
+            workflow_id: "ec2_security_triage_context",
+            context_builder_id: "ec2-security-deterministic-context-v1",
+            prompt_template_id: "ec2-security-ai-triage-v1",
+            generation_mode: "deterministic_no_llm",
+            max_prompt_tokens: 1200,
+            provider_routing: ["primary_ops_llm", "fallback_ops_llm"],
+            guardrails: {
+              read_only_mode: true,
+              evidence_required: true,
+              separate_facts_from_hypotheses: true,
+              ask_for_missing_data: true,
+              no_llm_invocation: true,
+              no_mutation_planning: true,
+            },
+            facts: [
+              "EC2_SEC_PUBLIC_IP_ASSIGNED affects i-sec-exposed with High severity",
+              "EC2_SEC_MISSING_PACKET_TELEMETRY affects i-sec-gap with Medium severity",
+            ],
+            hypotheses: [
+              "i-sec-exposed has a public IP assignment in collected EC2 evidence; verify security groups, network ACLs, route tables, and business intent before treating it as internet-reachable exposure",
+              "i-sec-exposed has packet telemetry alongside public IP evidence; compare flow logs, security groups, and allowed ingress before recommending any access change",
+            ],
+            missing_data_questions: [
+              "Assign owner, team, or service metadata for i-sec-exposed before routing security posture follow-up",
+              "Collect NetworkPacketsIn and NetworkPacketsOut telemetry for i-sec-gap before judging observed packet exposure",
+            ],
+            evidence_citations: [
+              {
+                reason_code: "EC2_SEC_PUBLIC_IP_ASSIGNED",
+                resource_id: "i-sec-exposed",
+                severity: "high",
+                evidence: { public_ip: "54.0.0.1" },
+              },
+              {
+                reason_code: "EC2_SEC_MISSING_PACKET_TELEMETRY",
+                resource_id: "i-sec-gap",
+                severity: "medium",
+                evidence: { missing_metrics: ["NetworkPacketsIn"] },
+              },
+            ],
+          },
           findings: [
             {
               severity: "high",
@@ -413,6 +455,17 @@ describe("PillarScorecard", () => {
     expect(text).toContain("EC2_SEC_MISSING_OWNER_TAG");
     expect(text).toContain("EC2_SEC_MISSING_PACKET_TELEMETRY");
     expect(text).toContain("EC2_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY");
+    expect(text).toContain("Security Triage Context");
+    expect(text).toContain("ec2-security-deterministic-context-v1");
+    expect(text).toContain("ec2-security-ai-triage-v1");
+    expect(text).toContain("Provider Routing (not invoked)");
+    expect(text).toContain("primary_ops_llm");
+    expect(text).toContain("1200 token budget");
+    expect(text).toContain("Read only");
+    expect(text).toContain("Deterministic context only");
+    expect(text).toContain("public IP assignment");
+    expect(text).toContain("security groups");
+    expect(text).toContain("NetworkPacketsIn and NetworkPacketsOut");
     expect(text).toContain("i-sec-exposed");
     expect(text).toContain("i-sec-gap");
     expect(text).toContain("intentionally internet-facing");

@@ -129,6 +129,7 @@ pub struct Ec2TriageContext {
 }
 
 pub type Ec2CostTriageContext = Ec2TriageContext;
+pub type Ec2SecurityTriageContext = Ec2TriageContext;
 pub type Ec2ResilienceTriageContext = Ec2TriageContext;
 pub type Ec2PerformanceTriageContext = Ec2TriageContext;
 pub type Ec2ScalabilityTriageContext = Ec2TriageContext;
@@ -803,6 +804,85 @@ pub fn ec2_cost_triage_context(report: &PillarReport) -> Ec2CostTriageContext {
         report.pillar,
         "ec2-cost-deterministic-context-v1",
         "ec2-cost-ai-triage-v1",
+        facts,
+        hypotheses,
+        missing_data_questions,
+        evidence_citations,
+    )
+}
+
+pub fn ec2_security_triage_context(report: &PillarReport) -> Ec2SecurityTriageContext {
+    let mut facts = Vec::new();
+    let mut hypotheses = Vec::new();
+    let mut missing_data_questions = Vec::new();
+    let mut evidence_citations = Vec::new();
+    let stale_resource_ids: BTreeSet<&str> = report
+        .findings
+        .iter()
+        .filter(|finding| finding.reason_code == REASON_INV_STALE_DATA)
+        .map(|finding| finding.resource_id.as_str())
+        .collect();
+
+    for finding in &report.findings {
+        facts.push(format!(
+            "{} affects {} with {:?} severity",
+            finding.reason_code, finding.resource_id, finding.severity
+        ));
+        evidence_citations.push(Ec2EvidenceCitation {
+            reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            evidence: finding.evidence.clone(),
+        });
+
+        match finding.reason_code.as_str() {
+            REASON_SEC_PUBLIC_IP => {
+                if stale_resource_ids.contains(finding.resource_id.as_str()) {
+                    missing_data_questions.push(format!(
+                        "Refresh EC2 inventory for {} before interpreting public IP assignment as current exposure",
+                        finding.resource_id
+                    ));
+                } else {
+                    hypotheses.push(format!(
+                        "{} has a public IP assignment in collected EC2 evidence; verify security groups, network ACLs, route tables, and business intent before treating it as internet-reachable exposure",
+                        finding.resource_id
+                    ));
+                }
+            }
+            REASON_SEC_MISSING_OWNER_TAG => missing_data_questions.push(format!(
+                "Assign owner, team, or service metadata for {} before routing security posture follow-up",
+                finding.resource_id
+            )),
+            REASON_SEC_MISSING_PACKET_TELEMETRY => missing_data_questions.push(format!(
+                "Collect NetworkPacketsIn and NetworkPacketsOut telemetry for {} before judging observed packet exposure",
+                finding.resource_id
+            )),
+            REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY => {
+                if stale_resource_ids.contains(finding.resource_id.as_str()) {
+                    missing_data_questions.push(format!(
+                        "Refresh EC2 inventory for {} before interpreting packet telemetry as current public traffic",
+                        finding.resource_id
+                    ));
+                } else {
+                    hypotheses.push(format!(
+                        "{} has packet telemetry alongside public IP evidence; compare flow logs, security groups, and allowed ingress before recommending any access change",
+                        finding.resource_id
+                    ));
+                }
+            }
+            REASON_INV_STALE_DATA => missing_data_questions.push(format!(
+                "Refresh EC2 inventory for {} before generating security triage",
+                finding.resource_id
+            )),
+            _ => {}
+        }
+    }
+
+    ec2_triage_context(
+        "ec2_security_triage_context",
+        report.pillar,
+        "ec2-security-deterministic-context-v1",
+        "ec2-security-ai-triage-v1",
         facts,
         hypotheses,
         missing_data_questions,
@@ -3167,6 +3247,129 @@ mod tests {
             .rules
             .iter()
             .all(|rule| rule.status == Ec2PostureStatus::Pass));
+    }
+
+    #[test]
+    fn ec2_security_triage_context_separates_facts_hypotheses_and_missing_data() {
+        let exposed = fixture(
+            "i-sec-exposed",
+            json!({}),
+            json!({
+                "state": "running",
+                "public_ip": "54.0.0.1",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[12.0]),
+                        metric("NetworkPacketsOut", &[6.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let telemetry_gap = fixture(
+            "i-sec-gap",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "private_ip": "10.0.0.5",
+                "availability_zone": "us-east-1a"
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[exposed, telemetry_gap], Pillar::Security, now());
+        let triage = ec2_security_triage_context(&report);
+
+        assert_eq!(triage.workflow_id, "ec2_security_triage_context");
+        assert_eq!(triage.pillar, Pillar::Security);
+        assert_eq!(
+            triage.context_builder_id,
+            "ec2-security-deterministic-context-v1"
+        );
+        assert_eq!(triage.prompt_template_id, "ec2-security-ai-triage-v1");
+        assert_eq!(triage.generation_mode, "deterministic_no_llm");
+        assert_eq!(triage.max_prompt_tokens, 1200);
+        assert_eq!(
+            triage.provider_routing,
+            vec!["primary_ops_llm", "fallback_ops_llm"]
+        );
+        assert!(triage.guardrails.read_only_mode);
+        assert!(triage.guardrails.separate_facts_from_hypotheses);
+        assert!(triage.guardrails.ask_for_missing_data);
+        assert!(triage.guardrails.no_llm_invocation);
+        assert!(triage.guardrails.no_mutation_planning);
+        assert_eq!(triage.facts.len(), 4);
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("public IP assignment")));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("packet telemetry alongside public IP")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("owner, team, or service metadata")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("NetworkPacketsIn and NetworkPacketsOut")));
+        assert_eq!(triage.evidence_citations.len(), 4);
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_SEC_PUBLIC_IP && citation.resource_id == "i-sec-exposed"
+        }));
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_SEC_MISSING_PACKET_TELEMETRY
+                && citation.resource_id == "i-sec-gap"
+        }));
+    }
+
+    #[test]
+    fn ec2_security_triage_context_asks_for_refresh_when_inventory_is_stale() {
+        let stale = fixture(
+            "i-sec-stale",
+            json!({}),
+            json!({
+                "state": "running",
+                "public_ip": "54.0.0.1",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[12.0]),
+                        metric("NetworkPacketsOut", &[6.0])
+                    ]
+                }
+            }),
+            48,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Security, now());
+        let triage = ec2_security_triage_context(&report);
+
+        assert!(triage
+            .facts
+            .iter()
+            .any(|fact| fact.contains(REASON_INV_STALE_DATA)));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("Refresh EC2 inventory")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("before interpreting public IP assignment")));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .all(|hypothesis| !hypothesis.contains("internet-reachable exposure")));
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_INV_STALE_DATA && citation.resource_id == "i-sec-stale"
+        }));
     }
 
     #[test]
