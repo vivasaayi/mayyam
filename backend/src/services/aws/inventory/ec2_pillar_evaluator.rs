@@ -94,6 +94,7 @@ pub type Ec2ResiliencePostureSummary = Ec2PostureSummary;
 pub type Ec2PerformancePostureSummary = Ec2PostureSummary;
 pub type Ec2ScalabilityPostureSummary = Ec2PostureSummary;
 pub type Ec2DisasterRecoveryPostureSummary = Ec2PostureSummary;
+pub type Ec2OperationalExcellencePostureSummary = Ec2PostureSummary;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Ec2EvidenceCitation {
@@ -880,6 +881,53 @@ pub fn ec2_disaster_recovery_posture_summary(
             .flat_map(|rule| rule.affected_resources.iter().cloned()),
     );
     Ec2DisasterRecoveryPostureSummary {
+        status: if rules_failed == 0 {
+            Ec2PostureStatus::Pass
+        } else {
+            Ec2PostureStatus::Fail
+        },
+        rules_evaluated: rules.len(),
+        rules_failed,
+        affected_resources,
+        rules,
+    }
+}
+
+pub fn ec2_operational_excellence_posture_summary(
+    report: &PillarReport,
+) -> Ec2OperationalExcellencePostureSummary {
+    let rules = vec![
+        ec2_operational_excellence_posture_rule(
+            report,
+            "ec2-operational-excellence-inventory-freshness",
+            &[REASON_INV_STALE_DATA],
+        ),
+        ec2_operational_excellence_posture_rule(
+            report,
+            "ec2-operational-excellence-collection-metadata-present",
+            &[REASON_OE_MISSING_TELEMETRY_COLLECTION_METADATA],
+        ),
+        ec2_operational_excellence_posture_rule(
+            report,
+            "ec2-operational-excellence-collection-errors-clear",
+            &[REASON_OE_TELEMETRY_COLLECTION_ERRORS],
+        ),
+        ec2_operational_excellence_posture_rule(
+            report,
+            "ec2-operational-excellence-detailed-monitoring-enabled",
+            &[REASON_OE_BASIC_MONITORING],
+        ),
+    ];
+    let rules_failed = rules
+        .iter()
+        .filter(|rule| rule.status == Ec2PostureStatus::Fail)
+        .count();
+    let affected_resources = sorted_unique_resources(
+        rules
+            .iter()
+            .flat_map(|rule| rule.affected_resources.iter().cloned()),
+    );
+    Ec2OperationalExcellencePostureSummary {
         status: if rules_failed == 0 {
             Ec2PostureStatus::Pass
         } else {
@@ -3071,6 +3119,14 @@ fn ec2_scalability_posture_rule(
 }
 
 fn ec2_disaster_recovery_posture_rule(
+    report: &PillarReport,
+    rule_id: &'static str,
+    reason_codes: &[&'static str],
+) -> Ec2PostureRule {
+    ec2_posture_rule(report, rule_id, reason_codes)
+}
+
+fn ec2_operational_excellence_posture_rule(
     report: &PillarReport,
     rule_id: &'static str,
     reason_codes: &[&'static str],
@@ -7455,6 +7511,120 @@ mod tests {
         assert!(codes.contains(&REASON_OE_MISSING_TELEMETRY_COLLECTION_METADATA));
         assert!(codes.contains(&REASON_OE_TELEMETRY_COLLECTION_ERRORS));
         assert!(codes.contains(&REASON_OE_BASIC_MONITORING));
+    }
+
+    #[test]
+    fn ec2_operational_excellence_posture_summary_flags_collection_and_monitoring_rules() {
+        let missing_metadata = fixture(
+            "i-no-collection-metadata",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "monitoring_state": "enabled"
+            }),
+            1,
+            now(),
+        );
+        let collection_error = fixture(
+            "i-collection-error",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1b",
+                "monitoring_state": "disabled",
+                "telemetry_collection_started_at": "2026-06-10T00:00:00Z",
+                "telemetry_collection_completed_at": "2026-06-10T00:00:03Z",
+                "telemetry_collection_duration_ms": 3000,
+                "telemetry_collection_success_count": 1,
+                "telemetry_collection_failure_count": 0,
+                "telemetry_collection_error_count": 1,
+                "telemetry_collection_errors": [
+                    {
+                        "source": "cloudwatch",
+                        "operation": "GetMetricData",
+                        "error": "throttled"
+                    }
+                ]
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(
+            &[missing_metadata, collection_error],
+            Pillar::OperationalExcellence,
+            now(),
+        );
+        let posture = ec2_operational_excellence_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 4);
+        assert_eq!(posture.rules_failed, 3);
+        assert_eq!(
+            posture.affected_resources,
+            vec![
+                "i-collection-error".to_string(),
+                "i-no-collection-metadata".to_string()
+            ]
+        );
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-operational-excellence-collection-metadata-present"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule
+                    .reason_codes
+                    .contains(&REASON_OE_MISSING_TELEMETRY_COLLECTION_METADATA)
+                && rule.affected_resources == vec!["i-no-collection-metadata"]
+                && rule.suppression_supported
+                && rule.assignment_supported
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-operational-excellence-collection-errors-clear"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule
+                    .reason_codes
+                    .contains(&REASON_OE_TELEMETRY_COLLECTION_ERRORS)
+                && rule.affected_resources == vec!["i-collection-error"]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-operational-excellence-detailed-monitoring-enabled"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule.reason_codes.contains(&REASON_OE_BASIC_MONITORING)
+                && rule.affected_resources == vec!["i-collection-error"]
+        }));
+    }
+
+    #[test]
+    fn ec2_operational_excellence_posture_summary_blocks_pass_when_inventory_is_stale() {
+        let stale = fixture(
+            "i-stale-oe",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "monitoring_state": "enabled",
+                "telemetry_collection_started_at": "2026-06-10T00:00:00Z",
+                "telemetry_collection_completed_at": "2026-06-10T00:00:03Z",
+                "telemetry_collection_duration_ms": 3000,
+                "telemetry_collection_success_count": 1,
+                "telemetry_collection_failure_count": 0,
+                "telemetry_collection_error_count": 0,
+                "telemetry_collection_errors": []
+            }),
+            1,
+            now() - Duration::hours(49),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::OperationalExcellence, now());
+        let posture = ec2_operational_excellence_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Fail);
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-operational-excellence-inventory-freshness"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule.reason_codes.contains(&REASON_INV_STALE_DATA)
+                && rule.affected_resources == vec!["i-stale-oe"]
+        }));
     }
 
     #[test]

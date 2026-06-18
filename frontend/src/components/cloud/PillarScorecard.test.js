@@ -180,6 +180,77 @@ describe("PillarScorecard", () => {
     await view.unmount();
   });
 
+  it("renders EC2 operational-excellence posture", async () => {
+    const data = {
+      evaluated_at: "2026-06-18T05:00:00Z",
+      stale_after_hours: 24,
+      reports: [
+        {
+          pillar: "operational-excellence",
+          score: 71,
+          resources_evaluated: 2,
+          stale_resources: 0,
+          findings: [],
+          posture: {
+            status: "fail",
+            rules_evaluated: 4,
+            rules_failed: 3,
+            affected_resources: [
+              "i-no-collection-metadata",
+              "i-collection-error",
+            ],
+            rules: [
+              {
+                rule_id: "ec2-operational-excellence-inventory-freshness",
+                status: "pass",
+                reason_codes: ["EC2_INV_STALE_DATA"],
+                affected_resources: [],
+              },
+              {
+                rule_id:
+                  "ec2-operational-excellence-collection-metadata-present",
+                status: "fail",
+                reason_codes: [
+                  "EC2_OE_MISSING_TELEMETRY_COLLECTION_METADATA",
+                ],
+                affected_resources: ["i-no-collection-metadata"],
+              },
+              {
+                rule_id: "ec2-operational-excellence-collection-errors-clear",
+                status: "fail",
+                reason_codes: ["EC2_OE_TELEMETRY_COLLECTION_ERRORS"],
+                affected_resources: ["i-collection-error"],
+              },
+              {
+                rule_id:
+                  "ec2-operational-excellence-detailed-monitoring-enabled",
+                status: "fail",
+                reason_codes: ["EC2_OE_BASIC_MONITORING"],
+                affected_resources: ["i-collection-error"],
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const view = await render(<PillarScorecard data={data} />);
+    const text = view.container.textContent;
+
+    expect(text).toContain("Operational-Excellence Posture");
+    expect(text).toContain(
+      "ec2-operational-excellence-collection-metadata-present",
+    );
+    expect(text).toContain(
+      "EC2_OE_MISSING_TELEMETRY_COLLECTION_METADATA",
+    );
+    expect(text).toContain("ec2-operational-excellence-collection-errors-clear");
+    expect(text).toContain("EC2_OE_TELEMETRY_COLLECTION_ERRORS");
+    expect(text).toContain("i-collection-error");
+
+    await view.unmount();
+  });
+
   it("renders EC2 performance posture findings for operator review", async () => {
     const data = {
       evaluated_at: "2026-06-18T05:00:00Z",

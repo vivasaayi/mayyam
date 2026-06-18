@@ -813,6 +813,58 @@ async fn ec2_pillar_reports_contract() {
     assert!(triage["hypotheses"].is_array());
     assert!(triage["missing_data_questions"].is_array());
     assert!(triage["evidence_citations"].is_array());
+
+    let resp = client
+        .get(format!(
+            "{}/api/aws/inventory/ec2/pillars?account_id={}&pillar=operational-excellence",
+            base, account_id
+        ))
+        .send()
+        .await
+        .expect("operational-excellence pillar request failed");
+    assert_eq!(resp.status(), 200);
+    let body: Value = resp.json().await.expect("invalid JSON body");
+    let reports = body["reports"].as_array().expect("reports array");
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0]["pillar"], "operational-excellence");
+    assert_eq!(
+        reports[0]["assessment_scope"],
+        "ec2_telemetry_collection_runbook_readiness"
+    );
+    assert_eq!(reports[0]["posture"]["rules_evaluated"], 4);
+    assert!(matches!(
+        reports[0]["posture"]["status"].as_str(),
+        Some("pass" | "fail")
+    ));
+    let oe_rules = reports[0]["posture"]["rules"]
+        .as_array()
+        .expect("operational-excellence posture rules");
+    assert_eq!(oe_rules.len(), 4);
+    let expected_rules = [
+        (
+            "ec2-operational-excellence-inventory-freshness",
+            "EC2_INV_STALE_DATA",
+        ),
+        (
+            "ec2-operational-excellence-collection-metadata-present",
+            "EC2_OE_MISSING_TELEMETRY_COLLECTION_METADATA",
+        ),
+        (
+            "ec2-operational-excellence-collection-errors-clear",
+            "EC2_OE_TELEMETRY_COLLECTION_ERRORS",
+        ),
+        (
+            "ec2-operational-excellence-detailed-monitoring-enabled",
+            "EC2_OE_BASIC_MONITORING",
+        ),
+    ];
+    for (rule, (expected_rule_id, expected_reason_code)) in oe_rules.iter().zip(expected_rules) {
+        assert_eq!(rule["rule_id"], expected_rule_id);
+        assert_eq!(rule["reason_codes"][0], expected_reason_code);
+        assert!(rule["suppression_supported"].is_boolean());
+        assert!(rule["assignment_supported"].is_boolean());
+        assert!(rule["affected_resources"].is_array());
+    }
 }
 
 #[tokio::test]

@@ -56,12 +56,12 @@ use crate::services::aws::inventory::ec2_pillar_evaluator::{
     ec2_cost_forecast_snapshot, ec2_cost_posture_summary, ec2_cost_remediation_workflow,
     ec2_cost_reporting_bundle, ec2_cost_slo_policy_snapshot, ec2_cost_triage_context,
     ec2_disaster_recovery_posture_summary, ec2_disaster_recovery_triage_context,
-    ec2_performance_forecast_snapshot, ec2_performance_posture_summary,
-    ec2_performance_triage_context, ec2_resilience_agentic_investigation_plan,
-    ec2_resilience_forecast_snapshot, ec2_resilience_posture_summary,
-    ec2_resilience_remediation_workflow, ec2_resilience_reporting_bundle,
-    ec2_resilience_slo_policy_snapshot, ec2_resilience_triage_context,
-    ec2_scalability_posture_summary, ec2_scalability_triage_context,
+    ec2_operational_excellence_posture_summary, ec2_performance_forecast_snapshot,
+    ec2_performance_posture_summary, ec2_performance_triage_context,
+    ec2_resilience_agentic_investigation_plan, ec2_resilience_forecast_snapshot,
+    ec2_resilience_posture_summary, ec2_resilience_remediation_workflow,
+    ec2_resilience_reporting_bundle, ec2_resilience_slo_policy_snapshot,
+    ec2_resilience_triage_context, ec2_scalability_posture_summary, ec2_scalability_triage_context,
     ec2_security_agentic_investigation_plan, ec2_security_forecast_snapshot,
     ec2_security_posture_summary, ec2_security_remediation_workflow,
     ec2_security_slo_policy_snapshot, ec2_security_triage_context, evaluate_ec2_fleet,
@@ -403,6 +403,16 @@ pub async fn get_ec2_pillar_reports(
                     "findings": report.findings,
                     "posture": ec2_disaster_recovery_posture_summary(&report),
                     "triage_context": ec2_disaster_recovery_triage_context(&report),
+                })
+            } else if *pillar == Pillar::OperationalExcellence {
+                json!({
+                    "pillar": report.pillar,
+                    "assessment_scope": "ec2_telemetry_collection_runbook_readiness",
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "posture": ec2_operational_excellence_posture_summary(&report),
                 })
             } else {
                 json!(report)
