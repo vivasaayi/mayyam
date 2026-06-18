@@ -340,7 +340,37 @@ async fn ec2_pillar_reports_contract() {
     assert!(reports[0]["forecasting"]["missing_data_reason_codes"].is_array());
     assert!(reports[0]["forecasting"]["risk_drivers"].is_array());
     assert!(reports[0]["forecasting"]["evidence_reason_codes"].is_array());
-    assert!(reports[0]["reporting"].is_null());
+    assert_eq!(
+        reports[0]["reporting"]["workflow_id"],
+        "ec2_resilience_reporting"
+    );
+    assert_eq!(reports[0]["reporting"]["read_only_mode"], true);
+    assert!(matches!(
+        reports[0]["reporting"]["scheduled_delivery_state"].as_str(),
+        Some(
+            "ready_for_schedule"
+                | "ready_with_resilience_evidence_gaps"
+                | "blocked_until_fresh_resilience_evidence"
+        )
+    ));
+    assert!(reports[0]["reporting"]["portfolio_summary_ready"].is_boolean());
+    assert!(reports[0]["reporting"]["workload_summary_ready"].is_boolean());
+    assert!(reports[0]["reporting"]["stale_data_blocks_delivery"].is_boolean());
+    assert_eq!(
+        reports[0]["reporting"]["executive_summary"]["report_id"],
+        "ec2-resilience-executive-summary"
+    );
+    assert!(reports[0]["reporting"]["executive_summary"]["top_reason_codes"].is_array());
+    assert!(reports[0]["reporting"]["executive_summary"]["blast_radius_summary"].is_string());
+    assert_eq!(
+        reports[0]["reporting"]["incident_review"]["report_id"],
+        "ec2-resilience-incident-review"
+    );
+    assert_eq!(reports[0]["reporting"]["incident_review"]["page"], 0);
+    assert_eq!(reports[0]["reporting"]["incident_review"]["page_size"], 50);
+    assert!(reports[0]["reporting"]["incident_review"]["rows"].is_array());
+    assert!(reports[0]["reporting"]["missing_data_reason_codes"].is_array());
+    assert!(reports[0]["reporting"]["evidence_reason_codes"].is_array());
 }
 
 #[tokio::test]

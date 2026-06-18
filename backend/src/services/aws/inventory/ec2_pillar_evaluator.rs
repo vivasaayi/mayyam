@@ -436,6 +436,52 @@ pub struct Ec2CostReportingBundle {
     pub evidence_reason_codes: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2ResilienceExecutiveSummary {
+    pub report_id: &'static str,
+    pub score: u8,
+    pub resources_evaluated: usize,
+    pub stale_resources: usize,
+    pub rules_failed: usize,
+    pub affected_resources: Vec<String>,
+    pub blast_radius_summary: &'static str,
+    pub top_reason_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2ResilienceReportRow {
+    pub resource_id: String,
+    pub severity: Severity,
+    pub reason_code: String,
+    pub message: String,
+    pub suppression_supported: bool,
+    pub recovery_note: &'static str,
+    pub evidence: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2ResilienceIncidentReview {
+    pub report_id: &'static str,
+    pub page: u16,
+    pub page_size: u16,
+    pub total: usize,
+    pub rows: Vec<Ec2ResilienceReportRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2ResilienceReportingBundle {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub scheduled_delivery_state: &'static str,
+    pub portfolio_summary_ready: bool,
+    pub workload_summary_ready: bool,
+    pub stale_data_blocks_delivery: bool,
+    pub executive_summary: Ec2ResilienceExecutiveSummary,
+    pub incident_review: Ec2ResilienceIncidentReview,
+    pub missing_data_reason_codes: Vec<String>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
 /// Evaluate every EC2 instance in the fleet for one pillar.
 pub fn evaluate_ec2_fleet(
     resources: &[AwsResourceModel],
@@ -1200,6 +1246,49 @@ pub fn ec2_cost_reporting_bundle(report: &PillarReport) -> Ec2CostReportingBundl
     }
 }
 
+pub fn ec2_resilience_reporting_bundle(report: &PillarReport) -> Ec2ResilienceReportingBundle {
+    let posture = ec2_resilience_posture_summary(report);
+    let forecast = ec2_resilience_forecast_snapshot(report);
+    let reason_codes = sorted_unique_reason_codes(report);
+    let missing_data_reason_codes = resilience_missing_data_reason_codes(report);
+    let rows = ec2_resilience_report_rows(report);
+    let stale_data = report.stale_resources > 0;
+
+    Ec2ResilienceReportingBundle {
+        workflow_id: "ec2_resilience_reporting",
+        read_only_mode: true,
+        scheduled_delivery_state: if stale_data {
+            "blocked_until_fresh_resilience_evidence"
+        } else if !missing_data_reason_codes.is_empty() {
+            "ready_with_resilience_evidence_gaps"
+        } else {
+            "ready_for_schedule"
+        },
+        portfolio_summary_ready: !stale_data,
+        workload_summary_ready: !stale_data && report.resources_evaluated > 0,
+        stale_data_blocks_delivery: stale_data,
+        executive_summary: Ec2ResilienceExecutiveSummary {
+            report_id: "ec2-resilience-executive-summary",
+            score: report.score,
+            resources_evaluated: report.resources_evaluated,
+            stale_resources: report.stale_resources,
+            rules_failed: posture.rules_failed,
+            affected_resources: posture.affected_resources,
+            blast_radius_summary: forecast.blast_radius_summary,
+            top_reason_codes: reason_codes.clone(),
+        },
+        incident_review: Ec2ResilienceIncidentReview {
+            report_id: "ec2-resilience-incident-review",
+            page: 0,
+            page_size: 50,
+            total: rows.len(),
+            rows,
+        },
+        missing_data_reason_codes,
+        evidence_reason_codes: reason_codes,
+    }
+}
+
 fn ec2_cost_report_rows(report: &PillarReport) -> Vec<Ec2CostReportRow> {
     report
         .findings
@@ -1212,6 +1301,37 @@ fn ec2_cost_report_rows(report: &PillarReport) -> Vec<Ec2CostReportRow> {
             evidence: finding.evidence.clone(),
         })
         .collect()
+}
+
+fn ec2_resilience_report_rows(report: &PillarReport) -> Vec<Ec2ResilienceReportRow> {
+    report
+        .findings
+        .iter()
+        .map(|finding| Ec2ResilienceReportRow {
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            reason_code: finding.reason_code.clone(),
+            message: finding.message.clone(),
+            suppression_supported: true,
+            recovery_note: resilience_recovery_note(&finding.reason_code),
+            evidence: finding.evidence.clone(),
+        })
+        .collect()
+}
+
+fn resilience_recovery_note(reason_code: &str) -> &'static str {
+    match reason_code {
+        REASON_RES_SINGLE_AZ_CONCENTRATION => {
+            "Review multi-AZ placement plan before any approved recovery change."
+        }
+        REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY => {
+            "Review status-check recovery runbook and capture rollback notes before action."
+        }
+        REASON_RES_MISSING_STATUS_TELEMETRY | REASON_RES_MISSING_AZ | REASON_INV_STALE_DATA => {
+            "Refresh EC2 resilience evidence before scheduling recovery action."
+        }
+        _ => "Use read-only incident review evidence before planning recovery action.",
+    }
 }
 
 fn count_reason(report: &PillarReport, reason_code: &str) -> usize {
@@ -3425,6 +3545,117 @@ mod tests {
             .risk_drivers
             .iter()
             .any(|driver| driver.reason_code == REASON_INV_STALE_DATA));
+    }
+
+    #[test]
+    fn ec2_resilience_reporting_bundle_materializes_executive_and_incident_views() {
+        let healthy_a = fixture(
+            "i-report-a",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let healthy_b = fixture(
+            "i-report-b",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[healthy_a, healthy_b], Pillar::Resilience, now());
+        let bundle = ec2_resilience_reporting_bundle(&report);
+
+        assert_eq!(bundle.workflow_id, "ec2_resilience_reporting");
+        assert!(bundle.read_only_mode);
+        assert_eq!(bundle.scheduled_delivery_state, "ready_for_schedule");
+        assert!(bundle.portfolio_summary_ready);
+        assert!(bundle.workload_summary_ready);
+        assert!(!bundle.stale_data_blocks_delivery);
+        assert_eq!(
+            bundle.executive_summary.report_id,
+            "ec2-resilience-executive-summary"
+        );
+        assert_eq!(bundle.executive_summary.rules_failed, 1);
+        assert_eq!(
+            bundle.executive_summary.blast_radius_summary,
+            "single_az_placement_can_turn_one_az_event_into_fleet_outage"
+        );
+        assert!(bundle
+            .executive_summary
+            .top_reason_codes
+            .contains(&REASON_RES_SINGLE_AZ_CONCENTRATION.to_string()));
+        assert_eq!(
+            bundle.incident_review.report_id,
+            "ec2-resilience-incident-review"
+        );
+        assert_eq!(bundle.incident_review.page, 0);
+        assert_eq!(bundle.incident_review.page_size, 50);
+        assert_eq!(bundle.incident_review.total, 1);
+        assert!(bundle.incident_review.rows.iter().all(|row| {
+            row.suppression_supported
+                && row.recovery_note.contains("multi-AZ")
+                && row.reason_code == REASON_RES_SINGLE_AZ_CONCENTRATION
+        }));
+        assert!(bundle.missing_data_reason_codes.is_empty());
+    }
+
+    #[test]
+    fn ec2_resilience_reporting_bundle_blocks_delivery_for_stale_or_missing_evidence() {
+        let stale_missing = fixture(
+            "i-report-stale",
+            json!({}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a"
+            }),
+            30,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale_missing], Pillar::Resilience, now());
+        let bundle = ec2_resilience_reporting_bundle(&report);
+
+        assert_eq!(
+            bundle.scheduled_delivery_state,
+            "blocked_until_fresh_resilience_evidence"
+        );
+        assert!(!bundle.portfolio_summary_ready);
+        assert!(!bundle.workload_summary_ready);
+        assert!(bundle.stale_data_blocks_delivery);
+        assert!(bundle
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(bundle
+            .missing_data_reason_codes
+            .contains(&REASON_RES_MISSING_STATUS_TELEMETRY.to_string()));
+        assert!(bundle.incident_review.rows.iter().any(|row| {
+            row.reason_code == REASON_INV_STALE_DATA
+                && row
+                    .recovery_note
+                    .contains("Refresh EC2 resilience evidence")
+        }));
     }
 
     #[test]

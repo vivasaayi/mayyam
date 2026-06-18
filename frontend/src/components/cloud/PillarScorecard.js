@@ -18,6 +18,11 @@ import {
 
 const SEVERITY_COLOR = { high: "danger", medium: "warning", low: "info" };
 
+const formatToken = (value) =>
+  String(value || "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
 const scoreColor = (score) => {
   if (score >= 90) return "success";
   if (score >= 70) return "warning";
@@ -65,6 +70,90 @@ const FindingRow = ({ finding }) => {
   );
 };
 
+const ReportingSummary = ({ report }) => {
+  const reporting = report.reporting;
+  if (!reporting) {
+    return null;
+  }
+
+  const incidentRows = reporting.incident_review?.rows || [];
+  return (
+    <CCard className="mb-3">
+      <CCardHeader>
+        {formatToken(report.pillar)} Reporting
+        <CBadge
+          color={reporting.stale_data_blocks_delivery ? "danger" : "success"}
+          className="ms-2"
+        >
+          {formatToken(reporting.scheduled_delivery_state)}
+        </CBadge>
+      </CCardHeader>
+      <CCardBody>
+        <CRow className="g-3 mb-3">
+          <CCol md={4}>
+            <div className="text-medium-emphasis small">Executive Report</div>
+            <div className="fw-semibold">
+              {reporting.executive_summary?.report_id}
+            </div>
+            <div className="small">
+              {reporting.executive_summary?.rules_failed || 0} failed rule(s) ·{" "}
+              {reporting.executive_summary?.affected_resources?.length || 0} affected
+            </div>
+          </CCol>
+          <CCol md={4}>
+            <div className="text-medium-emphasis small">Blast Radius</div>
+            <div className="fw-semibold">
+              {formatToken(reporting.executive_summary?.blast_radius_summary)}
+            </div>
+          </CCol>
+          <CCol md={4}>
+            <div className="text-medium-emphasis small">Evidence Gaps</div>
+            <div className="fw-semibold">
+              {reporting.missing_data_reason_codes?.length || 0} missing signal(s)
+            </div>
+            <div className="small">
+              {reporting.stale_data_blocks_delivery
+                ? "Fresh resilience evidence required"
+                : "Ready for review"}
+            </div>
+          </CCol>
+        </CRow>
+        <CTable small responsive>
+          <CTableHead>
+            <CTableRow>
+              <CTableHeaderCell>Reason Code</CTableHeaderCell>
+              <CTableHeaderCell>Resource</CTableHeaderCell>
+              <CTableHeaderCell>Recovery Note</CTableHeaderCell>
+              <CTableHeaderCell>Suppression</CTableHeaderCell>
+            </CTableRow>
+          </CTableHead>
+          <CTableBody>
+            {incidentRows.map((row, idx) => (
+              <CTableRow key={`${row.reason_code}-${row.resource_id}-${idx}`}>
+                <CTableDataCell>
+                  <code>{row.reason_code}</code>
+                </CTableDataCell>
+                <CTableDataCell>{row.resource_id}</CTableDataCell>
+                <CTableDataCell>{row.recovery_note}</CTableDataCell>
+                <CTableDataCell>
+                  {row.suppression_supported ? "Supported" : "Not supported"}
+                </CTableDataCell>
+              </CTableRow>
+            ))}
+            {incidentRows.length === 0 && (
+              <CTableRow>
+                <CTableDataCell colSpan={4} className="text-center text-success">
+                  No incident-review rows for this reporting bundle.
+                </CTableDataCell>
+              </CTableRow>
+            )}
+          </CTableBody>
+        </CTable>
+      </CCardBody>
+    </CCard>
+  );
+};
+
 // Renders the deterministic pillar reports returned by
 // /api/aws/inventory/<service>/pillars: one score card per pillar plus a
 // reason-coded findings table with raw evidence.
@@ -92,6 +181,9 @@ const PillarScorecard = ({ data }) => {
           </CCol>
         ))}
       </CRow>
+      {data.reports.map((report) => (
+        <ReportingSummary key={`${report.pillar}-reporting`} report={report} />
+      ))}
       <CCard>
         <CCardHeader>
           Findings
