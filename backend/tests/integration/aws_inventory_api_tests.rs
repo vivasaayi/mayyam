@@ -207,6 +207,45 @@ async fn ec2_pillar_reports_contract() {
     assert!(reports[0]["triage_context"]["hypotheses"].is_array());
     assert!(reports[0]["triage_context"]["missing_data_questions"].is_array());
     assert!(reports[0]["triage_context"]["evidence_citations"].is_array());
+    assert_eq!(
+        reports[0]["agentic_investigation"]["workflow_id"],
+        "ec2_resilience_agentic_investigation"
+    );
+    assert_eq!(
+        reports[0]["agentic_investigation"]["default_tool_mode"],
+        "read_only"
+    );
+    assert_eq!(reports[0]["agentic_investigation"]["replay_required"], true);
+    assert!(reports[0]["agentic_investigation"]["steps"].is_array());
+    assert!(reports[0]["agentic_investigation"]["approval_gates"].is_array());
+    assert!(reports[0]["agentic_investigation"]["evidence_citations"].is_array());
+    let investigation_steps = reports[0]["agentic_investigation"]["steps"]
+        .as_array()
+        .expect("resilience investigation steps should be an array");
+    assert!(investigation_steps.iter().all(|step| {
+        let tool_name = step["tool_name"].as_str().unwrap_or_default();
+        tool_name.starts_with("ec2.")
+            && !tool_name.contains("execute")
+            && !tool_name.contains("run_instances")
+            && !tool_name.contains("terminate")
+    }));
+    assert!(investigation_steps.iter().all(|step| {
+        step["tool_mode"] == "read_only"
+            || (step["tool_mode"] == "approval_required"
+                && step["tool_name"] == "ec2.resilience.prepare_approval_plan")
+    }));
+    if let Some(final_step) = investigation_steps.last() {
+        if final_step["tool_mode"] == "approval_required" {
+            assert_eq!(
+                final_step["reason_code"],
+                "EC2_RESILIENCE_APPROVAL_PLAN_REQUIRED"
+            );
+            assert_eq!(
+                final_step["evidence"]["assessment_scope"],
+                "ec2_instance_placement_and_status_checks"
+            );
+        }
+    }
 }
 
 #[tokio::test]

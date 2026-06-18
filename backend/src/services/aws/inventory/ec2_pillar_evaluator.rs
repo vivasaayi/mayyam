@@ -163,7 +163,7 @@ pub struct Ec2MutationApprovalGate {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Ec2CostAgenticInvestigationPlan {
+pub struct Ec2AgenticInvestigationPlan {
     pub workflow_id: &'static str,
     pub default_tool_mode: Ec2InvestigationToolMode,
     pub max_tool_calls: usize,
@@ -173,6 +173,9 @@ pub struct Ec2CostAgenticInvestigationPlan {
     pub approval_gates: Vec<Ec2MutationApprovalGate>,
     pub evidence_citations: Vec<Ec2EvidenceCitation>,
 }
+
+pub type Ec2CostAgenticInvestigationPlan = Ec2AgenticInvestigationPlan;
+pub type Ec2ResilienceAgenticInvestigationPlan = Ec2AgenticInvestigationPlan;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -704,6 +707,106 @@ pub fn ec2_cost_agentic_investigation_plan(
     }
 }
 
+pub fn ec2_resilience_agentic_investigation_plan(
+    report: &PillarReport,
+) -> Ec2ResilienceAgenticInvestigationPlan {
+    let triage = ec2_resilience_triage_context(report);
+    let mut steps = Vec::new();
+    let mut approval_gates = Vec::new();
+
+    for citation in &triage.evidence_citations {
+        match citation.reason_code.as_str() {
+            REASON_RES_MISSING_AZ => {
+                steps.push(investigation_step_with_prefix(
+                    "ec2-resilience",
+                    &steps,
+                    Ec2InvestigationStepKind::Inspect,
+                    "ec2.describe_instances.placement",
+                    Ec2InvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when availability zone placement is recorded or confirmed absent for the instance",
+                ));
+            }
+            REASON_RES_SINGLE_AZ_CONCENTRATION => {
+                steps.push(investigation_step_with_prefix(
+                    "ec2-resilience",
+                    &steps,
+                    Ec2InvestigationStepKind::Compare,
+                    "ec2.describe_running_instance_placement",
+                    Ec2InvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when the running fleet placement distribution is captured from current EC2 instance evidence",
+                ));
+                approval_gates.push(mutation_gate_with_prefix(
+                    "ec2-resilience",
+                    &approval_gates,
+                    citation,
+                    "Approve any placement change plan only after operator review; this investigation does not execute placement mutations",
+                ));
+            }
+            REASON_RES_MISSING_STATUS_TELEMETRY => {
+                steps.push(investigation_step_with_prefix(
+                    "ec2-resilience",
+                    &steps,
+                    Ec2InvestigationStepKind::Inspect,
+                    "ec2.cloudwatch.get_status_check_metrics",
+                    Ec2InvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when EC2 status-check metrics are found for the lookback window or confirmed absent",
+                ));
+            }
+            REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY => {
+                steps.push(investigation_step_with_prefix(
+                    "ec2-resilience",
+                    &steps,
+                    Ec2InvestigationStepKind::Diagnose,
+                    "ec2.describe_instance_status",
+                    Ec2InvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when EC2 instance and system status-check evidence is recorded for the affected instance",
+                ));
+                approval_gates.push(mutation_gate_with_prefix(
+                    "ec2-resilience",
+                    &approval_gates,
+                    citation,
+                    "Approve any recovery action plan only after status-check evidence, blast radius, and rollback notes are captured; this investigation does not execute recovery actions",
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    if !approval_gates.is_empty() {
+        steps.push(Ec2InvestigationStep {
+            step_id: format!("ec2-resilience-step-{:02}", steps.len() + 1),
+            kind: Ec2InvestigationStepKind::ProposeMutationPlan,
+            tool_name: "ec2.resilience.prepare_approval_plan",
+            tool_mode: Ec2InvestigationToolMode::ApprovalRequired,
+            target_resource_id: "investigation".to_string(),
+            reason_code: "EC2_RESILIENCE_APPROVAL_PLAN_REQUIRED".to_string(),
+            stop_condition:
+                "stop before mutation; require explicit operator approval, blast-radius summary, and rollback note"
+                    .to_string(),
+            evidence: json!({
+                "approval_gate_count": approval_gates.len(),
+                "read_only_step_count": steps.len(),
+                "assessment_scope": "ec2_instance_placement_and_status_checks",
+            }),
+        });
+    }
+
+    Ec2AgenticInvestigationPlan {
+        workflow_id: "ec2_resilience_agentic_investigation",
+        default_tool_mode: Ec2InvestigationToolMode::ReadOnly,
+        max_tool_calls: steps.len().min(12),
+        max_evidence_citations: triage.evidence_citations.len(),
+        replay_required: true,
+        steps,
+        approval_gates,
+        evidence_citations: triage.evidence_citations,
+    }
+}
+
 pub fn ec2_cost_slo_policy_snapshot(report: &PillarReport) -> Ec2CostSloPolicySnapshot {
     let posture = ec2_cost_posture_summary(report);
     let failed_rule_count = posture.rules_failed;
@@ -1121,8 +1224,28 @@ fn investigation_step(
     citation: &Ec2EvidenceCitation,
     stop_condition: &str,
 ) -> Ec2InvestigationStep {
+    investigation_step_with_prefix(
+        "ec2-cost",
+        existing_steps,
+        kind,
+        tool_name,
+        tool_mode,
+        citation,
+        stop_condition,
+    )
+}
+
+fn investigation_step_with_prefix(
+    step_id_prefix: &str,
+    existing_steps: &[Ec2InvestigationStep],
+    kind: Ec2InvestigationStepKind,
+    tool_name: &'static str,
+    tool_mode: Ec2InvestigationToolMode,
+    citation: &Ec2EvidenceCitation,
+    stop_condition: &str,
+) -> Ec2InvestigationStep {
     Ec2InvestigationStep {
-        step_id: format!("ec2-cost-step-{:02}", existing_steps.len() + 1),
+        step_id: format!("{}-step-{:02}", step_id_prefix, existing_steps.len() + 1),
         kind,
         tool_name,
         tool_mode,
@@ -1138,8 +1261,21 @@ fn mutation_gate(
     citation: &Ec2EvidenceCitation,
     required_approval: &'static str,
 ) -> Ec2MutationApprovalGate {
+    mutation_gate_with_prefix("ec2-cost", existing_gates, citation, required_approval)
+}
+
+fn mutation_gate_with_prefix(
+    gate_id_prefix: &str,
+    existing_gates: &[Ec2MutationApprovalGate],
+    citation: &Ec2EvidenceCitation,
+    required_approval: &'static str,
+) -> Ec2MutationApprovalGate {
     Ec2MutationApprovalGate {
-        gate_id: format!("ec2-cost-approval-{:02}", existing_gates.len() + 1),
+        gate_id: format!(
+            "{}-approval-{:02}",
+            gate_id_prefix,
+            existing_gates.len() + 1
+        ),
         target_resource_id: citation.resource_id.clone(),
         required_approval,
         blast_radius: format!(
@@ -2301,6 +2437,77 @@ mod tests {
             citation.reason_code == REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY
                 && citation.resource_id == "i-status-failed"
         }));
+    }
+
+    #[test]
+    fn ec2_resilience_agentic_investigation_plan_is_read_only_until_approval() {
+        let missing_az = fixture(
+            "i-noaz",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let status_failed = fixture(
+            "i-status-failed",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0, 1.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[missing_az, status_failed], Pillar::Resilience, now());
+        let plan = ec2_resilience_agentic_investigation_plan(&report);
+
+        assert_eq!(plan.workflow_id, "ec2_resilience_agentic_investigation");
+        assert_eq!(plan.default_tool_mode, Ec2InvestigationToolMode::ReadOnly);
+        assert!(plan.replay_required);
+        assert!(plan.steps.iter().any(|step| {
+            step.step_id.starts_with("ec2-resilience-step-")
+                && step.tool_name == "ec2.describe_instances.placement"
+                && step.tool_mode == Ec2InvestigationToolMode::ReadOnly
+                && step.target_resource_id == "i-noaz"
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "ec2.describe_instance_status"
+                && step.tool_mode == Ec2InvestigationToolMode::ReadOnly
+                && step.target_resource_id == "i-status-failed"
+        }));
+        assert_eq!(
+            plan.steps.last().map(|step| step.tool_mode),
+            Some(Ec2InvestigationToolMode::ApprovalRequired)
+        );
+        assert_eq!(
+            plan.steps.last().map(|step| step.reason_code.as_str()),
+            Some("EC2_RESILIENCE_APPROVAL_PLAN_REQUIRED")
+        );
+        assert_eq!(plan.approval_gates.len(), 1);
+        assert!(plan.approval_gates.iter().all(|gate| gate
+            .gate_id
+            .starts_with("ec2-resilience-approval-")
+            && gate.rollback_note_required
+            && gate
+                .blast_radius
+                .contains("no mutation is executable from the investigation plan")));
     }
 
     #[test]
