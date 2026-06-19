@@ -33,6 +33,7 @@ pub fn configure(
             .app_data(web::Data::from(model_controller))
             .route("", web::get().to(list_llm_providers))
             .route("", web::post().to(create_llm_provider))
+            .route("/ai-spend-report", web::get().to(ai_spend_report))
             .route(
                 "/agent-inventory/pillars",
                 web::get().to(agent_inventory_pillar_reports),
@@ -50,6 +51,10 @@ pub fn configure(
                 web::get().to(grounding_score_inventory_pillar_reports),
             )
             .route(
+                "/hallucination-feedback-inventory/pillars",
+                web::get().to(hallucination_feedback_inventory_pillar_reports),
+            )
+            .route(
                 "/latency-inventory/pillars",
                 web::get().to(latency_inventory_pillar_reports),
             )
@@ -62,8 +67,16 @@ pub fn configure(
                 web::get().to(model_cost_inventory_pillar_reports),
             )
             .route(
+                "/prompt-injection-inventory/pillars",
+                web::get().to(prompt_injection_inventory_pillar_reports),
+            )
+            .route(
                 "/response-quality-score-inventory/pillars",
                 web::get().to(response_quality_score_inventory_pillar_reports),
+            )
+            .route(
+                "/sensitive-data-leakage-inventory/pillars",
+                web::get().to(sensitive_data_leakage_inventory_pillar_reports),
             )
             .route(
                 "/token-usage-inventory/pillars",
@@ -72,6 +85,10 @@ pub fn configure(
             .route(
                 "/tool-call-trace-inventory/pillars",
                 web::get().to(tool_call_trace_inventory_pillar_reports),
+            )
+            .route(
+                "/unsafe-tool-call-inventory/pillars",
+                web::get().to(unsafe_tool_call_inventory_pillar_reports),
             )
             .route("/{id}", web::get().to(get_llm_provider))
             .route("/{id}", web::put().to(update_llm_provider))
@@ -196,6 +213,10 @@ async fn agent_inventory_pillar_reports(
     LlmModelController::agent_inventory_pillar_reports(model_controller, query).await
 }
 
+async fn ai_spend_report(model_controller: web::Data<LlmModelController>) -> Result<HttpResponse> {
+    LlmModelController::ai_spend_report(model_controller).await
+}
+
 async fn latency_inventory_pillar_reports(
     model_controller: web::Data<LlmModelController>,
     query: web::Query<std::collections::HashMap<String, String>>,
@@ -239,11 +260,41 @@ async fn response_quality_score_inventory_pillar_reports(
         .await
 }
 
+async fn prompt_injection_inventory_pillar_reports(
+    model_controller: web::Data<LlmModelController>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    LlmModelController::prompt_injection_inventory_pillar_reports(model_controller, query).await
+}
+
 async fn grounding_score_inventory_pillar_reports(
     model_controller: web::Data<LlmModelController>,
     query: web::Query<std::collections::HashMap<String, String>>,
 ) -> Result<HttpResponse> {
     LlmModelController::grounding_score_inventory_pillar_reports(model_controller, query).await
+}
+
+async fn hallucination_feedback_inventory_pillar_reports(
+    model_controller: web::Data<LlmModelController>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    LlmModelController::hallucination_feedback_inventory_pillar_reports(model_controller, query)
+        .await
+}
+
+async fn unsafe_tool_call_inventory_pillar_reports(
+    model_controller: web::Data<LlmModelController>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    LlmModelController::unsafe_tool_call_inventory_pillar_reports(model_controller, query).await
+}
+
+async fn sensitive_data_leakage_inventory_pillar_reports(
+    model_controller: web::Data<LlmModelController>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    LlmModelController::sensitive_data_leakage_inventory_pillar_reports(model_controller, query)
+        .await
 }
 
 async fn tool_call_trace_inventory_pillar_reports(

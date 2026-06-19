@@ -20,6 +20,7 @@ pub mod aws_inventory;
 pub mod budget;
 pub mod chaos;
 pub mod cloud;
+pub mod cloud_alerts;
 pub mod cost_analytics;
 pub mod data_source;
 pub mod database;

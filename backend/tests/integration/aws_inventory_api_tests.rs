@@ -1616,6 +1616,14 @@ async fn storage_and_database_pillar_reports_contract() {
                 cost["agentic_investigation"]["approval_gate"]["permission"],
                 "aws.ecs.cost.remediation.approve"
             );
+            assert_eq!(
+                cost["remediation_workflow"]["workflow_id"],
+                "ecs_cost_remediation_workflow"
+            );
+            assert_eq!(
+                cost["remediation_workflow"]["approval_gate"]["permission"],
+                "aws.ecs.cost.remediation.approve"
+            );
             assert_eq!(cost["telemetry"]["cloudwatch_namespace"], "AWS/ECS");
             assert!(cost["telemetry"]["required_metrics"]
                 .as_array()

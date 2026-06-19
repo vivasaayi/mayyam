@@ -308,6 +308,37 @@ pub struct EcsCostAgenticInvestigationPlan {
     pub evidence_reason_codes: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EcsRemediationStatus {
+    ReadyForApproval,
+    BlockedMissingEvidence,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EcsRemediationAction {
+    pub action_id: String,
+    pub resource_id: String,
+    pub reason_code: String,
+    pub title: String,
+    pub dry_run: bool,
+    pub status: EcsRemediationStatus,
+    pub required_evidence: Vec<String>,
+    pub audit_event_type: &'static str,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EcsCostRemediationWorkflow {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub dry_run_only: bool,
+    pub approval_gate: EcsInvestigationApprovalGate,
+    pub idempotency_key_prefix: &'static str,
+    pub audit_stream: &'static str,
+    pub actions: Vec<EcsRemediationAction>,
+    pub blocked_action_count: usize,
+}
+
 pub fn ecs_cost_posture_summary(report: &PillarReport) -> EcsCostPostureSummary {
     let rules = vec![
         ecs_posture_rule(
@@ -446,6 +477,58 @@ pub fn ecs_cost_agentic_investigation_plan(
     }
 }
 
+pub fn ecs_cost_remediation_workflow(report: &PillarReport) -> EcsCostRemediationWorkflow {
+    let actions: Vec<EcsRemediationAction> = report
+        .findings
+        .iter()
+        .take(10)
+        .map(|finding| {
+            let missing_evidence = matches!(
+                finding.reason_code.as_str(),
+                REASON_INV_STALE_DATA
+                    | REASON_COST_MISSING_TELEMETRY_COLLECTION_METADATA
+                    | REASON_COST_MISSING_CLOUDWATCH_TELEMETRY
+                    | REASON_COST_TAG_DATA_NOT_COLLECTED
+            );
+            EcsRemediationAction {
+                action_id: format!("ecs-cost-remediate-{}", finding.resource_id),
+                resource_id: finding.resource_id.clone(),
+                reason_code: finding.reason_code.clone(),
+                title: ecs_cost_remediation_title(finding.reason_code.as_str()).to_string(),
+                dry_run: true,
+                status: if missing_evidence {
+                    EcsRemediationStatus::BlockedMissingEvidence
+                } else {
+                    EcsRemediationStatus::ReadyForApproval
+                },
+                required_evidence: ecs_cost_remediation_required_evidence(
+                    finding.reason_code.as_str(),
+                ),
+                audit_event_type: "ecs.cost.remediation.dry_run_planned",
+            }
+        })
+        .collect();
+    let blocked_action_count = actions
+        .iter()
+        .filter(|action| action.status == EcsRemediationStatus::BlockedMissingEvidence)
+        .count();
+
+    EcsCostRemediationWorkflow {
+        workflow_id: "ecs_cost_remediation_workflow",
+        read_only_mode: true,
+        dry_run_only: true,
+        approval_gate: EcsInvestigationApprovalGate {
+            required: true,
+            permission: "aws.ecs.cost.remediation.approve",
+            audit_event_type: "ecs_cost_remediation_approval_requested",
+        },
+        idempotency_key_prefix: "ecs-cost-remediation",
+        audit_stream: "aws.ecs.cost.remediation",
+        actions,
+        blocked_action_count,
+    }
+}
+
 pub fn ecs_cost_triage_context(report: &PillarReport) -> EcsCostTriageContext {
     let mut facts = Vec::new();
     let mut hypotheses = Vec::new();
@@ -515,6 +598,47 @@ pub fn ecs_cost_triage_context(report: &PillarReport) -> EcsCostTriageContext {
         follow_up_questions: sorted_unique_strings(follow_up_questions),
         evidence_citations,
     }
+}
+
+fn ecs_cost_remediation_title(reason_code: &str) -> &'static str {
+    match reason_code {
+        REASON_COST_IDLE_CLUSTER => "Prepare idle ECS cluster retirement proposal",
+        REASON_COST_TAG_DATA_NOT_COLLECTED => "Prepare ECS allocation tag collection task",
+        REASON_COST_MISSING_CLOUDWATCH_TELEMETRY => {
+            "Prepare ECS CloudWatch utilization telemetry enablement"
+        }
+        REASON_COST_MISSING_TELEMETRY_COLLECTION_METADATA => "Prepare ECS collector metadata fix",
+        REASON_INV_STALE_DATA => "Prepare ECS inventory refresh before action",
+        _ => "Prepare ECS cost evidence review",
+    }
+}
+
+fn ecs_cost_remediation_required_evidence(reason_code: &str) -> Vec<String> {
+    match reason_code {
+        REASON_COST_IDLE_CLUSTER => vec![
+            "owner_approval",
+            "recent_task_history",
+            "rollback_or_recreate_plan",
+        ],
+        REASON_COST_TAG_DATA_NOT_COLLECTED => {
+            vec!["owner_mapping", "tag_policy", "cost_allocation_taxonomy"]
+        }
+        REASON_COST_MISSING_CLOUDWATCH_TELEMETRY => {
+            vec![
+                "cloudwatch_metric_permissions",
+                "metric_namespace",
+                "collection_window",
+            ]
+        }
+        REASON_COST_MISSING_TELEMETRY_COLLECTION_METADATA => {
+            vec!["collector_run_id", "telemetry_window", "sync_timestamp"]
+        }
+        REASON_INV_STALE_DATA => vec!["fresh_inventory_sync", "last_refreshed_timestamp"],
+        _ => vec!["operator_review"],
+    }
+    .into_iter()
+    .map(str::to_string)
+    .collect()
 }
 
 fn ecs_cost_investigation_step_title(reason_code: &str) -> &'static str {
@@ -859,6 +983,21 @@ mod tests {
             .steps
             .iter()
             .any(|step| matches!(step.kind, EcsInvestigationStepKind::ProposeMutationPlan)));
+
+        let remediation = ecs_cost_remediation_workflow(&report);
+        assert_eq!(remediation.workflow_id, "ecs_cost_remediation_workflow");
+        assert!(remediation.read_only_mode);
+        assert!(remediation.dry_run_only);
+        assert_eq!(
+            remediation.approval_gate.permission,
+            "aws.ecs.cost.remediation.approve"
+        );
+        assert!(remediation.blocked_action_count > 0);
+        assert!(remediation.actions.iter().all(|action| action.dry_run));
+        assert!(remediation.actions.iter().any(|action| {
+            action.reason_code == REASON_COST_IDLE_CLUSTER
+                && action.status == EcsRemediationStatus::ReadyForApproval
+        }));
     }
 
     #[test]

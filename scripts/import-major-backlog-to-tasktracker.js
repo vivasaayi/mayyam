@@ -53,12 +53,17 @@ const EXPECTED_COLUMNS = [
 function parseArgs(argv) {
   const args = {
     apply: false,
-    authorization: process.env.TASKTRACKER_MCP_AUTHORIZATION || "",
+    authorization: process.env.TASKTRACKER_MCP_AUTHORIZATION || bearer(process.env.ARUVI_MCP_API_TOKEN),
     csv: DEFAULT_CSV,
+    fromMajorId: "",
+    linkCatalog: false,
     mcpUrl: process.env.TASKTRACKER_MCP_URL || DEFAULT_MCP_URL,
     printItems: 0,
+    productId: "mayyam-major-roadmap",
     runId: DEFAULT_RUN_ID,
+    skipRunUpsert: false,
     sourceRunId: DEFAULT_SOURCE_RUN_ID,
+    toMajorId: "",
   };
 
   for (let i = 2; i < argv.length; i += 1) {
@@ -69,20 +74,34 @@ function parseArgs(argv) {
       args.authorization = argv[++i];
     } else if (arg === "--csv") {
       args.csv = path.resolve(argv[++i]);
+    } else if (arg === "--from-major-id") {
+      args.fromMajorId = argv[++i];
+    } else if (arg === "--link-catalog") {
+      args.linkCatalog = true;
     } else if (arg === "--mcp-url") {
       args.mcpUrl = argv[++i];
     } else if (arg === "--print-items") {
       args.printItems = Number(argv[++i]);
+    } else if (arg === "--product-id") {
+      args.productId = argv[++i];
     } else if (arg === "--run-id") {
       args.runId = argv[++i];
+    } else if (arg === "--skip-run-upsert") {
+      args.skipRunUpsert = true;
     } else if (arg === "--source-run-id") {
       args.sourceRunId = argv[++i];
+    } else if (arg === "--to-major-id") {
+      args.toMajorId = argv[++i];
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
   }
 
   return args;
+}
+
+function bearer(token) {
+  return token ? `Bearer ${token}` : "";
 }
 
 function parseCsv(text) {
@@ -216,6 +235,18 @@ function itemPayload(row, runId, sourceRunId) {
   };
 }
 
+function filterRows(rows, args) {
+  return rows.filter((row) => {
+    if (args.fromMajorId && row.major_id < args.fromMajorId) {
+      return false;
+    }
+    if (args.toMajorId && row.major_id > args.toMajorId) {
+      return false;
+    }
+    return true;
+  });
+}
+
 async function rpc(mcpUrl, method, params) {
   const headers = { "Content-Type": "application/json" };
   if (rpc.authorization) {
@@ -254,28 +285,40 @@ async function callTool(mcpUrl, name, args) {
 async function importRows(args, rows) {
   rpc.authorization = args.authorization;
 
-  await callTool(args.mcpUrl, "agent_work_runs_upsert", {
-    id: args.runId,
-    status: "active",
-    roadmapHash: "major-feature-backlog-v1",
-    nextAction: "Claim grouped major backlog items from consolidated CSV",
-    metadata: {
-      source: path.relative(ROOT, args.csv),
-      sourceRunId: args.sourceRunId,
-      sourceRows: rows.reduce((total, row) => total + Number(row.source_count || 0), 0),
-      majorItems: rows.length,
-      shardDirectory: "docs/product-roadmap/major-feature-backlog",
-    },
-  });
+  if (!args.skipRunUpsert) {
+    await callTool(args.mcpUrl, "agent_work_runs_upsert", {
+      id: args.runId,
+      productId: args.productId,
+      status: "active",
+      roadmapHash: "major-feature-backlog-v1",
+      nextAction: "Claim grouped major backlog items from consolidated CSV",
+      metadata: {
+        source: path.relative(ROOT, args.csv),
+        sourceRunId: args.sourceRunId,
+        sourceRows: rows.reduce((total, row) => total + Number(row.source_count || 0), 0),
+        majorItems: rows.length,
+        shardDirectory: "docs/product-roadmap/major-feature-backlog",
+      },
+    });
+  }
 
   for (const row of rows) {
     await callTool(args.mcpUrl, "agent_work_items_upsert", itemPayload(row, args.runId, args.sourceRunId));
+  }
+
+  if (args.linkCatalog) {
+    await callTool(args.mcpUrl, "agent_work_link_catalog_work_items", {
+      runId: args.runId,
+      productId: args.productId,
+      syncStatuses: false,
+    });
   }
 }
 
 async function main() {
   const args = parseArgs(process.argv);
-  const rows = readMajorRows(args.csv);
+  const allRows = readMajorRows(args.csv);
+  const rows = filterRows(allRows, args);
   const totalSourceRows = rows.reduce(
     (total, row) => total + Number(row.source_count || 0),
     0,
@@ -286,6 +329,9 @@ async function main() {
     runId: args.runId,
     sourceRunId: args.sourceRunId,
     majorItems: rows.length,
+    majorItemsTotal: allRows.length,
+    fromMajorId: args.fromMajorId || null,
+    toMajorId: args.toMajorId || null,
     sourceRows: totalSourceRows,
     modules: new Set(rows.map((row) => row.module)).size,
     csv: path.relative(ROOT, args.csv),

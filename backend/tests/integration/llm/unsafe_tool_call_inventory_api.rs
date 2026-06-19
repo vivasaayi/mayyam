@@ -22,7 +22,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 #[actix_web::test]
-async fn llm_tool_call_trace_inventory_pillar_reports_contract() {
+async fn llm_unsafe_tool_call_inventory_pillar_reports_contract() {
     let db = Database::connect("sqlite::memory:?cache=shared")
         .await
         .expect("connect sqlite");
@@ -47,78 +47,52 @@ async fn llm_tool_call_trace_inventory_pillar_reports_contract() {
     let repo = Arc::new(LlmProviderModelRepository::new(Arc::new(db)));
     repo.create(
         Uuid::new_v4(),
-        "deepseek-agent".to_string(),
+        "ops-agent".to_string(),
         json!({
             "owner": "sre-ai",
             "labels": ["cost-center=ai-platform"],
-            "tool_call_trace_count": 1000,
-            "failed_tool_call_count": 3,
-            "estimated_monthly_trace_cost_usd": 50.0,
-            "monthly_trace_budget_usd": 100.0,
-            "trace_sampling_policy": "sample all failed calls and 10 percent success",
-            "trace_replay_enabled": true,
+            "unsafe_tool_call_prevention_enabled": true,
             "approved_tool_registry": "ops-readonly-tools",
+            "blocked_tool_call_count": 4,
+            "unsafe_tool_call_review_window": "rolling 7d",
+            "unsafe_tool_call_monthly_cost_usd": 30.0,
+            "unsafe_tool_call_budget_usd": 100.0,
+            "read_only_tool_default": true,
+            "tool_mutation_approval_required": true,
+            "tool_dry_run_supported": true,
             "audit_enabled": true,
-            "trace_redaction_policy": "redact prompt, response, and tool args"
+            "tool_call_redaction_policy": "redact prompt, tool args, and outputs"
         }),
         true,
     )
     .await
-    .expect("create healthy tool call trace route");
+    .expect("create healthy unsafe tool-call policy");
     repo.create(
         Uuid::new_v4(),
-        "untraced-agent".to_string(),
-        json!({"estimated_monthly_trace_cost_usd": 1200.0}),
+        "unguarded-agent".to_string(),
+        json!({"unsafe_tool_call_monthly_cost_usd": 250.0}),
         true,
     )
     .await
-    .expect("create incomplete tool call trace route");
+    .expect("create incomplete unsafe tool-call policy");
 
     let controller = Arc::new(LlmModelController::new(repo));
     let app = test::init_service(App::new().app_data(web::Data::from(controller)).route(
-        "/api/v1/llm-providers/tool-call-trace-inventory/pillars",
-        web::get().to(LlmModelController::tool_call_trace_inventory_pillar_reports),
+        "/api/v1/llm-providers/unsafe-tool-call-inventory/pillars",
+        web::get().to(LlmModelController::unsafe_tool_call_inventory_pillar_reports),
     ))
     .await;
 
     let req = test::TestRequest::get()
-        .uri("/api/v1/llm-providers/tool-call-trace-inventory/pillars")
+        .uri("/api/v1/llm-providers/unsafe-tool-call-inventory/pillars")
         .to_request();
     let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
-    assert_eq!(body["resource_type"], "AiLlmToolCallTrace");
+    assert_eq!(body["resource_type"], "AiLlmUnsafeToolCallPrevention");
     assert_eq!(body["resources_evaluated"].as_u64().unwrap_or(0), 2);
     assert_eq!(body["reports"].as_array().unwrap().len(), 3);
-    assert_eq!(
-        body["replay_workflow"]["workflow_id"],
-        "ai_llm_tool_call_trace_replay_workflow"
-    );
-    assert_eq!(
-        body["replay_workflow"]["audit_stream"],
-        "ai.llm.tool_call_trace.replay"
-    );
-    assert_eq!(body["replay_workflow"]["read_only_mode"], true);
-    assert_eq!(body["replay_workflow"]["replay_supported"], true);
-    let actions = body["replay_workflow"]["actions"].as_array().unwrap();
-    assert_eq!(actions.len(), 2);
-    assert!(actions
-        .iter()
-        .any(|action| action["status"] == "ready_for_replay"));
-    let blocked_action = actions
-        .iter()
-        .find(|action| action["model_name"] == "untraced-agent")
-        .expect("untraced workflow action");
-    assert_eq!(blocked_action["status"], "blocked_missing_evidence");
-    assert!(blocked_action["required_evidence"]
-        .as_array()
-        .unwrap()
-        .contains(&json!("trace_sample")));
-    assert!(blocked_action["required_evidence"]
-        .as_array()
-        .unwrap()
-        .contains(&json!("replay_enabled")));
 
     let req = test::TestRequest::get()
-        .uri("/api/v1/llm-providers/tool-call-trace-inventory/pillars?pillar=resilience,security")
+        .uri("/api/v1/llm-providers/unsafe-tool-call-inventory/pillars?pillar=resilience,security")
         .to_request();
     let body: serde_json::Value = test::call_and_read_body_json(&app, req).await;
     let reports = body["reports"].as_array().unwrap();
@@ -127,7 +101,7 @@ async fn llm_tool_call_trace_inventory_pillar_reports_contract() {
     assert_eq!(reports[1]["pillar"], "security");
 
     let req = test::TestRequest::get()
-        .uri("/api/v1/llm-providers/tool-call-trace-inventory/pillars?pillar=durability")
+        .uri("/api/v1/llm-providers/unsafe-tool-call-inventory/pillars?pillar=durability")
         .to_request();
     let response = test::call_service(&app, req).await;
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
