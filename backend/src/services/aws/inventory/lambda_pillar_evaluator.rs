@@ -390,6 +390,64 @@ pub struct LambdaCostForecastSnapshot {
     pub evidence_reason_codes: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LambdaCostReportRow {
+    pub resource_id: String,
+    pub severity: Severity,
+    pub reason_code: String,
+    pub message: String,
+    pub recovery_note: String,
+    pub suppression_supported: bool,
+    pub evidence: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LambdaCostExecutiveSummary {
+    pub report_id: &'static str,
+    pub score: u8,
+    pub resources_evaluated: usize,
+    pub stale_resources: usize,
+    pub rules_failed: usize,
+    pub affected_resources: Vec<String>,
+    pub top_reason_codes: Vec<String>,
+    pub blast_radius_summary: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LambdaCostEngineeringBacklog {
+    pub report_id: &'static str,
+    pub page: u16,
+    pub page_size: u16,
+    pub total: usize,
+    pub rows: Vec<LambdaCostReportRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LambdaCostIncidentReview {
+    pub report_id: &'static str,
+    pub page: u16,
+    pub page_size: u16,
+    pub total: usize,
+    pub rows: Vec<LambdaCostReportRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LambdaCostReportingBundle {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub scheduled_delivery_state: &'static str,
+    pub stale_data_blocks_delivery: bool,
+    pub portfolio_summary_ready: bool,
+    pub workload_summary_ready: bool,
+    pub export_formats: Vec<&'static str>,
+    pub saved_view_id: &'static str,
+    pub executive_summary: LambdaCostExecutiveSummary,
+    pub engineering_backlog: LambdaCostEngineeringBacklog,
+    pub incident_review: LambdaCostIncidentReview,
+    pub missing_data_reason_codes: Vec<String>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
 /// Evaluate every Lambda function in the fleet for one pillar.
 pub fn evaluate_lambda_fleet(
     resources: &[AwsResourceModel],
@@ -1036,6 +1094,72 @@ pub fn lambda_cost_telemetry_summary(report: &PillarReport) -> LambdaCostTelemet
     }
 }
 
+pub fn lambda_cost_reporting_bundle(report: &PillarReport) -> LambdaCostReportingBundle {
+    let posture = lambda_cost_posture_summary(report);
+    let reason_codes = sorted_unique_reason_codes(report);
+    let rows = lambda_cost_report_rows(report);
+    let missing_data_reason_codes = lambda_cost_reporting_missing_data_reason_codes(report);
+    let stale_data_blocks_delivery = report.stale_resources > 0
+        || report.findings.iter().any(|finding| {
+            matches!(
+                finding.reason_code.as_str(),
+                REASON_INV_STALE_DATA
+                    | REASON_COST_MISSING_TELEMETRY_COLLECTION_METADATA
+                    | REASON_COST_TELEMETRY_COLLECTION_ERRORS
+                    | REASON_COST_MISSING_CLOUDWATCH_TELEMETRY
+            )
+        });
+    let blast_radius_summary = if posture.affected_resources.is_empty() {
+        "No Lambda functions require cost reporting review.".to_string()
+    } else {
+        format!(
+            "{} Lambda function(s) require cost reporting review.",
+            posture.affected_resources.len()
+        )
+    };
+
+    LambdaCostReportingBundle {
+        workflow_id: "lambda_cost_reporting",
+        read_only_mode: true,
+        scheduled_delivery_state: if stale_data_blocks_delivery {
+            "blocked_until_fresh_cost_evidence"
+        } else {
+            "ready_for_schedule"
+        },
+        stale_data_blocks_delivery,
+        portfolio_summary_ready: !stale_data_blocks_delivery,
+        workload_summary_ready: !stale_data_blocks_delivery && report.resources_evaluated > 0,
+        export_formats: vec!["json", "csv"],
+        saved_view_id: "lambda-cost-posture-report",
+        executive_summary: LambdaCostExecutiveSummary {
+            report_id: "lambda-cost-executive-summary",
+            score: report.score,
+            resources_evaluated: report.resources_evaluated,
+            stale_resources: report.stale_resources,
+            rules_failed: posture.rules_failed,
+            affected_resources: posture.affected_resources,
+            top_reason_codes: reason_codes.clone(),
+            blast_radius_summary,
+        },
+        engineering_backlog: LambdaCostEngineeringBacklog {
+            report_id: "lambda-cost-engineering-backlog",
+            page: 0,
+            page_size: 50,
+            total: rows.len(),
+            rows: rows.clone(),
+        },
+        incident_review: LambdaCostIncidentReview {
+            report_id: "lambda-cost-incident-review",
+            page: 0,
+            page_size: 50,
+            total: rows.len(),
+            rows,
+        },
+        missing_data_reason_codes,
+        evidence_reason_codes: reason_codes,
+    }
+}
+
 fn evaluate_cost(resource: &AwsResourceModel, findings: &mut Vec<InventoryFinding>) {
     evaluate_cost_telemetry(resource, findings);
 
@@ -1496,6 +1620,70 @@ fn sorted_unique_reason_codes(report: &PillarReport) -> Vec<String> {
             .iter()
             .map(|finding| finding.reason_code.clone()),
     )
+}
+
+fn lambda_cost_reporting_missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    [
+        REASON_INV_STALE_DATA,
+        REASON_COST_MISSING_TELEMETRY_COLLECTION_METADATA,
+        REASON_COST_TELEMETRY_COLLECTION_ERRORS,
+        REASON_COST_MISSING_CLOUDWATCH_TELEMETRY,
+    ]
+    .into_iter()
+    .filter(|reason_code| {
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == *reason_code)
+    })
+    .map(str::to_string)
+    .collect()
+}
+
+fn lambda_cost_report_rows(report: &PillarReport) -> Vec<LambdaCostReportRow> {
+    report
+        .findings
+        .iter()
+        .map(|finding| LambdaCostReportRow {
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            reason_code: finding.reason_code.clone(),
+            message: finding.message.clone(),
+            recovery_note: lambda_cost_reporting_recovery_note(&finding.reason_code).to_string(),
+            suppression_supported: true,
+            evidence: finding.evidence.clone(),
+        })
+        .collect()
+}
+
+fn lambda_cost_reporting_recovery_note(reason_code: &str) -> &'static str {
+    match reason_code {
+        REASON_INV_STALE_DATA => {
+            "Refresh Lambda inventory and telemetry before sharing the cost report."
+        }
+        REASON_COST_MISSING_TELEMETRY_COLLECTION_METADATA => {
+            "Collect telemetry run metadata before scheduling Lambda cost report delivery."
+        }
+        REASON_COST_TELEMETRY_COLLECTION_ERRORS => {
+            "Resolve Lambda collector errors before publishing cost report findings."
+        }
+        REASON_COST_MISSING_CLOUDWATCH_TELEMETRY => {
+            "Collect Invocations, Duration, Errors, and Throttles before quantifying Lambda cost action."
+        }
+        REASON_COST_MISSING_ALLOCATION_TAGS => {
+            "Add owner, environment, and application tags before routing Lambda cost findings."
+        }
+        REASON_COST_X86_ONLY_ARCHITECTURE => {
+            "Review arm64 compatibility and GB-second savings before scheduling architecture changes."
+        }
+        REASON_COST_NO_INVOCATIONS_TELEMETRY => {
+            "Confirm the function is unused across retention windows before cleanup is scheduled."
+        }
+        REASON_COST_ERROR_OR_THROTTLE_TELEMETRY => {
+            "Review retry, timeout, and concurrency behavior before scheduling cost remediation."
+        }
+        _ => "Collect fresh evidence before sharing this Lambda cost report row.",
+    }
 }
 
 fn count_reason(report: &PillarReport, reason_code: &str) -> usize {
@@ -2280,6 +2468,94 @@ mod tests {
             .missing_data_reason_codes
             .contains(&REASON_INV_STALE_DATA.to_string()));
         assert!(forecast.forecast_band.upper_monthly_cost_index > 100);
+    }
+
+    #[test]
+    fn lambda_cost_reporting_bundle_materializes_executive_engineering_and_incident_views() {
+        let mut throttle_data = healthy_data();
+        throttle_data["cloudwatch_metrics"]["metrics"][2]["datapoints"] = json!([{ "value": 6.0 }]);
+        throttle_data["cloudwatch_metrics"]["metrics"][3]["datapoints"] = json!([{ "value": 1.0 }]);
+        let throttle = fixture(
+            "fn-cost-report",
+            json!({"owner": "sre", "environment": "prod", "application": "checkout"}),
+            throttle_data,
+            1,
+            now(),
+        );
+        let missing_tags = fixture("fn-cost-missing-tags", json!({}), healthy_data(), 1, now());
+
+        let report = evaluate_lambda_fleet(&[throttle, missing_tags], Pillar::Cost, now());
+        let bundle = lambda_cost_reporting_bundle(&report);
+
+        assert_eq!(bundle.workflow_id, "lambda_cost_reporting");
+        assert!(bundle.read_only_mode);
+        assert_eq!(bundle.scheduled_delivery_state, "ready_for_schedule");
+        assert!(bundle.portfolio_summary_ready);
+        assert!(bundle.workload_summary_ready);
+        assert_eq!(bundle.export_formats, vec!["json", "csv"]);
+        assert_eq!(
+            bundle.executive_summary.report_id,
+            "lambda-cost-executive-summary"
+        );
+        assert_eq!(bundle.executive_summary.score, report.score);
+        assert_eq!(bundle.executive_summary.resources_evaluated, 2);
+        assert_eq!(bundle.executive_summary.stale_resources, 0);
+        assert!(bundle
+            .executive_summary
+            .affected_resources
+            .contains(&"fn-cost-report".to_string()));
+        assert!(bundle
+            .executive_summary
+            .top_reason_codes
+            .contains(&REASON_COST_ERROR_OR_THROTTLE_TELEMETRY.to_string()));
+        assert_eq!(
+            bundle.engineering_backlog.report_id,
+            "lambda-cost-engineering-backlog"
+        );
+        assert_eq!(bundle.engineering_backlog.page, 0);
+        assert_eq!(bundle.engineering_backlog.page_size, 50);
+        assert_eq!(bundle.engineering_backlog.total, report.findings.len());
+        assert_eq!(
+            bundle.incident_review.report_id,
+            "lambda-cost-incident-review"
+        );
+        assert!(bundle.incident_review.rows.iter().any(|row| {
+            row.resource_id == "fn-cost-report"
+                && row.reason_code == REASON_COST_ERROR_OR_THROTTLE_TELEMETRY
+                && row.suppression_supported
+                && row
+                    .recovery_note
+                    .contains("Review retry, timeout, and concurrency behavior")
+        }));
+    }
+
+    #[test]
+    fn lambda_cost_reporting_bundle_blocks_delivery_for_stale_or_missing_evidence() {
+        let stale = fixture(
+            "fn-cost-stale-report",
+            json!({"owner": "sre"}),
+            healthy_data(),
+            1,
+            now() - chrono::Duration::hours(30),
+        );
+
+        let report = evaluate_lambda_fleet(&[stale], Pillar::Cost, now());
+        let bundle = lambda_cost_reporting_bundle(&report);
+
+        assert_eq!(
+            bundle.scheduled_delivery_state,
+            "blocked_until_fresh_cost_evidence"
+        );
+        assert!(bundle.stale_data_blocks_delivery);
+        assert!(!bundle.portfolio_summary_ready);
+        assert!(!bundle.workload_summary_ready);
+        assert_eq!(bundle.executive_summary.stale_resources, 1);
+        assert!(bundle
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(bundle
+            .evidence_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
     }
 
     #[test]

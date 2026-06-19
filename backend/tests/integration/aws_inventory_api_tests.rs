@@ -1079,6 +1079,36 @@ async fn lambda_pillar_reports_contract() {
     assert!(forecasting["missing_data_reason_codes"].is_array());
     assert!(forecasting["risk_drivers"].is_array());
     assert!(forecasting["evidence_reason_codes"].is_array());
+    let reporting = &cost["reporting"];
+    assert_eq!(reporting["workflow_id"], "lambda_cost_reporting");
+    assert_eq!(reporting["read_only_mode"], true);
+    assert!(reporting["scheduled_delivery_state"].is_string());
+    assert!(reporting["stale_data_blocks_delivery"].is_boolean());
+    assert!(reporting["portfolio_summary_ready"].is_boolean());
+    assert!(reporting["workload_summary_ready"].is_boolean());
+    assert!(reporting["export_formats"].is_array());
+    assert_eq!(reporting["saved_view_id"], "lambda-cost-posture-report");
+    assert_eq!(
+        reporting["executive_summary"]["report_id"],
+        "lambda-cost-executive-summary"
+    );
+    assert!(reporting["executive_summary"]["rules_failed"].is_number());
+    assert!(reporting["executive_summary"]["affected_resources"].is_array());
+    assert!(reporting["executive_summary"]["blast_radius_summary"].is_string());
+    assert_eq!(
+        reporting["engineering_backlog"]["report_id"],
+        "lambda-cost-engineering-backlog"
+    );
+    assert_eq!(reporting["engineering_backlog"]["page"], 0);
+    assert_eq!(reporting["engineering_backlog"]["page_size"], 50);
+    assert!(reporting["engineering_backlog"]["rows"].is_array());
+    assert_eq!(
+        reporting["incident_review"]["report_id"],
+        "lambda-cost-incident-review"
+    );
+    assert!(reporting["incident_review"]["rows"].is_array());
+    assert!(reporting["missing_data_reason_codes"].is_array());
+    assert!(reporting["evidence_reason_codes"].is_array());
     assert_eq!(cost["telemetry"]["workflow_id"], "lambda_cost_telemetry");
     assert_eq!(cost["telemetry"]["cloudwatch_namespace"], "AWS/Lambda");
     assert_eq!(cost["telemetry"]["cloudwatch_dimension"], "FunctionName");

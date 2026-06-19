@@ -2491,6 +2491,70 @@ describe("PillarScorecard", () => {
             ],
             evidence_reason_codes: ["LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY"],
           },
+          reporting: {
+            workflow_id: "lambda_cost_reporting",
+            read_only_mode: true,
+            scheduled_delivery_state: "ready_for_schedule",
+            stale_data_blocks_delivery: false,
+            portfolio_summary_ready: true,
+            workload_summary_ready: true,
+            export_formats: ["json", "csv"],
+            saved_view_id: "lambda-cost-posture-report",
+            executive_summary: {
+              report_id: "lambda-cost-executive-summary",
+              score: 78,
+              resources_evaluated: 1,
+              stale_resources: 0,
+              rules_failed: 1,
+              affected_resources: ["fn-no-telemetry"],
+              top_reason_codes: ["LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY"],
+              blast_radius_summary: "1 Lambda function(s) require cost reporting review.",
+            },
+            engineering_backlog: {
+              report_id: "lambda-cost-engineering-backlog",
+              page: 0,
+              page_size: 50,
+              total: 1,
+              rows: [
+                {
+                  resource_id: "fn-no-telemetry",
+                  severity: "medium",
+                  reason_code: "LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY",
+                  message:
+                    "Function fn-no-telemetry is missing Lambda CloudWatch cost telemetry for Invocations, Duration, Errors, Throttles",
+                  recovery_note:
+                    "Collect Invocations, Duration, Errors, and Throttles before quantifying Lambda cost action.",
+                  suppression_supported: true,
+                  evidence: {
+                    missing_metrics: ["Invocations", "Duration", "Errors", "Throttles"],
+                  },
+                },
+              ],
+            },
+            incident_review: {
+              report_id: "lambda-cost-incident-review",
+              page: 0,
+              page_size: 50,
+              total: 1,
+              rows: [
+                {
+                  resource_id: "fn-no-telemetry",
+                  severity: "medium",
+                  reason_code: "LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY",
+                  message:
+                    "Function fn-no-telemetry is missing Lambda CloudWatch cost telemetry for Invocations, Duration, Errors, Throttles",
+                  recovery_note:
+                    "Collect Invocations, Duration, Errors, and Throttles before quantifying Lambda cost action.",
+                  suppression_supported: true,
+                  evidence: {
+                    missing_metrics: ["Invocations", "Duration", "Errors", "Throttles"],
+                  },
+                },
+              ],
+            },
+            missing_data_reason_codes: ["LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY"],
+            evidence_reason_codes: ["LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY"],
+          },
           telemetry: {
             workflow_id: "lambda_cost_telemetry",
             cloudwatch_namespace: "AWS/Lambda",
@@ -2584,6 +2648,17 @@ describe("PillarScorecard", () => {
     );
     expect(text).toContain("Monthly Cost Index Warning Threshold");
     expect(text).toContain("Monthly Cost Index Critical Threshold");
+    expect(text).toContain("Cost Reporting");
+    expect(text).toContain("Ready For Schedule");
+    expect(text).toContain("lambda-cost-executive-summary");
+    expect(text).toContain("1 failed rule(s) · 1 affected");
+    expect(text).toContain("Require Cost Reporting Review");
+    expect(text).toContain("Ready for review");
+    expect(text).toContain("lambda-cost-incident-review");
+    expect(text).toContain(
+      "Collect Invocations, Duration, Errors, and Throttles before quantifying Lambda cost action.",
+    );
+    expect(text).toContain("Supported");
 
     await view.unmount();
   });
