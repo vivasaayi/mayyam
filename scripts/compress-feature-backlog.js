@@ -14,6 +14,8 @@ const ROOT = path.resolve(__dirname, "..");
 const ROADMAP_DIR = path.join(ROOT, "docs", "product-roadmap");
 const OUT_CSV = path.join(ROADMAP_DIR, "major-feature-backlog.csv");
 const OUT_MD = path.join(ROADMAP_DIR, "major-feature-backlog.md");
+const OUT_SHARDS_DIR = path.join(ROADMAP_DIR, "major-feature-backlog");
+const OUT_SHARDS_INDEX = path.join(OUT_SHARDS_DIR, "README.md");
 const MAX_SOURCE_ROWS_PER_MAJOR_ITEM = 100;
 
 const INPUT_COLUMNS = [
@@ -166,6 +168,14 @@ function csvEscape(value) {
 
 function csvLine(values) {
   return values.map(csvEscape).join(",");
+}
+
+function slugify(value) {
+  return String(value)
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 function unique(values) {
@@ -376,6 +386,72 @@ function writeMajorBacklog(majorRows) {
   fs.writeFileSync(OUT_CSV, `${lines.join("\n")}\n`);
 }
 
+function resetDirectory(dir) {
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.mkdirSync(dir, { recursive: true });
+}
+
+function writeShardCsv(file, rows) {
+  const lines = [
+    csvLine(OUTPUT_COLUMNS),
+    ...rows.map((row) => csvLine(OUTPUT_COLUMNS.map((column) => row[column]))),
+  ];
+  fs.writeFileSync(file, `${lines.join("\n")}\n`);
+}
+
+function writeMajorBacklogShards(majorRows) {
+  resetDirectory(OUT_SHARDS_DIR);
+
+  const rowsByModule = new Map();
+  for (const row of majorRows) {
+    if (!rowsByModule.has(row.module)) {
+      rowsByModule.set(row.module, []);
+    }
+    rowsByModule.get(row.module).push(row);
+  }
+
+  const shardEntries = [...rowsByModule.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([module, rows]) => {
+      const fileName = `${slugify(module)}.csv`;
+      const file = path.join(OUT_SHARDS_DIR, fileName);
+      writeShardCsv(file, rows);
+      return {
+        module,
+        fileName,
+        rows: rows.length,
+        sourceRows: rows.reduce((total, row) => total + Number(row.source_count || 0), 0),
+      };
+    });
+
+  const indexLines = [
+    "# Major Feature Backlog Shards",
+    "",
+    "This directory splits `../major-feature-backlog.csv` into smaller module-scoped CSV files.",
+    "",
+    "Each shard uses the same columns as the consolidated major backlog and preserves `source_ids`, `source_id_start`, `source_id_end`, and `source_files` for traceability.",
+    "",
+    "## Shards",
+    "",
+    "| Module | File | Major items | Source rows |",
+    "| --- | --- | ---: | ---: |",
+    ...shardEntries.map(
+      (entry) =>
+        `| ${entry.module} | [${entry.fileName}](./${entry.fileName}) | ${entry.rows} | ${entry.sourceRows} |`,
+    ),
+    "",
+    "## Regeneration",
+    "",
+    "```bash",
+    "node scripts/compress-feature-backlog.js",
+    "```",
+    "",
+  ];
+  fs.writeFileSync(OUT_SHARDS_INDEX, indexLines.join("\n"));
+
+  return shardEntries;
+}
+
 function writeSummary(sourceRowCount, naturalGroups, majorRows) {
   const rowsByModule = new Map();
   for (const row of majorRows) {
@@ -397,6 +473,7 @@ This file compresses the generated implementation backlog into larger delivery u
 - Natural grouping: \`module + category + service_or_domain\`, producing ${naturalGroups.length.toLocaleString()} service capability groups.
 - Packing rule: adjacent service capability groups are combined only within the same \`module + category\` boundary, up to ${MAX_SOURCE_ROWS_PER_MAJOR_ITEM} source rows per major item.
 - Output: ${majorRows.length.toLocaleString()} major feature items in \`major-feature-backlog.csv\`.
+- Smaller files: module-scoped CSV shards live in \`major-feature-backlog/\`.
 - Traceability: every major row carries \`source_ids\`, \`source_id_start\`, \`source_id_end\`, and \`source_files\`.
 
 ## Why This Shape
@@ -428,6 +505,7 @@ function main() {
   const majorRows = packs.map(majorRow);
 
   writeMajorBacklog(majorRows);
+  const shardEntries = writeMajorBacklogShards(majorRows);
   writeSummary(sourceRowCount, naturalGroups, majorRows);
 
   console.log(
@@ -435,6 +513,9 @@ function main() {
   );
   console.log(`Wrote ${path.relative(ROOT, OUT_CSV)}`);
   console.log(`Wrote ${path.relative(ROOT, OUT_MD)}`);
+  console.log(
+    `Wrote ${shardEntries.length} shard files in ${path.relative(ROOT, OUT_SHARDS_DIR)}`,
+  );
 }
 
 main();

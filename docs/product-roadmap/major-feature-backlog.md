@@ -8,6 +8,7 @@ This file compresses the generated implementation backlog into larger delivery u
 - Natural grouping: `module + category + service_or_domain`, producing 1,153 service capability groups.
 - Packing rule: adjacent service capability groups are combined only within the same `module + category` boundary, up to 100 source rows per major item.
 - Output: 785 major feature items in `major-feature-backlog.csv`.
+- Smaller files: module-scoped CSV shards live in `major-feature-backlog/`.
 - Traceability: every major row carries `source_ids`, `source_id_start`, `source_id_end`, and `source_files`.
 
 ## Why This Shape
