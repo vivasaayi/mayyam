@@ -77,7 +77,10 @@ use crate::services::aws::inventory::ec2_pillar_evaluator::{
     ec2_security_posture_summary, ec2_security_remediation_workflow,
     ec2_security_slo_policy_snapshot, ec2_security_triage_context, evaluate_ec2_fleet,
 };
-use crate::services::aws::inventory::ecs_pillar_evaluator::evaluate_ecs_fleet;
+use crate::services::aws::inventory::ecs_pillar_evaluator::{
+    ecs_cost_posture_summary, ecs_cost_telemetry_summary, ecs_cost_triage_context,
+    evaluate_ecs_fleet,
+};
 use crate::services::aws::inventory::efs_pillar_evaluator::evaluate_efs_fleet;
 use crate::services::aws::inventory::eks_pillar_evaluator::evaluate_eks_fleet;
 use crate::services::aws::inventory::elasticache_pillar_evaluator::evaluate_elasticache_fleet;
@@ -678,7 +681,24 @@ pub async fn get_ecs_pillar_reports(
     let now = Utc::now();
     let reports: Vec<_> = pillars
         .iter()
-        .map(|pillar| evaluate_ecs_fleet(&resources, *pillar, now))
+        .map(|pillar| {
+            let report = evaluate_ecs_fleet(&resources, *pillar, now);
+            if *pillar == Pillar::Cost {
+                json!({
+                    "pillar": report.pillar,
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "assessment_scope": "ecs_cluster_service_utilization_cost_telemetry",
+                    "posture": ecs_cost_posture_summary(&report),
+                    "triage_context": ecs_cost_triage_context(&report),
+                    "telemetry": ecs_cost_telemetry_summary(&report),
+                })
+            } else {
+                json!(report)
+            }
+        })
         .collect();
     let oldest_refresh = resources.iter().map(|r| r.last_refreshed).min();
 

@@ -1592,6 +1592,29 @@ async fn storage_and_database_pillar_reports_contract() {
             "endpoint {}",
             path
         );
+        if path == "ecs" {
+            let cost = body["reports"]
+                .as_array()
+                .expect("reports")
+                .iter()
+                .find(|report| report["pillar"] == "cost")
+                .expect("ecs cost report");
+            assert_eq!(
+                cost["assessment_scope"],
+                "ecs_cluster_service_utilization_cost_telemetry"
+            );
+            assert_eq!(cost["posture"]["workflow_id"], "ecs_cost_posture");
+            assert_eq!(
+                cost["triage_context"]["prompt_template_id"],
+                "ecs-cost-ai-triage-v1"
+            );
+            assert_eq!(cost["telemetry"]["cloudwatch_namespace"], "AWS/ECS");
+            assert!(cost["telemetry"]["required_metrics"]
+                .as_array()
+                .expect("ecs required metrics")
+                .iter()
+                .any(|metric| metric == "RunningTaskCount"));
+        }
     }
 }
 
