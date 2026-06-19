@@ -107,13 +107,13 @@ use crate::services::aws::inventory::lambda_pillar_evaluator::{
     lambda_performance_triage_context, lambda_resilience_agentic_investigation_plan,
     lambda_resilience_forecast_snapshot, lambda_resilience_posture_summary,
     lambda_resilience_remediation_workflow, lambda_resilience_reporting_bundle,
-    lambda_resilience_slo_policy_snapshot, lambda_resilience_triage_context,
-    lambda_scalability_posture_summary, lambda_scalability_telemetry_summary,
-    lambda_scalability_triage_context, lambda_security_agentic_investigation_plan,
-    lambda_security_forecast_snapshot, lambda_security_posture_summary,
-    lambda_security_remediation_workflow, lambda_security_reporting_bundle,
-    lambda_security_slo_policy_snapshot, lambda_security_telemetry_summary,
-    lambda_security_triage_context,
+    lambda_resilience_slo_policy_snapshot, lambda_resilience_telemetry_summary,
+    lambda_resilience_triage_context, lambda_scalability_posture_summary,
+    lambda_scalability_telemetry_summary, lambda_scalability_triage_context,
+    lambda_security_agentic_investigation_plan, lambda_security_forecast_snapshot,
+    lambda_security_posture_summary, lambda_security_remediation_workflow,
+    lambda_security_reporting_bundle, lambda_security_slo_policy_snapshot,
+    lambda_security_telemetry_summary, lambda_security_triage_context,
 };
 use crate::services::aws::inventory::lightsail_pillar_evaluator::evaluate_lightsail_fleet;
 use crate::services::aws::inventory::load_balancer_pillar_evaluator::evaluate_load_balancer_fleet;
@@ -536,6 +536,7 @@ pub async fn get_lambda_pillar_reports(
                     "slo_policy_tracking": lambda_resilience_slo_policy_snapshot(&report),
                     "forecasting": lambda_resilience_forecast_snapshot(&report),
                     "reporting": lambda_resilience_reporting_bundle(&report),
+                    "telemetry": lambda_resilience_telemetry_summary(&report),
                 })
             } else if *pillar == Pillar::Performance {
                 json!({

@@ -500,6 +500,7 @@ pub type LambdaResilienceExecutiveSummary = LambdaCostExecutiveSummary;
 pub type LambdaResilienceEngineeringBacklog = LambdaCostEngineeringBacklog;
 pub type LambdaResilienceIncidentReview = LambdaCostIncidentReview;
 pub type LambdaResilienceReportingBundle = LambdaCostReportingBundle;
+pub type LambdaResilienceTelemetrySummary = LambdaCostTelemetrySummary;
 pub type LambdaSecurityPostureSummary = LambdaCostPostureSummary;
 pub type LambdaSecurityTriageContext = LambdaCostTriageContext;
 pub type LambdaSecurityTelemetrySummary = LambdaCostTelemetrySummary;
@@ -2593,6 +2594,54 @@ pub fn lambda_resilience_posture_summary(report: &PillarReport) -> LambdaResilie
             audit_event_type: "lambda_resilience_posture_assignment_requested",
         },
         recommendations: lambda_resilience_posture_recommendations(report),
+    }
+}
+
+pub fn lambda_resilience_telemetry_summary(
+    report: &PillarReport,
+) -> LambdaResilienceTelemetrySummary {
+    let missing_data_reason_codes = sorted_unique_reasons(
+        report
+            .findings
+            .iter()
+            .filter(|finding| {
+                matches!(
+                    finding.reason_code.as_str(),
+                    REASON_RES_MISSING_TELEMETRY_COLLECTION_METADATA
+                        | REASON_RES_TELEMETRY_COLLECTION_ERRORS
+                        | REASON_RES_MISSING_CLOUDWATCH_TELEMETRY
+                        | REASON_RES_MISSING_LOG_EVENT_EVIDENCE
+                        | REASON_RES_MISSING_QUOTA_LIMIT_EVIDENCE
+                        | REASON_INV_STALE_DATA
+                )
+            })
+            .map(|finding| finding.reason_code.clone()),
+    );
+    let evidence_reason_codes = sorted_unique_reason_codes(report);
+    let stale_data_blocks_delivery = report.stale_resources > 0
+        || report.findings.iter().any(|finding| {
+            matches!(
+                finding.reason_code.as_str(),
+                REASON_RES_TELEMETRY_COLLECTION_ERRORS
+                    | REASON_RES_MISSING_CLOUDWATCH_TELEMETRY
+                    | REASON_RES_MISSING_LOG_EVENT_EVIDENCE
+                    | REASON_RES_MISSING_QUOTA_LIMIT_EVIDENCE
+            )
+        });
+
+    LambdaCostTelemetrySummary {
+        workflow_id: "lambda_resilience_telemetry",
+        read_only_mode: true,
+        freshness_required: true,
+        telemetry_collection_required: true,
+        cloudwatch_namespace: "AWS/Lambda",
+        cloudwatch_dimension: "FunctionName",
+        required_metrics: lambda_resilience_metric_names().to_vec(),
+        export_formats: vec!["json"],
+        missing_data_reason_codes,
+        evidence_reason_codes,
+        stale_data_blocks_delivery,
+        telemetry_quality_score: report.score,
     }
 }
 
@@ -6177,6 +6226,17 @@ mod tests {
         assert!(triage
             .runbook_copy_markdown
             .contains("Lambda resilience AI triage"));
+
+        let telemetry = lambda_resilience_telemetry_summary(&report);
+        assert_eq!(telemetry.workflow_id, "lambda_resilience_telemetry");
+        assert_eq!(telemetry.cloudwatch_namespace, "AWS/Lambda");
+        assert!(telemetry.required_metrics.contains(&"Duration"));
+        assert!(telemetry.required_metrics.contains(&"Errors"));
+        assert!(telemetry.required_metrics.contains(&"Throttles"));
+        assert!(telemetry.stale_data_blocks_delivery);
+        assert!(telemetry
+            .missing_data_reason_codes
+            .contains(&REASON_RES_MISSING_LOG_EVENT_EVIDENCE.to_string()));
     }
 
     #[test]

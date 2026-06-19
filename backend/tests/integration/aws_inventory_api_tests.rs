@@ -1302,6 +1302,24 @@ async fn lambda_pillar_reports_contract() {
     assert!(resilience["reporting"]["missing_data_reason_codes"].is_array());
     assert!(resilience["reporting"]["evidence_reason_codes"].is_array());
     assert_eq!(
+        resilience["telemetry"]["workflow_id"],
+        "lambda_resilience_telemetry"
+    );
+    assert_eq!(
+        resilience["telemetry"]["cloudwatch_namespace"],
+        "AWS/Lambda"
+    );
+    assert_eq!(
+        resilience["telemetry"]["cloudwatch_dimension"],
+        "FunctionName"
+    );
+    assert!(resilience["telemetry"]["required_metrics"]
+        .as_array()
+        .expect("lambda resilience required metrics")
+        .iter()
+        .any(|metric| metric == "Errors"));
+    assert!(resilience["telemetry"]["stale_data_blocks_delivery"].is_boolean());
+    assert_eq!(
         performance["assessment_scope"],
         "lambda_performance_duration_error_throttle_and_concurrency_telemetry"
     );
