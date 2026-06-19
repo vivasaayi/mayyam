@@ -13,4 +13,5 @@
 // limitations under the License.
 
 pub mod cloud_quota_exhaustion_alert;
+pub mod cost_anomaly_alert;
 pub mod database_slow_query_alert;

@@ -312,6 +312,9 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
     let cloud_alerts_controller = Arc::new(
         crate::controllers::cloud_alerts::CloudAlertsController::new(aws_resource_repo.clone()),
     );
+    let cost_alerts_controller = Arc::new(
+        crate::controllers::cost_alerts::CostAlertsController::new(cost_analytics_repo.clone()),
+    );
 
     let s3_data_plane = Arc::new(S3DataPlane::new(aws_service.clone()));
     let s3_control_plane = Arc::new(s3_control_plane::S3ControlPlane::new(aws_service.clone()));
@@ -481,6 +484,7 @@ pub async fn run_server(host: String, port: u16, config: Config) -> Result<(), B
                     aws_inventory_controller.clone(),
                 ));
                 routes::cloud_alerts::configure(cfg_param, cloud_alerts_controller.clone());
+                routes::cost_alerts::configure(cfg_param, cost_alerts_controller.clone());
 
                 info!("Registering AWS Cost Analytics routes");
                 routes::cost_analytics::configure_routes(

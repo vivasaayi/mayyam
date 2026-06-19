@@ -20,6 +20,7 @@ mod integration {
     pub mod aws_control_plane_api_tests;
     pub mod aws_inventory_api_tests;
     pub mod cloud_alerts_api_tests;
+    pub mod cost_alerts_api_tests;
     pub mod cost_analytics_api_tests;
     pub mod ec2_api_tests;
     pub mod helpers;
@@ -38,6 +39,7 @@ pub use integration::api_tests::*;
 pub use integration::aws_control_plane_api_tests::*;
 pub use integration::aws_inventory_api_tests::*;
 pub use integration::cloud_alerts_api_tests::*;
+pub use integration::cost_alerts_api_tests::*;
 pub use integration::cost_analytics_api_tests::*;
 pub use integration::ec2_api_tests::*;
 pub use integration::helpers;
