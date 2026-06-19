@@ -103,17 +103,19 @@ use crate::services::aws::inventory::lambda_pillar_evaluator::{
     evaluate_lambda_fleet, lambda_cost_agentic_investigation_plan, lambda_cost_forecast_snapshot,
     lambda_cost_posture_summary, lambda_cost_remediation_workflow, lambda_cost_reporting_bundle,
     lambda_cost_slo_policy_snapshot, lambda_cost_telemetry_summary, lambda_cost_triage_context,
-    lambda_performance_posture_summary, lambda_performance_telemetry_summary,
-    lambda_performance_triage_context, lambda_resilience_agentic_investigation_plan,
-    lambda_resilience_forecast_snapshot, lambda_resilience_posture_summary,
-    lambda_resilience_remediation_workflow, lambda_resilience_reporting_bundle,
-    lambda_resilience_slo_policy_snapshot, lambda_resilience_telemetry_summary,
-    lambda_resilience_triage_context, lambda_scalability_posture_summary,
-    lambda_scalability_telemetry_summary, lambda_scalability_triage_context,
-    lambda_security_agentic_investigation_plan, lambda_security_forecast_snapshot,
-    lambda_security_posture_summary, lambda_security_remediation_workflow,
-    lambda_security_reporting_bundle, lambda_security_slo_policy_snapshot,
-    lambda_security_telemetry_summary, lambda_security_triage_context,
+    lambda_operational_posture_summary, lambda_operational_telemetry_summary,
+    lambda_operational_triage_context, lambda_performance_posture_summary,
+    lambda_performance_telemetry_summary, lambda_performance_triage_context,
+    lambda_resilience_agentic_investigation_plan, lambda_resilience_forecast_snapshot,
+    lambda_resilience_posture_summary, lambda_resilience_remediation_workflow,
+    lambda_resilience_reporting_bundle, lambda_resilience_slo_policy_snapshot,
+    lambda_resilience_telemetry_summary, lambda_resilience_triage_context,
+    lambda_scalability_posture_summary, lambda_scalability_telemetry_summary,
+    lambda_scalability_triage_context, lambda_security_agentic_investigation_plan,
+    lambda_security_forecast_snapshot, lambda_security_posture_summary,
+    lambda_security_remediation_workflow, lambda_security_reporting_bundle,
+    lambda_security_slo_policy_snapshot, lambda_security_telemetry_summary,
+    lambda_security_triage_context,
 };
 use crate::services::aws::inventory::lightsail_pillar_evaluator::evaluate_lightsail_fleet;
 use crate::services::aws::inventory::load_balancer_pillar_evaluator::evaluate_load_balancer_fleet;
@@ -561,6 +563,18 @@ pub async fn get_lambda_pillar_reports(
                     "posture": lambda_scalability_posture_summary(&report),
                     "triage_context": lambda_scalability_triage_context(&report),
                     "telemetry": lambda_scalability_telemetry_summary(&report),
+                })
+            } else if *pillar == Pillar::OperationalExcellence {
+                json!({
+                    "pillar": report.pillar,
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "assessment_scope": "lambda_operational_metrics_logs_events_quotas_limits_and_health_signals",
+                    "posture": lambda_operational_posture_summary(&report),
+                    "triage_context": lambda_operational_triage_context(&report),
+                    "telemetry": lambda_operational_telemetry_summary(&report),
                 })
             } else {
                 json!(report)

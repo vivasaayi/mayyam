@@ -915,7 +915,7 @@ async fn lambda_pillar_reports_contract() {
     let body: Value = resp.json().await.expect("invalid JSON body");
     assert_eq!(body["resource_type"], "LambdaFunction");
     let reports = body["reports"].as_array().expect("reports array");
-    assert_eq!(reports.len(), 5);
+    assert_eq!(reports.len(), 6);
     let cost = reports
         .iter()
         .find(|report| report["pillar"] == "cost")
@@ -936,6 +936,10 @@ async fn lambda_pillar_reports_contract() {
         .iter()
         .find(|report| report["pillar"] == "scalability")
         .expect("scalability report");
+    let operational = reports
+        .iter()
+        .find(|report| report["pillar"] == "operational_excellence")
+        .expect("operational excellence report");
     assert_eq!(
         cost["assessment_scope"],
         "lambda_cost_invocation_duration_error_and_throttle_telemetry"
@@ -1415,6 +1419,39 @@ async fn lambda_pillar_reports_contract() {
         .expect("lambda scalability required metrics")
         .iter()
         .any(|metric| metric == "ConcurrentExecutions"));
+    assert_eq!(
+        operational["assessment_scope"],
+        "lambda_operational_metrics_logs_events_quotas_limits_and_health_signals"
+    );
+    assert_eq!(
+        operational["posture"]["workflow_id"],
+        "lambda_operational_posture"
+    );
+    assert_eq!(
+        operational["posture"]["rule_pack_id"],
+        "lambda-operational-posture-rules-v1"
+    );
+    assert_eq!(
+        operational["triage_context"]["workflow_id"],
+        "lambda_operational_triage_context"
+    );
+    assert_eq!(
+        operational["triage_context"]["context_builder_id"],
+        "lambda-operational-deterministic-context-v1"
+    );
+    assert_eq!(
+        operational["triage_context"]["prompt_template_id"],
+        "lambda-operational-ai-triage-v1"
+    );
+    assert_eq!(
+        operational["telemetry"]["workflow_id"],
+        "lambda_operational_telemetry"
+    );
+    assert!(operational["telemetry"]["required_metrics"]
+        .as_array()
+        .expect("lambda operational required metrics")
+        .iter()
+        .any(|metric| metric == "Errors"));
 }
 
 #[tokio::test]

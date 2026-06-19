@@ -78,6 +78,16 @@ pub const REASON_SCAL_MISSING_CLOUDWATCH_TELEMETRY: &str =
 pub const REASON_SCAL_HIGH_CONCURRENCY_UTILIZATION: &str =
     "LAMBDA_SCAL_HIGH_CONCURRENCY_UTILIZATION";
 pub const REASON_SCAL_THROTTLE_PRESSURE: &str = "LAMBDA_SCAL_THROTTLE_PRESSURE";
+pub const REASON_OP_MISSING_CONFIG_DATA: &str = "LAMBDA_OP_MISSING_CONFIG_DATA";
+pub const REASON_OP_MISSING_TELEMETRY_COLLECTION_METADATA: &str =
+    "LAMBDA_OP_MISSING_TELEMETRY_COLLECTION_METADATA";
+pub const REASON_OP_TELEMETRY_COLLECTION_ERRORS: &str = "LAMBDA_OP_TELEMETRY_COLLECTION_ERRORS";
+pub const REASON_OP_MISSING_CLOUDWATCH_TELEMETRY: &str = "LAMBDA_OP_MISSING_CLOUDWATCH_TELEMETRY";
+pub const REASON_OP_MISSING_LOG_EVENT_EVIDENCE: &str = "LAMBDA_OP_MISSING_LOG_EVENT_EVIDENCE";
+pub const REASON_OP_MISSING_QUOTA_LIMIT_EVIDENCE: &str = "LAMBDA_OP_MISSING_QUOTA_LIMIT_EVIDENCE";
+pub const REASON_OP_ERROR_OR_THROTTLE_HEALTH_SIGNAL: &str =
+    "LAMBDA_OP_ERROR_OR_THROTTLE_HEALTH_SIGNAL";
+pub const REASON_OP_LOW_TIMEOUT_HEADROOM: &str = "LAMBDA_OP_LOW_TIMEOUT_HEADROOM";
 pub const REASON_INV_STALE_DATA: &str = "LAMBDA_INV_STALE_DATA";
 
 /// Runtimes AWS has deprecated (no more security patches). Kept as an
@@ -515,6 +525,9 @@ pub type LambdaPerformanceTelemetrySummary = LambdaCostTelemetrySummary;
 pub type LambdaScalabilityPostureSummary = LambdaCostPostureSummary;
 pub type LambdaScalabilityTriageContext = LambdaCostTriageContext;
 pub type LambdaScalabilityTelemetrySummary = LambdaCostTelemetrySummary;
+pub type LambdaOperationalPostureSummary = LambdaCostPostureSummary;
+pub type LambdaOperationalTriageContext = LambdaCostTriageContext;
+pub type LambdaOperationalTelemetrySummary = LambdaCostTelemetrySummary;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -582,6 +595,7 @@ pub fn evaluate_lambda_fleet(
             Pillar::Resilience => evaluate_resilience(resource, &mut findings),
             Pillar::Performance => evaluate_performance(resource, &mut findings),
             Pillar::Scalability => evaluate_scalability(resource, &mut findings),
+            Pillar::OperationalExcellence => evaluate_operational(resource, &mut findings),
             // Pillars without checks for this service yet produce no findings.
             _ => {}
         }
@@ -2645,6 +2659,255 @@ pub fn lambda_resilience_telemetry_summary(
     }
 }
 
+pub fn lambda_operational_posture_summary(
+    report: &PillarReport,
+) -> LambdaOperationalPostureSummary {
+    let rules = vec![
+        lambda_cost_posture_rule(
+            report,
+            "lambda-operational-inventory-freshness",
+            &[REASON_INV_STALE_DATA],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-operational-config-present",
+            &[REASON_OP_MISSING_CONFIG_DATA],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-operational-telemetry-collection-metadata-present",
+            &[REASON_OP_MISSING_TELEMETRY_COLLECTION_METADATA],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-operational-telemetry-collection-errors-clear",
+            &[REASON_OP_TELEMETRY_COLLECTION_ERRORS],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-operational-cloudwatch-metrics-present",
+            &[REASON_OP_MISSING_CLOUDWATCH_TELEMETRY],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-operational-log-event-evidence-present",
+            &[REASON_OP_MISSING_LOG_EVENT_EVIDENCE],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-operational-quota-limit-evidence-present",
+            &[REASON_OP_MISSING_QUOTA_LIMIT_EVIDENCE],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-operational-timeout-headroom-safe",
+            &[REASON_OP_LOW_TIMEOUT_HEADROOM],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-operational-errors-and-throttles-reviewed",
+            &[REASON_OP_ERROR_OR_THROTTLE_HEALTH_SIGNAL],
+        ),
+    ];
+    let rules_failed = rules
+        .iter()
+        .filter(|rule| rule.status == LambdaPostureStatus::Fail)
+        .count();
+    let affected_resources = sorted_unique_resources(
+        rules
+            .iter()
+            .flat_map(|rule| rule.affected_resources.iter().cloned()),
+    );
+
+    LambdaCostPostureSummary {
+        workflow_id: "lambda_operational_posture",
+        rule_pack_id: "lambda-operational-posture-rules-v1",
+        evidence_serializer: "lambda-operational-evidence-v1",
+        severity_model: "deterministic-high-medium-low-v1",
+        audit_event_type: "lambda_operational_posture_evaluated",
+        read_only_mode: true,
+        status: if rules_failed == 0 {
+            LambdaPostureStatus::Pass
+        } else {
+            LambdaPostureStatus::Fail
+        },
+        rules_evaluated: rules.len(),
+        rules_failed,
+        affected_resources,
+        rules,
+        suppression_policy: LambdaSuppressionPolicy {
+            supported: true,
+            scope: "resource_reason_code",
+            requires_reason: true,
+            audit_event_type: "lambda_operational_posture_suppression_requested",
+        },
+        assignment_policy: LambdaAssignmentPolicy {
+            supported: true,
+            owner_sources: vec![
+                "tag:owner",
+                "tag:team",
+                "tag:environment",
+                "tag:application",
+            ],
+            fallback_owner: "unassigned",
+            audit_event_type: "lambda_operational_posture_assignment_requested",
+        },
+        recommendations: lambda_operational_posture_recommendations(report),
+    }
+}
+
+pub fn lambda_operational_triage_context(report: &PillarReport) -> LambdaOperationalTriageContext {
+    let mut facts = Vec::new();
+    let mut hypotheses = Vec::new();
+    let mut missing_data_questions = Vec::new();
+    let mut follow_up_questions = Vec::new();
+    let mut evidence_citations = Vec::new();
+
+    for finding in &report.findings {
+        facts.push(format!(
+            "{} affects {} with {:?} severity",
+            finding.reason_code, finding.resource_id, finding.severity
+        ));
+        evidence_citations.push(LambdaEvidenceCitation {
+            reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            evidence: finding.evidence.clone(),
+        });
+
+        match finding.reason_code.as_str() {
+            REASON_INV_STALE_DATA => missing_data_questions.push(format!(
+                "Refresh Lambda inventory and operational telemetry for {} before explaining current operational posture",
+                finding.resource_id
+            )),
+            REASON_OP_MISSING_CONFIG_DATA => missing_data_questions.push(format!(
+                "Collect timeout and memory configuration for {} before assessing operational readiness",
+                finding.resource_id
+            )),
+            REASON_OP_MISSING_TELEMETRY_COLLECTION_METADATA
+            | REASON_OP_MISSING_CLOUDWATCH_TELEMETRY
+            | REASON_OP_MISSING_LOG_EVENT_EVIDENCE
+            | REASON_OP_MISSING_QUOTA_LIMIT_EVIDENCE => missing_data_questions.push(format!(
+                "Collect Lambda metrics, logs, events, quotas, limits, and health signals for {} before operational triage",
+                finding.resource_id
+            )),
+            REASON_OP_TELEMETRY_COLLECTION_ERRORS => hypotheses.push(format!(
+                "{} has operational telemetry collection errors; inspect collector permissions, retries, and ingestion failures",
+                finding.resource_id
+            )),
+            REASON_OP_ERROR_OR_THROTTLE_HEALTH_SIGNAL => hypotheses.push(format!(
+                "{} has error or throttle signals that may require runbook, on-call, or workflow review",
+                finding.resource_id
+            )),
+            REASON_OP_LOW_TIMEOUT_HEADROOM => hypotheses.push(format!(
+                "{} is close to its timeout budget; verify runbook coverage, alert thresholds, and downstream latency before tuning",
+                finding.resource_id
+            )),
+            _ => {}
+        }
+
+        follow_up_questions.push(lambda_operational_follow_up_question(
+            finding.reason_code.as_str(),
+        ));
+    }
+
+    LambdaCostTriageContext {
+        workflow_id: "lambda_operational_triage_context",
+        pillar: report.pillar,
+        api_path: "/api/aws/inventory/lambda/pillars",
+        context_builder_id: "lambda-operational-deterministic-context-v1",
+        prompt_template_id: "lambda-operational-ai-triage-v1",
+        generation_mode: "deterministic_no_llm",
+        max_prompt_tokens: 1200,
+        provider_routing: vec!["primary_ops_llm", "fallback_ops_llm"],
+        audit_event_type: "lambda_operational_ai_triage_context_built",
+        audit_id_prefix: "lambda-operational-ai-triage",
+        pagination: LambdaTriagePagination {
+            default_limit: 50,
+            max_limit: 200,
+            evidence_cursor: "evidence_citations",
+        },
+        freshness: LambdaTriageFreshness {
+            stale_data_blocks_ai_summary: report.stale_resources > 0,
+            stale_resources: report.stale_resources,
+            freshness_source: "lambda_inventory_last_synced_at",
+        },
+        export_formats: vec!["json", "markdown_runbook"],
+        error_codes: vec![
+            "LAMBDA_OPERATIONAL_AI_TRIAGE_STALE_DATA",
+            "LAMBDA_OPERATIONAL_AI_TRIAGE_MISSING_EVIDENCE",
+            "LAMBDA_OPERATIONAL_AI_TRIAGE_RBAC_DENIED",
+        ],
+        guardrails: LambdaAiTriageGuardrails {
+            read_only_mode: true,
+            evidence_required: true,
+            separate_facts_from_hypotheses: true,
+            ask_for_missing_data: true,
+            no_llm_invocation: true,
+            no_mutation_planning: true,
+        },
+        facts,
+        hypotheses,
+        missing_data_questions,
+        follow_up_questions: sorted_unique_strings(follow_up_questions),
+        runbook_copy_markdown: lambda_operational_runbook_copy(report),
+        feedback_capture: LambdaTriageFeedbackCapture {
+            supported: true,
+            feedback_event_type: "lambda_operational_ai_triage_feedback_captured",
+            fields: vec!["helpful", "accuracy", "missing_evidence", "operator_note"],
+        },
+        evidence_citations,
+    }
+}
+
+pub fn lambda_operational_telemetry_summary(
+    report: &PillarReport,
+) -> LambdaOperationalTelemetrySummary {
+    let missing_data_reason_codes = sorted_unique_reasons(
+        report
+            .findings
+            .iter()
+            .filter(|finding| {
+                matches!(
+                    finding.reason_code.as_str(),
+                    REASON_OP_MISSING_TELEMETRY_COLLECTION_METADATA
+                        | REASON_OP_TELEMETRY_COLLECTION_ERRORS
+                        | REASON_OP_MISSING_CLOUDWATCH_TELEMETRY
+                        | REASON_OP_MISSING_LOG_EVENT_EVIDENCE
+                        | REASON_OP_MISSING_QUOTA_LIMIT_EVIDENCE
+                        | REASON_INV_STALE_DATA
+                )
+            })
+            .map(|finding| finding.reason_code.clone()),
+    );
+    let evidence_reason_codes = sorted_unique_reason_codes(report);
+    let stale_data_blocks_delivery = report.stale_resources > 0
+        || report.findings.iter().any(|finding| {
+            matches!(
+                finding.reason_code.as_str(),
+                REASON_OP_TELEMETRY_COLLECTION_ERRORS
+                    | REASON_OP_MISSING_CLOUDWATCH_TELEMETRY
+                    | REASON_OP_MISSING_LOG_EVENT_EVIDENCE
+                    | REASON_OP_MISSING_QUOTA_LIMIT_EVIDENCE
+            )
+        });
+
+    LambdaCostTelemetrySummary {
+        workflow_id: "lambda_operational_telemetry",
+        read_only_mode: true,
+        freshness_required: true,
+        telemetry_collection_required: true,
+        cloudwatch_namespace: "AWS/Lambda",
+        cloudwatch_dimension: "FunctionName",
+        required_metrics: lambda_resilience_metric_names().to_vec(),
+        export_formats: vec!["json"],
+        missing_data_reason_codes,
+        evidence_reason_codes,
+        stale_data_blocks_delivery,
+        telemetry_quality_score: report.score,
+    }
+}
+
 pub fn lambda_resilience_agentic_investigation_plan(
     report: &PillarReport,
 ) -> LambdaResilienceAgenticInvestigationPlan {
@@ -3626,6 +3889,37 @@ fn evaluate_resilience(resource: &AwsResourceModel, findings: &mut Vec<Inventory
             }),
         });
     }
+}
+
+fn evaluate_operational(resource: &AwsResourceModel, findings: &mut Vec<InventoryFinding>) {
+    let mut resilience_findings = Vec::new();
+    evaluate_resilience(resource, &mut resilience_findings);
+
+    findings.extend(resilience_findings.into_iter().filter_map(|finding| {
+        let reason_code = match finding.reason_code.as_str() {
+            REASON_RES_MISSING_CONFIG_DATA => REASON_OP_MISSING_CONFIG_DATA,
+            REASON_RES_MISSING_TELEMETRY_COLLECTION_METADATA => {
+                REASON_OP_MISSING_TELEMETRY_COLLECTION_METADATA
+            }
+            REASON_RES_TELEMETRY_COLLECTION_ERRORS => REASON_OP_TELEMETRY_COLLECTION_ERRORS,
+            REASON_RES_MISSING_CLOUDWATCH_TELEMETRY => REASON_OP_MISSING_CLOUDWATCH_TELEMETRY,
+            REASON_RES_MISSING_LOG_EVENT_EVIDENCE => REASON_OP_MISSING_LOG_EVENT_EVIDENCE,
+            REASON_RES_MISSING_QUOTA_LIMIT_EVIDENCE => REASON_OP_MISSING_QUOTA_LIMIT_EVIDENCE,
+            REASON_RES_ERROR_OR_THROTTLE_HEALTH_SIGNAL => REASON_OP_ERROR_OR_THROTTLE_HEALTH_SIGNAL,
+            REASON_RES_LOW_TIMEOUT_HEADROOM => REASON_OP_LOW_TIMEOUT_HEADROOM,
+            _ => return None,
+        };
+
+        Some(InventoryFinding {
+            pillar: Pillar::OperationalExcellence,
+            reason_code: reason_code.to_string(),
+            message: finding
+                .message
+                .replace("resilience", "operational excellence")
+                .replace("recovery", "operational readiness"),
+            ..finding
+        })
+    }));
 }
 
 fn evaluate_performance(resource: &AwsResourceModel, findings: &mut Vec<InventoryFinding>) {
@@ -5118,6 +5412,111 @@ fn lambda_resilience_posture_recommendations(
         .collect()
 }
 
+fn lambda_operational_follow_up_question(reason_code: &str) -> String {
+    match reason_code {
+        REASON_INV_STALE_DATA => {
+            "Has Lambda inventory and operational telemetry been refreshed in the current sync window?"
+        }
+        REASON_OP_MISSING_CONFIG_DATA => {
+            "Which timeout, memory, architecture, and deployment configuration evidence is missing?"
+        }
+        REASON_OP_MISSING_TELEMETRY_COLLECTION_METADATA => {
+            "Which collector run, duration, success, failure, and audit IDs should be attached?"
+        }
+        REASON_OP_TELEMETRY_COLLECTION_ERRORS => {
+            "Which collector permissions, retries, rate limits, or ingestion failures explain the telemetry gap?"
+        }
+        REASON_OP_MISSING_CLOUDWATCH_TELEMETRY => {
+            "Can CloudWatch Duration, Errors, and Throttles evidence be collected for this function?"
+        }
+        REASON_OP_MISSING_LOG_EVENT_EVIDENCE => {
+            "Which logs, event-source mappings, and dead-letter evidence explain operational readiness?"
+        }
+        REASON_OP_MISSING_QUOTA_LIMIT_EVIDENCE => {
+            "Which reserved concurrency and account limit evidence is needed before operational review?"
+        }
+        REASON_OP_ERROR_OR_THROTTLE_HEALTH_SIGNAL => {
+            "Which runbook, alert, owner, retry, or downstream dependency should be reviewed for this signal?"
+        }
+        REASON_OP_LOW_TIMEOUT_HEADROOM => {
+            "Does the runbook define safe timeout, memory, and downstream latency guardrails?"
+        }
+        _ => "What operational evidence should be collected before recommending action?",
+    }
+    .to_string()
+}
+
+fn lambda_operational_runbook_copy(report: &PillarReport) -> String {
+    let reason_codes = sorted_unique_reason_codes(report);
+    format!(
+        "### Lambda operational-excellence AI triage\n\nScore: {}. Resources evaluated: {}. Stale resources: {}. Evidence reason codes: {}.\n\nUse this context for read-only operational review only. Confirm telemetry freshness, ownership, alerting, runbooks, logs, event paths, quotas, limits, and rollback notes before proposing changes.",
+        report.score,
+        report.resources_evaluated,
+        report.stale_resources,
+        if reason_codes.is_empty() {
+            "none".to_string()
+        } else {
+            reason_codes.join(", ")
+        }
+    )
+}
+
+fn lambda_operational_posture_recommendations(
+    report: &PillarReport,
+) -> Vec<LambdaCostPostureRecommendation> {
+    report
+        .findings
+        .iter()
+        .filter_map(|finding| {
+            let recommendation = match finding.reason_code.as_str() {
+                REASON_INV_STALE_DATA => "refresh_lambda_inventory_and_operational_telemetry",
+                REASON_OP_MISSING_CONFIG_DATA => "collect_lambda_operational_configuration",
+                REASON_OP_MISSING_TELEMETRY_COLLECTION_METADATA => {
+                    "restore_lambda_operational_collection_metadata"
+                }
+                REASON_OP_TELEMETRY_COLLECTION_ERRORS => {
+                    "inspect_lambda_operational_collection_errors"
+                }
+                REASON_OP_MISSING_CLOUDWATCH_TELEMETRY => {
+                    "collect_lambda_operational_health_metrics"
+                }
+                REASON_OP_MISSING_LOG_EVENT_EVIDENCE => {
+                    "collect_lambda_log_event_and_dlq_operational_evidence"
+                }
+                REASON_OP_MISSING_QUOTA_LIMIT_EVIDENCE => {
+                    "collect_lambda_concurrency_limit_operational_evidence"
+                }
+                REASON_OP_ERROR_OR_THROTTLE_HEALTH_SIGNAL => {
+                    "review_lambda_error_throttle_runbook_and_alerting"
+                }
+                REASON_OP_LOW_TIMEOUT_HEADROOM => {
+                    "review_lambda_timeout_memory_and_runbook_headroom"
+                }
+                _ => return None,
+            };
+
+            Some(LambdaCostPostureRecommendation {
+                resource_id: finding.resource_id.clone(),
+                reason_code: finding.reason_code.clone(),
+                recommendation,
+                owner: owner_from_evidence(&finding.evidence),
+                confidence: "medium",
+                effort: "medium",
+                risk: if matches!(
+                    finding.reason_code.as_str(),
+                    REASON_OP_ERROR_OR_THROTTLE_HEALTH_SIGNAL | REASON_OP_LOW_TIMEOUT_HEADROOM
+                ) {
+                    "medium"
+                } else {
+                    "low"
+                },
+                suppression_key: format!("{}:{}", finding.resource_id, finding.reason_code),
+                audit_event_type: "lambda_operational_posture_recommendation_emitted",
+            })
+        })
+        .collect()
+}
+
 fn missing_fields<'a>(resource: &AwsResourceModel, required_fields: &'a [&str]) -> Vec<&'a str> {
     required_fields
         .iter()
@@ -5524,6 +5923,51 @@ mod tests {
             .evidence_reason_codes
             .iter()
             .any(|code| code == REASON_SCAL_THROTTLE_PRESSURE));
+    }
+
+    #[test]
+    fn lambda_operational_telemetry_and_triage_explain_runbook_signal_gaps() {
+        let mut data = healthy_data();
+        data["cloudwatch_metrics"]["metrics"][1]["datapoints"] = json!([{ "value": 29500.0 }]);
+        data["cloudwatch_metrics"]["metrics"][2]["datapoints"] = json!([{ "value": 3.0 }]);
+        data["cloudwatch_metrics"]["metrics"][3]["datapoints"] = json!([{ "value": 2.0 }]);
+        data.as_object_mut()
+            .expect("object")
+            .remove("recent_error_log_count");
+        let r = fixture("fn-op-gap", json!({"owner": "ops"}), data, 1, now());
+        let report = evaluate_lambda_fleet(&[r], Pillar::OperationalExcellence, now());
+
+        assert!(report.findings.iter().any(|finding| {
+            finding.reason_code == REASON_OP_MISSING_LOG_EVENT_EVIDENCE
+                && finding.pillar == Pillar::OperationalExcellence
+        }));
+        assert!(report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == REASON_OP_ERROR_OR_THROTTLE_HEALTH_SIGNAL));
+
+        let posture = lambda_operational_posture_summary(&report);
+        assert_eq!(posture.workflow_id, "lambda_operational_posture");
+        assert_eq!(posture.rule_pack_id, "lambda-operational-posture-rules-v1");
+
+        let triage = lambda_operational_triage_context(&report);
+        assert_eq!(triage.workflow_id, "lambda_operational_triage_context");
+        assert_eq!(triage.prompt_template_id, "lambda-operational-ai-triage-v1");
+        assert!(triage.guardrails.read_only_mode);
+        assert!(triage
+            .runbook_copy_markdown
+            .contains("Lambda operational-excellence AI triage"));
+
+        let telemetry = lambda_operational_telemetry_summary(&report);
+        assert_eq!(telemetry.workflow_id, "lambda_operational_telemetry");
+        assert_eq!(telemetry.cloudwatch_namespace, "AWS/Lambda");
+        assert!(telemetry.required_metrics.contains(&"Duration"));
+        assert!(telemetry.required_metrics.contains(&"Errors"));
+        assert!(telemetry.required_metrics.contains(&"Throttles"));
+        assert!(telemetry.stale_data_blocks_delivery);
+        assert!(telemetry
+            .evidence_reason_codes
+            .contains(&REASON_OP_ERROR_OR_THROTTLE_HEALTH_SIGNAL.to_string()));
     }
 
     #[test]
