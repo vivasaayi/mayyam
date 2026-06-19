@@ -43,6 +43,15 @@ pub const REASON_COST_ERROR_OR_THROTTLE_TELEMETRY: &str = "LAMBDA_COST_ERROR_OR_
 pub const REASON_SEC_DEPRECATED_RUNTIME: &str = "LAMBDA_SEC_DEPRECATED_RUNTIME";
 pub const REASON_SEC_MISSING_OWNER_TAG: &str = "LAMBDA_SEC_MISSING_OWNER_TAG";
 pub const REASON_RES_MISSING_CONFIG_DATA: &str = "LAMBDA_RES_MISSING_CONFIG_DATA";
+pub const REASON_RES_MISSING_TELEMETRY_COLLECTION_METADATA: &str =
+    "LAMBDA_RES_MISSING_TELEMETRY_COLLECTION_METADATA";
+pub const REASON_RES_TELEMETRY_COLLECTION_ERRORS: &str = "LAMBDA_RES_TELEMETRY_COLLECTION_ERRORS";
+pub const REASON_RES_MISSING_CLOUDWATCH_TELEMETRY: &str = "LAMBDA_RES_MISSING_CLOUDWATCH_TELEMETRY";
+pub const REASON_RES_MISSING_LOG_EVENT_EVIDENCE: &str = "LAMBDA_RES_MISSING_LOG_EVENT_EVIDENCE";
+pub const REASON_RES_MISSING_QUOTA_LIMIT_EVIDENCE: &str = "LAMBDA_RES_MISSING_QUOTA_LIMIT_EVIDENCE";
+pub const REASON_RES_ERROR_OR_THROTTLE_HEALTH_SIGNAL: &str =
+    "LAMBDA_RES_ERROR_OR_THROTTLE_HEALTH_SIGNAL";
+pub const REASON_RES_LOW_TIMEOUT_HEADROOM: &str = "LAMBDA_RES_LOW_TIMEOUT_HEADROOM";
 pub const REASON_INV_STALE_DATA: &str = "LAMBDA_INV_STALE_DATA";
 
 /// Runtimes AWS has deprecated (no more security patches). Kept as an
@@ -267,6 +276,10 @@ pub enum LambdaRemediationActionKind {
     PlanArm64Migration,
     ReviewUnusedFunctionCleanup,
     ReviewRetryThrottleCostControls,
+    ReviewTelemetryCoverage,
+    ReviewTimeoutHeadroom,
+    ReviewFailureAndThrottleRecovery,
+    ReviewConcurrencyLimitGuardrails,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -445,6 +458,66 @@ pub struct LambdaCostReportingBundle {
     pub engineering_backlog: LambdaCostEngineeringBacklog,
     pub incident_review: LambdaCostIncidentReview,
     pub missing_data_reason_codes: Vec<String>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+pub type LambdaResiliencePostureSummary = LambdaCostPostureSummary;
+pub type LambdaResilienceTriageContext = LambdaCostTriageContext;
+pub type LambdaResilienceAgenticInvestigationPlan = LambdaCostAgenticInvestigationPlan;
+pub type LambdaResilienceRemediationWorkflow = LambdaCostRemediationWorkflow;
+pub type LambdaResilienceSloPolicySnapshot = LambdaCostSloPolicySnapshot;
+pub type LambdaResiliencePolicyObjective = LambdaCostPolicyObjective;
+pub type LambdaResilienceObjectiveStatus = LambdaCostObjectiveStatus;
+pub type LambdaResilienceTrendDirection = LambdaCostTrendDirection;
+pub type LambdaResilienceReportRow = LambdaCostReportRow;
+pub type LambdaResilienceExecutiveSummary = LambdaCostExecutiveSummary;
+pub type LambdaResilienceEngineeringBacklog = LambdaCostEngineeringBacklog;
+pub type LambdaResilienceIncidentReview = LambdaCostIncidentReview;
+pub type LambdaResilienceReportingBundle = LambdaCostReportingBundle;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LambdaResilienceForecastRisk {
+    Low,
+    Moderate,
+    High,
+    Blocked,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LambdaResilienceForecastBand {
+    pub horizon_days: u16,
+    pub lower_recovery_exposure_index: u16,
+    pub expected_recovery_exposure_index: u16,
+    pub upper_recovery_exposure_index: u16,
+    pub confidence_level: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LambdaResilienceForecastRiskDriver {
+    pub reason_code: String,
+    pub affected_resources: Vec<String>,
+    pub recovery_exposure_index_delta: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct LambdaResilienceForecastSnapshot {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub baseline_window_days: u16,
+    pub forecast_horizon_days: u16,
+    pub confidence_level: u8,
+    pub forecast_band: LambdaResilienceForecastBand,
+    pub risk_level: LambdaResilienceForecastRisk,
+    pub recovery_capacity_risk: &'static str,
+    pub backtesting_fixture_status: &'static str,
+    pub threshold_controls: Vec<&'static str>,
+    pub what_if_inputs: Vec<&'static str>,
+    pub blocked_by_stale_data: bool,
+    pub blast_radius_summary: String,
+    pub recovery_note: &'static str,
+    pub missing_data_reason_codes: Vec<String>,
+    pub risk_drivers: Vec<LambdaResilienceForecastRiskDriver>,
     pub evidence_reason_codes: Vec<String>,
 }
 
@@ -1160,6 +1233,620 @@ pub fn lambda_cost_reporting_bundle(report: &PillarReport) -> LambdaCostReportin
     }
 }
 
+pub fn lambda_resilience_triage_context(report: &PillarReport) -> LambdaResilienceTriageContext {
+    let mut facts = Vec::new();
+    let mut hypotheses = Vec::new();
+    let mut missing_data_questions = Vec::new();
+    let mut follow_up_questions = Vec::new();
+    let mut evidence_citations = Vec::new();
+
+    for finding in &report.findings {
+        facts.push(format!(
+            "{} affects {} with {:?} severity",
+            finding.reason_code, finding.resource_id, finding.severity
+        ));
+        evidence_citations.push(LambdaEvidenceCitation {
+            reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            evidence: finding.evidence.clone(),
+        });
+
+        match finding.reason_code.as_str() {
+            REASON_INV_STALE_DATA => missing_data_questions.push(format!(
+                "Refresh Lambda inventory and resilience telemetry for {} before explaining current failure posture",
+                finding.resource_id
+            )),
+            REASON_RES_MISSING_CONFIG_DATA => missing_data_questions.push(format!(
+                "Collect timeout and memory configuration for {} before assessing resilience limits",
+                finding.resource_id
+            )),
+            REASON_RES_MISSING_TELEMETRY_COLLECTION_METADATA => missing_data_questions.push(
+                format!(
+                    "Collect Lambda resilience telemetry collection metadata for {} before trusting evidence freshness",
+                    finding.resource_id
+                ),
+            ),
+            REASON_RES_TELEMETRY_COLLECTION_ERRORS => hypotheses.push(format!(
+                "{} has resilience telemetry collection errors; inspect CloudWatch permissions, collector retries, and ingestion failures before recommending recovery changes",
+                finding.resource_id
+            )),
+            REASON_RES_MISSING_CLOUDWATCH_TELEMETRY => missing_data_questions.push(format!(
+                "Collect Duration, Errors, and Throttles telemetry for {} before explaining Lambda resilience behavior",
+                finding.resource_id
+            )),
+            REASON_RES_MISSING_LOG_EVENT_EVIDENCE => missing_data_questions.push(format!(
+                "Collect log, event-source, and dead-letter evidence for {} before explaining Lambda recovery paths",
+                finding.resource_id
+            )),
+            REASON_RES_MISSING_QUOTA_LIMIT_EVIDENCE => missing_data_questions.push(format!(
+                "Collect reserved concurrency and account concurrency limits for {} before evaluating throttle resilience",
+                finding.resource_id
+            )),
+            REASON_RES_ERROR_OR_THROTTLE_HEALTH_SIGNAL => hypotheses.push(format!(
+                "{} has Lambda error or throttle signals that can degrade retries and recovery; inspect event source pressure, concurrency, and upstream error paths before recommending changes",
+                finding.resource_id
+            )),
+            REASON_RES_LOW_TIMEOUT_HEADROOM => hypotheses.push(format!(
+                "{} is running close to its timeout budget; verify duration percentile, memory headroom, and downstream latency before tuning resilience limits",
+                finding.resource_id
+            )),
+            _ => {}
+        }
+
+        follow_up_questions.push(lambda_resilience_follow_up_question(
+            finding.reason_code.as_str(),
+        ));
+    }
+
+    LambdaCostTriageContext {
+        workflow_id: "lambda_resilience_triage_context",
+        pillar: report.pillar,
+        api_path: "/api/aws/inventory/lambda/pillars",
+        context_builder_id: "lambda-resilience-deterministic-context-v1",
+        prompt_template_id: "lambda-resilience-ai-triage-v1",
+        generation_mode: "deterministic_no_llm",
+        max_prompt_tokens: 1200,
+        provider_routing: vec!["primary_ops_llm", "fallback_ops_llm"],
+        audit_event_type: "lambda_resilience_ai_triage_context_built",
+        audit_id_prefix: "lambda-resilience-ai-triage",
+        pagination: LambdaTriagePagination {
+            default_limit: 50,
+            max_limit: 200,
+            evidence_cursor: "evidence_citations",
+        },
+        freshness: LambdaTriageFreshness {
+            stale_data_blocks_ai_summary: report.stale_resources > 0,
+            stale_resources: report.stale_resources,
+            freshness_source: "lambda_inventory_last_synced_at",
+        },
+        export_formats: vec!["json", "markdown_runbook"],
+        error_codes: vec![
+            "LAMBDA_RESILIENCE_AI_TRIAGE_STALE_DATA",
+            "LAMBDA_RESILIENCE_AI_TRIAGE_MISSING_EVIDENCE",
+            "LAMBDA_RESILIENCE_AI_TRIAGE_RBAC_DENIED",
+        ],
+        guardrails: LambdaAiTriageGuardrails {
+            read_only_mode: true,
+            evidence_required: true,
+            separate_facts_from_hypotheses: true,
+            ask_for_missing_data: true,
+            no_llm_invocation: true,
+            no_mutation_planning: true,
+        },
+        facts,
+        hypotheses,
+        missing_data_questions,
+        follow_up_questions: sorted_unique_strings(follow_up_questions),
+        runbook_copy_markdown: lambda_resilience_runbook_copy(report),
+        feedback_capture: LambdaTriageFeedbackCapture {
+            supported: true,
+            feedback_event_type: "lambda_resilience_ai_triage_feedback_captured",
+            fields: vec!["helpful", "accuracy", "missing_evidence", "operator_note"],
+        },
+        evidence_citations,
+    }
+}
+
+pub fn lambda_resilience_posture_summary(report: &PillarReport) -> LambdaResiliencePostureSummary {
+    let rules = vec![
+        lambda_cost_posture_rule(
+            report,
+            "lambda-resilience-inventory-freshness",
+            &[REASON_INV_STALE_DATA],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-resilience-config-present",
+            &[REASON_RES_MISSING_CONFIG_DATA],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-resilience-telemetry-collection-metadata-present",
+            &[REASON_RES_MISSING_TELEMETRY_COLLECTION_METADATA],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-resilience-telemetry-collection-errors-clear",
+            &[REASON_RES_TELEMETRY_COLLECTION_ERRORS],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-resilience-cloudwatch-metrics-present",
+            &[REASON_RES_MISSING_CLOUDWATCH_TELEMETRY],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-resilience-log-and-event-evidence-present",
+            &[REASON_RES_MISSING_LOG_EVENT_EVIDENCE],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-resilience-quota-limit-evidence-present",
+            &[REASON_RES_MISSING_QUOTA_LIMIT_EVIDENCE],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-resilience-timeout-headroom-safe",
+            &[REASON_RES_LOW_TIMEOUT_HEADROOM],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-resilience-errors-and-throttles-reviewed",
+            &[REASON_RES_ERROR_OR_THROTTLE_HEALTH_SIGNAL],
+        ),
+    ];
+    let rules_failed = rules
+        .iter()
+        .filter(|rule| rule.status == LambdaPostureStatus::Fail)
+        .count();
+    let affected_resources = sorted_unique_resources(
+        rules
+            .iter()
+            .flat_map(|rule| rule.affected_resources.iter().cloned()),
+    );
+
+    LambdaCostPostureSummary {
+        workflow_id: "lambda_resilience_posture",
+        rule_pack_id: "lambda-resilience-posture-rules-v1",
+        evidence_serializer: "lambda-resilience-evidence-v1",
+        severity_model: "deterministic-high-medium-low-v1",
+        audit_event_type: "lambda_resilience_posture_evaluated",
+        read_only_mode: true,
+        status: if rules_failed == 0 {
+            LambdaPostureStatus::Pass
+        } else {
+            LambdaPostureStatus::Fail
+        },
+        rules_evaluated: rules.len(),
+        rules_failed,
+        affected_resources,
+        rules,
+        suppression_policy: LambdaSuppressionPolicy {
+            supported: true,
+            scope: "resource_reason_code",
+            requires_reason: true,
+            audit_event_type: "lambda_resilience_posture_suppression_requested",
+        },
+        assignment_policy: LambdaAssignmentPolicy {
+            supported: true,
+            owner_sources: vec![
+                "tag:owner",
+                "tag:team",
+                "tag:environment",
+                "tag:application",
+            ],
+            fallback_owner: "unassigned",
+            audit_event_type: "lambda_resilience_posture_assignment_requested",
+        },
+        recommendations: lambda_resilience_posture_recommendations(report),
+    }
+}
+
+pub fn lambda_resilience_agentic_investigation_plan(
+    report: &PillarReport,
+) -> LambdaResilienceAgenticInvestigationPlan {
+    let triage = lambda_resilience_triage_context(report);
+    let mut steps = Vec::new();
+    let mut approval_gates = Vec::new();
+
+    for citation in &triage.evidence_citations {
+        match citation.reason_code.as_str() {
+            REASON_INV_STALE_DATA => steps.push(lambda_investigation_step(
+                &steps,
+                LambdaInvestigationStepKind::Inspect,
+                "lambda.resilience.inspect_inventory_freshness",
+                LambdaInvestigationToolMode::ReadOnly,
+                citation,
+                "stop when Lambda inventory freshness and resilience evidence timestamps are confirmed",
+            )),
+            REASON_RES_MISSING_CONFIG_DATA => steps.push(lambda_investigation_step(
+                &steps,
+                LambdaInvestigationStepKind::Inspect,
+                "lambda.resilience.inspect_runtime_limits",
+                LambdaInvestigationToolMode::ReadOnly,
+                citation,
+                "stop when timeout, memory, and architecture limits are recorded",
+            )),
+            REASON_RES_MISSING_TELEMETRY_COLLECTION_METADATA => steps.push(
+                lambda_investigation_step(
+                    &steps,
+                    LambdaInvestigationStepKind::Inspect,
+                    "lambda.resilience.inspect_collection_metadata",
+                    LambdaInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when collection start, completion, duration, success, failure, and error counts are recorded",
+                ),
+            ),
+            REASON_RES_TELEMETRY_COLLECTION_ERRORS => steps.push(lambda_investigation_step(
+                &steps,
+                LambdaInvestigationStepKind::Diagnose,
+                "lambda.resilience.inspect_collector_errors",
+                LambdaInvestigationToolMode::ReadOnly,
+                citation,
+                "stop when collector logs, permissions, throttling, and retry evidence explain the resilience telemetry gap",
+            )),
+            REASON_RES_MISSING_CLOUDWATCH_TELEMETRY => steps.push(lambda_investigation_step(
+                &steps,
+                LambdaInvestigationStepKind::Inspect,
+                "lambda.resilience.get_health_metrics",
+                LambdaInvestigationToolMode::ReadOnly,
+                citation,
+                "stop when Duration, Errors, and Throttles datapoints are collected or confirmed absent",
+            )),
+            REASON_RES_MISSING_LOG_EVENT_EVIDENCE => steps.push(lambda_investigation_step(
+                &steps,
+                LambdaInvestigationStepKind::Inspect,
+                "lambda.resilience.inspect_logs_and_event_sources",
+                LambdaInvestigationToolMode::ReadOnly,
+                citation,
+                "stop when log subscription, DLQ, and event source mapping evidence are recorded",
+            )),
+            REASON_RES_MISSING_QUOTA_LIMIT_EVIDENCE => steps.push(lambda_investigation_step(
+                &steps,
+                LambdaInvestigationStepKind::Inspect,
+                "lambda.resilience.inspect_concurrency_limits",
+                LambdaInvestigationToolMode::ReadOnly,
+                citation,
+                "stop when reserved concurrency and account concurrency limit evidence are recorded",
+            )),
+            REASON_RES_ERROR_OR_THROTTLE_HEALTH_SIGNAL => {
+                steps.push(lambda_investigation_step(
+                    &steps,
+                    LambdaInvestigationStepKind::Diagnose,
+                    "lambda.resilience.diagnose_failure_and_throttle_path",
+                    LambdaInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when error, throttle, event retry, and downstream dependency evidence explain the recovery gap",
+                ));
+                approval_gates.push(lambda_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve concurrency, retry, or event-source changes after resilience review",
+                ));
+            }
+            REASON_RES_LOW_TIMEOUT_HEADROOM => {
+                steps.push(lambda_investigation_step(
+                    &steps,
+                    LambdaInvestigationStepKind::Compare,
+                    "lambda.resilience.compare_timeout_headroom",
+                    LambdaInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when duration percentile, timeout budget, and downstream latency evidence explain the headroom risk",
+                ));
+                approval_gates.push(lambda_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve timeout, memory, or concurrency changes after blast-radius review",
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    if !approval_gates.is_empty() {
+        steps.push(LambdaInvestigationStep {
+            step_id: format!("lambda-resilience-step-{:02}", steps.len() + 1),
+            kind: LambdaInvestigationStepKind::ProposeMutationPlan,
+            tool_name: "lambda.resilience.prepare_approval_plan",
+            tool_mode: LambdaInvestigationToolMode::ApprovalRequired,
+            target_resource_id: "investigation".to_string(),
+            reason_code: "LAMBDA_RESILIENCE_APPROVAL_PLAN_REQUIRED".to_string(),
+            stop_condition:
+                "stop before mutation; require explicit operator approval, blast-radius summary, and rollback note"
+                    .to_string(),
+            evidence: json!({
+                "approval_gate_count": approval_gates.len(),
+                "read_only_step_count": steps.len(),
+            }),
+        });
+    }
+
+    LambdaCostAgenticInvestigationPlan {
+        workflow_id: "lambda_resilience_agentic_investigation",
+        default_tool_mode: LambdaInvestigationToolMode::ReadOnly,
+        max_tool_calls: steps.len().min(12),
+        max_evidence_citations: triage.evidence_citations.len(),
+        replay_required: true,
+        steps,
+        approval_gates,
+        evidence_citations: triage.evidence_citations,
+    }
+}
+
+pub fn lambda_resilience_remediation_workflow(
+    report: &PillarReport,
+) -> LambdaResilienceRemediationWorkflow {
+    let investigation = lambda_resilience_agentic_investigation_plan(report);
+    let has_stale_data = report
+        .findings
+        .iter()
+        .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+    let mut actions = Vec::new();
+
+    for gate in &investigation.approval_gates {
+        for reason_code in &gate.evidence_reason_codes {
+            if let Some(kind) = lambda_resilience_remediation_action_kind(reason_code) {
+                actions.push(lambda_remediation_action_with_contract(
+                    "lambda-resilience",
+                    "lambda.resilience.remediation.dry_run_planned",
+                    &[
+                        "refresh Lambda config, metric, log, event, and concurrency evidence",
+                        "verify owner, blast radius, downstream dependency impact, and recovery path intent",
+                        "capture operator approval, rollback note, and audit id before execution",
+                    ],
+                    &actions,
+                    kind,
+                    gate,
+                    if has_stale_data {
+                        LambdaRemediationStatus::BlockedMissingEvidence
+                    } else {
+                        LambdaRemediationStatus::DryRunPendingApproval
+                    },
+                ));
+            }
+        }
+    }
+
+    LambdaCostRemediationWorkflow {
+        workflow_id: "lambda_resilience_safe_remediation",
+        read_only_mode: true,
+        rbac_permission: "aws.lambda.resilience.remediation.approve",
+        audit_stream: "lambda_resilience_remediation_audit",
+        stale_data_blocks_execution: has_stale_data,
+        actions,
+        approval_gates: investigation.approval_gates,
+    }
+}
+
+pub fn lambda_resilience_slo_policy_snapshot(
+    report: &PillarReport,
+) -> LambdaResilienceSloPolicySnapshot {
+    let posture = lambda_resilience_posture_summary(report);
+    let failed_rule_count = posture.rules_failed;
+    let affected_resource_count = posture.affected_resources.len();
+    let status =
+        lambda_cost_objective_status(report.score, failed_rule_count, report.stale_resources);
+    let owner_filters = sorted_unique_evidence_values(report, &["owner", "team"]);
+    let environment_filters = sorted_unique_evidence_values(report, &["environment", "env"]);
+    let application_filters = sorted_unique_evidence_values(report, &["application", "app"]);
+    let notification_targets = lambda_notification_targets(&owner_filters, &environment_filters);
+
+    LambdaCostSloPolicySnapshot {
+        workflow_id: "lambda_resilience_slo_policy",
+        read_only_mode: true,
+        freshness_required: true,
+        objective: LambdaCostPolicyObjective {
+            objective_id: "lambda-resilience-score-min-95",
+            status,
+            target_score_min: 95,
+            current_score: report.score,
+            trend_direction: lambda_resilience_trend_direction(status, failed_rule_count),
+            failed_rule_count,
+            affected_resource_count,
+            owner_filters,
+            environment_filters,
+            application_filters,
+            notification_targets,
+            policy_state: if report.stale_resources > 0 {
+                "blocked_stale_data"
+            } else if failed_rule_count > 0 {
+                "active_with_findings"
+            } else {
+                "active"
+            },
+            status_history: vec![
+                "snapshot_collected",
+                "resilience_policy_evaluated",
+                "notification_targets_resolved",
+            ],
+        },
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
+pub fn lambda_resilience_forecast_snapshot(
+    report: &PillarReport,
+) -> LambdaResilienceForecastSnapshot {
+    const BASELINE_WINDOW_DAYS: u16 = 30;
+    const FORECAST_HORIZON_DAYS: u16 = 30;
+    const CONFIDENCE_LEVEL: u8 = 75;
+
+    let stale_count = count_reason(report, REASON_INV_STALE_DATA);
+    let missing_config_count = count_reason(report, REASON_RES_MISSING_CONFIG_DATA);
+    let telemetry_error_count = count_reason(report, REASON_RES_TELEMETRY_COLLECTION_ERRORS);
+    let missing_metadata_count =
+        count_reason(report, REASON_RES_MISSING_TELEMETRY_COLLECTION_METADATA);
+    let missing_metrics_count = count_reason(report, REASON_RES_MISSING_CLOUDWATCH_TELEMETRY);
+    let missing_log_event_count = count_reason(report, REASON_RES_MISSING_LOG_EVENT_EVIDENCE);
+    let missing_quota_count = count_reason(report, REASON_RES_MISSING_QUOTA_LIMIT_EVIDENCE);
+    let error_or_throttle_count = count_reason(report, REASON_RES_ERROR_OR_THROTTLE_HEALTH_SIGNAL);
+    let timeout_headroom_count = count_reason(report, REASON_RES_LOW_TIMEOUT_HEADROOM);
+    let blocked_by_stale_data = report.stale_resources > 0 || stale_count > 0;
+
+    let expected_recovery_exposure_index = 100u16
+        + (error_or_throttle_count as u16 * 28)
+        + (timeout_headroom_count as u16 * 20)
+        + (missing_metrics_count as u16 * 18)
+        + (missing_log_event_count as u16 * 16)
+        + (missing_quota_count as u16 * 14)
+        + (missing_config_count as u16 * 12)
+        + (missing_metadata_count as u16 * 10)
+        + (telemetry_error_count as u16 * 20)
+        + (report.stale_resources as u16 * 28);
+    let uncertainty = 10u16
+        + (missing_metrics_count as u16 * 8)
+        + (missing_log_event_count as u16 * 7)
+        + (missing_quota_count as u16 * 6)
+        + (missing_metadata_count as u16 * 5)
+        + (telemetry_error_count as u16 * 8)
+        + (report.stale_resources as u16 * 12)
+        + (report.resources_evaluated == 0) as u16 * 25;
+    let lower_recovery_exposure_index =
+        expected_recovery_exposure_index.saturating_sub(uncertainty);
+    let upper_recovery_exposure_index = expected_recovery_exposure_index + uncertainty;
+    let risk_level = if blocked_by_stale_data {
+        LambdaResilienceForecastRisk::Blocked
+    } else if error_or_throttle_count > 0 || upper_recovery_exposure_index >= 155 {
+        LambdaResilienceForecastRisk::High
+    } else if timeout_headroom_count > 0
+        || missing_metrics_count > 0
+        || missing_log_event_count > 0
+        || missing_quota_count > 0
+        || missing_config_count > 0
+        || telemetry_error_count > 0
+        || expected_recovery_exposure_index > 100
+    {
+        LambdaResilienceForecastRisk::Moderate
+    } else {
+        LambdaResilienceForecastRisk::Low
+    };
+    let risk_drivers = lambda_resilience_forecast_risk_drivers(report);
+    let impacted_functions = sorted_unique_resources(
+        risk_drivers
+            .iter()
+            .flat_map(|driver| driver.affected_resources.iter().cloned()),
+    );
+
+    LambdaResilienceForecastSnapshot {
+        workflow_id: "lambda_resilience_forecasting",
+        read_only_mode: true,
+        baseline_window_days: BASELINE_WINDOW_DAYS,
+        forecast_horizon_days: FORECAST_HORIZON_DAYS,
+        confidence_level: CONFIDENCE_LEVEL,
+        forecast_band: LambdaResilienceForecastBand {
+            horizon_days: FORECAST_HORIZON_DAYS,
+            lower_recovery_exposure_index,
+            expected_recovery_exposure_index,
+            upper_recovery_exposure_index,
+            confidence_level: CONFIDENCE_LEVEL,
+        },
+        risk_level,
+        recovery_capacity_risk: lambda_resilience_recovery_capacity_risk(
+            blocked_by_stale_data,
+            error_or_throttle_count,
+            timeout_headroom_count,
+            missing_metrics_count,
+            missing_log_event_count,
+            missing_quota_count,
+        ),
+        backtesting_fixture_status: if report.findings.is_empty() {
+            "ready_clean_resilience_baseline"
+        } else if blocked_by_stale_data
+            || missing_metrics_count > 0
+            || missing_log_event_count > 0
+            || missing_quota_count > 0
+            || telemetry_error_count > 0
+        {
+            "needs_fresh_resilience_telemetry_fixture"
+        } else {
+            "ready_resilience_findings_baseline"
+        },
+        threshold_controls: vec![
+            "recovery_exposure_index_warning_threshold",
+            "recovery_exposure_index_critical_threshold",
+        ],
+        what_if_inputs: vec![
+            "restore_lambda_resilience_telemetry",
+            "review_timeout_and_memory_headroom",
+            "inspect_event_source_retry_and_dlq_configuration",
+            "review_reserved_concurrency_and_account_limit_guardrails",
+        ],
+        blocked_by_stale_data,
+        blast_radius_summary: if impacted_functions.is_empty() {
+            "No Lambda functions have resilience forecast risk in the current evidence.".to_string()
+        } else {
+            format!(
+                "{} Lambda function(s) have resilience forecast risk across timeout, throttle, log, event, and quota evidence.",
+                impacted_functions.len()
+            )
+        },
+        recovery_note:
+            "Forecast is read-only; resilience changes require remediation approval and rollback notes.",
+        missing_data_reason_codes: lambda_resilience_forecast_missing_data_reason_codes(report),
+        risk_drivers,
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
+pub fn lambda_resilience_reporting_bundle(
+    report: &PillarReport,
+) -> LambdaResilienceReportingBundle {
+    let posture = lambda_resilience_posture_summary(report);
+    let forecast = lambda_resilience_forecast_snapshot(report);
+    let reason_codes = sorted_unique_reason_codes(report);
+    let missing_data_reason_codes = lambda_resilience_reporting_missing_data_reason_codes(report);
+    let rows = lambda_resilience_report_rows(report);
+    let stale_data_blocks_delivery = report.stale_resources > 0
+        || report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+
+    LambdaCostReportingBundle {
+        workflow_id: "lambda_resilience_reporting",
+        read_only_mode: true,
+        scheduled_delivery_state: if stale_data_blocks_delivery {
+            "blocked_until_fresh_resilience_evidence"
+        } else if !missing_data_reason_codes.is_empty() {
+            "ready_with_resilience_evidence_gaps"
+        } else {
+            "ready_for_schedule"
+        },
+        stale_data_blocks_delivery,
+        portfolio_summary_ready: !stale_data_blocks_delivery,
+        workload_summary_ready: !stale_data_blocks_delivery && report.resources_evaluated > 0,
+        export_formats: vec!["json", "csv"],
+        saved_view_id: "lambda-resilience-posture-report",
+        executive_summary: LambdaCostExecutiveSummary {
+            report_id: "lambda-resilience-executive-summary",
+            score: report.score,
+            resources_evaluated: report.resources_evaluated,
+            stale_resources: report.stale_resources,
+            rules_failed: posture.rules_failed,
+            affected_resources: posture.affected_resources,
+            top_reason_codes: reason_codes.clone(),
+            blast_radius_summary: forecast.blast_radius_summary,
+        },
+        engineering_backlog: LambdaCostEngineeringBacklog {
+            report_id: "lambda-resilience-engineering-backlog",
+            page: 0,
+            page_size: 50,
+            total: rows.len(),
+            rows: rows.clone(),
+        },
+        incident_review: LambdaCostIncidentReview {
+            report_id: "lambda-resilience-incident-review",
+            page: 0,
+            page_size: 50,
+            total: rows.len(),
+            rows,
+        },
+        missing_data_reason_codes,
+        evidence_reason_codes: reason_codes,
+    }
+}
+
 fn evaluate_cost(resource: &AwsResourceModel, findings: &mut Vec<InventoryFinding>) {
     evaluate_cost_telemetry(resource, findings);
 
@@ -1219,8 +1906,8 @@ fn evaluate_cost_telemetry(resource: &AwsResourceModel, findings: &mut Vec<Inven
         "telemetry_collection_failure_count",
         "telemetry_collection_error_count",
     ];
-    let missing_fields = missing_fields(resource, &required_fields);
-    if !missing_fields.is_empty() {
+    let missing_collection_fields = missing_fields(resource, &required_fields);
+    if !missing_collection_fields.is_empty() {
         findings.push(InventoryFinding {
             resource_id: resource.resource_id.clone(),
             arn: resource.arn.clone(),
@@ -1233,7 +1920,7 @@ fn evaluate_cost_telemetry(resource: &AwsResourceModel, findings: &mut Vec<Inven
             ),
             evidence: json!({
                 "required_fields": required_fields,
-                "missing_fields": missing_fields,
+                "missing_fields": missing_collection_fields,
                 "resource_data_keys": resource_data_keys(resource),
                 "tags": resource.tags,
             }),
@@ -1390,6 +2077,190 @@ fn evaluate_resilience(resource: &AwsResourceModel, findings: &mut Vec<Inventory
             evidence: json!({ "timeout": timeout, "memory_size": memory_size }),
         });
     }
+
+    let required_fields = [
+        "telemetry_collection_started_at",
+        "telemetry_collection_completed_at",
+        "telemetry_collection_duration_ms",
+        "telemetry_collection_success_count",
+        "telemetry_collection_failure_count",
+        "telemetry_collection_error_count",
+    ];
+    let missing_resilience_collection_fields = missing_fields(resource, &required_fields);
+    if !missing_resilience_collection_fields.is_empty() {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Resilience,
+            reason_code: REASON_RES_MISSING_TELEMETRY_COLLECTION_METADATA.to_string(),
+            severity: Severity::Medium,
+            message: format!(
+                "Function {} is missing Lambda resilience telemetry collection metadata needed to trust recovery evidence",
+                resource.resource_id
+            ),
+            evidence: json!({
+                "required_fields": required_fields,
+                "missing_fields": missing_resilience_collection_fields,
+                "resource_data_keys": resource_data_keys(resource),
+                "tags": resource.tags,
+            }),
+        });
+    }
+
+    let telemetry_error_count =
+        data_u64(&resource.resource_data, "telemetry_collection_error_count").unwrap_or(0);
+    let telemetry_errors = resource
+        .resource_data
+        .get("telemetry_collection_errors")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default();
+    if telemetry_error_count > 0 || !telemetry_errors.is_empty() {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Resilience,
+            reason_code: REASON_RES_TELEMETRY_COLLECTION_ERRORS.to_string(),
+            severity: Severity::High,
+            message: format!(
+                "Function {} has Lambda resilience telemetry collection errors; recovery posture may be incomplete",
+                resource.resource_id
+            ),
+            evidence: json!({
+                "telemetry_collection_error_count": telemetry_error_count,
+                "telemetry_collection_errors": telemetry_errors,
+                "tags": resource.tags,
+            }),
+        });
+    }
+
+    let missing_metrics = missing_metrics(resource, &lambda_resilience_metric_names());
+    if !missing_metrics.is_empty() {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Resilience,
+            reason_code: REASON_RES_MISSING_CLOUDWATCH_TELEMETRY.to_string(),
+            severity: Severity::Medium,
+            message: format!(
+                "Function {} is missing Lambda CloudWatch resilience telemetry for {}",
+                resource.resource_id,
+                missing_metrics.join(", ")
+            ),
+            evidence: json!({
+                "required_metrics": lambda_resilience_metric_names(),
+                "missing_metrics": missing_metrics,
+                "cloudwatch_metric_names": resource.resource_data.get("cloudwatch_metric_names"),
+                "tags": resource.tags,
+            }),
+        });
+    }
+
+    let missing_log_event = missing_fields(
+        resource,
+        &[
+            "recent_error_log_count",
+            "event_source_mapping_count",
+            "dead_letter_queue_configured",
+        ],
+    );
+    if !missing_log_event.is_empty() {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Resilience,
+            reason_code: REASON_RES_MISSING_LOG_EVENT_EVIDENCE.to_string(),
+            severity: Severity::Medium,
+            message: format!(
+                "Function {} is missing log or event-path evidence needed to explain Lambda recovery behavior",
+                resource.resource_id
+            ),
+            evidence: json!({
+                "required_fields": [
+                    "recent_error_log_count",
+                    "event_source_mapping_count",
+                    "dead_letter_queue_configured"
+                ],
+                "missing_fields": missing_log_event,
+                "resource_data_keys": resource_data_keys(resource),
+                "tags": resource.tags,
+            }),
+        });
+    }
+
+    let missing_quota_limits = missing_fields(
+        resource,
+        &[
+            "reserved_concurrent_executions",
+            "account_concurrency_limit",
+        ],
+    );
+    if !missing_quota_limits.is_empty() {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Resilience,
+            reason_code: REASON_RES_MISSING_QUOTA_LIMIT_EVIDENCE.to_string(),
+            severity: Severity::Medium,
+            message: format!(
+                "Function {} is missing concurrency quota or limit evidence needed to explain throttle resilience",
+                resource.resource_id
+            ),
+            evidence: json!({
+                "required_fields": ["reserved_concurrent_executions", "account_concurrency_limit"],
+                "missing_fields": missing_quota_limits,
+                "resource_data_keys": resource_data_keys(resource),
+                "tags": resource.tags,
+            }),
+        });
+    }
+
+    let duration_max = metric_max(resource, "Duration").unwrap_or(0.0);
+    if let Some(timeout_seconds) = timeout {
+        let timeout_millis = (timeout_seconds as f64) * 1000.0;
+        if timeout_millis > 0.0 && duration_max >= timeout_millis * 0.8 {
+            findings.push(InventoryFinding {
+                resource_id: resource.resource_id.clone(),
+                arn: resource.arn.clone(),
+                pillar: Pillar::Resilience,
+                reason_code: REASON_RES_LOW_TIMEOUT_HEADROOM.to_string(),
+                severity: Severity::High,
+                message: format!(
+                    "Function {} is running close to its timeout budget; resilience headroom is low",
+                    resource.resource_id
+                ),
+                evidence: json!({
+                    "duration_max_ms": duration_max,
+                    "timeout_seconds": timeout_seconds,
+                    "timeout_headroom_ratio": ((timeout_millis - duration_max) / timeout_millis).max(0.0),
+                    "tags": resource.tags,
+                }),
+            });
+        }
+    }
+
+    let errors_max = metric_max(resource, "Errors").unwrap_or(0.0);
+    let throttles_max = metric_max(resource, "Throttles").unwrap_or(0.0);
+    if errors_max > 0.0 || throttles_max > 0.0 {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Resilience,
+            reason_code: REASON_RES_ERROR_OR_THROTTLE_HEALTH_SIGNAL.to_string(),
+            severity: Severity::High,
+            message: format!(
+                "Function {} has Lambda error or throttle telemetry that can degrade recovery behavior",
+                resource.resource_id
+            ),
+            evidence: json!({
+                "errors_max": errors_max,
+                "throttles_max": throttles_max,
+                "reserved_concurrent_executions": resource.resource_data.get("reserved_concurrent_executions"),
+                "account_concurrency_limit": resource.resource_data.get("account_concurrency_limit"),
+                "tags": resource.tags,
+            }),
+        });
+    }
 }
 
 fn lambda_cost_posture_rule(
@@ -1542,6 +2413,26 @@ fn lambda_remediation_action_kind(reason_code: &str) -> Option<LambdaRemediation
     }
 }
 
+fn lambda_resilience_remediation_action_kind(
+    reason_code: &str,
+) -> Option<LambdaRemediationActionKind> {
+    match reason_code {
+        REASON_RES_MISSING_LOG_EVENT_EVIDENCE => {
+            Some(LambdaRemediationActionKind::ReviewTelemetryCoverage)
+        }
+        REASON_RES_MISSING_QUOTA_LIMIT_EVIDENCE => {
+            Some(LambdaRemediationActionKind::ReviewConcurrencyLimitGuardrails)
+        }
+        REASON_RES_ERROR_OR_THROTTLE_HEALTH_SIGNAL => {
+            Some(LambdaRemediationActionKind::ReviewFailureAndThrottleRecovery)
+        }
+        REASON_RES_LOW_TIMEOUT_HEADROOM | REASON_RES_MISSING_CONFIG_DATA => {
+            Some(LambdaRemediationActionKind::ReviewTimeoutHeadroom)
+        }
+        _ => None,
+    }
+}
+
 fn lambda_remediation_action(
     existing_actions: &[LambdaCostRemediationAction],
     kind: LambdaRemediationActionKind,
@@ -1557,6 +2448,14 @@ fn lambda_remediation_action(
         }
         LambdaRemediationActionKind::ReviewRetryThrottleCostControls => {
             "review-retry-throttle-cost-controls"
+        }
+        LambdaRemediationActionKind::ReviewTelemetryCoverage => "review-telemetry-coverage",
+        LambdaRemediationActionKind::ReviewTimeoutHeadroom => "review-timeout-headroom",
+        LambdaRemediationActionKind::ReviewFailureAndThrottleRecovery => {
+            "review-failure-and-throttle-recovery"
+        }
+        LambdaRemediationActionKind::ReviewConcurrencyLimitGuardrails => {
+            "review-concurrency-limit-guardrails"
         }
     };
 
@@ -1580,6 +2479,55 @@ fn lambda_remediation_action(
             "verify owner, blast radius, estimated savings, compatibility, and traffic expectations",
             "capture operator approval, rollback note, and audit id before execution",
         ],
+        evidence_reason_codes: gate.evidence_reason_codes.clone(),
+    }
+}
+
+fn lambda_remediation_action_with_contract(
+    id_prefix: &str,
+    audit_event_type: &'static str,
+    validation_steps: &[&'static str],
+    existing_actions: &[LambdaCostRemediationAction],
+    kind: LambdaRemediationActionKind,
+    gate: &LambdaMutationApprovalGate,
+    status: LambdaRemediationStatus,
+) -> LambdaCostRemediationAction {
+    let action_number = existing_actions.len() + 1;
+    let action_slug = match kind {
+        LambdaRemediationActionKind::AssignCostTags => "assign-cost-tags",
+        LambdaRemediationActionKind::PlanArm64Migration => "plan-arm64-migration",
+        LambdaRemediationActionKind::ReviewUnusedFunctionCleanup => {
+            "review-unused-function-cleanup"
+        }
+        LambdaRemediationActionKind::ReviewRetryThrottleCostControls => {
+            "review-retry-throttle-cost-controls"
+        }
+        LambdaRemediationActionKind::ReviewTelemetryCoverage => "review-telemetry-coverage",
+        LambdaRemediationActionKind::ReviewTimeoutHeadroom => "review-timeout-headroom",
+        LambdaRemediationActionKind::ReviewFailureAndThrottleRecovery => {
+            "review-failure-and-throttle-recovery"
+        }
+        LambdaRemediationActionKind::ReviewConcurrencyLimitGuardrails => {
+            "review-concurrency-limit-guardrails"
+        }
+    };
+
+    LambdaCostRemediationAction {
+        action_id: format!("{id_prefix}-remediation-{action_number:02}"),
+        kind,
+        status,
+        target_resource_id: gate.target_resource_id.clone(),
+        dry_run: true,
+        requires_approval: true,
+        approval_gate_id: Some(gate.gate_id.clone()),
+        audit_event_type,
+        idempotency_key: format!("{id_prefix}-{}-{action_slug}", gate.target_resource_id),
+        blast_radius: gate.blast_radius.clone(),
+        rollback_note: format!(
+            "Before approval, record rollback or recovery notes for {action_slug} on {}.",
+            gate.target_resource_id
+        ),
+        validation_steps: validation_steps.to_vec(),
         evidence_reason_codes: gate.evidence_reason_codes.clone(),
     }
 }
@@ -1613,6 +2561,22 @@ fn lambda_cost_trend_direction(
     }
 }
 
+fn lambda_resilience_trend_direction(
+    status: LambdaResilienceObjectiveStatus,
+    failed_rule_count: usize,
+) -> LambdaResilienceTrendDirection {
+    match status {
+        LambdaResilienceObjectiveStatus::OnTrack => LambdaResilienceTrendDirection::Stable,
+        LambdaResilienceObjectiveStatus::AtRisk | LambdaResilienceObjectiveStatus::Breached => {
+            if failed_rule_count <= 1 {
+                LambdaResilienceTrendDirection::Stable
+            } else {
+                LambdaResilienceTrendDirection::Degrading
+            }
+        }
+    }
+}
+
 fn sorted_unique_reason_codes(report: &PillarReport) -> Vec<String> {
     sorted_unique_reasons(
         report
@@ -1640,6 +2604,27 @@ fn lambda_cost_reporting_missing_data_reason_codes(report: &PillarReport) -> Vec
     .collect()
 }
 
+fn lambda_resilience_reporting_missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    [
+        REASON_INV_STALE_DATA,
+        REASON_RES_MISSING_CONFIG_DATA,
+        REASON_RES_MISSING_TELEMETRY_COLLECTION_METADATA,
+        REASON_RES_TELEMETRY_COLLECTION_ERRORS,
+        REASON_RES_MISSING_CLOUDWATCH_TELEMETRY,
+        REASON_RES_MISSING_LOG_EVENT_EVIDENCE,
+        REASON_RES_MISSING_QUOTA_LIMIT_EVIDENCE,
+    ]
+    .into_iter()
+    .filter(|reason_code| {
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == *reason_code)
+    })
+    .map(str::to_string)
+    .collect()
+}
+
 fn lambda_cost_report_rows(report: &PillarReport) -> Vec<LambdaCostReportRow> {
     report
         .findings
@@ -1650,6 +2635,23 @@ fn lambda_cost_report_rows(report: &PillarReport) -> Vec<LambdaCostReportRow> {
             reason_code: finding.reason_code.clone(),
             message: finding.message.clone(),
             recovery_note: lambda_cost_reporting_recovery_note(&finding.reason_code).to_string(),
+            suppression_supported: true,
+            evidence: finding.evidence.clone(),
+        })
+        .collect()
+}
+
+fn lambda_resilience_report_rows(report: &PillarReport) -> Vec<LambdaResilienceReportRow> {
+    report
+        .findings
+        .iter()
+        .map(|finding| LambdaResilienceReportRow {
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            reason_code: finding.reason_code.clone(),
+            message: finding.message.clone(),
+            recovery_note: lambda_resilience_reporting_recovery_note(&finding.reason_code)
+                .to_string(),
             suppression_supported: true,
             evidence: finding.evidence.clone(),
         })
@@ -1683,6 +2685,39 @@ fn lambda_cost_reporting_recovery_note(reason_code: &str) -> &'static str {
             "Review retry, timeout, and concurrency behavior before scheduling cost remediation."
         }
         _ => "Collect fresh evidence before sharing this Lambda cost report row.",
+    }
+}
+
+fn lambda_resilience_reporting_recovery_note(reason_code: &str) -> &'static str {
+    match reason_code {
+        REASON_INV_STALE_DATA => {
+            "Refresh Lambda inventory and resilience telemetry before sharing the resilience report."
+        }
+        REASON_RES_MISSING_CONFIG_DATA => {
+            "Collect timeout and memory configuration before assessing Lambda recovery headroom."
+        }
+        REASON_RES_MISSING_TELEMETRY_COLLECTION_METADATA => {
+            "Collect resilience telemetry run metadata before scheduling Lambda resilience report delivery."
+        }
+        REASON_RES_TELEMETRY_COLLECTION_ERRORS => {
+            "Resolve Lambda resilience collector errors before publishing recovery findings."
+        }
+        REASON_RES_MISSING_CLOUDWATCH_TELEMETRY => {
+            "Collect Duration, Errors, and Throttles before quantifying Lambda resilience action."
+        }
+        REASON_RES_MISSING_LOG_EVENT_EVIDENCE => {
+            "Collect log subscription, event source mapping, and DLQ evidence before scheduling resilience remediation."
+        }
+        REASON_RES_MISSING_QUOTA_LIMIT_EVIDENCE => {
+            "Collect reserved concurrency and account limit evidence before scheduling throttle resilience changes."
+        }
+        REASON_RES_ERROR_OR_THROTTLE_HEALTH_SIGNAL => {
+            "Review error, throttle, retry, and downstream dependency behavior before scheduling resilience remediation."
+        }
+        REASON_RES_LOW_TIMEOUT_HEADROOM => {
+            "Review timeout, memory, and latency headroom before scheduling resilience limit changes."
+        }
+        _ => "Collect fresh evidence before sharing this Lambda resilience report row.",
     }
 }
 
@@ -1722,6 +2757,27 @@ fn lambda_cost_forecast_missing_data_reason_codes(report: &PillarReport) -> Vec<
     )
 }
 
+fn lambda_resilience_forecast_missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    sorted_unique_reasons(
+        report
+            .findings
+            .iter()
+            .filter(|finding| {
+                matches!(
+                    finding.reason_code.as_str(),
+                    REASON_INV_STALE_DATA
+                        | REASON_RES_MISSING_CONFIG_DATA
+                        | REASON_RES_MISSING_TELEMETRY_COLLECTION_METADATA
+                        | REASON_RES_TELEMETRY_COLLECTION_ERRORS
+                        | REASON_RES_MISSING_CLOUDWATCH_TELEMETRY
+                        | REASON_RES_MISSING_LOG_EVENT_EVIDENCE
+                        | REASON_RES_MISSING_QUOTA_LIMIT_EVIDENCE
+                )
+            })
+            .map(|finding| finding.reason_code.clone()),
+    )
+}
+
 fn lambda_cost_forecast_risk_drivers(report: &PillarReport) -> Vec<LambdaCostForecastRiskDriver> {
     [
         (REASON_INV_STALE_DATA, 25u16),
@@ -1749,6 +2805,36 @@ fn lambda_cost_forecast_risk_drivers(report: &PillarReport) -> Vec<LambdaCostFor
     .collect()
 }
 
+fn lambda_resilience_forecast_risk_drivers(
+    report: &PillarReport,
+) -> Vec<LambdaResilienceForecastRiskDriver> {
+    [
+        (REASON_INV_STALE_DATA, 28u16),
+        (REASON_RES_TELEMETRY_COLLECTION_ERRORS, 20u16),
+        (REASON_RES_ERROR_OR_THROTTLE_HEALTH_SIGNAL, 28u16),
+        (REASON_RES_LOW_TIMEOUT_HEADROOM, 20u16),
+        (REASON_RES_MISSING_CLOUDWATCH_TELEMETRY, 18u16),
+        (REASON_RES_MISSING_LOG_EVENT_EVIDENCE, 16u16),
+        (REASON_RES_MISSING_QUOTA_LIMIT_EVIDENCE, 14u16),
+        (REASON_RES_MISSING_CONFIG_DATA, 12u16),
+        (REASON_RES_MISSING_TELEMETRY_COLLECTION_METADATA, 10u16),
+    ]
+    .into_iter()
+    .filter_map(|(reason_code, delta)| {
+        let affected_resources = resources_for_reason(report, reason_code);
+        if affected_resources.is_empty() {
+            None
+        } else {
+            Some(LambdaResilienceForecastRiskDriver {
+                reason_code: reason_code.to_string(),
+                recovery_exposure_index_delta: delta * affected_resources.len() as u16,
+                affected_resources,
+            })
+        }
+    })
+    .collect()
+}
+
 fn lambda_cost_capacity_risk(
     forecast_blocked: bool,
     no_invocations_count: usize,
@@ -1766,6 +2852,27 @@ fn lambda_cost_capacity_risk(
         "telemetry_gap_limits_forecast"
     } else {
         "within_lambda_cost_forecast_threshold"
+    }
+}
+
+fn lambda_resilience_recovery_capacity_risk(
+    blocked_by_stale_data: bool,
+    error_or_throttle_count: usize,
+    timeout_headroom_count: usize,
+    missing_metrics_count: usize,
+    missing_log_event_count: usize,
+    missing_quota_count: usize,
+) -> &'static str {
+    if blocked_by_stale_data {
+        "blocked_until_inventory_refresh"
+    } else if error_or_throttle_count > 0 {
+        "active_error_or_throttle_recovery_exposure"
+    } else if timeout_headroom_count > 0 {
+        "timeout_headroom_recovery_pressure"
+    } else if missing_metrics_count > 0 || missing_log_event_count > 0 || missing_quota_count > 0 {
+        "telemetry_gap_limits_resilience_forecast"
+    } else {
+        "within_lambda_resilience_forecast_threshold"
     }
 }
 
@@ -1799,6 +2906,121 @@ fn lambda_notification_targets(
 
 fn lambda_cost_metric_names() -> [&'static str; 4] {
     ["Invocations", "Duration", "Errors", "Throttles"]
+}
+
+fn lambda_resilience_metric_names() -> [&'static str; 3] {
+    ["Duration", "Errors", "Throttles"]
+}
+
+fn lambda_resilience_follow_up_question(reason_code: &str) -> String {
+    match reason_code {
+        REASON_INV_STALE_DATA => {
+            "Has Lambda inventory and resilience telemetry been refreshed in the current sync window?"
+        }
+        REASON_RES_MISSING_CONFIG_DATA => {
+            "Which timeout and memory settings are missing from the Lambda function inventory?"
+        }
+        REASON_RES_MISSING_TELEMETRY_COLLECTION_METADATA => {
+            "Which collector run should be used as evidence for Lambda resilience telemetry completeness?"
+        }
+        REASON_RES_TELEMETRY_COLLECTION_ERRORS => {
+            "Which collector permission, throttling, or retry failure prevented Lambda resilience telemetry collection?"
+        }
+        REASON_RES_MISSING_CLOUDWATCH_TELEMETRY => {
+            "Which Duration, Errors, and Throttles datapoints are missing for the affected Lambda function?"
+        }
+        REASON_RES_MISSING_LOG_EVENT_EVIDENCE => {
+            "Which log subscription, DLQ, or event source mapping evidence is missing for the affected Lambda function?"
+        }
+        REASON_RES_MISSING_QUOTA_LIMIT_EVIDENCE => {
+            "Which reserved concurrency or account concurrency limit is missing for the affected Lambda function?"
+        }
+        REASON_RES_ERROR_OR_THROTTLE_HEALTH_SIGNAL => {
+            "Which retry, concurrency, or upstream dependency path is driving Lambda error or throttle recovery pressure?"
+        }
+        REASON_RES_LOW_TIMEOUT_HEADROOM => {
+            "Does the current timeout leave enough headroom for tail latency and downstream retries?"
+        }
+        _ => "What additional evidence is required before explaining this Lambda resilience finding?",
+    }
+    .to_string()
+}
+
+fn lambda_resilience_runbook_copy(report: &PillarReport) -> String {
+    let reason_codes = sorted_unique_strings(
+        report
+            .findings
+            .iter()
+            .map(|finding| finding.reason_code.clone())
+            .collect(),
+    );
+    format!(
+        "Lambda resilience AI triage: score {} across {} function(s), {} stale. Evidence reason codes: {}.",
+        report.score,
+        report.resources_evaluated,
+        report.stale_resources,
+        if reason_codes.is_empty() {
+            "none".to_string()
+        } else {
+            reason_codes.join(", ")
+        }
+    )
+}
+
+fn lambda_resilience_posture_recommendations(
+    report: &PillarReport,
+) -> Vec<LambdaCostPostureRecommendation> {
+    report
+        .findings
+        .iter()
+        .filter_map(|finding| {
+            let recommendation = match finding.reason_code.as_str() {
+                REASON_INV_STALE_DATA => "refresh_lambda_inventory_and_resilience_telemetry",
+                REASON_RES_MISSING_CONFIG_DATA => "collect_lambda_timeout_and_memory_configuration",
+                REASON_RES_MISSING_TELEMETRY_COLLECTION_METADATA => {
+                    "restore_lambda_resilience_collection_metadata"
+                }
+                REASON_RES_TELEMETRY_COLLECTION_ERRORS => {
+                    "inspect_lambda_resilience_collection_errors"
+                }
+                REASON_RES_MISSING_CLOUDWATCH_TELEMETRY => {
+                    "collect_lambda_duration_error_and_throttle_metrics"
+                }
+                REASON_RES_MISSING_LOG_EVENT_EVIDENCE => {
+                    "collect_lambda_log_event_and_dlq_evidence"
+                }
+                REASON_RES_MISSING_QUOTA_LIMIT_EVIDENCE => {
+                    "collect_lambda_concurrency_limit_evidence"
+                }
+                REASON_RES_ERROR_OR_THROTTLE_HEALTH_SIGNAL => {
+                    "diagnose_lambda_failure_and_throttle_recovery_pressure"
+                }
+                REASON_RES_LOW_TIMEOUT_HEADROOM => {
+                    "review_lambda_timeout_memory_and_latency_headroom"
+                }
+                _ => return None,
+            };
+
+            Some(LambdaCostPostureRecommendation {
+                resource_id: finding.resource_id.clone(),
+                reason_code: finding.reason_code.clone(),
+                recommendation,
+                owner: owner_from_evidence(&finding.evidence),
+                confidence: "medium",
+                effort: "medium",
+                risk: if matches!(
+                    finding.reason_code.as_str(),
+                    REASON_RES_ERROR_OR_THROTTLE_HEALTH_SIGNAL | REASON_RES_LOW_TIMEOUT_HEADROOM
+                ) {
+                    "medium"
+                } else {
+                    "low"
+                },
+                suppression_key: format!("{}:{}", finding.resource_id, finding.reason_code),
+                audit_event_type: "lambda_resilience_posture_recommendation_emitted",
+            })
+        })
+        .collect()
 }
 
 fn missing_fields<'a>(resource: &AwsResourceModel, required_fields: &'a [&str]) -> Vec<&'a str> {
@@ -1978,6 +3200,11 @@ mod tests {
             "timeout": 30,
             "memory_size": 256,
             "architectures": ["arm64"],
+            "recent_error_log_count": 0,
+            "event_source_mapping_count": 1,
+            "dead_letter_queue_configured": true,
+            "reserved_concurrent_executions": 50,
+            "account_concurrency_limit": 1000,
             "telemetry_collection_started_at": "2026-06-10T00:00:00Z",
             "telemetry_collection_completed_at": "2026-06-10T00:00:03Z",
             "telemetry_collection_duration_ms": 3000,
@@ -2614,6 +3841,253 @@ mod tests {
             .find(|f| f.reason_code == REASON_RES_MISSING_CONFIG_DATA)
             .expect("missing config finding");
         assert_eq!(finding.evidence["timeout"], json!(null));
+    }
+
+    #[test]
+    fn lambda_resilience_triage_context_separates_facts_hypotheses_and_questions() {
+        let mut timeout_data = healthy_data();
+        timeout_data["cloudwatch_metrics"]["metrics"][1]["datapoints"] =
+            json!([{ "value": 29500.0 }]);
+        timeout_data["cloudwatch_metrics"]["metrics"][2]["datapoints"] = json!([{ "value": 3.0 }]);
+        let timeout_pressure = fixture(
+            "fn-res-timeout-triage",
+            json!({"owner": "sre"}),
+            timeout_data,
+            1,
+            now(),
+        );
+
+        let mut missing_evidence_data = healthy_data();
+        for field in [
+            "recent_error_log_count",
+            "event_source_mapping_count",
+            "dead_letter_queue_configured",
+        ] {
+            missing_evidence_data
+                .as_object_mut()
+                .expect("object")
+                .remove(field);
+        }
+        let missing_evidence = fixture(
+            "fn-res-missing-evidence",
+            json!({"owner": "sre"}),
+            missing_evidence_data,
+            1,
+            now(),
+        );
+
+        let report = evaluate_lambda_fleet(
+            &[timeout_pressure, missing_evidence],
+            Pillar::Resilience,
+            now(),
+        );
+        let triage = lambda_resilience_triage_context(&report);
+
+        assert_eq!(triage.workflow_id, "lambda_resilience_triage_context");
+        assert_eq!(
+            triage.context_builder_id,
+            "lambda-resilience-deterministic-context-v1"
+        );
+        assert_eq!(triage.prompt_template_id, "lambda-resilience-ai-triage-v1");
+        assert_eq!(
+            triage.audit_event_type,
+            "lambda_resilience_ai_triage_context_built"
+        );
+        assert!(triage.guardrails.read_only_mode);
+        assert!(triage.guardrails.no_llm_invocation);
+        assert!(triage
+            .facts
+            .iter()
+            .any(|fact| fact.contains(REASON_RES_LOW_TIMEOUT_HEADROOM)));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("timeout budget")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("log, event-source, and dead-letter evidence")));
+        assert!(triage
+            .runbook_copy_markdown
+            .contains("Lambda resilience AI triage"));
+    }
+
+    #[test]
+    fn lambda_resilience_agentic_investigation_plan_is_read_only_until_approval() {
+        let mut data = healthy_data();
+        data["cloudwatch_metrics"]["metrics"][1]["datapoints"] = json!([{ "value": 29500.0 }]);
+        data["cloudwatch_metrics"]["metrics"][2]["datapoints"] = json!([{ "value": 4.0 }]);
+        data["cloudwatch_metrics"]["metrics"][3]["datapoints"] = json!([{ "value": 2.0 }]);
+        let resource = fixture(
+            "fn-res-investigate",
+            json!({"owner": "sre"}),
+            data,
+            1,
+            now(),
+        );
+        let report = evaluate_lambda_fleet(&[resource], Pillar::Resilience, now());
+        let plan = lambda_resilience_agentic_investigation_plan(&report);
+
+        assert_eq!(plan.workflow_id, "lambda_resilience_agentic_investigation");
+        assert_eq!(
+            plan.default_tool_mode,
+            LambdaInvestigationToolMode::ReadOnly
+        );
+        assert!(plan.replay_required);
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "lambda.resilience.diagnose_failure_and_throttle_path"
+                && step.tool_mode == LambdaInvestigationToolMode::ReadOnly
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "lambda.resilience.compare_timeout_headroom"
+                && step.tool_mode == LambdaInvestigationToolMode::ReadOnly
+        }));
+        assert_eq!(
+            plan.steps.last().map(|step| step.tool_name),
+            Some("lambda.resilience.prepare_approval_plan")
+        );
+        assert!(plan.approval_gates.iter().any(|gate| {
+            gate.target_resource_id == "fn-res-investigate"
+                && gate.rollback_note_required
+                && gate
+                    .evidence_reason_codes
+                    .contains(&REASON_RES_LOW_TIMEOUT_HEADROOM.to_string())
+        }));
+    }
+
+    #[test]
+    fn lambda_resilience_remediation_workflow_plans_dry_run_actions_until_approved() {
+        let mut data = healthy_data();
+        data["cloudwatch_metrics"]["metrics"][1]["datapoints"] = json!([{ "value": 29500.0 }]);
+        data["cloudwatch_metrics"]["metrics"][2]["datapoints"] = json!([{ "value": 4.0 }]);
+        data["cloudwatch_metrics"]["metrics"][3]["datapoints"] = json!([{ "value": 2.0 }]);
+        let resource = fixture("fn-res-remediate", json!({"owner": "sre"}), data, 1, now());
+        let report = evaluate_lambda_fleet(&[resource], Pillar::Resilience, now());
+        let workflow = lambda_resilience_remediation_workflow(&report);
+
+        assert_eq!(workflow.workflow_id, "lambda_resilience_safe_remediation");
+        assert!(workflow.read_only_mode);
+        assert_eq!(
+            workflow.rbac_permission,
+            "aws.lambda.resilience.remediation.approve"
+        );
+        assert_eq!(workflow.audit_stream, "lambda_resilience_remediation_audit");
+        assert!(!workflow.stale_data_blocks_execution);
+        assert!(!workflow.actions.is_empty());
+        assert!(workflow.actions.iter().all(|action| {
+            action.dry_run
+                && action.requires_approval
+                && action.approval_gate_id.is_some()
+                && action.status == LambdaRemediationStatus::DryRunPendingApproval
+                && action.audit_event_type == "lambda.resilience.remediation.dry_run_planned"
+                && action.rollback_note.contains("rollback")
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == LambdaRemediationActionKind::ReviewFailureAndThrottleRecovery
+                && action.target_resource_id == "fn-res-remediate"
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == LambdaRemediationActionKind::ReviewTimeoutHeadroom
+                && action.target_resource_id == "fn-res-remediate"
+        }));
+    }
+
+    #[test]
+    fn lambda_resilience_slo_policy_snapshot_marks_findings_and_notifications() {
+        let mut data = healthy_data();
+        data["cloudwatch_metrics"]["metrics"][1]["datapoints"] = json!([{ "value": 29500.0 }]);
+        let resource = fixture(
+            "fn-res-slo",
+            json!({"owner": "sre", "environment": "prod", "application": "checkout"}),
+            data,
+            1,
+            now(),
+        );
+        let report = evaluate_lambda_fleet(&[resource], Pillar::Resilience, now());
+        let snapshot = lambda_resilience_slo_policy_snapshot(&report);
+
+        assert_eq!(snapshot.workflow_id, "lambda_resilience_slo_policy");
+        assert_eq!(
+            snapshot.objective.objective_id,
+            "lambda-resilience-score-min-95"
+        );
+        assert_eq!(
+            snapshot.objective.status,
+            LambdaResilienceObjectiveStatus::AtRisk
+        );
+        assert_eq!(
+            snapshot.objective.notification_targets,
+            vec!["environment:prod", "owner:sre"]
+        );
+        assert!(snapshot
+            .objective
+            .status_history
+            .contains(&"resilience_policy_evaluated"));
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_RES_LOW_TIMEOUT_HEADROOM.to_string()));
+    }
+
+    #[test]
+    fn lambda_resilience_forecast_snapshot_builds_read_only_recovery_exposure() {
+        let mut data = healthy_data();
+        data["cloudwatch_metrics"]["metrics"][1]["datapoints"] = json!([{ "value": 29500.0 }]);
+        data["cloudwatch_metrics"]["metrics"][2]["datapoints"] = json!([{ "value": 4.0 }]);
+        data["cloudwatch_metrics"]["metrics"][3]["datapoints"] = json!([{ "value": 2.0 }]);
+        let resource = fixture("fn-res-forecast", json!({"owner": "sre"}), data, 1, now());
+        let report = evaluate_lambda_fleet(&[resource], Pillar::Resilience, now());
+        let forecast = lambda_resilience_forecast_snapshot(&report);
+
+        assert_eq!(forecast.workflow_id, "lambda_resilience_forecasting");
+        assert!(forecast.read_only_mode);
+        assert_eq!(forecast.baseline_window_days, 30);
+        assert_eq!(forecast.forecast_horizon_days, 30);
+        assert_eq!(forecast.confidence_level, 75);
+        assert_eq!(forecast.risk_level, LambdaResilienceForecastRisk::High);
+        assert_eq!(
+            forecast.recovery_capacity_risk,
+            "active_error_or_throttle_recovery_exposure"
+        );
+        assert!(forecast
+            .what_if_inputs
+            .contains(&"review_timeout_and_memory_headroom"));
+        assert!(forecast.forecast_band.expected_recovery_exposure_index > 100);
+        assert!(forecast.blast_radius_summary.contains("Lambda function"));
+        assert!(forecast.recovery_note.contains("read-only"));
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_RES_ERROR_OR_THROTTLE_HEALTH_SIGNAL
+                && driver.affected_resources == vec!["fn-res-forecast"]
+        }));
+    }
+
+    #[test]
+    fn lambda_resilience_reporting_bundle_blocks_delivery_for_stale_or_missing_evidence() {
+        let mut data = healthy_data();
+        for field in [
+            "recent_error_log_count",
+            "event_source_mapping_count",
+            "dead_letter_queue_configured",
+        ] {
+            data.as_object_mut().expect("object").remove(field);
+        }
+        let stale = fixture("fn-res-report", json!({"owner": "sre"}), data, 30, now());
+        let report = evaluate_lambda_fleet(&[stale], Pillar::Resilience, now());
+        let bundle = lambda_resilience_reporting_bundle(&report);
+
+        assert_eq!(
+            bundle.scheduled_delivery_state,
+            "blocked_until_fresh_resilience_evidence"
+        );
+        assert!(bundle.stale_data_blocks_delivery);
+        assert!(!bundle.portfolio_summary_ready);
+        assert!(!bundle.workload_summary_ready);
+        assert_eq!(bundle.saved_view_id, "lambda-resilience-posture-report");
+        assert!(bundle
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(bundle
+            .missing_data_reason_codes
+            .contains(&REASON_RES_MISSING_LOG_EVENT_EVIDENCE.to_string()));
     }
 
     #[test]

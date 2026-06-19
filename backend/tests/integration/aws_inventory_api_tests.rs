@@ -920,6 +920,10 @@ async fn lambda_pillar_reports_contract() {
         .iter()
         .find(|report| report["pillar"] == "cost")
         .expect("cost report");
+    let resilience = reports
+        .iter()
+        .find(|report| report["pillar"] == "resilience")
+        .expect("resilience report");
     assert_eq!(
         cost["assessment_scope"],
         "lambda_cost_invocation_duration_error_and_throttle_telemetry"
@@ -1113,6 +1117,78 @@ async fn lambda_pillar_reports_contract() {
     assert_eq!(cost["telemetry"]["cloudwatch_namespace"], "AWS/Lambda");
     assert_eq!(cost["telemetry"]["cloudwatch_dimension"], "FunctionName");
     assert_eq!(cost["telemetry"]["read_only_mode"], true);
+    assert_eq!(
+        resilience["assessment_scope"],
+        "lambda_resilience_metrics_logs_events_quotas_limits_and_health_signals"
+    );
+    assert_eq!(
+        resilience["posture"]["workflow_id"],
+        "lambda_resilience_posture"
+    );
+    assert_eq!(
+        resilience["posture"]["rule_pack_id"],
+        "lambda-resilience-posture-rules-v1"
+    );
+    assert_eq!(
+        resilience["triage_context"]["workflow_id"],
+        "lambda_resilience_triage_context"
+    );
+    assert_eq!(
+        resilience["triage_context"]["context_builder_id"],
+        "lambda-resilience-deterministic-context-v1"
+    );
+    assert_eq!(
+        resilience["agentic_investigation"]["workflow_id"],
+        "lambda_resilience_agentic_investigation"
+    );
+    assert!(resilience["agentic_investigation"]["steps"].is_array());
+    assert!(resilience["agentic_investigation"]["approval_gates"].is_array());
+    assert_eq!(
+        resilience["remediation_workflow"]["workflow_id"],
+        "lambda_resilience_safe_remediation"
+    );
+    assert_eq!(
+        resilience["remediation_workflow"]["rbac_permission"],
+        "aws.lambda.resilience.remediation.approve"
+    );
+    assert_eq!(
+        resilience["slo_policy_tracking"]["workflow_id"],
+        "lambda_resilience_slo_policy"
+    );
+    assert_eq!(
+        resilience["slo_policy_tracking"]["objective"]["objective_id"],
+        "lambda-resilience-score-min-95"
+    );
+    assert_eq!(
+        resilience["forecasting"]["workflow_id"],
+        "lambda_resilience_forecasting"
+    );
+    assert!(
+        resilience["forecasting"]["forecast_band"]["expected_recovery_exposure_index"].is_number()
+    );
+    assert!(resilience["forecasting"]["recovery_capacity_risk"].is_string());
+    assert_eq!(
+        resilience["reporting"]["workflow_id"],
+        "lambda_resilience_reporting"
+    );
+    assert_eq!(
+        resilience["reporting"]["saved_view_id"],
+        "lambda-resilience-posture-report"
+    );
+    assert_eq!(
+        resilience["reporting"]["executive_summary"]["report_id"],
+        "lambda-resilience-executive-summary"
+    );
+    assert_eq!(
+        resilience["reporting"]["engineering_backlog"]["report_id"],
+        "lambda-resilience-engineering-backlog"
+    );
+    assert_eq!(
+        resilience["reporting"]["incident_review"]["report_id"],
+        "lambda-resilience-incident-review"
+    );
+    assert!(resilience["reporting"]["missing_data_reason_codes"].is_array());
+    assert!(resilience["reporting"]["evidence_reason_codes"].is_array());
 }
 
 #[tokio::test]

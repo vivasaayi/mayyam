@@ -29,6 +29,15 @@ Mayyam is an SRE, cloud, database, Kafka, Kubernetes, Linux, FinOps, and operati
 - If validation fails, report the exact command and the failing behavior.
 - If the working tree is dirty, stage only files that belong to the requested change.
 
+## Token Efficiency
+
+- Prefer the smallest source set that can answer the current task. Reuse MCP and checkpoint state before rereading old chat, logs, or the full roadmap.
+- Keep status updates compact: feature IDs, file paths, commands, exit codes, and next action only when possible.
+- Batch related work by module, route, screen, or contract boundary. Avoid mixing unrelated features in one context window.
+- For broad discovery, do one pass, write the result into durable state, and then work from that state instead of reconstructing it repeatedly.
+- When a batch is verified, checkpoint it and start the next batch from fresh context if possible.
+- Do not paste large logs or whole files unless needed for diagnosis; quote the failing lines or smallest relevant diff.
+
 ## Engineering Standards
 
 - Use test-driven development for non-trivial behavior: write or update the smallest meaningful failing test first, implement the behavior, then refactor with tests passing.
@@ -108,6 +117,7 @@ When the task is to execute the Mayyam product roadmap, do not ask the user whic
 - Process large or cross-domain roadmap runs through the Roadmap MapReduce Execution Model below. Do not attempt to load all rows into context at once.
 - Prioritize P0, then P1, then P2. Within each priority, prefer M1 inventory and M2 observable foundations before M3, M4, and M5 work.
 - Use Aruvi tasktracker MCP as the progress ledger so a later run can resume exactly.
+- If a valid checkpoint exists, resume from the checkpoint's next action and avoid re-enumerating the full roadmap unless the hash changed.
 - If subagents are available, use them for backlog triage, Rust backend, React UI, tests, and independent verification. If subagents are unavailable, run those passes sequentially.
 - Commit each completed, verified batch when the task definition requires commits.
 - Never claim the whole roadmap is complete unless every row has been processed and verified.
