@@ -915,7 +915,7 @@ async fn lambda_pillar_reports_contract() {
     let body: Value = resp.json().await.expect("invalid JSON body");
     assert_eq!(body["resource_type"], "LambdaFunction");
     let reports = body["reports"].as_array().expect("reports array");
-    assert_eq!(reports.len(), 4);
+    assert_eq!(reports.len(), 5);
     let cost = reports
         .iter()
         .find(|report| report["pillar"] == "cost")
@@ -928,6 +928,10 @@ async fn lambda_pillar_reports_contract() {
         .iter()
         .find(|report| report["pillar"] == "performance")
         .expect("performance report");
+    let scalability = reports
+        .iter()
+        .find(|report| report["pillar"] == "scalability")
+        .expect("scalability report");
     assert_eq!(
         cost["assessment_scope"],
         "lambda_cost_invocation_duration_error_and_throttle_telemetry"
@@ -1245,6 +1249,48 @@ async fn lambda_pillar_reports_contract() {
     assert!(performance["telemetry"]["required_metrics"]
         .as_array()
         .expect("lambda performance required metrics")
+        .iter()
+        .any(|metric| metric == "ConcurrentExecutions"));
+    assert_eq!(
+        scalability["assessment_scope"],
+        "lambda_scalability_invocation_throttle_and_concurrency_telemetry"
+    );
+    assert_eq!(
+        scalability["posture"]["workflow_id"],
+        "lambda_scalability_posture"
+    );
+    assert_eq!(
+        scalability["posture"]["rule_pack_id"],
+        "lambda-scalability-posture-rules-v1"
+    );
+    assert_eq!(
+        scalability["posture"]["audit_event_type"],
+        "lambda_scalability_posture_evaluated"
+    );
+    assert_eq!(scalability["posture"]["rules_evaluated"], 5);
+    assert_eq!(
+        scalability["triage_context"]["workflow_id"],
+        "lambda_scalability_triage_context"
+    );
+    assert_eq!(
+        scalability["triage_context"]["context_builder_id"],
+        "lambda-scalability-deterministic-context-v1"
+    );
+    assert_eq!(
+        scalability["triage_context"]["prompt_template_id"],
+        "lambda-scalability-ai-triage-v1"
+    );
+    assert_eq!(
+        scalability["triage_context"]["audit_event_type"],
+        "lambda_scalability_ai_triage_context_built"
+    );
+    assert_eq!(
+        scalability["telemetry"]["workflow_id"],
+        "lambda_scalability_telemetry"
+    );
+    assert!(scalability["telemetry"]["required_metrics"]
+        .as_array()
+        .expect("lambda scalability required metrics")
         .iter()
         .any(|metric| metric == "ConcurrentExecutions"));
 }

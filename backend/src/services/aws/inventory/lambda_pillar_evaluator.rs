@@ -60,6 +60,16 @@ pub const REASON_PERF_MISSING_CLOUDWATCH_TELEMETRY: &str =
     "LAMBDA_PERF_MISSING_CLOUDWATCH_TELEMETRY";
 pub const REASON_PERF_HIGH_DURATION_PRESSURE: &str = "LAMBDA_PERF_HIGH_DURATION_PRESSURE";
 pub const REASON_PERF_ERROR_OR_THROTTLE_PRESSURE: &str = "LAMBDA_PERF_ERROR_OR_THROTTLE_PRESSURE";
+pub const REASON_SCAL_MISSING_CONCURRENCY_LIMIT_EVIDENCE: &str =
+    "LAMBDA_SCAL_MISSING_CONCURRENCY_LIMIT_EVIDENCE";
+pub const REASON_SCAL_MISSING_TELEMETRY_COLLECTION_METADATA: &str =
+    "LAMBDA_SCAL_MISSING_TELEMETRY_COLLECTION_METADATA";
+pub const REASON_SCAL_TELEMETRY_COLLECTION_ERRORS: &str = "LAMBDA_SCAL_TELEMETRY_COLLECTION_ERRORS";
+pub const REASON_SCAL_MISSING_CLOUDWATCH_TELEMETRY: &str =
+    "LAMBDA_SCAL_MISSING_CLOUDWATCH_TELEMETRY";
+pub const REASON_SCAL_HIGH_CONCURRENCY_UTILIZATION: &str =
+    "LAMBDA_SCAL_HIGH_CONCURRENCY_UTILIZATION";
+pub const REASON_SCAL_THROTTLE_PRESSURE: &str = "LAMBDA_SCAL_THROTTLE_PRESSURE";
 pub const REASON_INV_STALE_DATA: &str = "LAMBDA_INV_STALE_DATA";
 
 /// Runtimes AWS has deprecated (no more security patches). Kept as an
@@ -485,6 +495,9 @@ pub type LambdaResilienceReportingBundle = LambdaCostReportingBundle;
 pub type LambdaPerformancePostureSummary = LambdaCostPostureSummary;
 pub type LambdaPerformanceTriageContext = LambdaCostTriageContext;
 pub type LambdaPerformanceTelemetrySummary = LambdaCostTelemetrySummary;
+pub type LambdaScalabilityPostureSummary = LambdaCostPostureSummary;
+pub type LambdaScalabilityTriageContext = LambdaCostTriageContext;
+pub type LambdaScalabilityTelemetrySummary = LambdaCostTelemetrySummary;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -551,6 +564,7 @@ pub fn evaluate_lambda_fleet(
             Pillar::Security => evaluate_security(resource, &mut findings),
             Pillar::Resilience => evaluate_resilience(resource, &mut findings),
             Pillar::Performance => evaluate_performance(resource, &mut findings),
+            Pillar::Scalability => evaluate_scalability(resource, &mut findings),
             // Pillars without checks for this service yet produce no findings.
             _ => {}
         }
@@ -563,6 +577,234 @@ pub fn evaluate_lambda_fleet(
         stale_resources,
         score,
         findings,
+    }
+}
+
+pub fn lambda_scalability_triage_context(report: &PillarReport) -> LambdaScalabilityTriageContext {
+    let mut facts = Vec::new();
+    let mut hypotheses = Vec::new();
+    let mut missing_data_questions = Vec::new();
+    let mut follow_up_questions = Vec::new();
+    let mut evidence_citations = Vec::new();
+
+    for finding in &report.findings {
+        facts.push(format!(
+            "{} affects {} with {:?} severity",
+            finding.reason_code, finding.resource_id, finding.severity
+        ));
+        evidence_citations.push(LambdaEvidenceCitation {
+            reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            evidence: finding.evidence.clone(),
+        });
+
+        match finding.reason_code.as_str() {
+            REASON_INV_STALE_DATA => missing_data_questions.push(format!(
+                "Refresh Lambda inventory and scalability telemetry for {} before explaining concurrency posture",
+                finding.resource_id
+            )),
+            REASON_SCAL_MISSING_CONCURRENCY_LIMIT_EVIDENCE => missing_data_questions.push(format!(
+                "Collect reserved concurrency and account concurrency limit evidence for {} before scoring Lambda scalability",
+                finding.resource_id
+            )),
+            REASON_SCAL_MISSING_TELEMETRY_COLLECTION_METADATA => {
+                missing_data_questions.push(format!(
+                    "Collect Lambda scalability telemetry collection metadata for {} before trusting concurrency evidence",
+                    finding.resource_id
+                ))
+            }
+            REASON_SCAL_TELEMETRY_COLLECTION_ERRORS => hypotheses.push(format!(
+                "{} has Lambda scalability telemetry collection errors; inspect CloudWatch permissions, throttling, and retry evidence before changing concurrency settings",
+                finding.resource_id
+            )),
+            REASON_SCAL_MISSING_CLOUDWATCH_TELEMETRY => missing_data_questions.push(format!(
+                "Collect Invocations, Throttles, and ConcurrentExecutions telemetry for {} before explaining Lambda scalability",
+                finding.resource_id
+            )),
+            REASON_SCAL_HIGH_CONCURRENCY_UTILIZATION => hypotheses.push(format!(
+                "{} is using most of its concurrency budget; inspect burst traffic, event source scaling, and quota headroom",
+                finding.resource_id
+            )),
+            REASON_SCAL_THROTTLE_PRESSURE => hypotheses.push(format!(
+                "{} has throttle pressure; inspect reserved concurrency, account limits, event source batch size, and upstream retry behavior",
+                finding.resource_id
+            )),
+            _ => {}
+        }
+
+        follow_up_questions.push(lambda_scalability_follow_up_question(
+            finding.reason_code.as_str(),
+        ));
+    }
+
+    LambdaCostTriageContext {
+        workflow_id: "lambda_scalability_triage_context",
+        pillar: report.pillar,
+        api_path: "/api/aws/inventory/lambda/pillars",
+        context_builder_id: "lambda-scalability-deterministic-context-v1",
+        prompt_template_id: "lambda-scalability-ai-triage-v1",
+        generation_mode: "deterministic_no_llm",
+        max_prompt_tokens: 1800,
+        provider_routing: vec!["none"],
+        audit_event_type: "lambda_scalability_ai_triage_context_built",
+        audit_id_prefix: "lambda-scalability-ai-triage",
+        pagination: LambdaTriagePagination {
+            default_limit: 50,
+            max_limit: 200,
+            evidence_cursor: "evidence_citations",
+        },
+        freshness: LambdaTriageFreshness {
+            stale_data_blocks_ai_summary: report.stale_resources > 0,
+            stale_resources: report.stale_resources,
+            freshness_source: "lambda_inventory_last_synced_at",
+        },
+        export_formats: vec!["json"],
+        error_codes: vec!["STALE_LAMBDA_DATA", "MISSING_LAMBDA_SCALABILITY_TELEMETRY"],
+        guardrails: LambdaAiTriageGuardrails {
+            read_only_mode: true,
+            evidence_required: true,
+            separate_facts_from_hypotheses: true,
+            ask_for_missing_data: true,
+            no_llm_invocation: true,
+            no_mutation_planning: true,
+        },
+        facts,
+        hypotheses,
+        missing_data_questions,
+        follow_up_questions,
+        runbook_copy_markdown: lambda_scalability_runbook_copy(report),
+        feedback_capture: LambdaTriageFeedbackCapture {
+            supported: true,
+            feedback_event_type: "lambda_scalability_ai_triage_feedback_captured",
+            fields: vec!["useful", "missing_evidence", "operator_note"],
+        },
+        evidence_citations,
+    }
+}
+
+pub fn lambda_scalability_posture_summary(
+    report: &PillarReport,
+) -> LambdaScalabilityPostureSummary {
+    let rules = vec![
+        lambda_cost_posture_rule(
+            report,
+            "lambda-scalability-inventory-freshness",
+            &[REASON_INV_STALE_DATA],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-scalability-concurrency-limits-present",
+            &[REASON_SCAL_MISSING_CONCURRENCY_LIMIT_EVIDENCE],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-scalability-telemetry-collection-present",
+            &[
+                REASON_SCAL_MISSING_TELEMETRY_COLLECTION_METADATA,
+                REASON_SCAL_TELEMETRY_COLLECTION_ERRORS,
+            ],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-scalability-core-cloudwatch-telemetry-present",
+            &[REASON_SCAL_MISSING_CLOUDWATCH_TELEMETRY],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-scalability-concurrency-and-throttle-headroom",
+            &[
+                REASON_SCAL_HIGH_CONCURRENCY_UTILIZATION,
+                REASON_SCAL_THROTTLE_PRESSURE,
+            ],
+        ),
+    ];
+    let affected_resources = sorted_unique_resources(
+        report
+            .findings
+            .iter()
+            .map(|finding| finding.resource_id.clone()),
+    );
+    let rules_failed = rules
+        .iter()
+        .filter(|rule| rule.status == LambdaPostureStatus::Fail)
+        .count();
+
+    LambdaCostPostureSummary {
+        workflow_id: "lambda_scalability_posture",
+        rule_pack_id: "lambda-scalability-posture-rules-v1",
+        evidence_serializer: "lambda-scalability-evidence-v1",
+        severity_model: "lambda-scalability-severity-v1",
+        audit_event_type: "lambda_scalability_posture_evaluated",
+        read_only_mode: true,
+        status: if rules_failed == 0 {
+            LambdaPostureStatus::Pass
+        } else {
+            LambdaPostureStatus::Fail
+        },
+        rules_evaluated: rules.len(),
+        rules_failed,
+        affected_resources,
+        rules,
+        suppression_policy: LambdaSuppressionPolicy {
+            supported: true,
+            scope: "resource_reason_code",
+            requires_reason: true,
+            audit_event_type: "lambda_scalability_posture_suppression_requested",
+        },
+        assignment_policy: LambdaAssignmentPolicy {
+            supported: true,
+            owner_sources: vec!["owner", "team", "application", "service", "cost-center"],
+            fallback_owner: "unassigned",
+            audit_event_type: "lambda_scalability_posture_assignment_requested",
+        },
+        recommendations: lambda_scalability_posture_recommendations(report),
+    }
+}
+
+pub fn lambda_scalability_telemetry_summary(
+    report: &PillarReport,
+) -> LambdaScalabilityTelemetrySummary {
+    let missing_data_reason_codes = sorted_unique_reasons(
+        report
+            .findings
+            .iter()
+            .filter(|finding| {
+                matches!(
+                    finding.reason_code.as_str(),
+                    REASON_SCAL_MISSING_TELEMETRY_COLLECTION_METADATA
+                        | REASON_SCAL_TELEMETRY_COLLECTION_ERRORS
+                        | REASON_SCAL_MISSING_CLOUDWATCH_TELEMETRY
+                        | REASON_INV_STALE_DATA
+                )
+            })
+            .map(|finding| finding.reason_code.clone()),
+    );
+    let evidence_reason_codes = sorted_unique_reasons(
+        report
+            .findings
+            .iter()
+            .map(|finding| finding.reason_code.clone()),
+    );
+    let stale_data_blocks_delivery = report.stale_resources > 0
+        || report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == REASON_SCAL_TELEMETRY_COLLECTION_ERRORS);
+
+    LambdaCostTelemetrySummary {
+        workflow_id: "lambda_scalability_telemetry",
+        read_only_mode: true,
+        freshness_required: true,
+        telemetry_collection_required: true,
+        cloudwatch_namespace: "AWS/Lambda",
+        cloudwatch_dimension: "FunctionName",
+        required_metrics: lambda_scalability_metric_names().to_vec(),
+        export_formats: vec!["json"],
+        missing_data_reason_codes,
+        evidence_reason_codes,
+        stale_data_blocks_delivery,
+        telemetry_quality_score: report.score,
     }
 }
 
@@ -2653,6 +2895,161 @@ fn evaluate_performance(resource: &AwsResourceModel, findings: &mut Vec<Inventor
     }
 }
 
+fn evaluate_scalability(resource: &AwsResourceModel, findings: &mut Vec<InventoryFinding>) {
+    let reserved_concurrency = resource
+        .resource_data
+        .get("reserved_concurrent_executions")
+        .and_then(|value| value.as_i64());
+    let account_concurrency_limit = resource
+        .resource_data
+        .get("account_concurrency_limit")
+        .and_then(|value| value.as_i64());
+    if reserved_concurrency.is_none() || account_concurrency_limit.is_none() {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Scalability,
+            reason_code: REASON_SCAL_MISSING_CONCURRENCY_LIMIT_EVIDENCE.to_string(),
+            severity: Severity::Medium,
+            message: format!(
+                "Function {} is missing reserved or account concurrency limit evidence; scalability headroom cannot be assessed",
+                resource.resource_id
+            ),
+            evidence: json!({
+                "reserved_concurrent_executions": reserved_concurrency,
+                "account_concurrency_limit": account_concurrency_limit,
+                "tags": resource.tags,
+            }),
+        });
+    }
+
+    let required_fields = [
+        "telemetry_collection_started_at",
+        "telemetry_collection_completed_at",
+        "telemetry_collection_duration_ms",
+        "telemetry_collection_success_count",
+        "telemetry_collection_failure_count",
+        "telemetry_collection_error_count",
+    ];
+    let missing_collection_fields = missing_fields(resource, &required_fields);
+    if !missing_collection_fields.is_empty() {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Scalability,
+            reason_code: REASON_SCAL_MISSING_TELEMETRY_COLLECTION_METADATA.to_string(),
+            severity: Severity::Medium,
+            message: format!(
+                "Function {} is missing Lambda scalability telemetry collection metadata needed to trust concurrency evidence",
+                resource.resource_id
+            ),
+            evidence: json!({
+                "required_fields": required_fields,
+                "missing_fields": missing_collection_fields,
+                "resource_data_keys": resource_data_keys(resource),
+                "tags": resource.tags,
+            }),
+        });
+    }
+
+    let telemetry_error_count =
+        data_u64(&resource.resource_data, "telemetry_collection_error_count").unwrap_or(0);
+    let telemetry_errors = resource
+        .resource_data
+        .get("telemetry_collection_errors")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default();
+    if telemetry_error_count > 0 || !telemetry_errors.is_empty() {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Scalability,
+            reason_code: REASON_SCAL_TELEMETRY_COLLECTION_ERRORS.to_string(),
+            severity: Severity::High,
+            message: format!(
+                "Function {} has Lambda scalability telemetry collection errors; concurrency posture may be incomplete",
+                resource.resource_id
+            ),
+            evidence: json!({
+                "telemetry_collection_error_count": telemetry_error_count,
+                "telemetry_collection_errors": telemetry_errors,
+                "tags": resource.tags,
+            }),
+        });
+    }
+
+    let missing_metrics = missing_metrics(resource, &lambda_scalability_metric_names());
+    if !missing_metrics.is_empty() {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Scalability,
+            reason_code: REASON_SCAL_MISSING_CLOUDWATCH_TELEMETRY.to_string(),
+            severity: Severity::Medium,
+            message: format!(
+                "Function {} is missing Lambda CloudWatch scalability telemetry for {}",
+                resource.resource_id,
+                missing_metrics.join(", ")
+            ),
+            evidence: json!({
+                "required_metrics": lambda_scalability_metric_names(),
+                "missing_metrics": missing_metrics,
+                "cloudwatch_metric_names": resource.resource_data.get("cloudwatch_metric_names"),
+                "tags": resource.tags,
+            }),
+        });
+    }
+
+    let concurrent_max = metric_max(resource, "ConcurrentExecutions").unwrap_or(0.0);
+    let concurrency_limit = reserved_concurrency
+        .or(account_concurrency_limit)
+        .map(|value| value as f64)
+        .unwrap_or(0.0);
+    if concurrency_limit > 0.0 && concurrent_max >= concurrency_limit * 0.8 {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Scalability,
+            reason_code: REASON_SCAL_HIGH_CONCURRENCY_UTILIZATION.to_string(),
+            severity: Severity::High,
+            message: format!(
+                "Function {} is using most of its Lambda concurrency budget; scalability headroom is constrained",
+                resource.resource_id
+            ),
+            evidence: json!({
+                "concurrent_executions_max": concurrent_max,
+                "concurrency_limit": concurrency_limit,
+                "concurrency_utilization_ratio": (concurrent_max / concurrency_limit).min(1.0),
+                "reserved_concurrent_executions": reserved_concurrency,
+                "account_concurrency_limit": account_concurrency_limit,
+                "tags": resource.tags,
+            }),
+        });
+    }
+
+    let throttles_max = metric_max(resource, "Throttles").unwrap_or(0.0);
+    if throttles_max > 0.0 {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Scalability,
+            reason_code: REASON_SCAL_THROTTLE_PRESSURE.to_string(),
+            severity: Severity::High,
+            message: format!(
+                "Function {} has Lambda throttle pressure that can block scale-out",
+                resource.resource_id
+            ),
+            evidence: json!({
+                "throttles_max": throttles_max,
+                "reserved_concurrent_executions": reserved_concurrency,
+                "account_concurrency_limit": account_concurrency_limit,
+                "tags": resource.tags,
+            }),
+        });
+    }
+}
+
 fn lambda_cost_posture_rule(
     report: &PillarReport,
     rule_id: &'static str,
@@ -3306,6 +3703,111 @@ fn lambda_performance_metric_names() -> [&'static str; 4] {
     ["Duration", "Errors", "Throttles", "ConcurrentExecutions"]
 }
 
+fn lambda_scalability_metric_names() -> [&'static str; 3] {
+    ["Invocations", "Throttles", "ConcurrentExecutions"]
+}
+
+fn lambda_scalability_follow_up_question(reason_code: &str) -> String {
+    match reason_code {
+        REASON_INV_STALE_DATA => {
+            "Has Lambda inventory and scalability telemetry been refreshed in the current sync window?"
+        }
+        REASON_SCAL_MISSING_CONCURRENCY_LIMIT_EVIDENCE => {
+            "Which reserved concurrency or account concurrency limit evidence is missing?"
+        }
+        REASON_SCAL_MISSING_TELEMETRY_COLLECTION_METADATA => {
+            "Which collector run should be used as evidence for Lambda scalability telemetry completeness?"
+        }
+        REASON_SCAL_TELEMETRY_COLLECTION_ERRORS => {
+            "Which CloudWatch permission, throttling, or retry failure prevented Lambda scalability telemetry collection?"
+        }
+        REASON_SCAL_MISSING_CLOUDWATCH_TELEMETRY => {
+            "Which Invocations, Throttles, or ConcurrentExecutions datapoints are missing?"
+        }
+        REASON_SCAL_HIGH_CONCURRENCY_UTILIZATION => {
+            "Is concurrency constrained by reserved limits, account quota, burst traffic, or event source scaling?"
+        }
+        REASON_SCAL_THROTTLE_PRESSURE => {
+            "Which event source, reserved concurrency limit, or upstream retry loop is driving Lambda throttles?"
+        }
+        _ => "What additional evidence is required before explaining this Lambda scalability finding?",
+    }
+    .to_string()
+}
+
+fn lambda_scalability_runbook_copy(report: &PillarReport) -> String {
+    let reason_codes = sorted_unique_strings(
+        report
+            .findings
+            .iter()
+            .map(|finding| finding.reason_code.clone())
+            .collect(),
+    );
+    format!(
+        "Lambda scalability AI triage: score {} across {} function(s), {} stale. Evidence reason codes: {}.",
+        report.score,
+        report.resources_evaluated,
+        report.stale_resources,
+        if reason_codes.is_empty() {
+            "none".to_string()
+        } else {
+            reason_codes.join(", ")
+        }
+    )
+}
+
+fn lambda_scalability_posture_recommendations(
+    report: &PillarReport,
+) -> Vec<LambdaCostPostureRecommendation> {
+    report
+        .findings
+        .iter()
+        .filter_map(|finding| {
+            let recommendation = match finding.reason_code.as_str() {
+                REASON_INV_STALE_DATA => "refresh_lambda_inventory_and_scalability_telemetry",
+                REASON_SCAL_MISSING_CONCURRENCY_LIMIT_EVIDENCE => {
+                    "collect_lambda_concurrency_limit_evidence"
+                }
+                REASON_SCAL_MISSING_TELEMETRY_COLLECTION_METADATA => {
+                    "restore_lambda_scalability_collection_metadata"
+                }
+                REASON_SCAL_TELEMETRY_COLLECTION_ERRORS => {
+                    "inspect_lambda_scalability_collection_errors"
+                }
+                REASON_SCAL_MISSING_CLOUDWATCH_TELEMETRY => {
+                    "collect_lambda_invocation_throttle_and_concurrency_metrics"
+                }
+                REASON_SCAL_HIGH_CONCURRENCY_UTILIZATION => {
+                    "review_lambda_concurrency_quota_and_event_source_scaling"
+                }
+                REASON_SCAL_THROTTLE_PRESSURE => {
+                    "diagnose_lambda_throttle_and_retry_scaling_pressure"
+                }
+                _ => return None,
+            };
+
+            Some(LambdaCostPostureRecommendation {
+                resource_id: finding.resource_id.clone(),
+                reason_code: finding.reason_code.clone(),
+                recommendation,
+                owner: owner_from_evidence(&finding.evidence),
+                confidence: "medium",
+                effort: "medium",
+                risk: if matches!(
+                    finding.reason_code.as_str(),
+                    REASON_SCAL_HIGH_CONCURRENCY_UTILIZATION | REASON_SCAL_THROTTLE_PRESSURE
+                ) {
+                    "medium"
+                } else {
+                    "low"
+                },
+                suppression_key: format!("{}:{}", finding.resource_id, finding.reason_code),
+                audit_event_type: "lambda_scalability_posture_recommendation_emitted",
+            })
+        })
+        .collect()
+}
+
 fn lambda_performance_follow_up_question(reason_code: &str) -> String {
     match reason_code {
         REASON_INV_STALE_DATA => {
@@ -3861,6 +4363,65 @@ mod tests {
             code == REASON_PERF_HIGH_DURATION_PRESSURE
                 || code == REASON_PERF_ERROR_OR_THROTTLE_PRESSURE
         }));
+    }
+
+    #[test]
+    fn lambda_scalability_telemetry_and_triage_explain_concurrency_pressure() {
+        let mut data = healthy_data();
+        data["reserved_concurrent_executions"] = json!(50);
+        data["account_concurrency_limit"] = json!(1000);
+        data["cloudwatch_metric_names"] =
+            json!(["Invocations", "Throttles", "ConcurrentExecutions"]);
+        data["cloudwatch_metrics"]["metrics"] = json!([
+            {"metric_name": "Invocations", "datapoints": [{"value": 900.0}]},
+            {"metric_name": "Throttles", "datapoints": [{"value": 4.0}]},
+            {"metric_name": "ConcurrentExecutions", "datapoints": [{"value": 45.0}]}
+        ]);
+        let r = fixture(
+            "fn-concurrency-pressure",
+            json!({"team": "payments", "environment": "prod"}),
+            data,
+            1,
+            now(),
+        );
+
+        let report = evaluate_lambda_fleet(&[r], Pillar::Scalability, now());
+        let codes: Vec<&str> = report
+            .findings
+            .iter()
+            .map(|finding| finding.reason_code.as_str())
+            .collect();
+        assert!(codes.contains(&REASON_SCAL_HIGH_CONCURRENCY_UTILIZATION));
+        assert!(codes.contains(&REASON_SCAL_THROTTLE_PRESSURE));
+
+        let posture = lambda_scalability_posture_summary(&report);
+        assert_eq!(posture.workflow_id, "lambda_scalability_posture");
+        assert_eq!(posture.rules_evaluated, 5);
+        assert_eq!(posture.status, LambdaPostureStatus::Fail);
+        assert!(posture
+            .recommendations
+            .iter()
+            .any(|recommendation| recommendation.recommendation
+                == "review_lambda_concurrency_quota_and_event_source_scaling"));
+
+        let triage = lambda_scalability_triage_context(&report);
+        assert_eq!(triage.workflow_id, "lambda_scalability_triage_context");
+        assert_eq!(
+            triage.context_builder_id,
+            "lambda-scalability-deterministic-context-v1"
+        );
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("concurrency budget")));
+
+        let telemetry = lambda_scalability_telemetry_summary(&report);
+        assert_eq!(telemetry.workflow_id, "lambda_scalability_telemetry");
+        assert!(telemetry.required_metrics.contains(&"ConcurrentExecutions"));
+        assert!(telemetry
+            .evidence_reason_codes
+            .iter()
+            .any(|code| code == REASON_SCAL_THROTTLE_PRESSURE));
     }
 
     #[test]

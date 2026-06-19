@@ -108,6 +108,8 @@ use crate::services::aws::inventory::lambda_pillar_evaluator::{
     lambda_resilience_forecast_snapshot, lambda_resilience_posture_summary,
     lambda_resilience_remediation_workflow, lambda_resilience_reporting_bundle,
     lambda_resilience_slo_policy_snapshot, lambda_resilience_triage_context,
+    lambda_scalability_posture_summary, lambda_scalability_telemetry_summary,
+    lambda_scalability_triage_context,
 };
 use crate::services::aws::inventory::lightsail_pillar_evaluator::evaluate_lightsail_fleet;
 use crate::services::aws::inventory::load_balancer_pillar_evaluator::evaluate_load_balancer_fleet;
@@ -175,6 +177,7 @@ const LAMBDA_PILLARS: &[Pillar] = &[
     Pillar::Security,
     Pillar::Resilience,
     Pillar::Performance,
+    Pillar::Scalability,
 ];
 /// EC2 has M2 telemetry coverage for performance in addition to its M1 pillars.
 const EC2_PILLARS: &[Pillar] = &[
@@ -524,6 +527,18 @@ pub async fn get_lambda_pillar_reports(
                     "posture": lambda_performance_posture_summary(&report),
                     "triage_context": lambda_performance_triage_context(&report),
                     "telemetry": lambda_performance_telemetry_summary(&report),
+                })
+            } else if *pillar == Pillar::Scalability {
+                json!({
+                    "pillar": report.pillar,
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "assessment_scope": "lambda_scalability_invocation_throttle_and_concurrency_telemetry",
+                    "posture": lambda_scalability_posture_summary(&report),
+                    "triage_context": lambda_scalability_triage_context(&report),
+                    "telemetry": lambda_scalability_telemetry_summary(&report),
                 })
             } else {
                 json!(report)
