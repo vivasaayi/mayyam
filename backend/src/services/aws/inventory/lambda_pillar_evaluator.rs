@@ -345,6 +345,51 @@ pub struct LambdaCostSloPolicySnapshot {
     pub evidence_reason_codes: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LambdaCostForecastRisk {
+    Low,
+    Moderate,
+    High,
+    Blocked,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LambdaCostForecastBand {
+    pub horizon_days: u16,
+    pub lower_monthly_cost_index: u16,
+    pub expected_monthly_cost_index: u16,
+    pub upper_monthly_cost_index: u16,
+    pub confidence_level: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LambdaCostForecastRiskDriver {
+    pub reason_code: String,
+    pub affected_resources: Vec<String>,
+    pub monthly_cost_index_delta: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LambdaCostForecastSnapshot {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub baseline_window_days: u16,
+    pub forecast_horizon_days: u16,
+    pub confidence_level: u8,
+    pub forecast_band: LambdaCostForecastBand,
+    pub risk_level: LambdaCostForecastRisk,
+    pub capacity_risk: &'static str,
+    pub backtesting_fixture_status: &'static str,
+    pub threshold_controls: Vec<&'static str>,
+    pub what_if_inputs: Vec<&'static str>,
+    pub blocked_by_stale_data: bool,
+    pub blast_radius_summary: String,
+    pub missing_data_reason_codes: Vec<String>,
+    pub risk_drivers: Vec<LambdaCostForecastRiskDriver>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
 /// Evaluate every Lambda function in the fleet for one pillar.
 pub fn evaluate_lambda_fleet(
     resources: &[AwsResourceModel],
@@ -839,6 +884,110 @@ pub fn lambda_cost_slo_policy_snapshot(report: &PillarReport) -> LambdaCostSloPo
                 "notification_targets_resolved",
             ],
         },
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
+pub fn lambda_cost_forecast_snapshot(report: &PillarReport) -> LambdaCostForecastSnapshot {
+    const BASELINE_WINDOW_DAYS: u16 = 30;
+    const FORECAST_HORIZON_DAYS: u16 = 30;
+    const CONFIDENCE_LEVEL: u8 = 80;
+
+    let stale_count = count_reason(report, REASON_INV_STALE_DATA);
+    let telemetry_error_count = count_reason(report, REASON_COST_TELEMETRY_COLLECTION_ERRORS);
+    let missing_collection_metadata_count =
+        count_reason(report, REASON_COST_MISSING_TELEMETRY_COLLECTION_METADATA);
+    let missing_cloudwatch_count = count_reason(report, REASON_COST_MISSING_CLOUDWATCH_TELEMETRY);
+    let no_invocations_count = count_reason(report, REASON_COST_NO_INVOCATIONS_TELEMETRY);
+    let error_or_throttle_count = count_reason(report, REASON_COST_ERROR_OR_THROTTLE_TELEMETRY);
+    let x86_only_count = count_reason(report, REASON_COST_X86_ONLY_ARCHITECTURE);
+    let missing_tag_count = count_reason(report, REASON_COST_MISSING_ALLOCATION_TAGS);
+    let blocked_by_stale_data = report.stale_resources > 0 || stale_count > 0;
+    let forecast_blocked = blocked_by_stale_data || telemetry_error_count > 0;
+
+    let expected_monthly_cost_index = 100u16
+        + (error_or_throttle_count as u16 * 20)
+        + (no_invocations_count as u16 * 18)
+        + (missing_cloudwatch_count as u16 * 16)
+        + (missing_collection_metadata_count as u16 * 12)
+        + (x86_only_count as u16 * 10)
+        + (missing_tag_count as u16 * 4)
+        + (stale_count as u16 * 25)
+        + (telemetry_error_count as u16 * 20);
+    let uncertainty = 8u16
+        + (missing_cloudwatch_count as u16 * 7)
+        + (missing_collection_metadata_count as u16 * 5)
+        + (missing_tag_count as u16 * 2)
+        + (report.stale_resources as u16 * 10)
+        + (report.resources_evaluated == 0) as u16 * 20;
+    let lower_monthly_cost_index = expected_monthly_cost_index.saturating_sub(uncertainty);
+    let upper_monthly_cost_index = expected_monthly_cost_index + uncertainty;
+    let risk_level = if forecast_blocked {
+        LambdaCostForecastRisk::Blocked
+    } else if upper_monthly_cost_index >= 145 {
+        LambdaCostForecastRisk::High
+    } else if expected_monthly_cost_index > 100 {
+        LambdaCostForecastRisk::Moderate
+    } else {
+        LambdaCostForecastRisk::Low
+    };
+    let risk_drivers = lambda_cost_forecast_risk_drivers(report);
+    let impacted_functions = sorted_unique_resources(
+        risk_drivers
+            .iter()
+            .flat_map(|driver| driver.affected_resources.iter().cloned()),
+    );
+
+    LambdaCostForecastSnapshot {
+        workflow_id: "lambda_cost_forecasting",
+        read_only_mode: true,
+        baseline_window_days: BASELINE_WINDOW_DAYS,
+        forecast_horizon_days: FORECAST_HORIZON_DAYS,
+        confidence_level: CONFIDENCE_LEVEL,
+        forecast_band: LambdaCostForecastBand {
+            horizon_days: FORECAST_HORIZON_DAYS,
+            lower_monthly_cost_index,
+            expected_monthly_cost_index,
+            upper_monthly_cost_index,
+            confidence_level: CONFIDENCE_LEVEL,
+        },
+        risk_level,
+        capacity_risk: lambda_cost_capacity_risk(
+            forecast_blocked,
+            no_invocations_count,
+            error_or_throttle_count,
+            missing_cloudwatch_count,
+            missing_collection_metadata_count,
+        ),
+        backtesting_fixture_status: if report.findings.is_empty() {
+            "ready_clean_baseline"
+        } else if forecast_blocked || missing_cloudwatch_count > 0 {
+            "needs_fresh_lambda_cost_fixture"
+        } else {
+            "ready_findings_baseline"
+        },
+        threshold_controls: vec![
+            "monthly_cost_index_warning_threshold",
+            "monthly_cost_index_critical_threshold",
+        ],
+        what_if_inputs: vec![
+            "migrate_x86_functions_to_arm64",
+            "review_unused_function_cleanup",
+            "restore_lambda_cost_telemetry",
+            "tune_retry_and_throttle_controls",
+            "apply_cost_allocation_tags",
+        ],
+        blocked_by_stale_data,
+        blast_radius_summary: if impacted_functions.is_empty() {
+            "No Lambda functions have cost forecast risk in the current evidence.".to_string()
+        } else {
+            format!(
+                "{} Lambda function(s) have cost forecast risk across architecture, invocation, error, throttle, or telemetry evidence.",
+                impacted_functions.len()
+            )
+        },
+        missing_data_reason_codes: lambda_cost_forecast_missing_data_reason_codes(report),
+        risk_drivers,
         evidence_reason_codes: sorted_unique_reason_codes(report),
     }
 }
@@ -1347,6 +1496,89 @@ fn sorted_unique_reason_codes(report: &PillarReport) -> Vec<String> {
             .iter()
             .map(|finding| finding.reason_code.clone()),
     )
+}
+
+fn count_reason(report: &PillarReport, reason_code: &str) -> usize {
+    report
+        .findings
+        .iter()
+        .filter(|finding| finding.reason_code == reason_code)
+        .count()
+}
+
+fn resources_for_reason(report: &PillarReport, reason_code: &str) -> Vec<String> {
+    sorted_unique_resources(
+        report
+            .findings
+            .iter()
+            .filter(|finding| finding.reason_code == reason_code)
+            .map(|finding| finding.resource_id.clone()),
+    )
+}
+
+fn lambda_cost_forecast_missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    sorted_unique_reasons(
+        report
+            .findings
+            .iter()
+            .filter(|finding| {
+                matches!(
+                    finding.reason_code.as_str(),
+                    REASON_INV_STALE_DATA
+                        | REASON_COST_MISSING_TELEMETRY_COLLECTION_METADATA
+                        | REASON_COST_TELEMETRY_COLLECTION_ERRORS
+                        | REASON_COST_MISSING_CLOUDWATCH_TELEMETRY
+                )
+            })
+            .map(|finding| finding.reason_code.clone()),
+    )
+}
+
+fn lambda_cost_forecast_risk_drivers(report: &PillarReport) -> Vec<LambdaCostForecastRiskDriver> {
+    [
+        (REASON_INV_STALE_DATA, 25u16),
+        (REASON_COST_TELEMETRY_COLLECTION_ERRORS, 20u16),
+        (REASON_COST_ERROR_OR_THROTTLE_TELEMETRY, 20u16),
+        (REASON_COST_NO_INVOCATIONS_TELEMETRY, 18u16),
+        (REASON_COST_MISSING_CLOUDWATCH_TELEMETRY, 16u16),
+        (REASON_COST_MISSING_TELEMETRY_COLLECTION_METADATA, 12u16),
+        (REASON_COST_X86_ONLY_ARCHITECTURE, 10u16),
+        (REASON_COST_MISSING_ALLOCATION_TAGS, 4u16),
+    ]
+    .into_iter()
+    .filter_map(|(reason_code, delta)| {
+        let affected_resources = resources_for_reason(report, reason_code);
+        if affected_resources.is_empty() {
+            None
+        } else {
+            Some(LambdaCostForecastRiskDriver {
+                reason_code: reason_code.to_string(),
+                monthly_cost_index_delta: delta * affected_resources.len() as u16,
+                affected_resources,
+            })
+        }
+    })
+    .collect()
+}
+
+fn lambda_cost_capacity_risk(
+    forecast_blocked: bool,
+    no_invocations_count: usize,
+    error_or_throttle_count: usize,
+    missing_cloudwatch_count: usize,
+    missing_collection_metadata_count: usize,
+) -> &'static str {
+    if forecast_blocked {
+        "blocked_by_stale_or_failed_collection"
+    } else if error_or_throttle_count > 0 {
+        "retry_or_throttle_cost_pressure"
+    } else if no_invocations_count > 0 {
+        "unused_function_savings_opportunity"
+    } else if missing_cloudwatch_count > 0 || missing_collection_metadata_count > 0 {
+        "telemetry_gap_limits_forecast"
+    } else {
+        "within_lambda_cost_forecast_threshold"
+    }
 }
 
 fn sorted_unique_evidence_values(report: &PillarReport, keys: &[&str]) -> Vec<String> {
@@ -1985,6 +2217,69 @@ mod tests {
         assert!(snapshot
             .evidence_reason_codes
             .contains(&REASON_INV_STALE_DATA.to_string()));
+    }
+
+    #[test]
+    fn lambda_cost_forecast_snapshot_builds_read_only_cost_band_from_telemetry_evidence() {
+        let mut spend_data = healthy_data();
+        spend_data["cloudwatch_metrics"]["metrics"][2]["datapoints"] = json!([{ "value": 8.0 }]);
+        spend_data["cloudwatch_metrics"]["metrics"][3]["datapoints"] = json!([{ "value": 2.0 }]);
+        let spend = fixture(
+            "fn-cost-forecast",
+            json!({"owner": "sre"}),
+            spend_data,
+            1,
+            now(),
+        );
+
+        let report = evaluate_lambda_fleet(&[spend], Pillar::Cost, now());
+        let forecast = lambda_cost_forecast_snapshot(&report);
+
+        assert_eq!(forecast.workflow_id, "lambda_cost_forecasting");
+        assert!(forecast.read_only_mode);
+        assert_eq!(forecast.baseline_window_days, 30);
+        assert_eq!(forecast.forecast_horizon_days, 30);
+        assert_eq!(forecast.confidence_level, 80);
+        assert_eq!(forecast.risk_level, LambdaCostForecastRisk::Moderate);
+        assert_eq!(forecast.capacity_risk, "retry_or_throttle_cost_pressure");
+        assert_eq!(forecast.forecast_band.horizon_days, 30);
+        assert!(forecast.forecast_band.expected_monthly_cost_index > 100);
+        assert!(
+            forecast.forecast_band.upper_monthly_cost_index
+                > forecast.forecast_band.lower_monthly_cost_index
+        );
+        assert!(forecast
+            .risk_drivers
+            .iter()
+            .any(|driver| driver.reason_code == REASON_COST_ERROR_OR_THROTTLE_TELEMETRY));
+        assert!(forecast
+            .blast_radius_summary
+            .contains("1 Lambda function(s)"));
+    }
+
+    #[test]
+    fn lambda_cost_forecast_snapshot_blocks_on_stale_or_missing_telemetry() {
+        let stale = fixture(
+            "fn-cost-stale-forecast",
+            json!({"owner": "sre"}),
+            healthy_data(),
+            1,
+            now() - chrono::Duration::hours(30),
+        );
+
+        let report = evaluate_lambda_fleet(&[stale], Pillar::Cost, now());
+        let forecast = lambda_cost_forecast_snapshot(&report);
+
+        assert_eq!(forecast.risk_level, LambdaCostForecastRisk::Blocked);
+        assert_eq!(
+            forecast.capacity_risk,
+            "blocked_by_stale_or_failed_collection"
+        );
+        assert!(forecast.blocked_by_stale_data);
+        assert!(forecast
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(forecast.forecast_band.upper_monthly_cost_index > 100);
     }
 
     #[test]

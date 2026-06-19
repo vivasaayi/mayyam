@@ -2453,6 +2453,44 @@ describe("PillarScorecard", () => {
             },
             evidence_reason_codes: ["LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY"],
           },
+          forecasting: {
+            workflow_id: "lambda_cost_forecasting",
+            read_only_mode: true,
+            baseline_window_days: 30,
+            forecast_horizon_days: 30,
+            confidence_level: 80,
+            forecast_band: {
+              horizon_days: 30,
+              lower_monthly_cost_index: 108,
+              expected_monthly_cost_index: 116,
+              upper_monthly_cost_index: 124,
+              confidence_level: 80,
+            },
+            risk_level: "moderate",
+            capacity_risk: "telemetry_gap_limits_forecast",
+            backtesting_fixture_status: "needs_fresh_lambda_cost_fixture",
+            threshold_controls: [
+              "monthly_cost_index_warning_threshold",
+              "monthly_cost_index_critical_threshold",
+            ],
+            what_if_inputs: [
+              "migrate_x86_functions_to_arm64",
+              "review_unused_function_cleanup",
+              "restore_lambda_cost_telemetry",
+            ],
+            blocked_by_stale_data: false,
+            blast_radius_summary:
+              "1 Lambda function(s) have cost forecast risk across architecture, invocation, error, throttle, or telemetry evidence.",
+            missing_data_reason_codes: ["LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY"],
+            risk_drivers: [
+              {
+                reason_code: "LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY",
+                affected_resources: ["fn-no-telemetry"],
+                monthly_cost_index_delta: 16,
+              },
+            ],
+            evidence_reason_codes: ["LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY"],
+          },
           telemetry: {
             workflow_id: "lambda_cost_telemetry",
             cloudwatch_namespace: "AWS/Lambda",
@@ -2530,6 +2568,22 @@ describe("PillarScorecard", () => {
     expect(text).toContain("Snapshot Collected");
     expect(text).toContain("Policy Evaluated");
     expect(text).toContain("Notification Targets Resolved");
+    expect(text).toContain("Cost Forecast");
+    expect(text).toContain("lambda_cost_forecasting");
+    expect(text).toContain("30d baseline");
+    expect(text).toContain("30d horizon");
+    expect(text).toContain("expected 116");
+    expect(text).toContain("108-124");
+    expect(text).toContain("80% confidence");
+    expect(text).toContain("Telemetry Gap Limits Forecast");
+    expect(text).toContain("Fresh enough");
+    expect(text).toContain("Needs Fresh Lambda Cost Fixture");
+    expect(text).toContain("1 risk driver");
+    expect(text).toContain(
+      "1 Lambda function(s) have cost forecast risk across architecture, invocation, error, throttle, or telemetry evidence.",
+    );
+    expect(text).toContain("Monthly Cost Index Warning Threshold");
+    expect(text).toContain("Monthly Cost Index Critical Threshold");
 
     await view.unmount();
   });

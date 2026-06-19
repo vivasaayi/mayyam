@@ -100,8 +100,8 @@ use crate::services::aws::inventory::kinesisanalytics_pillar_evaluator::evaluate
 use crate::services::aws::inventory::kms_pillar_evaluator::evaluate_kms_fleet;
 use crate::services::aws::inventory::lakeformation_pillar_evaluator::evaluate_lakeformation_fleet;
 use crate::services::aws::inventory::lambda_pillar_evaluator::{
-    evaluate_lambda_fleet, lambda_cost_agentic_investigation_plan, lambda_cost_posture_summary,
-    lambda_cost_remediation_workflow, lambda_cost_slo_policy_snapshot,
+    evaluate_lambda_fleet, lambda_cost_agentic_investigation_plan, lambda_cost_forecast_snapshot,
+    lambda_cost_posture_summary, lambda_cost_remediation_workflow, lambda_cost_slo_policy_snapshot,
     lambda_cost_telemetry_summary, lambda_cost_triage_context,
 };
 use crate::services::aws::inventory::lightsail_pillar_evaluator::evaluate_lightsail_fleet;
@@ -481,6 +481,7 @@ pub async fn get_lambda_pillar_reports(
                     "agentic_investigation": lambda_cost_agentic_investigation_plan(&report),
                     "remediation_workflow": lambda_cost_remediation_workflow(&report),
                     "slo_policy_tracking": lambda_cost_slo_policy_snapshot(&report),
+                    "forecasting": lambda_cost_forecast_snapshot(&report),
                     "telemetry": lambda_cost_telemetry_summary(&report),
                 })
             } else {
