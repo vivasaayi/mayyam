@@ -42,6 +42,14 @@ pub const REASON_COST_NO_INVOCATIONS_TELEMETRY: &str = "LAMBDA_COST_NO_INVOCATIO
 pub const REASON_COST_ERROR_OR_THROTTLE_TELEMETRY: &str = "LAMBDA_COST_ERROR_OR_THROTTLE_TELEMETRY";
 pub const REASON_SEC_DEPRECATED_RUNTIME: &str = "LAMBDA_SEC_DEPRECATED_RUNTIME";
 pub const REASON_SEC_MISSING_OWNER_TAG: &str = "LAMBDA_SEC_MISSING_OWNER_TAG";
+pub const REASON_SEC_MISSING_TELEMETRY_COLLECTION_METADATA: &str =
+    "LAMBDA_SEC_MISSING_TELEMETRY_COLLECTION_METADATA";
+pub const REASON_SEC_TELEMETRY_COLLECTION_ERRORS: &str = "LAMBDA_SEC_TELEMETRY_COLLECTION_ERRORS";
+pub const REASON_SEC_MISSING_CLOUDWATCH_TELEMETRY: &str = "LAMBDA_SEC_MISSING_CLOUDWATCH_TELEMETRY";
+pub const REASON_SEC_MISSING_LOG_EVENT_EVIDENCE: &str = "LAMBDA_SEC_MISSING_LOG_EVENT_EVIDENCE";
+pub const REASON_SEC_MISSING_CODE_SIGNING_EVIDENCE: &str =
+    "LAMBDA_SEC_MISSING_CODE_SIGNING_EVIDENCE";
+pub const REASON_SEC_ERROR_SIGNAL: &str = "LAMBDA_SEC_ERROR_SIGNAL";
 pub const REASON_RES_MISSING_CONFIG_DATA: &str = "LAMBDA_RES_MISSING_CONFIG_DATA";
 pub const REASON_RES_MISSING_TELEMETRY_COLLECTION_METADATA: &str =
     "LAMBDA_RES_MISSING_TELEMETRY_COLLECTION_METADATA";
@@ -492,6 +500,9 @@ pub type LambdaResilienceExecutiveSummary = LambdaCostExecutiveSummary;
 pub type LambdaResilienceEngineeringBacklog = LambdaCostEngineeringBacklog;
 pub type LambdaResilienceIncidentReview = LambdaCostIncidentReview;
 pub type LambdaResilienceReportingBundle = LambdaCostReportingBundle;
+pub type LambdaSecurityPostureSummary = LambdaCostPostureSummary;
+pub type LambdaSecurityTriageContext = LambdaCostTriageContext;
+pub type LambdaSecurityTelemetrySummary = LambdaCostTelemetrySummary;
 pub type LambdaPerformancePostureSummary = LambdaCostPostureSummary;
 pub type LambdaPerformanceTriageContext = LambdaCostTriageContext;
 pub type LambdaPerformanceTelemetrySummary = LambdaCostTelemetrySummary;
@@ -577,6 +588,245 @@ pub fn evaluate_lambda_fleet(
         stale_resources,
         score,
         findings,
+    }
+}
+
+pub fn lambda_security_triage_context(report: &PillarReport) -> LambdaSecurityTriageContext {
+    let mut facts = Vec::new();
+    let mut hypotheses = Vec::new();
+    let mut missing_data_questions = Vec::new();
+    let mut follow_up_questions = Vec::new();
+    let mut evidence_citations = Vec::new();
+
+    for finding in &report.findings {
+        facts.push(format!(
+            "{} affects {} with {:?} severity",
+            finding.reason_code, finding.resource_id, finding.severity
+        ));
+        evidence_citations.push(LambdaEvidenceCitation {
+            reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            evidence: finding.evidence.clone(),
+        });
+
+        match finding.reason_code.as_str() {
+            REASON_INV_STALE_DATA => missing_data_questions.push(format!(
+                "Refresh Lambda inventory and security telemetry for {} before explaining security posture",
+                finding.resource_id
+            )),
+            REASON_SEC_MISSING_TELEMETRY_COLLECTION_METADATA => {
+                missing_data_questions.push(format!(
+                    "Collect Lambda security telemetry collection metadata for {} before trusting security evidence",
+                    finding.resource_id
+                ))
+            }
+            REASON_SEC_TELEMETRY_COLLECTION_ERRORS => hypotheses.push(format!(
+                "{} has Lambda security telemetry collection errors; inspect CloudWatch, logs, EventBridge, and IAM permissions before summarizing risk",
+                finding.resource_id
+            )),
+            REASON_SEC_MISSING_CLOUDWATCH_TELEMETRY => missing_data_questions.push(format!(
+                "Collect Invocations, Errors, and Throttles telemetry for {} before explaining Lambda security behavior",
+                finding.resource_id
+            )),
+            REASON_SEC_MISSING_LOG_EVENT_EVIDENCE => missing_data_questions.push(format!(
+                "Collect CloudWatch log and security event evidence for {} before explaining runtime or access anomalies",
+                finding.resource_id
+            )),
+            REASON_SEC_MISSING_CODE_SIGNING_EVIDENCE => hypotheses.push(format!(
+                "{} is missing Lambda code-signing evidence; verify package provenance controls before approving deployments",
+                finding.resource_id
+            )),
+            REASON_SEC_ERROR_SIGNAL => hypotheses.push(format!(
+                "{} has Lambda error or throttle signals that may indicate failed authorization, dependency, or runtime behavior",
+                finding.resource_id
+            )),
+            REASON_SEC_DEPRECATED_RUNTIME => hypotheses.push(format!(
+                "{} uses a deprecated runtime; prioritize runtime upgrade evidence before LLM summarization",
+                finding.resource_id
+            )),
+            REASON_SEC_MISSING_OWNER_TAG => missing_data_questions.push(format!(
+                "Add owner/team/application tags for {} so Lambda security findings can be routed",
+                finding.resource_id
+            )),
+            _ => {}
+        }
+
+        follow_up_questions.push(lambda_security_follow_up_question(
+            finding.reason_code.as_str(),
+        ));
+    }
+
+    LambdaCostTriageContext {
+        workflow_id: "lambda_security_triage_context",
+        pillar: report.pillar,
+        api_path: "/api/aws/inventory/lambda/pillars",
+        context_builder_id: "lambda-security-deterministic-context-v1",
+        prompt_template_id: "lambda-security-ai-triage-v1",
+        generation_mode: "deterministic_no_llm",
+        max_prompt_tokens: 1800,
+        provider_routing: vec!["none"],
+        audit_event_type: "lambda_security_ai_triage_context_built",
+        audit_id_prefix: "lambda-security-ai-triage",
+        pagination: LambdaTriagePagination {
+            default_limit: 50,
+            max_limit: 200,
+            evidence_cursor: "evidence_citations",
+        },
+        freshness: LambdaTriageFreshness {
+            stale_data_blocks_ai_summary: report.stale_resources > 0,
+            stale_resources: report.stale_resources,
+            freshness_source: "lambda_inventory_last_synced_at",
+        },
+        export_formats: vec!["json", "markdown_runbook"],
+        error_codes: vec!["STALE_LAMBDA_DATA", "MISSING_LAMBDA_SECURITY_TELEMETRY"],
+        guardrails: LambdaAiTriageGuardrails {
+            read_only_mode: true,
+            evidence_required: true,
+            separate_facts_from_hypotheses: true,
+            ask_for_missing_data: true,
+            no_llm_invocation: true,
+            no_mutation_planning: true,
+        },
+        facts,
+        hypotheses,
+        missing_data_questions,
+        follow_up_questions,
+        runbook_copy_markdown: lambda_security_runbook_copy(report),
+        feedback_capture: LambdaTriageFeedbackCapture {
+            supported: true,
+            feedback_event_type: "lambda_security_ai_triage_feedback_captured",
+            fields: vec!["useful", "missing_evidence", "operator_note"],
+        },
+        evidence_citations,
+    }
+}
+
+pub fn lambda_security_posture_summary(report: &PillarReport) -> LambdaSecurityPostureSummary {
+    let rules = vec![
+        lambda_cost_posture_rule(
+            report,
+            "lambda-security-inventory-freshness",
+            &[REASON_INV_STALE_DATA],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-security-runtime-and-owner-routing",
+            &[REASON_SEC_DEPRECATED_RUNTIME, REASON_SEC_MISSING_OWNER_TAG],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-security-telemetry-collection-present",
+            &[
+                REASON_SEC_MISSING_TELEMETRY_COLLECTION_METADATA,
+                REASON_SEC_TELEMETRY_COLLECTION_ERRORS,
+            ],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-security-cloudwatch-telemetry-present",
+            &[REASON_SEC_MISSING_CLOUDWATCH_TELEMETRY],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-security-logs-events-and-code-signing-present",
+            &[
+                REASON_SEC_MISSING_LOG_EVENT_EVIDENCE,
+                REASON_SEC_MISSING_CODE_SIGNING_EVIDENCE,
+            ],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-security-error-and-throttle-signal-clean",
+            &[REASON_SEC_ERROR_SIGNAL],
+        ),
+    ];
+    let affected_resources = sorted_unique_resources(
+        report
+            .findings
+            .iter()
+            .map(|finding| finding.resource_id.clone()),
+    );
+    let rules_failed = rules
+        .iter()
+        .filter(|rule| rule.status == LambdaPostureStatus::Fail)
+        .count();
+
+    LambdaCostPostureSummary {
+        workflow_id: "lambda_security_posture",
+        rule_pack_id: "lambda-security-posture-rules-v1",
+        evidence_serializer: "lambda-security-evidence-v1",
+        severity_model: "lambda-security-severity-v1",
+        audit_event_type: "lambda_security_posture_evaluated",
+        read_only_mode: true,
+        status: if rules_failed == 0 {
+            LambdaPostureStatus::Pass
+        } else {
+            LambdaPostureStatus::Fail
+        },
+        rules_evaluated: rules.len(),
+        rules_failed,
+        affected_resources,
+        rules,
+        suppression_policy: LambdaSuppressionPolicy {
+            supported: true,
+            scope: "resource_reason_code",
+            requires_reason: true,
+            audit_event_type: "lambda_security_posture_suppression_requested",
+        },
+        assignment_policy: LambdaAssignmentPolicy {
+            supported: true,
+            owner_sources: vec!["owner", "team", "application", "service", "cost-center"],
+            fallback_owner: "unassigned",
+            audit_event_type: "lambda_security_posture_assignment_requested",
+        },
+        recommendations: lambda_security_posture_recommendations(report),
+    }
+}
+
+pub fn lambda_security_telemetry_summary(report: &PillarReport) -> LambdaSecurityTelemetrySummary {
+    let missing_data_reason_codes = sorted_unique_reasons(
+        report
+            .findings
+            .iter()
+            .filter(|finding| {
+                matches!(
+                    finding.reason_code.as_str(),
+                    REASON_SEC_MISSING_TELEMETRY_COLLECTION_METADATA
+                        | REASON_SEC_TELEMETRY_COLLECTION_ERRORS
+                        | REASON_SEC_MISSING_CLOUDWATCH_TELEMETRY
+                        | REASON_SEC_MISSING_LOG_EVENT_EVIDENCE
+                        | REASON_SEC_MISSING_CODE_SIGNING_EVIDENCE
+                        | REASON_INV_STALE_DATA
+                )
+            })
+            .map(|finding| finding.reason_code.clone()),
+    );
+    let evidence_reason_codes = sorted_unique_reasons(
+        report
+            .findings
+            .iter()
+            .map(|finding| finding.reason_code.clone()),
+    );
+    let stale_data_blocks_delivery = report.stale_resources > 0
+        || report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == REASON_SEC_TELEMETRY_COLLECTION_ERRORS);
+
+    LambdaCostTelemetrySummary {
+        workflow_id: "lambda_security_telemetry",
+        read_only_mode: true,
+        freshness_required: true,
+        telemetry_collection_required: true,
+        cloudwatch_namespace: "AWS/Lambda",
+        cloudwatch_dimension: "FunctionName",
+        required_metrics: lambda_security_metric_names().to_vec(),
+        export_formats: vec!["json"],
+        missing_data_reason_codes,
+        evidence_reason_codes,
+        stale_data_blocks_delivery,
+        telemetry_quality_score: report.score,
     }
 }
 
@@ -2534,6 +2784,169 @@ fn evaluate_security(resource: &AwsResourceModel, findings: &mut Vec<InventoryFi
             evidence: json!({ "tags": resource.tags }),
         });
     }
+
+    evaluate_security_telemetry(resource, findings);
+}
+
+fn evaluate_security_telemetry(resource: &AwsResourceModel, findings: &mut Vec<InventoryFinding>) {
+    let required_fields = [
+        "telemetry_collection_started_at",
+        "telemetry_collection_completed_at",
+        "telemetry_collection_duration_ms",
+        "telemetry_collection_success_count",
+        "telemetry_collection_failure_count",
+        "telemetry_collection_error_count",
+    ];
+    let missing_collection_fields = missing_fields(resource, &required_fields);
+    if !missing_collection_fields.is_empty() {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Security,
+            reason_code: REASON_SEC_MISSING_TELEMETRY_COLLECTION_METADATA.to_string(),
+            severity: Severity::Medium,
+            message: format!(
+                "Function {} is missing Lambda security telemetry collection metadata",
+                resource.resource_id
+            ),
+            evidence: json!({
+                "required_fields": required_fields,
+                "missing_fields": missing_collection_fields,
+                "resource_data_keys": resource_data_keys(resource),
+                "tags": resource.tags,
+            }),
+        });
+    }
+
+    let telemetry_error_count =
+        data_u64(&resource.resource_data, "telemetry_collection_error_count").unwrap_or(0);
+    let telemetry_errors = resource
+        .resource_data
+        .get("telemetry_collection_errors")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default();
+    if telemetry_error_count > 0 || !telemetry_errors.is_empty() {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Security,
+            reason_code: REASON_SEC_TELEMETRY_COLLECTION_ERRORS.to_string(),
+            severity: Severity::High,
+            message: format!(
+                "Function {} has Lambda security telemetry collection errors",
+                resource.resource_id
+            ),
+            evidence: json!({
+                "telemetry_collection_error_count": telemetry_error_count,
+                "telemetry_collection_errors": telemetry_errors,
+                "tags": resource.tags,
+            }),
+        });
+    }
+
+    let missing_metrics = missing_metrics(resource, &lambda_security_metric_names());
+    if !missing_metrics.is_empty() {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Security,
+            reason_code: REASON_SEC_MISSING_CLOUDWATCH_TELEMETRY.to_string(),
+            severity: Severity::Medium,
+            message: format!(
+                "Function {} is missing Lambda CloudWatch security telemetry for {}",
+                resource.resource_id,
+                missing_metrics.join(", ")
+            ),
+            evidence: json!({
+                "required_metrics": lambda_security_metric_names(),
+                "missing_metrics": missing_metrics,
+                "cloudwatch_metric_names": resource.resource_data.get("cloudwatch_metric_names"),
+                "tags": resource.tags,
+            }),
+        });
+    }
+
+    let recent_error_log_count =
+        data_u64(&resource.resource_data, "recent_error_log_count").unwrap_or(0);
+    let security_event_count =
+        data_u64(&resource.resource_data, "security_event_count").unwrap_or(0);
+    let log_group_present = resource
+        .resource_data
+        .get("log_group_name")
+        .and_then(|value| value.as_str())
+        .is_some_and(|value| !value.trim().is_empty());
+    if !log_group_present && recent_error_log_count == 0 && security_event_count == 0 {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Security,
+            reason_code: REASON_SEC_MISSING_LOG_EVENT_EVIDENCE.to_string(),
+            severity: Severity::Medium,
+            message: format!(
+                "Function {} is missing Lambda log or security event evidence",
+                resource.resource_id
+            ),
+            evidence: json!({
+                "log_group_name": resource.resource_data.get("log_group_name"),
+                "recent_error_log_count": recent_error_log_count,
+                "security_event_count": security_event_count,
+                "tags": resource.tags,
+            }),
+        });
+    }
+
+    let code_signing_configured = resource
+        .resource_data
+        .get("code_signing_config_arn")
+        .and_then(|value| value.as_str())
+        .is_some_and(|value| !value.trim().is_empty())
+        || resource
+            .resource_data
+            .get("code_signing_configured")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false);
+    if !code_signing_configured {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Security,
+            reason_code: REASON_SEC_MISSING_CODE_SIGNING_EVIDENCE.to_string(),
+            severity: Severity::Medium,
+            message: format!(
+                "Function {} has no Lambda code-signing evidence in inventory",
+                resource.resource_id
+            ),
+            evidence: json!({
+                "code_signing_config_arn": resource.resource_data.get("code_signing_config_arn"),
+                "code_signing_configured": resource.resource_data.get("code_signing_configured"),
+                "tags": resource.tags,
+            }),
+        });
+    }
+
+    let errors_max = metric_max(resource, "Errors").unwrap_or(0.0);
+    let throttles_max = metric_max(resource, "Throttles").unwrap_or(0.0);
+    if errors_max > 0.0 || throttles_max > 0.0 || recent_error_log_count > 0 {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Security,
+            reason_code: REASON_SEC_ERROR_SIGNAL.to_string(),
+            severity: Severity::Medium,
+            message: format!(
+                "Function {} has Lambda error, throttle, or log signals that need security review",
+                resource.resource_id
+            ),
+            evidence: json!({
+                "errors_max": errors_max,
+                "throttles_max": throttles_max,
+                "recent_error_log_count": recent_error_log_count,
+                "security_event_count": security_event_count,
+                "tags": resource.tags,
+            }),
+        });
+    }
 }
 
 fn evaluate_resilience(resource: &AwsResourceModel, findings: &mut Vec<InventoryFinding>) {
@@ -3703,6 +4116,109 @@ fn lambda_performance_metric_names() -> [&'static str; 4] {
     ["Duration", "Errors", "Throttles", "ConcurrentExecutions"]
 }
 
+fn lambda_security_metric_names() -> [&'static str; 3] {
+    ["Invocations", "Errors", "Throttles"]
+}
+
+fn lambda_security_follow_up_question(reason_code: &str) -> String {
+    match reason_code {
+        REASON_INV_STALE_DATA => {
+            "Has Lambda inventory and security telemetry been refreshed in the current sync window?"
+        }
+        REASON_SEC_DEPRECATED_RUNTIME => {
+            "Which runtime upgrade path and test evidence should be attached to this Lambda function?"
+        }
+        REASON_SEC_MISSING_OWNER_TAG => {
+            "Which owner, team, or application should receive Lambda security findings?"
+        }
+        REASON_SEC_MISSING_TELEMETRY_COLLECTION_METADATA => {
+            "Which collector run should be used as evidence for Lambda security telemetry completeness?"
+        }
+        REASON_SEC_TELEMETRY_COLLECTION_ERRORS => {
+            "Which CloudWatch, logs, EventBridge, or IAM permission failure blocked Lambda security telemetry collection?"
+        }
+        REASON_SEC_MISSING_CLOUDWATCH_TELEMETRY => {
+            "Are Invocations, Errors, and Throttles available for this Lambda function in CloudWatch?"
+        }
+        REASON_SEC_MISSING_LOG_EVENT_EVIDENCE => {
+            "Which log group or security event source proves runtime and access behavior for this Lambda function?"
+        }
+        REASON_SEC_MISSING_CODE_SIGNING_EVIDENCE => {
+            "Is Lambda code signing intentionally disabled, or is package provenance evidence missing?"
+        }
+        REASON_SEC_ERROR_SIGNAL => {
+            "Do recent errors or throttles correlate with authorization failures, dependency failures, or runtime exceptions?"
+        }
+        _ => "What additional evidence is required before explaining this Lambda security finding?",
+    }
+    .to_string()
+}
+
+fn lambda_security_runbook_copy(report: &PillarReport) -> String {
+    let reason_codes = sorted_unique_reasons(
+        report
+            .findings
+            .iter()
+            .map(|finding| finding.reason_code.clone()),
+    );
+    format!(
+        "Lambda security AI triage: score {} across {} function(s), {} stale. Evidence reason codes: {}.",
+        report.score,
+        report.resources_evaluated,
+        report.stale_resources,
+        reason_codes.join(", ")
+    )
+}
+
+fn lambda_security_posture_recommendations(
+    report: &PillarReport,
+) -> Vec<LambdaCostPostureRecommendation> {
+    report
+        .findings
+        .iter()
+        .map(|finding| {
+            let recommendation = match finding.reason_code.as_str() {
+                REASON_INV_STALE_DATA => "refresh_lambda_inventory_and_security_telemetry",
+                REASON_SEC_DEPRECATED_RUNTIME => "upgrade_lambda_runtime_with_security_patch_plan",
+                REASON_SEC_MISSING_OWNER_TAG => "assign_lambda_security_owner_tags",
+                REASON_SEC_MISSING_TELEMETRY_COLLECTION_METADATA => {
+                    "restore_lambda_security_collection_metadata"
+                }
+                REASON_SEC_TELEMETRY_COLLECTION_ERRORS => {
+                    "inspect_lambda_security_collection_errors"
+                }
+                REASON_SEC_MISSING_CLOUDWATCH_TELEMETRY => {
+                    "enable_lambda_security_cloudwatch_telemetry"
+                }
+                REASON_SEC_MISSING_LOG_EVENT_EVIDENCE => {
+                    "connect_lambda_logs_and_security_event_sources"
+                }
+                REASON_SEC_MISSING_CODE_SIGNING_EVIDENCE => {
+                    "review_lambda_code_signing_package_provenance"
+                }
+                REASON_SEC_ERROR_SIGNAL => "investigate_lambda_error_throttle_security_signals",
+                _ => "review_lambda_security_evidence",
+            };
+
+            LambdaCostPostureRecommendation {
+                resource_id: finding.resource_id.clone(),
+                reason_code: finding.reason_code.clone(),
+                recommendation,
+                owner: owner_from_evidence(&finding.evidence),
+                confidence: "medium",
+                effort: "medium",
+                risk: if finding.severity == Severity::High {
+                    "high"
+                } else {
+                    "medium"
+                },
+                suppression_key: format!("{}:{}", finding.resource_id, finding.reason_code),
+                audit_event_type: "lambda_security_posture_recommendation_emitted",
+            }
+        })
+        .collect()
+}
+
 fn lambda_scalability_metric_names() -> [&'static str; 3] {
     ["Invocations", "Throttles", "ConcurrentExecutions"]
 }
@@ -4198,6 +4714,10 @@ mod tests {
             "memory_size": 256,
             "architectures": ["arm64"],
             "recent_error_log_count": 0,
+            "security_event_count": 1,
+            "log_group_name": "/aws/lambda/fn",
+            "code_signing_config_arn": "arn:aws:lambda:us-east-1:123456789012:code-signing-config:csc-123",
+            "code_signing_configured": true,
             "event_source_mapping_count": 1,
             "dead_letter_queue_configured": true,
             "reserved_concurrent_executions": 50,
@@ -4422,6 +4942,62 @@ mod tests {
             .evidence_reason_codes
             .iter()
             .any(|code| code == REASON_SCAL_THROTTLE_PRESSURE));
+    }
+
+    #[test]
+    fn lambda_security_telemetry_and_triage_explain_security_signal_gaps() {
+        let mut data = healthy_data();
+        data["code_signing_config_arn"] = json!("");
+        data["code_signing_configured"] = json!(false);
+        data["log_group_name"] = json!("");
+        data["security_event_count"] = json!(0);
+        data["recent_error_log_count"] = json!(2);
+        data["cloudwatch_metrics"]["metrics"][2]["datapoints"] = json!([{ "value": 3.0 }]);
+        let r = fixture(
+            "fn-security-gap",
+            json!({"team": "payments", "environment": "prod"}),
+            data,
+            1,
+            now(),
+        );
+
+        let report = evaluate_lambda_fleet(&[r], Pillar::Security, now());
+        let codes: Vec<&str> = report
+            .findings
+            .iter()
+            .map(|finding| finding.reason_code.as_str())
+            .collect();
+        assert!(codes.contains(&REASON_SEC_MISSING_CODE_SIGNING_EVIDENCE));
+        assert!(codes.contains(&REASON_SEC_ERROR_SIGNAL));
+
+        let posture = lambda_security_posture_summary(&report);
+        assert_eq!(posture.workflow_id, "lambda_security_posture");
+        assert_eq!(posture.rules_evaluated, 6);
+        assert_eq!(posture.status, LambdaPostureStatus::Fail);
+        assert!(posture
+            .recommendations
+            .iter()
+            .any(|recommendation| recommendation.recommendation
+                == "review_lambda_code_signing_package_provenance"));
+
+        let triage = lambda_security_triage_context(&report);
+        assert_eq!(triage.workflow_id, "lambda_security_triage_context");
+        assert_eq!(
+            triage.context_builder_id,
+            "lambda-security-deterministic-context-v1"
+        );
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("code-signing evidence")));
+
+        let telemetry = lambda_security_telemetry_summary(&report);
+        assert_eq!(telemetry.workflow_id, "lambda_security_telemetry");
+        assert!(telemetry.required_metrics.contains(&"Errors"));
+        assert!(telemetry
+            .evidence_reason_codes
+            .iter()
+            .any(|code| code == REASON_SEC_ERROR_SIGNAL));
     }
 
     #[test]

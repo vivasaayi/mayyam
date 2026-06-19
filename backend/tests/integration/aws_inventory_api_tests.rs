@@ -924,6 +924,10 @@ async fn lambda_pillar_reports_contract() {
         .iter()
         .find(|report| report["pillar"] == "resilience")
         .expect("resilience report");
+    let security = reports
+        .iter()
+        .find(|report| report["pillar"] == "security")
+        .expect("security report");
     let performance = reports
         .iter()
         .find(|report| report["pillar"] == "performance")
@@ -1125,6 +1129,49 @@ async fn lambda_pillar_reports_contract() {
     assert_eq!(cost["telemetry"]["cloudwatch_namespace"], "AWS/Lambda");
     assert_eq!(cost["telemetry"]["cloudwatch_dimension"], "FunctionName");
     assert_eq!(cost["telemetry"]["read_only_mode"], true);
+    assert_eq!(
+        security["assessment_scope"],
+        "lambda_security_metrics_logs_events_and_code_signing_telemetry"
+    );
+    assert_eq!(
+        security["posture"]["workflow_id"],
+        "lambda_security_posture"
+    );
+    assert_eq!(
+        security["posture"]["rule_pack_id"],
+        "lambda-security-posture-rules-v1"
+    );
+    assert_eq!(
+        security["posture"]["audit_event_type"],
+        "lambda_security_posture_evaluated"
+    );
+    assert_eq!(security["posture"]["rules_evaluated"], 6);
+    assert_eq!(
+        security["triage_context"]["workflow_id"],
+        "lambda_security_triage_context"
+    );
+    assert_eq!(
+        security["triage_context"]["context_builder_id"],
+        "lambda-security-deterministic-context-v1"
+    );
+    assert_eq!(
+        security["triage_context"]["prompt_template_id"],
+        "lambda-security-ai-triage-v1"
+    );
+    assert_eq!(
+        security["triage_context"]["audit_event_type"],
+        "lambda_security_ai_triage_context_built"
+    );
+    assert_eq!(
+        security["telemetry"]["workflow_id"],
+        "lambda_security_telemetry"
+    );
+    assert_eq!(security["telemetry"]["cloudwatch_namespace"], "AWS/Lambda");
+    assert!(security["telemetry"]["required_metrics"]
+        .as_array()
+        .expect("lambda security required metrics")
+        .iter()
+        .any(|metric| metric == "Errors"));
     assert_eq!(
         resilience["assessment_scope"],
         "lambda_resilience_metrics_logs_events_quotas_limits_and_health_signals"
