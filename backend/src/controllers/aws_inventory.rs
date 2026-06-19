@@ -103,10 +103,11 @@ use crate::services::aws::inventory::lambda_pillar_evaluator::{
     evaluate_lambda_fleet, lambda_cost_agentic_investigation_plan, lambda_cost_forecast_snapshot,
     lambda_cost_posture_summary, lambda_cost_remediation_workflow, lambda_cost_reporting_bundle,
     lambda_cost_slo_policy_snapshot, lambda_cost_telemetry_summary, lambda_cost_triage_context,
-    lambda_resilience_agentic_investigation_plan, lambda_resilience_forecast_snapshot,
-    lambda_resilience_posture_summary, lambda_resilience_remediation_workflow,
-    lambda_resilience_reporting_bundle, lambda_resilience_slo_policy_snapshot,
-    lambda_resilience_triage_context,
+    lambda_performance_posture_summary, lambda_performance_telemetry_summary,
+    lambda_performance_triage_context, lambda_resilience_agentic_investigation_plan,
+    lambda_resilience_forecast_snapshot, lambda_resilience_posture_summary,
+    lambda_resilience_remediation_workflow, lambda_resilience_reporting_bundle,
+    lambda_resilience_slo_policy_snapshot, lambda_resilience_triage_context,
 };
 use crate::services::aws::inventory::lightsail_pillar_evaluator::evaluate_lightsail_fleet;
 use crate::services::aws::inventory::load_balancer_pillar_evaluator::evaluate_load_balancer_fleet;
@@ -168,6 +169,13 @@ pub struct Ec2PillarQuery {
 
 /// Pillars every inventory evaluator implements.
 const BASE_PILLARS: &[Pillar] = &[Pillar::Cost, Pillar::Security, Pillar::Resilience];
+/// Lambda now has M2 performance telemetry coverage in addition to its base pillars.
+const LAMBDA_PILLARS: &[Pillar] = &[
+    Pillar::Cost,
+    Pillar::Security,
+    Pillar::Resilience,
+    Pillar::Performance,
+];
 /// EC2 has M2 telemetry coverage for performance in addition to its M1 pillars.
 const EC2_PILLARS: &[Pillar] = &[
     Pillar::Cost,
@@ -458,7 +466,7 @@ pub async fn get_lambda_pillar_reports(
 ) -> Result<HttpResponse, AppError> {
     let query = query.into_inner();
     debug!("Lambda pillar report request: {:?}", query);
-    let pillars = parse_pillars(&query.pillar, BASE_PILLARS)?;
+    let pillars = parse_pillars(&query.pillar, LAMBDA_PILLARS)?;
     let resources = controller
         .aws_resource_repo
         .find_by_account_and_type(
@@ -504,6 +512,18 @@ pub async fn get_lambda_pillar_reports(
                     "slo_policy_tracking": lambda_resilience_slo_policy_snapshot(&report),
                     "forecasting": lambda_resilience_forecast_snapshot(&report),
                     "reporting": lambda_resilience_reporting_bundle(&report),
+                })
+            } else if *pillar == Pillar::Performance {
+                json!({
+                    "pillar": report.pillar,
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "assessment_scope": "lambda_performance_duration_error_throttle_and_concurrency_telemetry",
+                    "posture": lambda_performance_posture_summary(&report),
+                    "triage_context": lambda_performance_triage_context(&report),
+                    "telemetry": lambda_performance_telemetry_summary(&report),
                 })
             } else {
                 json!(report)

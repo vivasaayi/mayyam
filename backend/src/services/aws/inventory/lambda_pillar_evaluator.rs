@@ -52,6 +52,14 @@ pub const REASON_RES_MISSING_QUOTA_LIMIT_EVIDENCE: &str = "LAMBDA_RES_MISSING_QU
 pub const REASON_RES_ERROR_OR_THROTTLE_HEALTH_SIGNAL: &str =
     "LAMBDA_RES_ERROR_OR_THROTTLE_HEALTH_SIGNAL";
 pub const REASON_RES_LOW_TIMEOUT_HEADROOM: &str = "LAMBDA_RES_LOW_TIMEOUT_HEADROOM";
+pub const REASON_PERF_MISSING_CONFIG_DATA: &str = "LAMBDA_PERF_MISSING_CONFIG_DATA";
+pub const REASON_PERF_MISSING_TELEMETRY_COLLECTION_METADATA: &str =
+    "LAMBDA_PERF_MISSING_TELEMETRY_COLLECTION_METADATA";
+pub const REASON_PERF_TELEMETRY_COLLECTION_ERRORS: &str = "LAMBDA_PERF_TELEMETRY_COLLECTION_ERRORS";
+pub const REASON_PERF_MISSING_CLOUDWATCH_TELEMETRY: &str =
+    "LAMBDA_PERF_MISSING_CLOUDWATCH_TELEMETRY";
+pub const REASON_PERF_HIGH_DURATION_PRESSURE: &str = "LAMBDA_PERF_HIGH_DURATION_PRESSURE";
+pub const REASON_PERF_ERROR_OR_THROTTLE_PRESSURE: &str = "LAMBDA_PERF_ERROR_OR_THROTTLE_PRESSURE";
 pub const REASON_INV_STALE_DATA: &str = "LAMBDA_INV_STALE_DATA";
 
 /// Runtimes AWS has deprecated (no more security patches). Kept as an
@@ -474,6 +482,9 @@ pub type LambdaResilienceExecutiveSummary = LambdaCostExecutiveSummary;
 pub type LambdaResilienceEngineeringBacklog = LambdaCostEngineeringBacklog;
 pub type LambdaResilienceIncidentReview = LambdaCostIncidentReview;
 pub type LambdaResilienceReportingBundle = LambdaCostReportingBundle;
+pub type LambdaPerformancePostureSummary = LambdaCostPostureSummary;
+pub type LambdaPerformanceTriageContext = LambdaCostTriageContext;
+pub type LambdaPerformanceTelemetrySummary = LambdaCostTelemetrySummary;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -539,6 +550,7 @@ pub fn evaluate_lambda_fleet(
             Pillar::Cost => evaluate_cost(resource, &mut findings),
             Pillar::Security => evaluate_security(resource, &mut findings),
             Pillar::Resilience => evaluate_resilience(resource, &mut findings),
+            Pillar::Performance => evaluate_performance(resource, &mut findings),
             // Pillars without checks for this service yet produce no findings.
             _ => {}
         }
@@ -551,6 +563,234 @@ pub fn evaluate_lambda_fleet(
         stale_resources,
         score,
         findings,
+    }
+}
+
+pub fn lambda_performance_triage_context(report: &PillarReport) -> LambdaPerformanceTriageContext {
+    let mut facts = Vec::new();
+    let mut hypotheses = Vec::new();
+    let mut missing_data_questions = Vec::new();
+    let mut follow_up_questions = Vec::new();
+    let mut evidence_citations = Vec::new();
+
+    for finding in &report.findings {
+        facts.push(format!(
+            "{} affects {} with {:?} severity",
+            finding.reason_code, finding.resource_id, finding.severity
+        ));
+        evidence_citations.push(LambdaEvidenceCitation {
+            reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            evidence: finding.evidence.clone(),
+        });
+
+        match finding.reason_code.as_str() {
+            REASON_INV_STALE_DATA => missing_data_questions.push(format!(
+                "Refresh Lambda inventory and performance telemetry for {} before explaining current latency posture",
+                finding.resource_id
+            )),
+            REASON_PERF_MISSING_CONFIG_DATA => missing_data_questions.push(format!(
+                "Collect timeout and memory configuration for {} before calculating Lambda performance headroom",
+                finding.resource_id
+            )),
+            REASON_PERF_MISSING_TELEMETRY_COLLECTION_METADATA => {
+                missing_data_questions.push(format!(
+                    "Collect Lambda performance telemetry collection metadata for {} before trusting signal freshness",
+                    finding.resource_id
+                ))
+            }
+            REASON_PERF_TELEMETRY_COLLECTION_ERRORS => hypotheses.push(format!(
+                "{} has Lambda performance telemetry collection errors; inspect CloudWatch permissions, throttling, and retry evidence before diagnosing latency",
+                finding.resource_id
+            )),
+            REASON_PERF_MISSING_CLOUDWATCH_TELEMETRY => missing_data_questions.push(format!(
+                "Collect Duration, Errors, Throttles, and ConcurrentExecutions telemetry for {} before explaining Lambda performance",
+                finding.resource_id
+            )),
+            REASON_PERF_HIGH_DURATION_PRESSURE => hypotheses.push(format!(
+                "{} is using a high share of its timeout budget; inspect memory sizing, cold starts, downstream latency, and payload growth before tuning",
+                finding.resource_id
+            )),
+            REASON_PERF_ERROR_OR_THROTTLE_PRESSURE => hypotheses.push(format!(
+                "{} has error or throttle pressure that can degrade request latency; inspect concurrency limits, event source pressure, and retry loops",
+                finding.resource_id
+            )),
+            _ => {}
+        }
+
+        follow_up_questions.push(lambda_performance_follow_up_question(
+            finding.reason_code.as_str(),
+        ));
+    }
+
+    LambdaCostTriageContext {
+        workflow_id: "lambda_performance_triage_context",
+        pillar: report.pillar,
+        api_path: "/api/aws/inventory/lambda/pillars",
+        context_builder_id: "lambda-performance-deterministic-context-v1",
+        prompt_template_id: "lambda-performance-ai-triage-v1",
+        generation_mode: "deterministic_no_llm",
+        max_prompt_tokens: 1800,
+        provider_routing: vec!["none"],
+        audit_event_type: "lambda_performance_ai_triage_context_built",
+        audit_id_prefix: "lambda-performance-ai-triage",
+        pagination: LambdaTriagePagination {
+            default_limit: 50,
+            max_limit: 200,
+            evidence_cursor: "evidence_citations",
+        },
+        freshness: LambdaTriageFreshness {
+            stale_data_blocks_ai_summary: report.stale_resources > 0,
+            stale_resources: report.stale_resources,
+            freshness_source: "lambda_inventory_last_synced_at",
+        },
+        export_formats: vec!["json"],
+        error_codes: vec!["STALE_LAMBDA_DATA", "MISSING_LAMBDA_PERFORMANCE_TELEMETRY"],
+        guardrails: LambdaAiTriageGuardrails {
+            read_only_mode: true,
+            evidence_required: true,
+            separate_facts_from_hypotheses: true,
+            ask_for_missing_data: true,
+            no_llm_invocation: true,
+            no_mutation_planning: true,
+        },
+        facts,
+        hypotheses,
+        missing_data_questions,
+        follow_up_questions,
+        runbook_copy_markdown: lambda_performance_runbook_copy(report),
+        feedback_capture: LambdaTriageFeedbackCapture {
+            supported: true,
+            feedback_event_type: "lambda_performance_ai_triage_feedback_captured",
+            fields: vec!["useful", "missing_evidence", "operator_note"],
+        },
+        evidence_citations,
+    }
+}
+
+pub fn lambda_performance_posture_summary(
+    report: &PillarReport,
+) -> LambdaPerformancePostureSummary {
+    let rules = vec![
+        lambda_cost_posture_rule(
+            report,
+            "lambda-performance-inventory-freshness",
+            &[REASON_INV_STALE_DATA],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-performance-config-present",
+            &[REASON_PERF_MISSING_CONFIG_DATA],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-performance-telemetry-collection-present",
+            &[
+                REASON_PERF_MISSING_TELEMETRY_COLLECTION_METADATA,
+                REASON_PERF_TELEMETRY_COLLECTION_ERRORS,
+            ],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-performance-core-cloudwatch-telemetry-present",
+            &[REASON_PERF_MISSING_CLOUDWATCH_TELEMETRY],
+        ),
+        lambda_cost_posture_rule(
+            report,
+            "lambda-performance-latency-and-throttle-headroom",
+            &[
+                REASON_PERF_HIGH_DURATION_PRESSURE,
+                REASON_PERF_ERROR_OR_THROTTLE_PRESSURE,
+            ],
+        ),
+    ];
+    let affected_resources = sorted_unique_resources(
+        report
+            .findings
+            .iter()
+            .map(|finding| finding.resource_id.clone()),
+    );
+    let rules_failed = rules
+        .iter()
+        .filter(|rule| rule.status == LambdaPostureStatus::Fail)
+        .count();
+
+    LambdaCostPostureSummary {
+        workflow_id: "lambda_performance_posture",
+        rule_pack_id: "lambda-performance-posture-rules-v1",
+        evidence_serializer: "lambda-performance-evidence-v1",
+        severity_model: "lambda-performance-severity-v1",
+        audit_event_type: "lambda_performance_posture_evaluated",
+        read_only_mode: true,
+        status: if rules_failed == 0 {
+            LambdaPostureStatus::Pass
+        } else {
+            LambdaPostureStatus::Fail
+        },
+        rules_evaluated: rules.len(),
+        rules_failed,
+        affected_resources,
+        rules,
+        suppression_policy: LambdaSuppressionPolicy {
+            supported: true,
+            scope: "resource_reason_code",
+            requires_reason: true,
+            audit_event_type: "lambda_performance_posture_suppression_requested",
+        },
+        assignment_policy: LambdaAssignmentPolicy {
+            supported: true,
+            owner_sources: vec!["owner", "team", "application", "service", "cost-center"],
+            fallback_owner: "unassigned",
+            audit_event_type: "lambda_performance_posture_assignment_requested",
+        },
+        recommendations: lambda_performance_posture_recommendations(report),
+    }
+}
+
+pub fn lambda_performance_telemetry_summary(
+    report: &PillarReport,
+) -> LambdaPerformanceTelemetrySummary {
+    let missing_data_reason_codes = sorted_unique_reasons(
+        report
+            .findings
+            .iter()
+            .filter(|finding| {
+                matches!(
+                    finding.reason_code.as_str(),
+                    REASON_PERF_MISSING_TELEMETRY_COLLECTION_METADATA
+                        | REASON_PERF_TELEMETRY_COLLECTION_ERRORS
+                        | REASON_PERF_MISSING_CLOUDWATCH_TELEMETRY
+                        | REASON_INV_STALE_DATA
+                )
+            })
+            .map(|finding| finding.reason_code.clone()),
+    );
+    let evidence_reason_codes = sorted_unique_reasons(
+        report
+            .findings
+            .iter()
+            .map(|finding| finding.reason_code.clone()),
+    );
+    let stale_data_blocks_delivery = report.stale_resources > 0
+        || report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == REASON_PERF_TELEMETRY_COLLECTION_ERRORS);
+
+    LambdaCostTelemetrySummary {
+        workflow_id: "lambda_performance_telemetry",
+        read_only_mode: true,
+        freshness_required: true,
+        telemetry_collection_required: true,
+        cloudwatch_namespace: "AWS/Lambda",
+        cloudwatch_dimension: "FunctionName",
+        required_metrics: lambda_performance_metric_names().to_vec(),
+        export_formats: vec!["json"],
+        missing_data_reason_codes,
+        evidence_reason_codes,
+        stale_data_blocks_delivery,
+        telemetry_quality_score: report.score,
     }
 }
 
@@ -2263,6 +2503,156 @@ fn evaluate_resilience(resource: &AwsResourceModel, findings: &mut Vec<Inventory
     }
 }
 
+fn evaluate_performance(resource: &AwsResourceModel, findings: &mut Vec<InventoryFinding>) {
+    let timeout = resource
+        .resource_data
+        .get("timeout")
+        .and_then(|value| value.as_i64());
+    let memory_size = resource
+        .resource_data
+        .get("memory_size")
+        .and_then(|value| value.as_i64());
+    if timeout.is_none() || memory_size.is_none() {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Performance,
+            reason_code: REASON_PERF_MISSING_CONFIG_DATA.to_string(),
+            severity: Severity::Medium,
+            message: format!(
+                "Function {} is missing timeout or memory configuration in inventory; performance headroom cannot be assessed",
+                resource.resource_id
+            ),
+            evidence: json!({ "timeout": timeout, "memory_size": memory_size }),
+        });
+    }
+
+    let required_fields = [
+        "telemetry_collection_started_at",
+        "telemetry_collection_completed_at",
+        "telemetry_collection_duration_ms",
+        "telemetry_collection_success_count",
+        "telemetry_collection_failure_count",
+        "telemetry_collection_error_count",
+    ];
+    let missing_collection_fields = missing_fields(resource, &required_fields);
+    if !missing_collection_fields.is_empty() {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Performance,
+            reason_code: REASON_PERF_MISSING_TELEMETRY_COLLECTION_METADATA.to_string(),
+            severity: Severity::Medium,
+            message: format!(
+                "Function {} is missing Lambda performance telemetry collection metadata needed to trust latency evidence",
+                resource.resource_id
+            ),
+            evidence: json!({
+                "required_fields": required_fields,
+                "missing_fields": missing_collection_fields,
+                "resource_data_keys": resource_data_keys(resource),
+                "tags": resource.tags,
+            }),
+        });
+    }
+
+    let telemetry_error_count =
+        data_u64(&resource.resource_data, "telemetry_collection_error_count").unwrap_or(0);
+    let telemetry_errors = resource
+        .resource_data
+        .get("telemetry_collection_errors")
+        .and_then(|value| value.as_array())
+        .cloned()
+        .unwrap_or_default();
+    if telemetry_error_count > 0 || !telemetry_errors.is_empty() {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Performance,
+            reason_code: REASON_PERF_TELEMETRY_COLLECTION_ERRORS.to_string(),
+            severity: Severity::High,
+            message: format!(
+                "Function {} has Lambda performance telemetry collection errors; latency posture may be incomplete",
+                resource.resource_id
+            ),
+            evidence: json!({
+                "telemetry_collection_error_count": telemetry_error_count,
+                "telemetry_collection_errors": telemetry_errors,
+                "tags": resource.tags,
+            }),
+        });
+    }
+
+    let missing_metrics = missing_metrics(resource, &lambda_performance_metric_names());
+    if !missing_metrics.is_empty() {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Performance,
+            reason_code: REASON_PERF_MISSING_CLOUDWATCH_TELEMETRY.to_string(),
+            severity: Severity::Medium,
+            message: format!(
+                "Function {} is missing Lambda CloudWatch performance telemetry for {}",
+                resource.resource_id,
+                missing_metrics.join(", ")
+            ),
+            evidence: json!({
+                "required_metrics": lambda_performance_metric_names(),
+                "missing_metrics": missing_metrics,
+                "cloudwatch_metric_names": resource.resource_data.get("cloudwatch_metric_names"),
+                "tags": resource.tags,
+            }),
+        });
+    }
+
+    let duration_max = metric_max(resource, "Duration").unwrap_or(0.0);
+    if let Some(timeout_seconds) = timeout {
+        let timeout_millis = (timeout_seconds as f64) * 1000.0;
+        if timeout_millis > 0.0 && duration_max >= timeout_millis * 0.7 {
+            findings.push(InventoryFinding {
+                resource_id: resource.resource_id.clone(),
+                arn: resource.arn.clone(),
+                pillar: Pillar::Performance,
+                reason_code: REASON_PERF_HIGH_DURATION_PRESSURE.to_string(),
+                severity: Severity::High,
+                message: format!(
+                    "Function {} is using a high share of its timeout budget; latency headroom is constrained",
+                    resource.resource_id
+                ),
+                evidence: json!({
+                    "duration_max_ms": duration_max,
+                    "timeout_seconds": timeout_seconds,
+                    "timeout_budget_used_ratio": (duration_max / timeout_millis).min(1.0),
+                    "memory_size": memory_size,
+                    "tags": resource.tags,
+                }),
+            });
+        }
+    }
+
+    let errors_max = metric_max(resource, "Errors").unwrap_or(0.0);
+    let throttles_max = metric_max(resource, "Throttles").unwrap_or(0.0);
+    if errors_max > 0.0 || throttles_max > 0.0 {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Performance,
+            reason_code: REASON_PERF_ERROR_OR_THROTTLE_PRESSURE.to_string(),
+            severity: Severity::High,
+            message: format!(
+                "Function {} has Lambda error or throttle pressure that can degrade request latency",
+                resource.resource_id
+            ),
+            evidence: json!({
+                "errors_max": errors_max,
+                "throttles_max": throttles_max,
+                "reserved_concurrent_executions": resource.resource_data.get("reserved_concurrent_executions"),
+                "tags": resource.tags,
+            }),
+        });
+    }
+}
+
 fn lambda_cost_posture_rule(
     report: &PillarReport,
     rule_id: &'static str,
@@ -2912,6 +3302,111 @@ fn lambda_resilience_metric_names() -> [&'static str; 3] {
     ["Duration", "Errors", "Throttles"]
 }
 
+fn lambda_performance_metric_names() -> [&'static str; 4] {
+    ["Duration", "Errors", "Throttles", "ConcurrentExecutions"]
+}
+
+fn lambda_performance_follow_up_question(reason_code: &str) -> String {
+    match reason_code {
+        REASON_INV_STALE_DATA => {
+            "Has Lambda inventory and performance telemetry been refreshed in the current sync window?"
+        }
+        REASON_PERF_MISSING_CONFIG_DATA => {
+            "Which timeout and memory settings are missing from the Lambda function inventory?"
+        }
+        REASON_PERF_MISSING_TELEMETRY_COLLECTION_METADATA => {
+            "Which collector run should be used as evidence for Lambda performance telemetry completeness?"
+        }
+        REASON_PERF_TELEMETRY_COLLECTION_ERRORS => {
+            "Which CloudWatch permission, throttling, or retry failure prevented Lambda performance telemetry collection?"
+        }
+        REASON_PERF_MISSING_CLOUDWATCH_TELEMETRY => {
+            "Which Duration, Errors, Throttles, and ConcurrentExecutions datapoints are missing for this Lambda function?"
+        }
+        REASON_PERF_HIGH_DURATION_PRESSURE => {
+            "Is the function constrained by memory size, cold starts, downstream latency, or payload growth?"
+        }
+        REASON_PERF_ERROR_OR_THROTTLE_PRESSURE => {
+            "Which concurrency limit, event source pressure, or retry loop is driving Lambda latency pressure?"
+        }
+        _ => "What additional evidence is required before explaining this Lambda performance finding?",
+    }
+    .to_string()
+}
+
+fn lambda_performance_runbook_copy(report: &PillarReport) -> String {
+    let reason_codes = sorted_unique_strings(
+        report
+            .findings
+            .iter()
+            .map(|finding| finding.reason_code.clone())
+            .collect(),
+    );
+    format!(
+        "Lambda performance AI triage: score {} across {} function(s), {} stale. Evidence reason codes: {}.",
+        report.score,
+        report.resources_evaluated,
+        report.stale_resources,
+        if reason_codes.is_empty() {
+            "none".to_string()
+        } else {
+            reason_codes.join(", ")
+        }
+    )
+}
+
+fn lambda_performance_posture_recommendations(
+    report: &PillarReport,
+) -> Vec<LambdaCostPostureRecommendation> {
+    report
+        .findings
+        .iter()
+        .filter_map(|finding| {
+            let recommendation = match finding.reason_code.as_str() {
+                REASON_INV_STALE_DATA => "refresh_lambda_inventory_and_performance_telemetry",
+                REASON_PERF_MISSING_CONFIG_DATA => {
+                    "collect_lambda_timeout_and_memory_configuration"
+                }
+                REASON_PERF_MISSING_TELEMETRY_COLLECTION_METADATA => {
+                    "restore_lambda_performance_collection_metadata"
+                }
+                REASON_PERF_TELEMETRY_COLLECTION_ERRORS => {
+                    "inspect_lambda_performance_collection_errors"
+                }
+                REASON_PERF_MISSING_CLOUDWATCH_TELEMETRY => {
+                    "collect_lambda_duration_error_throttle_and_concurrency_metrics"
+                }
+                REASON_PERF_HIGH_DURATION_PRESSURE => {
+                    "review_lambda_memory_timeout_and_downstream_latency"
+                }
+                REASON_PERF_ERROR_OR_THROTTLE_PRESSURE => {
+                    "diagnose_lambda_error_throttle_and_concurrency_pressure"
+                }
+                _ => return None,
+            };
+
+            Some(LambdaCostPostureRecommendation {
+                resource_id: finding.resource_id.clone(),
+                reason_code: finding.reason_code.clone(),
+                recommendation,
+                owner: owner_from_evidence(&finding.evidence),
+                confidence: "medium",
+                effort: "medium",
+                risk: if matches!(
+                    finding.reason_code.as_str(),
+                    REASON_PERF_HIGH_DURATION_PRESSURE | REASON_PERF_ERROR_OR_THROTTLE_PRESSURE
+                ) {
+                    "medium"
+                } else {
+                    "low"
+                },
+                suppression_key: format!("{}:{}", finding.resource_id, finding.reason_code),
+                audit_event_type: "lambda_performance_posture_recommendation_emitted",
+            })
+        })
+        .collect()
+}
+
 fn lambda_resilience_follow_up_question(reason_code: &str) -> String {
     match reason_code {
         REASON_INV_STALE_DATA => {
@@ -3308,6 +3803,64 @@ mod tests {
         assert!(telemetry
             .missing_data_reason_codes
             .contains(&REASON_COST_MISSING_CLOUDWATCH_TELEMETRY.to_string()));
+    }
+
+    #[test]
+    fn lambda_performance_telemetry_and_triage_explain_latency_pressure() {
+        let mut data = healthy_data();
+        data["cloudwatch_metric_names"] =
+            json!(["Duration", "Errors", "Throttles", "ConcurrentExecutions"]);
+        data["cloudwatch_metrics"]["metrics"] = json!([
+            {"metric_name": "Duration", "datapoints": [{"value": 23_000.0}]},
+            {"metric_name": "Errors", "datapoints": [{"value": 1.0}]},
+            {"metric_name": "Throttles", "datapoints": [{"value": 2.0}]},
+            {"metric_name": "ConcurrentExecutions", "datapoints": [{"value": 40.0}]}
+        ]);
+        let r = fixture(
+            "fn-latency-pressure",
+            json!({"team": "payments", "environment": "prod"}),
+            data,
+            1,
+            now(),
+        );
+
+        let report = evaluate_lambda_fleet(&[r], Pillar::Performance, now());
+        let codes: Vec<&str> = report
+            .findings
+            .iter()
+            .map(|finding| finding.reason_code.as_str())
+            .collect();
+        assert!(codes.contains(&REASON_PERF_HIGH_DURATION_PRESSURE));
+        assert!(codes.contains(&REASON_PERF_ERROR_OR_THROTTLE_PRESSURE));
+
+        let posture = lambda_performance_posture_summary(&report);
+        assert_eq!(posture.workflow_id, "lambda_performance_posture");
+        assert_eq!(posture.rules_evaluated, 5);
+        assert_eq!(posture.status, LambdaPostureStatus::Fail);
+        assert!(posture
+            .recommendations
+            .iter()
+            .any(|recommendation| recommendation.recommendation
+                == "review_lambda_memory_timeout_and_downstream_latency"));
+
+        let triage = lambda_performance_triage_context(&report);
+        assert_eq!(triage.workflow_id, "lambda_performance_triage_context");
+        assert_eq!(
+            triage.context_builder_id,
+            "lambda-performance-deterministic-context-v1"
+        );
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("high share of its timeout budget")));
+
+        let telemetry = lambda_performance_telemetry_summary(&report);
+        assert_eq!(telemetry.workflow_id, "lambda_performance_telemetry");
+        assert!(telemetry.required_metrics.contains(&"ConcurrentExecutions"));
+        assert!(telemetry.evidence_reason_codes.iter().any(|code| {
+            code == REASON_PERF_HIGH_DURATION_PRESSURE
+                || code == REASON_PERF_ERROR_OR_THROTTLE_PRESSURE
+        }));
     }
 
     #[test]

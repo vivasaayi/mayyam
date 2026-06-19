@@ -915,7 +915,7 @@ async fn lambda_pillar_reports_contract() {
     let body: Value = resp.json().await.expect("invalid JSON body");
     assert_eq!(body["resource_type"], "LambdaFunction");
     let reports = body["reports"].as_array().expect("reports array");
-    assert_eq!(reports.len(), 3);
+    assert_eq!(reports.len(), 4);
     let cost = reports
         .iter()
         .find(|report| report["pillar"] == "cost")
@@ -924,6 +924,10 @@ async fn lambda_pillar_reports_contract() {
         .iter()
         .find(|report| report["pillar"] == "resilience")
         .expect("resilience report");
+    let performance = reports
+        .iter()
+        .find(|report| report["pillar"] == "performance")
+        .expect("performance report");
     assert_eq!(
         cost["assessment_scope"],
         "lambda_cost_invocation_duration_error_and_throttle_telemetry"
@@ -1189,6 +1193,60 @@ async fn lambda_pillar_reports_contract() {
     );
     assert!(resilience["reporting"]["missing_data_reason_codes"].is_array());
     assert!(resilience["reporting"]["evidence_reason_codes"].is_array());
+    assert_eq!(
+        performance["assessment_scope"],
+        "lambda_performance_duration_error_throttle_and_concurrency_telemetry"
+    );
+    assert_eq!(
+        performance["posture"]["workflow_id"],
+        "lambda_performance_posture"
+    );
+    assert_eq!(
+        performance["posture"]["rule_pack_id"],
+        "lambda-performance-posture-rules-v1"
+    );
+    assert_eq!(
+        performance["posture"]["audit_event_type"],
+        "lambda_performance_posture_evaluated"
+    );
+    assert_eq!(performance["posture"]["rules_evaluated"], 5);
+    assert_eq!(
+        performance["triage_context"]["workflow_id"],
+        "lambda_performance_triage_context"
+    );
+    assert_eq!(
+        performance["triage_context"]["context_builder_id"],
+        "lambda-performance-deterministic-context-v1"
+    );
+    assert_eq!(
+        performance["triage_context"]["prompt_template_id"],
+        "lambda-performance-ai-triage-v1"
+    );
+    assert_eq!(
+        performance["triage_context"]["audit_event_type"],
+        "lambda_performance_ai_triage_context_built"
+    );
+    assert_eq!(
+        performance["triage_context"]["freshness"]["freshness_source"],
+        "lambda_inventory_last_synced_at"
+    );
+    assert_eq!(
+        performance["telemetry"]["workflow_id"],
+        "lambda_performance_telemetry"
+    );
+    assert_eq!(
+        performance["telemetry"]["cloudwatch_namespace"],
+        "AWS/Lambda"
+    );
+    assert_eq!(
+        performance["telemetry"]["cloudwatch_dimension"],
+        "FunctionName"
+    );
+    assert!(performance["telemetry"]["required_metrics"]
+        .as_array()
+        .expect("lambda performance required metrics")
+        .iter()
+        .any(|metric| metric == "ConcurrentExecutions"));
 }
 
 #[tokio::test]
