@@ -1163,6 +1163,63 @@ async fn lambda_pillar_reports_contract() {
         "lambda_security_ai_triage_context_built"
     );
     assert_eq!(
+        security["agentic_investigation"]["workflow_id"],
+        "lambda_security_agentic_investigation"
+    );
+    assert_eq!(
+        security["agentic_investigation"]["default_tool_mode"],
+        "read_only"
+    );
+    assert_eq!(security["agentic_investigation"]["replay_required"], true);
+    assert!(security["agentic_investigation"]["steps"].is_array());
+    assert!(security["agentic_investigation"]["approval_gates"].is_array());
+    assert_eq!(
+        security["remediation_workflow"]["workflow_id"],
+        "lambda_security_safe_remediation"
+    );
+    assert_eq!(
+        security["remediation_workflow"]["rbac_permission"],
+        "aws.lambda.security.remediation.approve"
+    );
+    assert_eq!(
+        security["remediation_workflow"]["audit_stream"],
+        "lambda_security_remediation_audit"
+    );
+    assert_eq!(
+        security["slo_policy_tracking"]["workflow_id"],
+        "lambda_security_slo_policy"
+    );
+    assert_eq!(
+        security["slo_policy_tracking"]["objective"]["objective_id"],
+        "lambda-security-score-min-95"
+    );
+    assert_eq!(
+        security["forecasting"]["workflow_id"],
+        "lambda_security_forecasting"
+    );
+    assert!(security["forecasting"]["forecast_band"]["expected_monthly_cost_index"].is_number());
+    assert!(security["forecasting"]["capacity_risk"].is_string());
+    assert_eq!(
+        security["reporting"]["workflow_id"],
+        "lambda_security_reporting"
+    );
+    assert_eq!(
+        security["reporting"]["saved_view_id"],
+        "lambda-security-posture-report"
+    );
+    assert_eq!(
+        security["reporting"]["executive_summary"]["report_id"],
+        "lambda-security-executive-summary"
+    );
+    assert_eq!(
+        security["reporting"]["engineering_backlog"]["report_id"],
+        "lambda-security-engineering-backlog"
+    );
+    assert_eq!(
+        security["reporting"]["incident_review"]["report_id"],
+        "lambda-security-incident-review"
+    );
+    assert_eq!(
         security["telemetry"]["workflow_id"],
         "lambda_security_telemetry"
     );

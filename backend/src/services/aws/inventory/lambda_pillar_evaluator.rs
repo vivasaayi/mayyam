@@ -503,6 +503,11 @@ pub type LambdaResilienceReportingBundle = LambdaCostReportingBundle;
 pub type LambdaSecurityPostureSummary = LambdaCostPostureSummary;
 pub type LambdaSecurityTriageContext = LambdaCostTriageContext;
 pub type LambdaSecurityTelemetrySummary = LambdaCostTelemetrySummary;
+pub type LambdaSecurityAgenticInvestigationPlan = LambdaCostAgenticInvestigationPlan;
+pub type LambdaSecurityRemediationWorkflow = LambdaCostRemediationWorkflow;
+pub type LambdaSecuritySloPolicySnapshot = LambdaCostSloPolicySnapshot;
+pub type LambdaSecurityForecastSnapshot = LambdaCostForecastSnapshot;
+pub type LambdaSecurityReportingBundle = LambdaCostReportingBundle;
 pub type LambdaPerformancePostureSummary = LambdaCostPostureSummary;
 pub type LambdaPerformanceTriageContext = LambdaCostTriageContext;
 pub type LambdaPerformanceTelemetrySummary = LambdaCostTelemetrySummary;
@@ -827,6 +832,422 @@ pub fn lambda_security_telemetry_summary(report: &PillarReport) -> LambdaSecurit
         evidence_reason_codes,
         stale_data_blocks_delivery,
         telemetry_quality_score: report.score,
+    }
+}
+
+pub fn lambda_security_agentic_investigation_plan(
+    report: &PillarReport,
+) -> LambdaSecurityAgenticInvestigationPlan {
+    let triage = lambda_security_triage_context(report);
+    let mut steps = Vec::new();
+    let mut approval_gates = Vec::new();
+
+    for citation in &triage.evidence_citations {
+        match citation.reason_code.as_str() {
+            REASON_INV_STALE_DATA => steps.push(lambda_investigation_step(
+                &steps,
+                LambdaInvestigationStepKind::Inspect,
+                "lambda.security.inspect_inventory_freshness",
+                LambdaInvestigationToolMode::ReadOnly,
+                citation,
+                "stop when Lambda inventory freshness and security evidence timestamps are confirmed",
+            )),
+            REASON_SEC_DEPRECATED_RUNTIME => {
+                steps.push(lambda_investigation_step(
+                    &steps,
+                    LambdaInvestigationStepKind::Compare,
+                    "lambda.security.compare_runtime_upgrade_path",
+                    LambdaInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when runtime support status, package compatibility, and test evidence are recorded",
+                ));
+                approval_gates.push(lambda_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve runtime upgrade after owner, test, and rollback evidence review",
+                ));
+            }
+            REASON_SEC_MISSING_OWNER_TAG => {
+                steps.push(lambda_investigation_step(
+                    &steps,
+                    LambdaInvestigationStepKind::Inspect,
+                    "lambda.security.inspect_owner_routing",
+                    LambdaInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when owner, team, application, and escalation routing evidence are recorded",
+                ));
+                approval_gates.push(lambda_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve owner tag assignment after service ownership confirmation",
+                ));
+            }
+            REASON_SEC_MISSING_TELEMETRY_COLLECTION_METADATA => steps.push(
+                lambda_investigation_step(
+                    &steps,
+                    LambdaInvestigationStepKind::Inspect,
+                    "lambda.security.inspect_collection_metadata",
+                    LambdaInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when collection start, completion, duration, success, failure, and error counts are recorded",
+                ),
+            ),
+            REASON_SEC_TELEMETRY_COLLECTION_ERRORS => steps.push(lambda_investigation_step(
+                &steps,
+                LambdaInvestigationStepKind::Diagnose,
+                "lambda.security.inspect_collector_errors",
+                LambdaInvestigationToolMode::ReadOnly,
+                citation,
+                "stop when CloudWatch, logs, EventBridge, IAM, throttling, and retry evidence explain the security telemetry gap",
+            )),
+            REASON_SEC_MISSING_CLOUDWATCH_TELEMETRY => steps.push(lambda_investigation_step(
+                &steps,
+                LambdaInvestigationStepKind::Inspect,
+                "lambda.security.get_cloudwatch_signals",
+                LambdaInvestigationToolMode::ReadOnly,
+                citation,
+                "stop when Invocations, Errors, and Throttles datapoints are collected or confirmed absent",
+            )),
+            REASON_SEC_MISSING_LOG_EVENT_EVIDENCE => steps.push(lambda_investigation_step(
+                &steps,
+                LambdaInvestigationStepKind::Inspect,
+                "lambda.security.inspect_logs_and_events",
+                LambdaInvestigationToolMode::ReadOnly,
+                citation,
+                "stop when log group, log errors, and security event evidence are recorded",
+            )),
+            REASON_SEC_MISSING_CODE_SIGNING_EVIDENCE => {
+                steps.push(lambda_investigation_step(
+                    &steps,
+                    LambdaInvestigationStepKind::Inspect,
+                    "lambda.security.inspect_code_signing",
+                    LambdaInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when code signing configuration and package provenance evidence are recorded",
+                ));
+                approval_gates.push(lambda_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve code-signing or deployment policy change after package provenance review",
+                ));
+            }
+            REASON_SEC_ERROR_SIGNAL => {
+                steps.push(lambda_investigation_step(
+                    &steps,
+                    LambdaInvestigationStepKind::Diagnose,
+                    "lambda.security.diagnose_error_throttle_signals",
+                    LambdaInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when error, throttle, authorization, runtime, and dependency evidence explain the security signal",
+                ));
+                approval_gates.push(lambda_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve runtime, permission, or deployment control change after security review",
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    if !approval_gates.is_empty() {
+        steps.push(LambdaInvestigationStep {
+            step_id: format!("lambda-security-step-{:02}", steps.len() + 1),
+            kind: LambdaInvestigationStepKind::ProposeMutationPlan,
+            tool_name: "lambda.security.prepare_approval_plan",
+            tool_mode: LambdaInvestigationToolMode::ApprovalRequired,
+            target_resource_id: "investigation".to_string(),
+            reason_code: "LAMBDA_SECURITY_APPROVAL_PLAN_REQUIRED".to_string(),
+            stop_condition:
+                "stop before mutation; require explicit operator approval, blast-radius summary, and rollback note"
+                    .to_string(),
+            evidence: json!({
+                "approval_gate_count": approval_gates.len(),
+                "read_only_step_count": steps.len(),
+            }),
+        });
+    }
+
+    LambdaCostAgenticInvestigationPlan {
+        workflow_id: "lambda_security_agentic_investigation",
+        default_tool_mode: LambdaInvestigationToolMode::ReadOnly,
+        max_tool_calls: steps.len().min(12),
+        max_evidence_citations: triage.evidence_citations.len(),
+        replay_required: true,
+        steps,
+        approval_gates,
+        evidence_citations: triage.evidence_citations,
+    }
+}
+
+pub fn lambda_security_remediation_workflow(
+    report: &PillarReport,
+) -> LambdaSecurityRemediationWorkflow {
+    let investigation = lambda_security_agentic_investigation_plan(report);
+    let has_stale_data = report
+        .findings
+        .iter()
+        .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+    let mut actions = Vec::new();
+
+    for gate in &investigation.approval_gates {
+        for reason_code in &gate.evidence_reason_codes {
+            if let Some(kind) = lambda_security_remediation_action_kind(reason_code) {
+                actions.push(lambda_remediation_action_with_contract(
+                    "lambda-security",
+                    "lambda.security.remediation.dry_run_planned",
+                    &[
+                        "refresh Lambda security inventory, metric, log, event, and code-signing evidence",
+                        "verify owner, blast radius, package provenance, runtime compatibility, and rollback intent",
+                        "capture operator approval, rollback note, and audit id before execution",
+                    ],
+                    &actions,
+                    kind,
+                    gate,
+                    if has_stale_data {
+                        LambdaRemediationStatus::BlockedMissingEvidence
+                    } else {
+                        LambdaRemediationStatus::DryRunPendingApproval
+                    },
+                ));
+            }
+        }
+    }
+
+    LambdaCostRemediationWorkflow {
+        workflow_id: "lambda_security_safe_remediation",
+        read_only_mode: true,
+        rbac_permission: "aws.lambda.security.remediation.approve",
+        audit_stream: "lambda_security_remediation_audit",
+        stale_data_blocks_execution: has_stale_data,
+        actions,
+        approval_gates: investigation.approval_gates,
+    }
+}
+
+pub fn lambda_security_slo_policy_snapshot(
+    report: &PillarReport,
+) -> LambdaSecuritySloPolicySnapshot {
+    let posture = lambda_security_posture_summary(report);
+    let failed_rule_count = posture.rules_failed;
+    let affected_resource_count = posture.affected_resources.len();
+    let status =
+        lambda_cost_objective_status(report.score, failed_rule_count, report.stale_resources);
+    let owner_filters = sorted_unique_evidence_values(report, &["owner", "team"]);
+    let environment_filters = sorted_unique_evidence_values(report, &["environment", "env"]);
+    let application_filters = sorted_unique_evidence_values(report, &["application", "app"]);
+    let notification_targets = lambda_notification_targets(&owner_filters, &environment_filters);
+
+    LambdaCostSloPolicySnapshot {
+        workflow_id: "lambda_security_slo_policy",
+        read_only_mode: true,
+        freshness_required: true,
+        objective: LambdaCostPolicyObjective {
+            objective_id: "lambda-security-score-min-95",
+            status,
+            target_score_min: 95,
+            current_score: report.score,
+            trend_direction: lambda_cost_trend_direction(status, failed_rule_count),
+            failed_rule_count,
+            affected_resource_count,
+            owner_filters,
+            environment_filters,
+            application_filters,
+            notification_targets,
+            policy_state: if report.stale_resources > 0 {
+                "blocked_stale_data"
+            } else if failed_rule_count > 0 {
+                "active_with_findings"
+            } else {
+                "active"
+            },
+            status_history: vec![
+                "snapshot_collected",
+                "security_policy_evaluated",
+                "notification_targets_resolved",
+            ],
+        },
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
+pub fn lambda_security_forecast_snapshot(report: &PillarReport) -> LambdaSecurityForecastSnapshot {
+    const BASELINE_WINDOW_DAYS: u16 = 30;
+    const FORECAST_HORIZON_DAYS: u16 = 30;
+    const CONFIDENCE_LEVEL: u8 = 75;
+
+    let stale_count = count_reason(report, REASON_INV_STALE_DATA);
+    let deprecated_runtime_count = count_reason(report, REASON_SEC_DEPRECATED_RUNTIME);
+    let missing_owner_count = count_reason(report, REASON_SEC_MISSING_OWNER_TAG);
+    let telemetry_error_count = count_reason(report, REASON_SEC_TELEMETRY_COLLECTION_ERRORS);
+    let missing_metadata_count =
+        count_reason(report, REASON_SEC_MISSING_TELEMETRY_COLLECTION_METADATA);
+    let missing_metrics_count = count_reason(report, REASON_SEC_MISSING_CLOUDWATCH_TELEMETRY);
+    let missing_log_event_count = count_reason(report, REASON_SEC_MISSING_LOG_EVENT_EVIDENCE);
+    let missing_code_signing_count = count_reason(report, REASON_SEC_MISSING_CODE_SIGNING_EVIDENCE);
+    let error_signal_count = count_reason(report, REASON_SEC_ERROR_SIGNAL);
+    let blocked_by_stale_data = report.stale_resources > 0 || stale_count > 0;
+
+    let expected_monthly_cost_index = 100u16
+        + (deprecated_runtime_count as u16 * 28)
+        + (missing_code_signing_count as u16 * 22)
+        + (error_signal_count as u16 * 18)
+        + (missing_log_event_count as u16 * 16)
+        + (missing_metrics_count as u16 * 14)
+        + (telemetry_error_count as u16 * 18)
+        + (missing_metadata_count as u16 * 10)
+        + (missing_owner_count as u16 * 8)
+        + (report.stale_resources as u16 * 25);
+    let uncertainty = 8u16
+        + (missing_log_event_count as u16 * 7)
+        + (missing_metrics_count as u16 * 6)
+        + (missing_metadata_count as u16 * 5)
+        + (telemetry_error_count as u16 * 8)
+        + (report.stale_resources as u16 * 10)
+        + (report.resources_evaluated == 0) as u16 * 20;
+    let lower_monthly_cost_index = expected_monthly_cost_index.saturating_sub(uncertainty);
+    let upper_monthly_cost_index = expected_monthly_cost_index + uncertainty;
+    let risk_level = if blocked_by_stale_data {
+        LambdaCostForecastRisk::Blocked
+    } else if deprecated_runtime_count > 0
+        || missing_code_signing_count > 0
+        || upper_monthly_cost_index >= 150
+    {
+        LambdaCostForecastRisk::High
+    } else if expected_monthly_cost_index > 100 {
+        LambdaCostForecastRisk::Moderate
+    } else {
+        LambdaCostForecastRisk::Low
+    };
+    let risk_drivers = lambda_security_forecast_risk_drivers(report);
+    let impacted_functions = sorted_unique_resources(
+        risk_drivers
+            .iter()
+            .flat_map(|driver| driver.affected_resources.iter().cloned()),
+    );
+
+    LambdaCostForecastSnapshot {
+        workflow_id: "lambda_security_forecasting",
+        read_only_mode: true,
+        baseline_window_days: BASELINE_WINDOW_DAYS,
+        forecast_horizon_days: FORECAST_HORIZON_DAYS,
+        confidence_level: CONFIDENCE_LEVEL,
+        forecast_band: LambdaCostForecastBand {
+            horizon_days: FORECAST_HORIZON_DAYS,
+            lower_monthly_cost_index,
+            expected_monthly_cost_index,
+            upper_monthly_cost_index,
+            confidence_level: CONFIDENCE_LEVEL,
+        },
+        risk_level,
+        capacity_risk: if blocked_by_stale_data {
+            "blocked_by_stale_or_failed_security_evidence"
+        } else if deprecated_runtime_count > 0 {
+            "deprecated_runtime_security_exposure"
+        } else if missing_code_signing_count > 0 {
+            "package_provenance_control_gap"
+        } else if error_signal_count > 0 {
+            "runtime_error_or_throttle_security_signal"
+        } else if missing_log_event_count > 0 || missing_metrics_count > 0 {
+            "security_observability_gap"
+        } else {
+            "within_lambda_security_forecast_threshold"
+        },
+        backtesting_fixture_status: if report.findings.is_empty() {
+            "ready_clean_security_baseline"
+        } else if blocked_by_stale_data
+            || telemetry_error_count > 0
+            || missing_metrics_count > 0
+            || missing_log_event_count > 0
+        {
+            "needs_fresh_security_telemetry_fixture"
+        } else {
+            "ready_security_findings_baseline"
+        },
+        threshold_controls: vec![
+            "security_exposure_index_warning_threshold",
+            "security_exposure_index_critical_threshold",
+        ],
+        what_if_inputs: vec![
+            "upgrade_deprecated_runtime",
+            "enable_lambda_code_signing",
+            "restore_lambda_security_telemetry",
+            "assign_lambda_security_owner",
+        ],
+        blocked_by_stale_data,
+        blast_radius_summary: if impacted_functions.is_empty() {
+            "No Lambda functions have security forecast risk in the current evidence.".to_string()
+        } else {
+            format!(
+                "{} Lambda function(s) have security forecast risk across runtime, code-signing, telemetry, log, event, or owner evidence.",
+                impacted_functions.len()
+            )
+        },
+        missing_data_reason_codes: lambda_security_missing_data_reason_codes(report),
+        risk_drivers,
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
+pub fn lambda_security_reporting_bundle(report: &PillarReport) -> LambdaSecurityReportingBundle {
+    let posture = lambda_security_posture_summary(report);
+    let forecast = lambda_security_forecast_snapshot(report);
+    let reason_codes = sorted_unique_reason_codes(report);
+    let missing_data_reason_codes = lambda_security_missing_data_reason_codes(report);
+    let rows = lambda_security_report_rows(report);
+    let stale_data_blocks_delivery = report.stale_resources > 0
+        || report.findings.iter().any(|finding| {
+            matches!(
+                finding.reason_code.as_str(),
+                REASON_INV_STALE_DATA
+                    | REASON_SEC_MISSING_TELEMETRY_COLLECTION_METADATA
+                    | REASON_SEC_TELEMETRY_COLLECTION_ERRORS
+                    | REASON_SEC_MISSING_CLOUDWATCH_TELEMETRY
+                    | REASON_SEC_MISSING_LOG_EVENT_EVIDENCE
+            )
+        });
+
+    LambdaCostReportingBundle {
+        workflow_id: "lambda_security_reporting",
+        read_only_mode: true,
+        scheduled_delivery_state: if stale_data_blocks_delivery {
+            "blocked_until_fresh_security_evidence"
+        } else if !missing_data_reason_codes.is_empty() {
+            "ready_with_security_evidence_gaps"
+        } else {
+            "ready_for_schedule"
+        },
+        stale_data_blocks_delivery,
+        portfolio_summary_ready: !stale_data_blocks_delivery,
+        workload_summary_ready: !stale_data_blocks_delivery && report.resources_evaluated > 0,
+        export_formats: vec!["json", "csv"],
+        saved_view_id: "lambda-security-posture-report",
+        executive_summary: LambdaCostExecutiveSummary {
+            report_id: "lambda-security-executive-summary",
+            score: report.score,
+            resources_evaluated: report.resources_evaluated,
+            stale_resources: report.stale_resources,
+            rules_failed: posture.rules_failed,
+            affected_resources: posture.affected_resources,
+            top_reason_codes: reason_codes.clone(),
+            blast_radius_summary: forecast.blast_radius_summary,
+        },
+        engineering_backlog: LambdaCostEngineeringBacklog {
+            report_id: "lambda-security-engineering-backlog",
+            page: 0,
+            page_size: 50,
+            total: rows.len(),
+            rows: rows.clone(),
+        },
+        incident_review: LambdaCostIncidentReview {
+            report_id: "lambda-security-incident-review",
+            page: 0,
+            page_size: 50,
+            total: rows.len(),
+            rows,
+        },
+        missing_data_reason_codes,
+        evidence_reason_codes: reason_codes,
     }
 }
 
@@ -4219,6 +4640,118 @@ fn lambda_security_posture_recommendations(
         .collect()
 }
 
+fn lambda_security_remediation_action_kind(
+    reason_code: &str,
+) -> Option<LambdaRemediationActionKind> {
+    match reason_code {
+        REASON_SEC_DEPRECATED_RUNTIME => Some(LambdaRemediationActionKind::ReviewTimeoutHeadroom),
+        REASON_SEC_MISSING_OWNER_TAG => Some(LambdaRemediationActionKind::AssignCostTags),
+        REASON_SEC_MISSING_TELEMETRY_COLLECTION_METADATA
+        | REASON_SEC_TELEMETRY_COLLECTION_ERRORS
+        | REASON_SEC_MISSING_CLOUDWATCH_TELEMETRY
+        | REASON_SEC_MISSING_LOG_EVENT_EVIDENCE => {
+            Some(LambdaRemediationActionKind::ReviewTelemetryCoverage)
+        }
+        REASON_SEC_MISSING_CODE_SIGNING_EVIDENCE => {
+            Some(LambdaRemediationActionKind::ReviewTelemetryCoverage)
+        }
+        REASON_SEC_ERROR_SIGNAL => {
+            Some(LambdaRemediationActionKind::ReviewFailureAndThrottleRecovery)
+        }
+        _ => None,
+    }
+}
+
+fn lambda_security_missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    sorted_unique_reasons(
+        report
+            .findings
+            .iter()
+            .filter(|finding| {
+                matches!(
+                    finding.reason_code.as_str(),
+                    REASON_INV_STALE_DATA
+                        | REASON_SEC_MISSING_TELEMETRY_COLLECTION_METADATA
+                        | REASON_SEC_TELEMETRY_COLLECTION_ERRORS
+                        | REASON_SEC_MISSING_CLOUDWATCH_TELEMETRY
+                        | REASON_SEC_MISSING_LOG_EVENT_EVIDENCE
+                        | REASON_SEC_MISSING_CODE_SIGNING_EVIDENCE
+                )
+            })
+            .map(|finding| finding.reason_code.clone()),
+    )
+}
+
+fn lambda_security_forecast_risk_drivers(
+    report: &PillarReport,
+) -> Vec<LambdaCostForecastRiskDriver> {
+    report
+        .findings
+        .iter()
+        .map(|finding| {
+            let monthly_cost_index_delta = match finding.reason_code.as_str() {
+                REASON_SEC_DEPRECATED_RUNTIME => 28,
+                REASON_SEC_MISSING_CODE_SIGNING_EVIDENCE => 22,
+                REASON_SEC_ERROR_SIGNAL => 18,
+                REASON_SEC_MISSING_LOG_EVENT_EVIDENCE => 16,
+                REASON_SEC_MISSING_CLOUDWATCH_TELEMETRY => 14,
+                REASON_SEC_TELEMETRY_COLLECTION_ERRORS => 18,
+                REASON_SEC_MISSING_TELEMETRY_COLLECTION_METADATA => 10,
+                REASON_SEC_MISSING_OWNER_TAG => 8,
+                REASON_INV_STALE_DATA => 25,
+                _ => 5,
+            };
+            LambdaCostForecastRiskDriver {
+                reason_code: finding.reason_code.clone(),
+                affected_resources: vec![finding.resource_id.clone()],
+                monthly_cost_index_delta,
+            }
+        })
+        .collect()
+}
+
+fn lambda_security_report_rows(report: &PillarReport) -> Vec<LambdaCostReportRow> {
+    report
+        .findings
+        .iter()
+        .map(|finding| LambdaCostReportRow {
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            reason_code: finding.reason_code.clone(),
+            message: finding.message.clone(),
+            recovery_note: lambda_security_reporting_recovery_note(&finding.reason_code)
+                .to_string(),
+            suppression_supported: true,
+            evidence: finding.evidence.clone(),
+        })
+        .collect()
+}
+
+fn lambda_security_reporting_recovery_note(reason_code: &str) -> &'static str {
+    match reason_code {
+        REASON_SEC_DEPRECATED_RUNTIME => {
+            "Plan a runtime upgrade with owner approval, compatibility tests, and rollback notes."
+        }
+        REASON_SEC_MISSING_OWNER_TAG => {
+            "Assign owner, team, or application tags so Lambda security findings route correctly."
+        }
+        REASON_SEC_MISSING_TELEMETRY_COLLECTION_METADATA
+        | REASON_SEC_TELEMETRY_COLLECTION_ERRORS
+        | REASON_SEC_MISSING_CLOUDWATCH_TELEMETRY
+        | REASON_SEC_MISSING_LOG_EVENT_EVIDENCE => {
+            "Restore Lambda security telemetry, logs, and event evidence before delivery."
+        }
+        REASON_SEC_MISSING_CODE_SIGNING_EVIDENCE => {
+            "Review Lambda code signing or package provenance controls before approving deployments."
+        }
+        REASON_SEC_ERROR_SIGNAL => {
+            "Investigate runtime, authorization, dependency, error, and throttle signals before remediation."
+        }
+        REASON_INV_STALE_DATA => "Refresh Lambda inventory before delivering security reports.",
+        _ => "Review Lambda security evidence and attach operator notes.",
+    }
+}
+
 fn lambda_scalability_metric_names() -> [&'static str; 3] {
     ["Invocations", "Throttles", "ConcurrentExecutions"]
 }
@@ -4998,6 +5531,50 @@ mod tests {
             .evidence_reason_codes
             .iter()
             .any(|code| code == REASON_SEC_ERROR_SIGNAL));
+
+        let plan = lambda_security_agentic_investigation_plan(&report);
+        assert_eq!(plan.workflow_id, "lambda_security_agentic_investigation");
+        assert_eq!(
+            plan.default_tool_mode,
+            LambdaInvestigationToolMode::ReadOnly
+        );
+        assert!(plan.replay_required);
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "lambda.security.inspect_code_signing"
+                && step.tool_mode == LambdaInvestigationToolMode::ReadOnly
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "lambda.security.prepare_approval_plan"
+                && step.tool_mode == LambdaInvestigationToolMode::ApprovalRequired
+        }));
+
+        let workflow = lambda_security_remediation_workflow(&report);
+        assert_eq!(workflow.workflow_id, "lambda_security_safe_remediation");
+        assert_eq!(
+            workflow.rbac_permission,
+            "aws.lambda.security.remediation.approve"
+        );
+        assert!(workflow.actions.iter().all(|action| {
+            action.dry_run
+                && action.requires_approval
+                && action.idempotency_key.starts_with("lambda-security-")
+                && action.audit_event_type == "lambda.security.remediation.dry_run_planned"
+        }));
+
+        let snapshot = lambda_security_slo_policy_snapshot(&report);
+        assert_eq!(snapshot.workflow_id, "lambda_security_slo_policy");
+        assert_eq!(
+            snapshot.objective.objective_id,
+            "lambda-security-score-min-95"
+        );
+
+        let forecast = lambda_security_forecast_snapshot(&report);
+        assert_eq!(forecast.workflow_id, "lambda_security_forecasting");
+        assert_eq!(forecast.capacity_risk, "package_provenance_control_gap");
+
+        let reporting = lambda_security_reporting_bundle(&report);
+        assert_eq!(reporting.workflow_id, "lambda_security_reporting");
+        assert_eq!(reporting.saved_view_id, "lambda-security-posture-report");
     }
 
     #[test]

@@ -109,8 +109,11 @@ use crate::services::aws::inventory::lambda_pillar_evaluator::{
     lambda_resilience_remediation_workflow, lambda_resilience_reporting_bundle,
     lambda_resilience_slo_policy_snapshot, lambda_resilience_triage_context,
     lambda_scalability_posture_summary, lambda_scalability_telemetry_summary,
-    lambda_scalability_triage_context, lambda_security_posture_summary,
-    lambda_security_telemetry_summary, lambda_security_triage_context,
+    lambda_scalability_triage_context, lambda_security_agentic_investigation_plan,
+    lambda_security_forecast_snapshot, lambda_security_posture_summary,
+    lambda_security_remediation_workflow, lambda_security_reporting_bundle,
+    lambda_security_slo_policy_snapshot, lambda_security_telemetry_summary,
+    lambda_security_triage_context,
 };
 use crate::services::aws::inventory::lightsail_pillar_evaluator::evaluate_lightsail_fleet;
 use crate::services::aws::inventory::load_balancer_pillar_evaluator::evaluate_load_balancer_fleet;
@@ -395,6 +398,11 @@ pub async fn get_ec2_pillar_reports(
                     "assessment_scope": "lambda_security_metrics_logs_events_and_code_signing_telemetry",
                     "posture": lambda_security_posture_summary(&report),
                     "triage_context": lambda_security_triage_context(&report),
+                    "agentic_investigation": lambda_security_agentic_investigation_plan(&report),
+                    "remediation_workflow": lambda_security_remediation_workflow(&report),
+                    "slo_policy_tracking": lambda_security_slo_policy_snapshot(&report),
+                    "forecasting": lambda_security_forecast_snapshot(&report),
+                    "reporting": lambda_security_reporting_bundle(&report),
                     "telemetry": lambda_security_telemetry_summary(&report),
                 })
             } else if *pillar == Pillar::Resilience {
