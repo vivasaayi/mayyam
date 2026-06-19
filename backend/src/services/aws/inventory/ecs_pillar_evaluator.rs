@@ -267,6 +267,47 @@ pub struct EcsCostTelemetrySummary {
     pub telemetry_quality_score: u8,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EcsInvestigationStepKind {
+    Inspect,
+    Compare,
+    Diagnose,
+    ProposeMutationPlan,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EcsInvestigationStep {
+    pub step_id: String,
+    pub kind: EcsInvestigationStepKind,
+    pub title: String,
+    pub evidence_reason_code: String,
+    pub resource_id: String,
+    pub read_only: bool,
+    pub required_evidence: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EcsInvestigationApprovalGate {
+    pub required: bool,
+    pub permission: &'static str,
+    pub audit_event_type: &'static str,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EcsCostAgenticInvestigationPlan {
+    pub workflow_id: &'static str,
+    pub plan_id_prefix: &'static str,
+    pub read_only_mode: bool,
+    pub generation_mode: &'static str,
+    pub max_steps: usize,
+    pub approval_gate: EcsInvestigationApprovalGate,
+    pub guardrails: EcsTriageGuardrails,
+    pub steps: Vec<EcsInvestigationStep>,
+    pub blocked_by_missing_evidence: bool,
+    pub evidence_reason_codes: Vec<String>,
+}
+
 pub fn ecs_cost_posture_summary(report: &PillarReport) -> EcsCostPostureSummary {
     let rules = vec![
         ecs_posture_rule(
@@ -321,6 +362,87 @@ pub fn ecs_cost_posture_summary(report: &PillarReport) -> EcsCostPostureSummary 
         affected_resources,
         rules,
         recommendations: ecs_cost_recommendations(report),
+    }
+}
+
+pub fn ecs_cost_agentic_investigation_plan(
+    report: &PillarReport,
+) -> EcsCostAgenticInvestigationPlan {
+    let mut steps = Vec::new();
+
+    for finding in report.findings.iter().take(8) {
+        let kind = match finding.reason_code.as_str() {
+            REASON_COST_IDLE_CLUSTER => EcsInvestigationStepKind::Diagnose,
+            REASON_COST_MISSING_CLOUDWATCH_TELEMETRY
+            | REASON_COST_MISSING_TELEMETRY_COLLECTION_METADATA
+            | REASON_COST_TAG_DATA_NOT_COLLECTED
+            | REASON_INV_STALE_DATA => EcsInvestigationStepKind::Inspect,
+            _ => EcsInvestigationStepKind::Compare,
+        };
+        steps.push(EcsInvestigationStep {
+            step_id: format!("ecs-cost-investigate-{}", steps.len() + 1),
+            kind,
+            title: ecs_cost_investigation_step_title(finding.reason_code.as_str()).to_string(),
+            evidence_reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            read_only: true,
+            required_evidence: vec![
+                "ecs_inventory_snapshot".to_string(),
+                "ecs_cloudwatch_utilization_metrics".to_string(),
+                "ecs_allocation_tags".to_string(),
+            ],
+        });
+    }
+
+    steps.push(EcsInvestigationStep {
+        step_id: format!("ecs-cost-investigate-{}", steps.len() + 1),
+        kind: EcsInvestigationStepKind::ProposeMutationPlan,
+        title: "Draft a savings action plan without executing changes".to_string(),
+        evidence_reason_code: "ECS_COST_AUTONOMOUS_ASSIST_REVIEW".to_string(),
+        resource_id: "fleet".to_string(),
+        read_only: true,
+        required_evidence: vec![
+            "owner_approval".to_string(),
+            "change_window".to_string(),
+            "rollback_plan".to_string(),
+        ],
+    });
+
+    EcsCostAgenticInvestigationPlan {
+        workflow_id: "ecs_cost_agentic_investigation",
+        plan_id_prefix: "ecs-cost-agentic",
+        read_only_mode: true,
+        generation_mode: "deterministic_no_llm",
+        max_steps: 9,
+        approval_gate: EcsInvestigationApprovalGate {
+            required: true,
+            permission: "aws.ecs.cost.remediation.approve",
+            audit_event_type: "ecs_cost_agentic_investigation_approval_requested",
+        },
+        guardrails: EcsTriageGuardrails {
+            read_only_mode: true,
+            evidence_required: true,
+            separate_facts_from_hypotheses: true,
+            ask_for_missing_data: true,
+            no_llm_invocation: true,
+        },
+        blocked_by_missing_evidence: report.findings.iter().any(|finding| {
+            matches!(
+                finding.reason_code.as_str(),
+                REASON_INV_STALE_DATA
+                    | REASON_COST_MISSING_TELEMETRY_COLLECTION_METADATA
+                    | REASON_COST_MISSING_CLOUDWATCH_TELEMETRY
+                    | REASON_COST_TAG_DATA_NOT_COLLECTED
+            )
+        }),
+        evidence_reason_codes: sorted_unique_strings(
+            report
+                .findings
+                .iter()
+                .map(|finding| finding.reason_code.clone())
+                .collect(),
+        ),
+        steps,
     }
 }
 
@@ -392,6 +514,19 @@ pub fn ecs_cost_triage_context(report: &PillarReport) -> EcsCostTriageContext {
         missing_data_questions,
         follow_up_questions: sorted_unique_strings(follow_up_questions),
         evidence_citations,
+    }
+}
+
+fn ecs_cost_investigation_step_title(reason_code: &str) -> &'static str {
+    match reason_code {
+        REASON_INV_STALE_DATA => "Refresh ECS inventory before autonomous cost investigation",
+        REASON_COST_MISSING_TELEMETRY_COLLECTION_METADATA => {
+            "Verify ECS telemetry collection run metadata"
+        }
+        REASON_COST_MISSING_CLOUDWATCH_TELEMETRY => "Inspect ECS CloudWatch utilization coverage",
+        REASON_COST_TAG_DATA_NOT_COLLECTED => "Route ECS cost ownership from allocation tags",
+        REASON_COST_IDLE_CLUSTER => "Diagnose idle ECS cluster retirement safety",
+        _ => "Compare ECS cost evidence against policy",
     }
 }
 
@@ -709,6 +844,21 @@ mod tests {
             .missing_data_reason_codes
             .contains(&REASON_COST_MISSING_CLOUDWATCH_TELEMETRY.to_string()));
         assert!(telemetry.required_metrics.contains(&"RunningTaskCount"));
+
+        let plan = ecs_cost_agentic_investigation_plan(&report);
+        assert_eq!(plan.workflow_id, "ecs_cost_agentic_investigation");
+        assert!(plan.read_only_mode);
+        assert!(plan.approval_gate.required);
+        assert_eq!(
+            plan.approval_gate.permission,
+            "aws.ecs.cost.remediation.approve"
+        );
+        assert!(plan.blocked_by_missing_evidence);
+        assert!(plan.steps.iter().all(|step| step.read_only));
+        assert!(plan
+            .steps
+            .iter()
+            .any(|step| matches!(step.kind, EcsInvestigationStepKind::ProposeMutationPlan)));
     }
 
     #[test]

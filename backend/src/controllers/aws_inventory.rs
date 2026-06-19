@@ -78,8 +78,8 @@ use crate::services::aws::inventory::ec2_pillar_evaluator::{
     ec2_security_slo_policy_snapshot, ec2_security_triage_context, evaluate_ec2_fleet,
 };
 use crate::services::aws::inventory::ecs_pillar_evaluator::{
-    ecs_cost_posture_summary, ecs_cost_telemetry_summary, ecs_cost_triage_context,
-    evaluate_ecs_fleet,
+    ecs_cost_agentic_investigation_plan, ecs_cost_posture_summary, ecs_cost_telemetry_summary,
+    ecs_cost_triage_context, evaluate_ecs_fleet,
 };
 use crate::services::aws::inventory::efs_pillar_evaluator::evaluate_efs_fleet;
 use crate::services::aws::inventory::eks_pillar_evaluator::evaluate_eks_fleet;
@@ -693,6 +693,7 @@ pub async fn get_ecs_pillar_reports(
                     "assessment_scope": "ecs_cluster_service_utilization_cost_telemetry",
                     "posture": ecs_cost_posture_summary(&report),
                     "triage_context": ecs_cost_triage_context(&report),
+                    "agentic_investigation": ecs_cost_agentic_investigation_plan(&report),
                     "telemetry": ecs_cost_telemetry_summary(&report),
                 })
             } else {

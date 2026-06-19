@@ -1608,6 +1608,14 @@ async fn storage_and_database_pillar_reports_contract() {
                 cost["triage_context"]["prompt_template_id"],
                 "ecs-cost-ai-triage-v1"
             );
+            assert_eq!(
+                cost["agentic_investigation"]["workflow_id"],
+                "ecs_cost_agentic_investigation"
+            );
+            assert_eq!(
+                cost["agentic_investigation"]["approval_gate"]["permission"],
+                "aws.ecs.cost.remediation.approve"
+            );
             assert_eq!(cost["telemetry"]["cloudwatch_namespace"], "AWS/ECS");
             assert!(cost["telemetry"]["required_metrics"]
                 .as_array()
