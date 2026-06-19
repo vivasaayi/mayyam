@@ -49,6 +49,12 @@ Mayyam should become a broad SRE/DBA/cloud engineering platform: Datadog/Dynatra
 
 Total generated backlog rows: 59,311.
 
+## Compressed Execution Backlog
+
+- `major-feature-backlog.csv`: compressed delivery backlog with 785 major implementation items generated from the detailed CSV rows.
+- `major-feature-backlog.md`: compression rule, module counts, and regeneration notes.
+- Regenerate both files with `node scripts/compress-feature-backlog.js`.
+
 ## Foundational Docs
 
 - `product-doctrine.md`: product positioning and the resource promise.
