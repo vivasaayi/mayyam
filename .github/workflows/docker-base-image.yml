@@ -1,14 +1,11 @@
 name: Build and Push Backend Base Image
 
 on:
-  push:
-    branches: [ "main" ]
-    paths:
-      - 'backend/Cargo.toml'
-      - 'backend/Cargo.lock'
-      - '.github/workflows/docker-base-image.yml'
-      - 'Dockerfile.base'
   workflow_dispatch:
+
+concurrency:
+  group: backend-base-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-base-image:
