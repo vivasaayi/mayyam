@@ -14,15 +14,17 @@ Work mode:
   - If only .claude/checkpoints/roadmap-run exists, inspect it and continue from that checkpoint unless migration is required.
   - If both checkpoint locations exist, compare runs.last_commit, current_batch_id, next_action, and checkpoint freshness; continue from the freshest valid checkpoint and record the choice in events.
 - If no valid checkpoint exists, initialize the SQLite checkpoint protocol from AGENTS.md.
+- If a valid checkpoint exists, resume from its next action and load only the minimum files needed; do not re-ingest the full roadmap unless the roadmap hash changed.
 - If the working tree is dirty, identify unrelated user/agent changes and do not revert them.
 
 Task selection:
 - Start from docs/product-roadmap/README.md, implementation-sequencing.md, requirements-rigor.md, every release-plan.md, and every feature-backlog.csv.
-- Enumerate roadmap folders and count backlog rows before choosing work.
+- On the first run, enumerate roadmap folders and count backlog rows before choosing work; on resume, rely on the checkpoint and inspect only the files needed for the next action.
 - Process the backlog in deterministic batches. Do not attempt to load all rows into context at once.
 - Select a small deterministic batch:
   - P0 before P1 before P2.
   - Prefer M1 inventory and M2 observable foundations before M3/M4/M5.
+  - Prefer a single module, route, screen, or contract boundary per batch when possible.
   - Choose related rows that can be implemented and verified together without broad refactors.
 - Atomically claim selected feature IDs in the checkpoint database before editing.
 

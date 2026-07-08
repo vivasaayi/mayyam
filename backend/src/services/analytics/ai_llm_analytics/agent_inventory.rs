@@ -26,6 +26,19 @@ use crate::services::aws::inventory::types::{
     DEFAULT_STALE_AFTER_HOURS,
 };
 
+mod control_workflow;
+mod governance_workflow;
+#[cfg(test)]
+mod tests;
+
+pub use control_workflow::{
+    agent_control_workflow, AgentControlAction, AgentControlStatus, AgentControlWorkflow,
+};
+pub use governance_workflow::{
+    agent_governance_workflow, AgentGovernanceAction, AgentGovernanceStatus,
+    AgentGovernanceWorkflow,
+};
+
 pub const RESOURCE_TYPE: &str = "AiLlmAgent";
 pub const REASON_COST_OWNER_NOT_RECORDED: &str = "AI_LLM_AGENT_COST_OWNER_NOT_RECORDED";
 pub const REASON_COST_BUDGET_MISSING: &str = "AI_LLM_AGENT_COST_BUDGET_MISSING";
@@ -34,8 +47,12 @@ pub const REASON_RES_DISABLED: &str = "AI_LLM_AGENT_RES_DISABLED";
 pub const REASON_RES_PROMPT_MISSING: &str = "AI_LLM_AGENT_RES_PROMPT_MISSING";
 pub const REASON_RES_STOP_CONDITION_MISSING: &str = "AI_LLM_AGENT_RES_STOP_CONDITION_MISSING";
 pub const REASON_RES_TIMEOUT_MISSING: &str = "AI_LLM_AGENT_RES_TIMEOUT_MISSING";
+pub const REASON_RES_PROVIDER_FAILOVER_POLICY_MISSING: &str =
+    "AI_LLM_AGENT_RES_PROVIDER_FAILOVER_POLICY_MISSING";
 pub const REASON_SEC_TOOL_POLICY_MISSING: &str = "AI_LLM_AGENT_SEC_TOOL_POLICY_MISSING";
 pub const REASON_SEC_APPROVAL_MISSING: &str = "AI_LLM_AGENT_SEC_APPROVAL_MISSING";
+pub const REASON_SEC_MODEL_ROUTING_POLICY_MISSING: &str =
+    "AI_LLM_AGENT_SEC_MODEL_ROUTING_POLICY_MISSING";
 pub const REASON_SEC_AUDIT_MISSING: &str = "AI_LLM_AGENT_SEC_AUDIT_MISSING";
 pub const REASON_INV_STALE_DATA: &str = "AI_LLM_AGENT_INV_STALE_DATA";
 
@@ -54,8 +71,10 @@ pub struct AgentInventoryItem {
     pub timeout_ms: Option<u64>,
     pub max_iterations: Option<u64>,
     pub stop_condition: Option<String>,
+    pub provider_failover_policy: Option<String>,
     pub tool_policy: Option<String>,
     pub approval_policy: Option<String>,
+    pub model_routing_policy: Option<String>,
     pub audit_enabled: bool,
     pub updated_at: DateTime<Utc>,
 }
@@ -144,6 +163,15 @@ fn agent_inventory_item_from_model(
             &model.model_config,
             &["stop_condition", "stop_conditions", "completion_policy"],
         ),
+        provider_failover_policy: string_field(
+            &model.model_config,
+            &[
+                "provider_failover_policy",
+                "failover_policy",
+                "fallback_provider",
+                "fallback_model",
+            ],
+        ),
         tool_policy: string_field(
             &model.model_config,
             &["tool_policy", "read_only_policy", "tool_scope"],
@@ -151,6 +179,15 @@ fn agent_inventory_item_from_model(
         approval_policy: string_field(
             &model.model_config,
             &["approval_policy", "approval_required"],
+        ),
+        model_routing_policy: string_field(
+            &model.model_config,
+            &[
+                "model_routing_policy",
+                "routing_policy",
+                "fallback_policy",
+                "provider_routing_policy",
+            ],
         ),
         audit_enabled: bool_field(
             &model.model_config,
@@ -245,6 +282,26 @@ fn evaluate_resilience(
         ));
     }
 
+    if item
+        .provider_failover_policy
+        .as_deref()
+        .unwrap_or_default()
+        .trim()
+        .is_empty()
+    {
+        findings.push(finding(
+            item,
+            pillar,
+            REASON_RES_PROVIDER_FAILOVER_POLICY_MISSING,
+            Severity::High,
+            format!(
+                "AI/LLM agent route {} has no provider failover policy",
+                item.model_name
+            ),
+            json!({"agent_id": item.agent_id, "recommendation": "Declare deterministic provider failover, dry-run, and rollback evidence before enabling autonomous recovery"}),
+        ));
+    }
+
     if item.max_iterations.is_none()
         && item
             .stop_condition
@@ -310,6 +367,26 @@ fn evaluate_security(
                 item.model_name
             ),
             json!({"agent_id": item.agent_id, "recommendation": "Require explicit approval before mutations or broad-scope diagnostics"}),
+        ));
+    }
+
+    if item
+        .model_routing_policy
+        .as_deref()
+        .unwrap_or_default()
+        .trim()
+        .is_empty()
+    {
+        findings.push(finding(
+            item,
+            pillar,
+            REASON_SEC_MODEL_ROUTING_POLICY_MISSING,
+            Severity::High,
+            format!(
+                "AI/LLM agent route {} has no model routing policy",
+                item.model_name
+            ),
+            json!({"agent_id": item.agent_id, "recommendation": "Record deterministic provider or model routing policy before enabling autonomous routing or failover"}),
         ));
     }
 
@@ -459,111 +536,4 @@ fn array_len(value: &Value, key: &str) -> Option<usize> {
 fn contains_any(text: &str, needles: &[&str]) -> bool {
     let normalized = text.to_ascii_lowercase();
     needles.iter().any(|needle| normalized.contains(needle))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use chrono::Duration;
-
-    fn item() -> AgentInventoryItem {
-        AgentInventoryItem {
-            agent_id: "agent-1".to_string(),
-            provider_id: "provider-1".to_string(),
-            model_name: "deepseek-agent".to_string(),
-            enabled: true,
-            owner: Some("sre-ai".to_string()),
-            labels: vec!["cost-center=ai-platform".to_string()],
-            prompt_count: 1,
-            tool_count: 2,
-            monthly_budget_usd: Some(1000.0),
-            max_tokens_per_run: Some(8000),
-            timeout_ms: Some(30000),
-            max_iterations: Some(8),
-            stop_condition: Some("stop after evidence-backed diagnosis".to_string()),
-            tool_policy: Some("read-only diagnostics by default".to_string()),
-            approval_policy: Some("approval required for mutations".to_string()),
-            audit_enabled: true,
-            updated_at: Utc::now(),
-        }
-    }
-
-    fn codes(report: &PillarReport) -> Vec<String> {
-        report
-            .findings
-            .iter()
-            .map(|finding| finding.reason_code.clone())
-            .collect()
-    }
-
-    #[test]
-    fn healthy_agent_inventory_passes_claimed_pillars() {
-        let now = Utc::now();
-        for pillar in [Pillar::Cost, Pillar::Resilience, Pillar::Security] {
-            let report = evaluate_agent_inventory(&[item()], pillar, now);
-            assert_eq!(report.resources_evaluated, 1);
-            assert!(report.findings.is_empty());
-        }
-    }
-
-    #[test]
-    fn cost_flags_missing_owner_budget_and_token_limit() {
-        let mut item = item();
-        item.owner = None;
-        item.labels.clear();
-        item.monthly_budget_usd = None;
-        item.max_tokens_per_run = None;
-
-        let report = evaluate_agent_inventory(&[item], Pillar::Cost, Utc::now());
-        let codes = codes(&report);
-
-        assert!(codes.contains(&REASON_COST_OWNER_NOT_RECORDED.to_string()));
-        assert!(codes.contains(&REASON_COST_BUDGET_MISSING.to_string()));
-        assert!(codes.contains(&REASON_COST_TOKEN_LIMIT_MISSING.to_string()));
-    }
-
-    #[test]
-    fn resilience_flags_disabled_route_without_prompt_or_stop_condition() {
-        let mut item = item();
-        item.enabled = false;
-        item.prompt_count = 0;
-        item.timeout_ms = None;
-        item.max_iterations = None;
-        item.stop_condition = None;
-
-        let report = evaluate_agent_inventory(&[item], Pillar::Resilience, Utc::now());
-        let codes = codes(&report);
-
-        assert!(codes.contains(&REASON_RES_DISABLED.to_string()));
-        assert!(codes.contains(&REASON_RES_PROMPT_MISSING.to_string()));
-        assert!(codes.contains(&REASON_RES_TIMEOUT_MISSING.to_string()));
-        assert!(codes.contains(&REASON_RES_STOP_CONDITION_MISSING.to_string()));
-    }
-
-    #[test]
-    fn security_flags_missing_tool_policy_approval_and_audit() {
-        let mut item = item();
-        item.tool_count = 0;
-        item.tool_policy = None;
-        item.approval_policy = None;
-        item.audit_enabled = false;
-
-        let report = evaluate_agent_inventory(&[item], Pillar::Security, Utc::now());
-        let codes = codes(&report);
-
-        assert!(codes.contains(&REASON_SEC_TOOL_POLICY_MISSING.to_string()));
-        assert!(codes.contains(&REASON_SEC_APPROVAL_MISSING.to_string()));
-        assert!(codes.contains(&REASON_SEC_AUDIT_MISSING.to_string()));
-    }
-
-    #[test]
-    fn stale_agent_inventory_is_counted_for_any_pillar() {
-        let mut item = item();
-        item.updated_at = Utc::now() - Duration::hours(DEFAULT_STALE_AFTER_HOURS + 1);
-
-        let report = evaluate_agent_inventory(&[item], Pillar::Cost, Utc::now());
-
-        assert_eq!(report.stale_resources, 1);
-        assert!(codes(&report).contains(&REASON_INV_STALE_DATA.to_string()));
-    }
 }

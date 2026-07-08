@@ -1,0 +1,2665 @@
+import React, { act } from "react";
+import { createRoot } from "react-dom/client";
+
+import PillarScorecard from "./PillarScorecard";
+
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+const render = async (ui) => {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(ui);
+  });
+  return {
+    container,
+    unmount: async () => {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    },
+  };
+};
+
+describe("PillarScorecard", () => {
+  it("renders Auto Scaling cost posture rules", async () => {
+    const data = {
+      evaluated_at: "2026-06-18T05:00:00Z",
+      stale_after_hours: 24,
+      reports: [
+        {
+          pillar: "cost",
+          score: 64,
+          resources_evaluated: 2,
+          stale_resources: 0,
+          findings: [],
+          assessment_scope: "autoscaling_cost_capacity_tags_and_group_metrics",
+          posture: {
+            status: "fail",
+            rules_evaluated: 7,
+            rules_failed: 3,
+            affected_resources: ["asg-missing-tags", "asg-fixed"],
+            rules: [
+              {
+                rule_id: "asg-cost-inventory-freshness",
+                status: "pass",
+                reason_codes: ["ASG_INV_STALE_DATA"],
+                affected_resources: [],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-cost-telemetry-collection-metadata-present",
+                status: "pass",
+                reason_codes: ["ASG_TEL_MISSING_COLLECTION_METADATA"],
+                affected_resources: [],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-cost-telemetry-collection-errors-clear",
+                status: "pass",
+                reason_codes: ["ASG_TEL_COLLECTION_ERRORS"],
+                affected_resources: [],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-cost-capacity-telemetry-present",
+                status: "fail",
+                reason_codes: ["ASG_COST_MISSING_CAPACITY_TELEMETRY"],
+                affected_resources: ["asg-missing-tags"],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-cost-group-metrics-telemetry-present",
+                status: "pass",
+                reason_codes: ["ASG_COST_MISSING_GROUP_METRICS_TELEMETRY"],
+                affected_resources: [],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-cost-allocation-tags-present",
+                status: "fail",
+                reason_codes: ["ASG_COST_NO_TAGS"],
+                affected_resources: ["asg-missing-tags"],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-cost-scale-in-capable",
+                status: "fail",
+                reason_codes: ["ASG_COST_FIXED_SIZE"],
+                affected_resources: ["asg-fixed"],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+            ],
+          },
+          triage_context: {
+            workflow_id: "autoscaling_cost_triage_context",
+            pillar: "cost",
+            context_builder_id: "autoscaling-cost-deterministic-context-v1",
+            prompt_template_id: "autoscaling-cost-ai-triage-v1",
+            generation_mode: "deterministic_no_llm",
+            max_prompt_tokens: 1200,
+            provider_routing: ["primary_ops_llm", "fallback_ops_llm"],
+            audit_event_type: "autoscaling_ai_triage_context_built",
+            guardrails: {
+              read_only_mode: true,
+              evidence_required: true,
+              separate_facts_from_hypotheses: true,
+              ask_for_missing_data: true,
+              no_llm_invocation: true,
+              no_mutation_planning: true,
+            },
+            facts: [
+              "ASG_COST_NO_TAGS affects asg-missing-tags with Medium severity",
+            ],
+            hypotheses: [
+              "asg-fixed may be paying for fixed capacity because scale-in is disabled by min == max",
+            ],
+            missing_data_questions: [
+              "Collect capacity telemetry for asg-missing-tags before quantifying ASG cost posture",
+            ],
+            evidence_citations: [
+              {
+                reason_code: "ASG_COST_NO_TAGS",
+                resource_id: "asg-missing-tags",
+                severity: "medium",
+                evidence: { tags: {} },
+              },
+            ],
+          },
+          agentic_investigation: {
+            workflow_id: "autoscaling_cost_agentic_investigation",
+            default_tool_mode: "read_only",
+            max_tool_calls: 4,
+            max_evidence_citations: 2,
+            replay_required: true,
+            steps: [
+              {
+                step_id: "autoscaling-cost-step-01",
+                kind: "inspect",
+                tool_name: "autoscaling.describe_group_capacity",
+                tool_mode: "read_only",
+                target_resource_id: "asg-missing-tags",
+                reason_code: "ASG_COST_MISSING_CAPACITY_TELEMETRY",
+                stop_condition:
+                  "stop when min, max, desired, and instance counts are recorded",
+                evidence: { missing_fields: ["desired_capacity"] },
+              },
+              {
+                step_id: "autoscaling-cost-step-02",
+                kind: "compare",
+                tool_name: "autoscaling.compare_scaling_policy_capacity",
+                tool_mode: "read_only",
+                target_resource_id: "asg-fixed",
+                reason_code: "ASG_COST_FIXED_SIZE",
+                stop_condition:
+                  "stop when fixed capacity is compared with demand and scaling policy evidence",
+                evidence: { min_size: 3, max_size: 3 },
+              },
+              {
+                step_id: "autoscaling-cost-step-03",
+                kind: "propose_mutation_plan",
+                tool_name: "autoscaling.cost.prepare_approval_plan",
+                tool_mode: "approval_required",
+                target_resource_id: "investigation",
+                reason_code: "ASG_COST_APPROVAL_PLAN_REQUIRED",
+                stop_condition:
+                  "stop before mutation; require operator approval and rollback note",
+                evidence: { approval_gate_count: 1 },
+              },
+            ],
+            approval_gates: [
+              {
+                gate_id: "autoscaling-cost-approval-01",
+                target_resource_id: "asg-fixed",
+                required_approval:
+                  "Approve scaling policy or capacity changes after owner review",
+                blast_radius:
+                  "single Auto Scaling group asg-fixed; no mutation is executable from the investigation plan",
+                rollback_note_required: true,
+                evidence_reason_codes: ["ASG_COST_FIXED_SIZE"],
+              },
+            ],
+            evidence_citations: [
+              {
+                reason_code: "ASG_COST_FIXED_SIZE",
+                resource_id: "asg-fixed",
+                severity: "low",
+                evidence: { min_size: 3, max_size: 3 },
+              },
+            ],
+          },
+          remediation_workflow: {
+            workflow_id: "autoscaling_cost_safe_remediation",
+            read_only_mode: true,
+            rbac_permission: "aws.autoscaling.cost.remediation.approve",
+            audit_stream: "autoscaling_cost_remediation_audit",
+            stale_data_blocks_execution: false,
+            actions: [
+              {
+                action_id: "autoscaling-cost-action-01",
+                kind: "review_scaling_policy_capacity",
+                status: "dry_run_pending_approval",
+                target_resource_id: "asg-fixed",
+                dry_run: true,
+                requires_approval: true,
+                approval_gate_id: "autoscaling-cost-approval-01",
+                audit_event_type:
+                  "autoscaling.cost.remediation.dry_run_planned",
+                idempotency_key:
+                  "autoscaling-cost-asg-fixed-review-scaling-policy-capacity",
+                blast_radius:
+                  "single Auto Scaling group asg-fixed; no mutation is executable from the investigation plan",
+                rollback_note:
+                  "rollback requires restoring the previous Auto Scaling capacity or scaling policy after validation",
+                validation_steps: [
+                  "refresh Auto Scaling capacity, tag, and group metric evidence",
+                  "verify owner, blast radius, budget impact, and scaling-policy intent",
+                  "capture operator approval, rollback note, and audit id before execution",
+                ],
+                evidence_reason_codes: ["ASG_COST_FIXED_SIZE"],
+              },
+            ],
+            approval_gates: [
+              {
+                gate_id: "autoscaling-cost-approval-01",
+                target_resource_id: "asg-fixed",
+                required_approval:
+                  "Approve scaling policy or capacity changes after owner review",
+                blast_radius:
+                  "single Auto Scaling group asg-fixed; no mutation is executable from the investigation plan",
+                rollback_note_required: true,
+                evidence_reason_codes: ["ASG_COST_FIXED_SIZE"],
+              },
+            ],
+          },
+          slo_policy_tracking: {
+            workflow_id: "autoscaling_cost_slo_policy",
+            read_only_mode: true,
+            freshness_required: true,
+            objective: {
+              objective_id: "autoscaling-cost-score-min-90",
+              status: "at_risk",
+              target_score_min: 90,
+              current_score: 64,
+              trend_direction: "degrading",
+              failed_rule_count: 3,
+              affected_resource_count: 2,
+              owner_filters: ["sre"],
+              environment_filters: ["prod"],
+              application_filters: ["checkout"],
+              notification_targets: ["environment:prod", "owner:sre"],
+              policy_state: "active_with_findings",
+              status_history: [
+                "snapshot_collected",
+                "policy_evaluated",
+                "notification_targets_resolved",
+              ],
+            },
+            evidence_reason_codes: [
+              "ASG_COST_MISSING_CAPACITY_TELEMETRY",
+              "ASG_COST_NO_TAGS",
+              "ASG_COST_FIXED_SIZE",
+            ],
+          },
+          forecasting: {
+            workflow_id: "autoscaling_cost_forecasting",
+            read_only_mode: true,
+            baseline_window_days: 30,
+            forecast_horizon_days: 30,
+            confidence_level: 80,
+            forecast_band: {
+              horizon_days: 30,
+              lower_monthly_cost_index: 124,
+              expected_monthly_cost_index: 146,
+              upper_monthly_cost_index: 168,
+              confidence_level: 80,
+            },
+            risk_level: "high",
+            capacity_risk: "fixed_capacity_and_missing_group_metrics",
+            backtesting_fixture_status: "ready_findings_baseline",
+            threshold_controls: [
+              "monthly_cost_index_warning_threshold",
+              "monthly_cost_index_critical_threshold",
+            ],
+            what_if_inputs: [
+              "allow_scale_in_for_fixed_groups",
+              "enable_group_metrics_collection",
+            ],
+            blocked_by_stale_data: false,
+            blast_radius_summary:
+              "2 Auto Scaling group(s) have cost forecast risk across capacity and telemetry findings.",
+            missing_data_reason_codes: ["ASG_COST_MISSING_GROUP_METRICS_TELEMETRY"],
+            risk_drivers: [
+              {
+                reason_code: "ASG_COST_FIXED_SIZE",
+                affected_resources: ["asg-fixed"],
+                monthly_cost_index_delta: 20,
+              },
+            ],
+            evidence_reason_codes: [
+              "ASG_COST_MISSING_CAPACITY_TELEMETRY",
+              "ASG_COST_NO_TAGS",
+              "ASG_COST_FIXED_SIZE",
+            ],
+          },
+          reporting: {
+            workflow_id: "autoscaling_cost_reporting",
+            read_only_mode: true,
+            scheduled_delivery_state: "ready_for_schedule",
+            stale_data_blocks_delivery: false,
+            portfolio_summary_ready: true,
+            workload_summary_ready: true,
+            export_formats: ["json", "csv"],
+            executive_summary: {
+              report_id: "autoscaling-cost-executive-summary",
+              score: 64,
+              resources_evaluated: 2,
+              stale_resources: 0,
+              rules_failed: 3,
+              affected_resources: ["asg-missing-tags", "asg-fixed"],
+              top_reason_codes: [
+                "ASG_COST_MISSING_CAPACITY_TELEMETRY",
+                "ASG_COST_NO_TAGS",
+                "ASG_COST_FIXED_SIZE",
+              ],
+              blast_radius_summary:
+                "2 Auto Scaling group(s) require cost reporting review.",
+            },
+            engineering_backlog: {
+              report_id: "autoscaling-cost-engineering-backlog",
+              page: 0,
+              page_size: 50,
+              total: 2,
+              rows: [],
+            },
+            incident_review: {
+              report_id: "autoscaling-cost-incident-review",
+              page: 0,
+              page_size: 50,
+              total: 1,
+              rows: [
+                {
+                  resource_id: "asg-fixed",
+                  reason_code: "ASG_COST_FIXED_SIZE",
+                  recovery_note:
+                    "Review scaling policy and capacity history before changing min or max size.",
+                  suppression_supported: true,
+                },
+              ],
+            },
+            missing_data_reason_codes: ["ASG_COST_MISSING_CAPACITY_TELEMETRY"],
+            evidence_reason_codes: [
+              "ASG_COST_MISSING_CAPACITY_TELEMETRY",
+              "ASG_COST_NO_TAGS",
+              "ASG_COST_FIXED_SIZE",
+            ],
+          },
+        },
+      ],
+    };
+
+    const view = await render(<PillarScorecard data={data} />);
+    const text = view.container.textContent;
+
+    expect(text).toContain("Cost Posture");
+    expect(text).toContain("3 failed of 7");
+    expect(text).toContain("asg-cost-capacity-telemetry-present");
+    expect(text).toContain("asg-cost-allocation-tags-present");
+    expect(text).toContain("asg-cost-scale-in-capable");
+    expect(text).toContain("ASG_COST_MISSING_CAPACITY_TELEMETRY");
+    expect(text).toContain("ASG_COST_NO_TAGS");
+    expect(text).toContain("ASG_COST_FIXED_SIZE");
+    expect(text).toContain("asg-missing-tags");
+    expect(text).toContain("asg-fixed");
+    expect(text).toContain("Cost Triage Context");
+    expect(text).toContain("autoscaling-cost-deterministic-context-v1");
+    expect(text).toContain("autoscaling-cost-ai-triage-v1");
+    expect(text).toContain("Provider Routing (not invoked)");
+    expect(text).toContain("primary_ops_llm");
+    expect(text).toContain("1200 token budget");
+    expect(text).toContain("Read only");
+    expect(text).toContain("Deterministic context only");
+    expect(text).toContain("scale-in is disabled");
+    expect(text).toContain("Collect capacity telemetry");
+    expect(text).toContain("Cost Agentic Investigation");
+    expect(text).toContain("autoscaling_cost_agentic_investigation");
+    expect(text).toContain("Replay required");
+    expect(text).toContain("4 max tool call");
+    expect(text).toContain("2 evidence citation");
+    expect(text).toContain("autoscaling.describe_group_capacity");
+    expect(text).toContain("autoscaling.compare_scaling_policy_capacity");
+    expect(text).toContain("autoscaling.cost.prepare_approval_plan");
+    expect(text).toContain("Approval Required");
+    expect(text).toContain("ASG_COST_APPROVAL_PLAN_REQUIRED");
+    expect(text).toContain("autoscaling-cost-approval-01");
+    expect(text).toContain("no mutation is executable from the investigation plan");
+    expect(text).toContain("Rollback note required");
+    expect(text).toContain("Cost Remediation");
+    expect(text).toContain("autoscaling_cost_safe_remediation");
+    expect(text).toContain("Dry Run");
+    expect(text).toContain("aws.autoscaling.cost.remediation.approve");
+    expect(text).toContain("autoscaling_cost_remediation_audit");
+    expect(text).toContain("Review Scaling Policy Capacity");
+    expect(text).toContain("Dry Run Pending Approval");
+    expect(text).toContain("autoscaling.cost.remediation.dry_run_planned");
+    expect(text).toContain("rollback requires restoring the previous Auto Scaling capacity");
+    expect(text).toContain("Cost SLO Policy");
+    expect(text).toContain("At Risk");
+    expect(text).toContain("autoscaling-cost-score-min-90");
+    expect(text).toContain("score 64 / target 90");
+    expect(text).toContain("Active With Findings");
+    expect(text).toContain("Degrading trend");
+    expect(text).toContain("sre");
+    expect(text).toContain("environment:prod, owner:sre");
+    expect(text).toContain("Snapshot Collected");
+    expect(text).toContain("Cost Forecast");
+    expect(text).toContain("autoscaling_cost_forecasting");
+    expect(text).toContain("30d baseline");
+    expect(text).toContain("expected 146");
+    expect(text).toContain("80% confidence");
+    expect(text).toContain("Fixed Capacity And Missing Group Metrics");
+    expect(text).toContain("Fresh enough");
+    expect(text).toContain("Ready Findings Baseline");
+    expect(text).toContain("Monthly Cost Index Warning Threshold");
+    expect(text).toContain("Cost Reporting");
+    expect(text).toContain("Ready For Schedule");
+    expect(text).toContain("autoscaling-cost-executive-summary");
+    expect(text).toContain("3 failed rule");
+    expect(text).toContain("2 affected");
+    expect(text).toContain("2 Auto Scaling group");
+    expect(text).toContain("1 missing signal");
+    expect(text).toContain("autoscaling-cost-incident-review");
+    expect(text).toContain("Review scaling policy and capacity history");
+    expect(text).toContain("Supported");
+
+    await view.unmount();
+  });
+
+  it("renders Auto Scaling resilience posture rules", async () => {
+    const data = {
+      evaluated_at: "2026-06-18T05:00:00Z",
+      stale_after_hours: 24,
+      reports: [
+        {
+          pillar: "resilience",
+          score: 71,
+          resources_evaluated: 2,
+          stale_resources: 0,
+          findings: [],
+          assessment_scope: "autoscaling_resilience_replacement_health_and_multi_az",
+          posture: {
+            status: "fail",
+            rules_evaluated: 10,
+            rules_failed: 3,
+            affected_resources: ["asg-single-az", "asg-unhealthy"],
+            rules: [
+              {
+                rule_id: "asg-resilience-inventory-freshness",
+                status: "pass",
+                reason_codes: ["ASG_INV_STALE_DATA"],
+                affected_resources: [],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-resilience-replacement-telemetry-present",
+                status: "pass",
+                reason_codes: ["ASG_RES_MISSING_REPLACEMENT_TELEMETRY"],
+                affected_resources: [],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-resilience-instance-health-clean",
+                status: "fail",
+                reason_codes: ["ASG_RES_UNHEALTHY_INSTANCE_TELEMETRY"],
+                affected_resources: ["asg-unhealthy"],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-resilience-multi-az-placement",
+                status: "fail",
+                reason_codes: ["ASG_RES_SINGLE_AZ"],
+                affected_resources: ["asg-single-az"],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-resilience-scaling-processes-active",
+                status: "fail",
+                reason_codes: ["ASG_RES_SUSPENDED_PROCESSES"],
+                affected_resources: ["asg-single-az"],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+            ],
+          },
+          triage_context: {
+            workflow_id: "autoscaling_resilience_triage_context",
+            pillar: "resilience",
+            context_builder_id: "autoscaling-resilience-deterministic-context-v1",
+            prompt_template_id: "autoscaling-resilience-ai-triage-v1",
+            generation_mode: "deterministic_no_llm",
+            max_prompt_tokens: 1200,
+            provider_routing: ["primary_ops_llm", "fallback_ops_llm"],
+            audit_event_type: "autoscaling_resilience_ai_triage_context_built",
+            guardrails: {
+              read_only_mode: true,
+              evidence_required: true,
+              separate_facts_from_hypotheses: true,
+              ask_for_missing_data: true,
+              no_llm_invocation: true,
+              no_mutation_planning: true,
+            },
+            facts: [
+              "ASG_RES_SINGLE_AZ affects asg-single-az with High severity",
+            ],
+            hypotheses: [
+              "asg-single-az may lose replacement capacity during an AZ outage; verify cross-zone target capacity and load balancer health checks before recommending changes",
+            ],
+            missing_data_questions: [
+              "Collect instance health telemetry for asg-unhealthy before explaining replacement behavior",
+            ],
+            evidence_citations: [
+              {
+                reason_code: "ASG_RES_SINGLE_AZ",
+                resource_id: "asg-single-az",
+                severity: "high",
+                evidence: {
+                  availability_zones: ["us-east-1a"],
+                },
+              },
+            ],
+          },
+          agentic_investigation: {
+            workflow_id: "autoscaling_resilience_agentic_investigation",
+            default_tool_mode: "read_only",
+            max_tool_calls: 4,
+            max_evidence_citations: 2,
+            replay_required: true,
+            steps: [
+              {
+                step_id: "autoscaling-resilience-step-01",
+                kind: "compare",
+                tool_name: "autoscaling.compare_availability_zone_coverage",
+                tool_mode: "read_only",
+                target_resource_id: "asg-single-az",
+                reason_code: "ASG_RES_SINGLE_AZ",
+                stop_condition:
+                  "stop when subnet, AZ, target capacity, and cross-zone evidence explain replacement exposure",
+                evidence: {
+                  availability_zones: ["us-east-1a"],
+                },
+              },
+              {
+                step_id: "autoscaling-resilience-step-02",
+                kind: "propose_mutation_plan",
+                tool_name: "autoscaling.resilience.prepare_approval_plan",
+                tool_mode: "approval_required",
+                target_resource_id: "investigation",
+                reason_code: "ASG_RESILIENCE_APPROVAL_PLAN_REQUIRED",
+                stop_condition:
+                  "stop before mutation; require explicit operator approval, blast-radius summary, and rollback note",
+                evidence: {
+                  approval_gate_count: 1,
+                  read_only_step_count: 1,
+                },
+              },
+            ],
+            approval_gates: [
+              {
+                gate_id: "autoscaling-resilience-approval-01",
+                target_resource_id: "asg-single-az",
+                required_approval:
+                  "Approve subnet or capacity changes after resilience owner review",
+                blast_radius:
+                  "single Auto Scaling group asg-single-az; no mutation is executable from the investigation plan",
+                rollback_note_required: true,
+                evidence_reason_codes: ["ASG_RES_SINGLE_AZ"],
+              },
+            ],
+            evidence_citations: [
+              {
+                reason_code: "ASG_RES_SINGLE_AZ",
+                resource_id: "asg-single-az",
+                severity: "high",
+                evidence: {
+                  availability_zones: ["us-east-1a"],
+                },
+              },
+            ],
+          },
+          remediation_workflow: {
+            workflow_id: "autoscaling_resilience_safe_remediation",
+            read_only_mode: true,
+            rbac_permission: "aws.autoscaling.resilience.remediation.approve",
+            audit_stream: "autoscaling_resilience_remediation_audit",
+            stale_data_blocks_execution: false,
+            actions: [
+              {
+                action_id: "autoscaling-resilience-remediation-01",
+                kind: "plan_multi_az_coverage",
+                status: "dry_run_pending_approval",
+                target_resource_id: "asg-single-az",
+                dry_run: true,
+                requires_approval: true,
+                approval_gate_id: "autoscaling-resilience-approval-01",
+                audit_event_type:
+                  "autoscaling.resilience.remediation.dry_run_planned",
+                idempotency_key:
+                  "autoscaling-resilience-asg-single-az-plan-multi-az-coverage",
+                blast_radius:
+                  "single Auto Scaling group asg-single-az; no mutation is executable from the investigation plan",
+                rollback_note:
+                  "Before approval, record rollback or recovery notes for plan-multi-az-coverage on asg-single-az.",
+                validation_steps: [
+                  "refresh Auto Scaling replacement, health, and placement evidence",
+                  "capture operator approval, rollback note, and audit id before execution",
+                ],
+                evidence_reason_codes: ["ASG_RES_SINGLE_AZ"],
+              },
+            ],
+            approval_gates: [
+              {
+                gate_id: "autoscaling-resilience-approval-01",
+                target_resource_id: "asg-single-az",
+                required_approval:
+                  "Approve subnet or capacity changes after resilience owner review",
+                blast_radius:
+                  "single Auto Scaling group asg-single-az; no mutation is executable from the investigation plan",
+                rollback_note_required: true,
+                evidence_reason_codes: ["ASG_RES_SINGLE_AZ"],
+              },
+            ],
+          },
+          slo_policy_tracking: {
+            workflow_id: "autoscaling_resilience_slo_policy",
+            read_only_mode: true,
+            freshness_required: true,
+            objective: {
+              objective_id: "autoscaling-resilience-score-min-95",
+              status: "at_risk",
+              target_score_min: 95,
+              current_score: 62,
+              trend_direction: "degrading",
+              failed_rule_count: 3,
+              affected_resource_count: 2,
+              owner_filters: ["sre"],
+              environment_filters: ["prod"],
+              application_filters: ["checkout"],
+              notification_targets: ["environment:prod", "owner:sre"],
+              policy_state: "active_with_findings",
+              status_history: [
+                "snapshot_collected",
+                "resilience_policy_evaluated",
+                "notification_targets_resolved",
+              ],
+            },
+            evidence_reason_codes: [
+              "ASG_RES_SINGLE_AZ",
+              "ASG_RES_UNHEALTHY_INSTANCE_TELEMETRY",
+            ],
+          },
+          forecasting: {
+            workflow_id: "autoscaling_resilience_forecasting",
+            read_only_mode: true,
+            baseline_window_days: 30,
+            forecast_horizon_days: 30,
+            confidence_level: 75,
+            forecast_band: {
+              horizon_days: 30,
+              lower_recovery_exposure_index: 112,
+              expected_recovery_exposure_index: 142,
+              upper_recovery_exposure_index: 172,
+              confidence_level: 75,
+            },
+            risk_level: "high",
+            recovery_capacity_risk:
+              "active_unhealthy_instance_replacement_exposure",
+            backtesting_fixture_status: "ready_resilience_findings_baseline",
+            threshold_controls: [
+              "recovery_exposure_index_warning_threshold",
+              "recovery_exposure_index_critical_threshold",
+            ],
+            what_if_inputs: [
+              "distribute_auto_scaling_capacity_across_availability_zones",
+            ],
+            blocked_by_stale_data: false,
+            blast_radius_summary:
+              "2 Auto Scaling group(s) have resilience recovery forecast risk across placement, replacement, health, or scaling-process evidence.",
+            recovery_note:
+              "Forecast is read-only; recovery actions require remediation approval and rollback notes.",
+            missing_data_reason_codes: [],
+            risk_drivers: [
+              {
+                reason_code: "ASG_RES_SINGLE_AZ",
+                affected_resources: ["asg-single-az"],
+                recovery_exposure_index_delta: 30,
+              },
+            ],
+            evidence_reason_codes: [
+              "ASG_RES_SINGLE_AZ",
+              "ASG_RES_UNHEALTHY_INSTANCE_TELEMETRY",
+            ],
+          },
+          reporting: {
+            workflow_id: "autoscaling_resilience_reporting",
+            read_only_mode: true,
+            scheduled_delivery_state: "ready_for_schedule",
+            stale_data_blocks_delivery: false,
+            portfolio_summary_ready: true,
+            workload_summary_ready: true,
+            export_formats: ["json", "csv"],
+            saved_view_id: "autoscaling-resilience-posture-report",
+            executive_summary: {
+              report_id: "autoscaling-resilience-executive-summary",
+              score: 71,
+              resources_evaluated: 2,
+              stale_resources: 0,
+              rules_failed: 3,
+              affected_resources: ["asg-single-az", "asg-unhealthy"],
+              top_reason_codes: [
+                "ASG_RES_SINGLE_AZ",
+                "ASG_RES_UNHEALTHY_INSTANCE_TELEMETRY",
+              ],
+              blast_radius_summary:
+                "2 Auto Scaling group(s) have resilience recovery forecast risk across placement, replacement, health, or scaling-process evidence.",
+            },
+            engineering_backlog: {
+              report_id: "autoscaling-resilience-engineering-backlog",
+              page: 0,
+              page_size: 50,
+              total: 2,
+              rows: [],
+            },
+            incident_review: {
+              report_id: "autoscaling-resilience-incident-review",
+              page: 0,
+              page_size: 50,
+              total: 1,
+              rows: [
+                {
+                  resource_id: "asg-single-az",
+                  reason_code: "ASG_RES_SINGLE_AZ",
+                  recovery_note:
+                    "Review multi-AZ placement plan before any approved recovery change.",
+                  suppression_supported: true,
+                },
+              ],
+            },
+            missing_data_reason_codes: [],
+            evidence_reason_codes: [
+              "ASG_RES_SINGLE_AZ",
+              "ASG_RES_UNHEALTHY_INSTANCE_TELEMETRY",
+            ],
+          },
+        },
+      ],
+    };
+
+    const view = await render(<PillarScorecard data={data} />);
+    const text = view.container.textContent;
+
+    expect(text).toContain("Resilience Posture");
+    expect(text).toContain("3 failed of 10");
+    expect(text).toContain("asg-single-az");
+    expect(text).toContain("asg-unhealthy");
+    expect(text).toContain("asg-resilience-multi-az-placement");
+    expect(text).toContain("asg-resilience-instance-health-clean");
+    expect(text).toContain("ASG_RES_SINGLE_AZ");
+    expect(text).toContain("ASG_RES_UNHEALTHY_INSTANCE_TELEMETRY");
+    expect(text).toContain("Resilience Triage Context");
+    expect(text).toContain("autoscaling-resilience-deterministic-context-v1");
+    expect(text).toContain("autoscaling-resilience-ai-triage-v1");
+    expect(text).toContain("Provider Routing (not invoked)");
+    expect(text).toContain("primary_ops_llm");
+    expect(text).toContain("1200 token budget");
+    expect(text).toContain("Read only");
+    expect(text).toContain("Deterministic context only");
+    expect(text).toContain("AZ outage");
+    expect(text).toContain("Collect instance health telemetry");
+    expect(text).toContain("Resilience Agentic Investigation");
+    expect(text).toContain("autoscaling_resilience_agentic_investigation");
+    expect(text).toContain("Replay required");
+    expect(text).toContain("autoscaling.compare_availability_zone_coverage");
+    expect(text).toContain("autoscaling.resilience.prepare_approval_plan");
+    expect(text).toContain("Mutation planning requires approval");
+    expect(text).toContain("Rollback note required");
+    expect(text).toContain("Resilience Remediation");
+    expect(text).toContain("autoscaling_resilience_safe_remediation");
+    expect(text).toContain("aws.autoscaling.resilience.remediation.approve");
+    expect(text).toContain("autoscaling.resilience.remediation.dry_run_planned");
+    expect(text).toContain("autoscaling-resilience-remediation-01");
+    expect(text).toContain("Resilience SLO Policy");
+    expect(text).toContain("autoscaling-resilience-score-min-95");
+    expect(text).toContain("95");
+    expect(text).toContain("Resilience Policy Evaluated");
+    expect(text).toContain("Resilience Forecast");
+    expect(text).toContain("autoscaling_resilience_forecasting");
+    expect(text).toContain("expected 142");
+    expect(text).toContain("75% confidence");
+    expect(text).toContain("Active Unhealthy Instance Replacement Exposure");
+    expect(text).toContain("Recovery Exposure Index Warning Threshold");
+    expect(text).toContain("Resilience Reporting");
+    expect(text).toContain("Ready For Schedule");
+    expect(text).toContain("autoscaling-resilience-executive-summary");
+    expect(text).toContain("3 failed rule");
+    expect(text).toContain("2 affected");
+    expect(text).toContain("autoscaling-resilience-incident-review");
+    expect(text).toContain("Review multi-AZ placement plan");
+    expect(text).toContain("Supported");
+
+    await view.unmount();
+  });
+
+  it("renders Auto Scaling security posture rules", async () => {
+    const data = {
+      evaluated_at: "2026-06-18T05:00:00Z",
+      stale_after_hours: 24,
+      reports: [
+        {
+          pillar: "security",
+          score: 73,
+          resources_evaluated: 3,
+          stale_resources: 0,
+          findings: [],
+          assessment_scope:
+            "autoscaling_security_launch_source_and_instance_telemetry",
+          posture: {
+            status: "fail",
+            rules_evaluated: 6,
+            rules_failed: 3,
+            affected_resources: [
+              "asg-legacy-launch",
+              "asg-launch-source-gap",
+              "asg-missing-instance-telemetry",
+            ],
+            rules: [
+              {
+                rule_id: "asg-security-inventory-freshness",
+                status: "pass",
+                reason_codes: ["ASG_INV_STALE_DATA"],
+                affected_resources: [],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id:
+                  "asg-security-telemetry-collection-metadata-present",
+                status: "pass",
+                reason_codes: ["ASG_TEL_MISSING_COLLECTION_METADATA"],
+                affected_resources: [],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-security-telemetry-collection-errors-clear",
+                status: "pass",
+                reason_codes: [
+                  "ASG_TEL_COLLECTION_ERRORS",
+                  "ASG_SEC_TELEMETRY_COLLECTION_ERRORS",
+                ],
+                affected_resources: [],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-security-instance-telemetry-present",
+                status: "fail",
+                reason_codes: ["ASG_SEC_MISSING_INSTANCE_TELEMETRY"],
+                affected_resources: ["asg-missing-instance-telemetry"],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-security-launch-source-modern",
+                status: "fail",
+                reason_codes: ["ASG_SEC_LEGACY_LAUNCH_CONFIGURATION"],
+                affected_resources: ["asg-legacy-launch"],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "asg-security-launch-source-collected",
+                status: "fail",
+                reason_codes: ["ASG_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED"],
+                affected_resources: ["asg-launch-source-gap"],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+            ],
+          },
+          triage_context: {
+            workflow_id: "autoscaling_security_triage_context",
+            context_builder_id: "autoscaling-security-deterministic-context-v1",
+            prompt_template_id: "autoscaling-security-ai-triage-v1",
+            generation_mode: "deterministic_no_llm",
+            max_prompt_tokens: 1200,
+            provider_routing: ["primary_ops_llm", "fallback_ops_llm"],
+            guardrails: {
+              read_only_mode: true,
+              evidence_required: true,
+              separate_facts_from_hypotheses: true,
+              ask_for_missing_data: true,
+              no_llm_invocation: true,
+              no_mutation_planning: true,
+            },
+            facts: [
+              "ASG_SEC_LEGACY_LAUNCH_CONFIGURATION affects asg-legacy-launch with Medium severity",
+              "ASG_SEC_MISSING_INSTANCE_TELEMETRY affects asg-missing-instance-telemetry with Medium severity",
+            ],
+            hypotheses: [
+              "asg-legacy-launch uses a legacy launch configuration; verify AMI source, IAM instance profile, user-data handling, and launch-template migration evidence before recommending security changes",
+            ],
+            missing_data_questions: [
+              "Collect instance health telemetry for asg-missing-instance-telemetry before explaining Auto Scaling security posture",
+              "Collect launch template, mixed instances policy, or launch configuration evidence for asg-launch-source-gap before judging Auto Scaling launch-source security",
+            ],
+            evidence_citations: [
+              {
+                reason_code: "ASG_SEC_LEGACY_LAUNCH_CONFIGURATION",
+                resource_id: "asg-legacy-launch",
+                severity: "medium",
+                evidence: { launch_configuration_name: "legacy-lc" },
+              },
+              {
+                reason_code: "ASG_SEC_MISSING_INSTANCE_TELEMETRY",
+                resource_id: "asg-missing-instance-telemetry",
+                severity: "medium",
+                evidence: { required_fields: ["instance_health"] },
+              },
+            ],
+          },
+          agentic_investigation: {
+            workflow_id: "autoscaling_security_agentic_investigation",
+            default_tool_mode: "read_only",
+            max_tool_calls: 2,
+            max_evidence_citations: 2,
+            replay_required: true,
+            steps: [
+              {
+                step_id: "autoscaling-security-step-01",
+                kind: "compare",
+                tool_name: "autoscaling.inspect_launch_configuration_security",
+                tool_mode: "read_only",
+                target_resource_id: "asg-legacy-launch",
+                reason_code: "ASG_SEC_LEGACY_LAUNCH_CONFIGURATION",
+                stop_condition:
+                  "stop when launch configuration is compared with launch template migration, AMI source, IAM instance profile, user-data, and cost side-effect evidence",
+                evidence: { launch_configuration_name: "legacy-lc" },
+              },
+              {
+                step_id: "autoscaling-security-step-02",
+                kind: "propose_mutation_plan",
+                tool_name: "autoscaling.security.prepare_approval_plan",
+                tool_mode: "approval_required",
+                target_resource_id: "investigation",
+                reason_code: "ASG_SECURITY_APPROVAL_PLAN_REQUIRED",
+                stop_condition:
+                  "stop before mutation; require explicit operator approval, blast-radius summary, rollback note, replayable evidence, and cost side-effect review",
+                evidence: {
+                  approval_gate_count: 1,
+                  read_only_step_count: 1,
+                  mutation_execution: "not_available_from_investigation_plan",
+                },
+              },
+            ],
+            approval_gates: [
+              {
+                gate_id: "autoscaling-security-approval-01",
+                target_resource_id: "asg-legacy-launch",
+                required_approval:
+                  "Approve launch-template migration or launch source changes after security owner review",
+                blast_radius:
+                  "single Auto Scaling group asg-legacy-launch; no mutation is executable from the investigation plan",
+                rollback_note_required: true,
+                evidence_reason_codes: [
+                  "ASG_SEC_LEGACY_LAUNCH_CONFIGURATION",
+                ],
+              },
+            ],
+            evidence_citations: [
+              {
+                reason_code: "ASG_SEC_LEGACY_LAUNCH_CONFIGURATION",
+                resource_id: "asg-legacy-launch",
+                severity: "medium",
+                evidence: { launch_configuration_name: "legacy-lc" },
+              },
+              {
+                reason_code: "ASG_SEC_MISSING_INSTANCE_TELEMETRY",
+                resource_id: "asg-missing-instance-telemetry",
+                severity: "medium",
+                evidence: { required_fields: ["instance_health"] },
+              },
+            ],
+          },
+          remediation_workflow: {
+            workflow_id: "autoscaling_security_safe_remediation",
+            read_only_mode: true,
+            rbac_permission: "aws.autoscaling.security.remediation.approve",
+            audit_stream: "autoscaling_security_remediation_audit",
+            stale_data_blocks_execution: false,
+            actions: [
+              {
+                action_id: "autoscaling-security-remediation-01",
+                kind: "review_launch_source_security_migration",
+                status: "dry_run_pending_approval",
+                target_resource_id: "asg-legacy-launch",
+                dry_run: true,
+                requires_approval: true,
+                approval_gate_id: "autoscaling-security-approval-01",
+                audit_event_type:
+                  "autoscaling.security.remediation.dry_run_planned",
+                idempotency_key:
+                  "autoscaling-security-asg-legacy-launch-review-launch-source-security-migration",
+                blast_radius:
+                  "single Auto Scaling group asg-legacy-launch; no mutation is executable from the investigation plan",
+                rollback_note:
+                  "Before approval, record rollback or recovery notes for review-launch-source-security-migration on asg-legacy-launch.",
+                validation_steps: [
+                  "refresh Auto Scaling launch source, instance health, and collection evidence",
+                  "verify security owner, blast radius, launch-template migration path, and cost side-effect review",
+                  "capture operator approval, rollback note, and audit id before execution",
+                ],
+                evidence_reason_codes: [
+                  "ASG_SEC_LEGACY_LAUNCH_CONFIGURATION",
+                ],
+              },
+            ],
+            approval_gates: [
+              {
+                gate_id: "autoscaling-security-approval-01",
+                target_resource_id: "asg-legacy-launch",
+                required_approval:
+                  "Approve launch-template migration or launch source changes after security owner review",
+                blast_radius:
+                  "single Auto Scaling group asg-legacy-launch; no mutation is executable from the investigation plan",
+                rollback_note_required: true,
+                evidence_reason_codes: [
+                  "ASG_SEC_LEGACY_LAUNCH_CONFIGURATION",
+                ],
+              },
+            ],
+          },
+          slo_policy_tracking: {
+            workflow_id: "autoscaling_security_slo_policy",
+            read_only_mode: true,
+            freshness_required: true,
+            objective: {
+              objective_id: "autoscaling-security-score-min-95",
+              status: "at_risk",
+              target_score_min: 95,
+              current_score: 82,
+              trend_direction: "degrading",
+              failed_rule_count: 1,
+              affected_resource_count: 1,
+              owner_filters: ["security"],
+              environment_filters: ["prod"],
+              application_filters: ["payments"],
+              notification_targets: ["environment:prod", "owner:security"],
+              policy_state: "active_with_findings",
+              status_history: [
+                "snapshot_collected",
+                "security_policy_evaluated",
+                "notification_targets_resolved",
+              ],
+            },
+            evidence_reason_codes: ["ASG_SEC_LEGACY_LAUNCH_CONFIGURATION"],
+          },
+          forecasting: {
+            workflow_id: "autoscaling_security_forecasting",
+            read_only_mode: true,
+            baseline_window_days: 30,
+            forecast_horizon_days: 30,
+            confidence_level: 75,
+            forecast_band: {
+              horizon_days: 30,
+              lower_security_exposure_index: 124,
+              expected_security_exposure_index: 134,
+              upper_security_exposure_index: 144,
+              confidence_level: 75,
+            },
+            risk_level: "high",
+            exposure_capacity_risk:
+              "legacy_launch_configuration_security_exposure",
+            backtesting_fixture_status: "ready_security_findings_baseline",
+            threshold_controls: [
+              "security_exposure_index_warning_threshold",
+              "security_exposure_index_critical_threshold",
+            ],
+            what_if_inputs: [
+              "migrate_legacy_launch_configuration_to_launch_template",
+              "restore_launch_source_collection",
+            ],
+            blocked_by_stale_data: false,
+            blast_radius_summary:
+              "1 Auto Scaling group(s) have legacy launch-source security exposure requiring launch-template migration review.",
+            missing_data_reason_codes: [],
+            risk_drivers: [
+              {
+                reason_code: "ASG_SEC_LEGACY_LAUNCH_CONFIGURATION",
+                affected_resources: ["asg-legacy-launch"],
+                security_exposure_index_delta: 34,
+              },
+            ],
+            evidence_reason_codes: ["ASG_SEC_LEGACY_LAUNCH_CONFIGURATION"],
+          },
+          reporting: {
+            workflow_id: "autoscaling_security_reporting",
+            read_only_mode: true,
+            scheduled_delivery_state: "ready_for_schedule",
+            stale_data_blocks_delivery: false,
+            portfolio_summary_ready: true,
+            workload_summary_ready: true,
+            export_formats: ["json", "csv"],
+            saved_view_id: "autoscaling-security-posture-report",
+            executive_summary: {
+              report_id: "autoscaling-security-executive-summary",
+              score: 82,
+              resources_evaluated: 3,
+              stale_resources: 0,
+              rules_failed: 3,
+              affected_resources: [
+                "asg-missing-instance-telemetry",
+                "asg-legacy-launch",
+                "asg-launch-source-gap",
+              ],
+              top_reason_codes: [
+                "ASG_SEC_MISSING_INSTANCE_TELEMETRY",
+                "ASG_SEC_LEGACY_LAUNCH_CONFIGURATION",
+                "ASG_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED",
+              ],
+              blast_radius_summary:
+                "1 Auto Scaling group(s) have legacy launch-source security exposure requiring launch-template migration review.",
+            },
+            engineering_backlog: {
+              report_id: "autoscaling-security-engineering-backlog",
+              page: 0,
+              page_size: 50,
+              total: 3,
+              rows: [],
+            },
+            incident_review: {
+              report_id: "autoscaling-security-incident-review",
+              page: 0,
+              page_size: 50,
+              total: 1,
+              rows: [
+                {
+                  resource_id: "asg-legacy-launch",
+                  reason_code: "ASG_SEC_LEGACY_LAUNCH_CONFIGURATION",
+                  recovery_note:
+                    "Review launch-template migration, security owner, and rollback notes before action.",
+                  suppression_supported: true,
+                },
+              ],
+            },
+            missing_data_reason_codes: [
+              "ASG_SEC_MISSING_INSTANCE_TELEMETRY",
+              "ASG_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED",
+            ],
+            evidence_reason_codes: [
+              "ASG_SEC_MISSING_INSTANCE_TELEMETRY",
+              "ASG_SEC_LEGACY_LAUNCH_CONFIGURATION",
+              "ASG_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED",
+            ],
+          },
+        },
+      ],
+    };
+
+    const view = await render(<PillarScorecard data={data} />);
+    const text = view.container.textContent;
+
+    expect(text).toContain("Security Posture");
+    expect(text).toContain("3 failed of 6");
+    expect(text).toContain("asg-security-instance-telemetry-present");
+    expect(text).toContain("asg-security-launch-source-modern");
+    expect(text).toContain("asg-security-launch-source-collected");
+    expect(text).toContain("ASG_SEC_MISSING_INSTANCE_TELEMETRY");
+    expect(text).toContain("ASG_SEC_LEGACY_LAUNCH_CONFIGURATION");
+    expect(text).toContain("ASG_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED");
+    expect(text).toContain("asg-missing-instance-telemetry");
+    expect(text).toContain("asg-legacy-launch");
+    expect(text).toContain("asg-launch-source-gap");
+    expect(text).toContain("Security Triage Context");
+    expect(text).toContain("autoscaling-security-deterministic-context-v1");
+    expect(text).toContain("autoscaling-security-ai-triage-v1");
+    expect(text).toContain("Provider Routing (not invoked)");
+    expect(text).toContain("primary_ops_llm");
+    expect(text).toContain("1200 token budget");
+    expect(text).toContain("Read only");
+    expect(text).toContain("Deterministic context only");
+    expect(text).toContain("legacy launch configuration");
+    expect(text).toContain("IAM instance profile");
+    expect(text).toContain("Collect instance health telemetry");
+    expect(text).toContain("Collect launch template");
+    expect(text).toContain("Security Agentic Investigation");
+    expect(text).toContain("autoscaling_security_agentic_investigation");
+    expect(text).toContain("Replay required");
+    expect(text).toContain("autoscaling.inspect_launch_configuration_security");
+    expect(text).toContain("autoscaling.security.prepare_approval_plan");
+    expect(text).toContain("Mutation planning requires approval");
+    expect(text).toContain("autoscaling-security-approval-01");
+    expect(text).toContain("Rollback note required");
+    expect(text).toContain("ASG_SECURITY_APPROVAL_PLAN_REQUIRED");
+    expect(text).toContain("no mutation is executable from the investigation plan");
+    expect(text).toContain("Security Remediation");
+    expect(text).toContain("autoscaling_security_safe_remediation");
+    expect(text).toContain("autoscaling_security_remediation_audit");
+    expect(text).toContain("aws.autoscaling.security.remediation.approve");
+    expect(text).toContain("autoscaling.security.remediation.dry_run_planned");
+    expect(text).toContain("autoscaling-security-remediation-01");
+    expect(text).toContain("Review Launch Source Security Migration");
+    expect(text).toContain("Security SLO Policy");
+    expect(text).toContain("autoscaling-security-score-min-95");
+    expect(text).toContain("score 82 / target 95");
+    expect(text).toContain("Active With Findings");
+    expect(text).toContain("Degrading trend");
+    expect(text).toContain("environment:prod, owner:security");
+    expect(text).toContain("Security Policy Evaluated");
+    expect(text).toContain("Security Forecast");
+    expect(text).toContain("autoscaling_security_forecasting");
+    expect(text).toContain("High");
+    expect(text).toContain("30d baseline");
+    expect(text).toContain("30d horizon");
+    expect(text).toContain("expected 134");
+    expect(text).toContain("124-144");
+    expect(text).toContain("75% confidence");
+    expect(text).toContain("Legacy Launch Configuration Security Exposure");
+    expect(text).toContain("Fresh enough");
+    expect(text).toContain("Ready Security Findings Baseline");
+    expect(text).toContain("1 risk driver");
+    expect(text).toContain("legacy launch-source security exposure");
+    expect(text).toContain("Security Exposure Index Warning Threshold");
+    expect(text).toContain("Security Reporting");
+    expect(text).toContain("Ready For Schedule");
+    expect(text).toContain("autoscaling-security-executive-summary");
+    expect(text).toContain("3 failed rule");
+    expect(text).toContain("3 affected");
+    expect(text).toContain("2 missing signal");
+    expect(text).toContain("autoscaling-security-incident-review");
+    expect(text).toContain("Review launch-template migration");
+    expect(text).toContain("Supported");
+
+    await view.unmount();
+  });
+
+  it("renders EC2 resilience reporting status, gaps, and recovery notes", async () => {
+    const data = {
+      evaluated_at: "2026-06-18T05:00:00Z",
+      stale_after_hours: 24,
+      reports: [
+        {
+          pillar: "resilience",
+          score: 72,
+          resources_evaluated: 2,
+          stale_resources: 1,
+          findings: [],
+          reporting: {
+            workflow_id: "ec2_resilience_reporting",
+            read_only_mode: true,
+            scheduled_delivery_state: "blocked_until_fresh_resilience_evidence",
+            portfolio_summary_ready: false,
+            workload_summary_ready: false,
+            stale_data_blocks_delivery: true,
+            executive_summary: {
+              report_id: "ec2-resilience-executive-summary",
+              rules_failed: 2,
+              affected_resources: ["i-a"],
+              blast_radius_summary:
+                "single_az_placement_can_turn_one_az_event_into_fleet_outage",
+              top_reason_codes: ["EC2_RES_SINGLE_AZ_CONCENTRATION"],
+            },
+            incident_review: {
+              report_id: "ec2-resilience-incident-review",
+              rows: [
+                {
+                  reason_code: "EC2_RES_SINGLE_AZ_CONCENTRATION",
+                  resource_id: "fleet",
+                  recovery_note:
+                    "Review multi-AZ placement plan before any approved recovery change.",
+                  suppression_supported: true,
+                },
+              ],
+            },
+            missing_data_reason_codes: ["EC2_INV_STALE_DATA"],
+            evidence_reason_codes: ["EC2_RES_SINGLE_AZ_CONCENTRATION"],
+          },
+        },
+      ],
+    };
+
+    const view = await render(<PillarScorecard data={data} />);
+    const text = view.container.textContent;
+
+    expect(text).toContain("Resilience Reporting");
+    expect(text).toContain("Blocked Until Fresh Resilience Evidence");
+    expect(text).toContain("Single Az Placement Can Turn One Az Event Into Fleet Outage");
+    expect(text).toContain("1 missing signal(s)");
+    expect(text).toContain("Fresh resilience evidence required");
+    expect(text).toContain("Review multi-AZ placement plan");
+    expect(text).toContain("Supported");
+
+    await view.unmount();
+  });
+
+  it("renders EC2 disaster-recovery posture and triage context", async () => {
+    const data = {
+      evaluated_at: "2026-06-18T05:00:00Z",
+      stale_after_hours: 24,
+      reports: [
+        {
+          pillar: "disaster-recovery",
+          score: 68,
+          resources_evaluated: 2,
+          stale_resources: 0,
+          findings: [],
+          posture: {
+            status: "fail",
+            rules_evaluated: 3,
+            rules_failed: 2,
+            affected_resources: ["i-no-recovery-evidence", "i-stale-recovery"],
+            rules: [
+              {
+                rule_id: "ec2-disaster-recovery-inventory-freshness",
+                status: "pass",
+                reason_codes: ["EC2_INV_STALE_DATA"],
+                affected_resources: [],
+              },
+              {
+                rule_id:
+                  "ec2-disaster-recovery-recovery-point-telemetry-present",
+                status: "fail",
+                reason_codes: ["EC2_DR_MISSING_RECOVERY_POINT_TELEMETRY"],
+                affected_resources: ["i-no-recovery-evidence"],
+              },
+              {
+                rule_id: "ec2-disaster-recovery-recovery-point-freshness",
+                status: "fail",
+                reason_codes: ["EC2_DR_STALE_RECOVERY_POINT_TELEMETRY"],
+                affected_resources: ["i-stale-recovery"],
+              },
+            ],
+          },
+          triage_context: {
+            workflow_id: "ec2_disaster_recovery_triage_context",
+            context_builder_id:
+              "ec2-disaster-recovery-deterministic-context-v1",
+            prompt_template_id: "ec2-disaster-recovery-ai-triage-v1",
+            generation_mode: "deterministic_no_llm",
+            max_prompt_tokens: 1200,
+            provider_routing: ["primary_ops_llm", "fallback_ops_llm"],
+            guardrails: {
+              read_only_mode: true,
+              evidence_required: true,
+              separate_facts_from_hypotheses: true,
+              ask_for_missing_data: true,
+              no_llm_invocation: true,
+              no_mutation_planning: true,
+            },
+            facts: [
+              "EC2_DR_MISSING_RECOVERY_POINT_TELEMETRY affects i-no-recovery-evidence with Medium severity",
+              "EC2_DR_STALE_RECOVERY_POINT_TELEMETRY affects i-stale-recovery with High severity",
+            ],
+            hypotheses: [
+              "i-stale-recovery has stale recovery point telemetry; verify backup policy before workflow changes",
+            ],
+            missing_data_questions: [
+              "Collect latest recovery point age or timestamp evidence for i-no-recovery-evidence before judging EC2 disaster-recovery posture",
+            ],
+            evidence_citations: [
+              {
+                reason_code: "EC2_DR_STALE_RECOVERY_POINT_TELEMETRY",
+                resource_id: "i-stale-recovery",
+                severity: "high",
+                evidence: { latest_recovery_point_age_hours: 72 },
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const view = await render(<PillarScorecard data={data} />);
+    const text = view.container.textContent;
+
+    expect(text).toContain("Disaster-Recovery Posture");
+    expect(text).toContain(
+      "ec2-disaster-recovery-recovery-point-telemetry-present",
+    );
+    expect(text).toContain("EC2_DR_MISSING_RECOVERY_POINT_TELEMETRY");
+    expect(text).toContain("Disaster-Recovery Triage Context");
+    expect(text).toContain(
+      "ec2-disaster-recovery-deterministic-context-v1",
+    );
+    expect(text).toContain("ec2-disaster-recovery-ai-triage-v1");
+    expect(text).toContain("backup policy");
+    expect(text).toContain("latest recovery point age");
+    expect(text).toContain("i-stale-recovery");
+
+    await view.unmount();
+  });
+
+  it("renders EC2 operational-excellence posture", async () => {
+    const data = {
+      evaluated_at: "2026-06-18T05:00:00Z",
+      stale_after_hours: 24,
+      reports: [
+        {
+          pillar: "operational-excellence",
+          score: 71,
+          resources_evaluated: 2,
+          stale_resources: 0,
+          findings: [],
+          posture: {
+            status: "fail",
+            rules_evaluated: 4,
+            rules_failed: 3,
+            affected_resources: [
+              "i-no-collection-metadata",
+              "i-collection-error",
+            ],
+            rules: [
+              {
+                rule_id: "ec2-operational-excellence-inventory-freshness",
+                status: "pass",
+                reason_codes: ["EC2_INV_STALE_DATA"],
+                affected_resources: [],
+              },
+              {
+                rule_id:
+                  "ec2-operational-excellence-collection-metadata-present",
+                status: "fail",
+                reason_codes: [
+                  "EC2_OE_MISSING_TELEMETRY_COLLECTION_METADATA",
+                ],
+                affected_resources: ["i-no-collection-metadata"],
+              },
+              {
+                rule_id: "ec2-operational-excellence-collection-errors-clear",
+                status: "fail",
+                reason_codes: ["EC2_OE_TELEMETRY_COLLECTION_ERRORS"],
+                affected_resources: ["i-collection-error"],
+              },
+              {
+                rule_id:
+                  "ec2-operational-excellence-detailed-monitoring-enabled",
+                status: "fail",
+                reason_codes: ["EC2_OE_BASIC_MONITORING"],
+                affected_resources: ["i-collection-error"],
+              },
+            ],
+          },
+          triage_context: {
+            workflow_id: "ec2_operational_excellence_triage_context",
+            context_builder_id:
+              "ec2-operational-excellence-deterministic-context-v1",
+            prompt_template_id: "ec2-operational-excellence-ai-triage-v1",
+            generation_mode: "deterministic_no_llm",
+            max_prompt_tokens: 1200,
+            provider_routing: ["primary_ops_llm", "fallback_ops_llm"],
+            guardrails: {
+              read_only_mode: true,
+              evidence_required: true,
+              separate_facts_from_hypotheses: true,
+              ask_for_missing_data: true,
+              no_llm_invocation: true,
+              no_mutation_planning: true,
+            },
+            facts: [
+              "EC2_OE_MISSING_TELEMETRY_COLLECTION_METADATA affects i-no-collection-metadata with Medium severity",
+              "EC2_OE_TELEMETRY_COLLECTION_ERRORS affects i-collection-error with High severity",
+            ],
+            hypotheses: [
+              "i-collection-error has telemetry collection errors; inspect collector logs before changing runbook workflow",
+              "i-collection-error uses basic EC2 monitoring; operational diagnosis may rely on lower-resolution telemetry",
+            ],
+            missing_data_questions: [
+              "Collect telemetry collection metadata for i-no-collection-metadata before generating operational runbook triage",
+            ],
+            evidence_citations: [
+              {
+                reason_code: "EC2_OE_TELEMETRY_COLLECTION_ERRORS",
+                resource_id: "i-collection-error",
+                severity: "high",
+                evidence: { telemetry_collection_error_count: 1 },
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    const view = await render(<PillarScorecard data={data} />);
+    const text = view.container.textContent;
+
+    expect(text).toContain("Operational-Excellence Posture");
+    expect(text).toContain(
+      "ec2-operational-excellence-collection-metadata-present",
+    );
+    expect(text).toContain(
+      "EC2_OE_MISSING_TELEMETRY_COLLECTION_METADATA",
+    );
+    expect(text).toContain("ec2-operational-excellence-collection-errors-clear");
+    expect(text).toContain("EC2_OE_TELEMETRY_COLLECTION_ERRORS");
+    expect(text).toContain("Operational-Excellence Triage Context");
+    expect(text).toContain(
+      "ec2-operational-excellence-deterministic-context-v1",
+    );
+    expect(text).toContain("ec2-operational-excellence-ai-triage-v1");
+    expect(text).toContain("collector logs");
+    expect(text).toContain("telemetry collection metadata");
+    expect(text).toContain("i-collection-error");
+
+    await view.unmount();
+  });
+
+  it("renders EC2 performance posture findings for operator review", async () => {
+    const data = {
+      evaluated_at: "2026-06-18T05:00:00Z",
+      stale_after_hours: 24,
+      reports: [
+        {
+          pillar: "performance",
+          score: 74,
+          resources_evaluated: 2,
+          stale_resources: 0,
+          posture: {
+            status: "fail",
+            rules_evaluated: 3,
+            rules_failed: 2,
+            affected_resources: ["i-perf-gap", "i-perf-hot"],
+            rules: [
+              {
+                rule_id: "ec2-performance-inventory-freshness",
+                status: "pass",
+                reason_codes: ["EC2_INV_STALE_DATA"],
+                affected_resources: [],
+              },
+              {
+                rule_id: "ec2-performance-core-telemetry-present",
+                status: "fail",
+                reason_codes: ["EC2_PERF_MISSING_CORE_TELEMETRY"],
+                affected_resources: ["i-perf-gap"],
+              },
+              {
+                rule_id: "ec2-performance-cpu-headroom",
+                status: "fail",
+                reason_codes: ["EC2_PERF_HIGH_CPU_TELEMETRY"],
+                affected_resources: ["i-perf-hot"],
+              },
+            ],
+          },
+          triage_context: {
+            workflow_id: "ec2_performance_triage_context",
+            context_builder_id: "ec2-performance-deterministic-context-v1",
+            prompt_template_id: "ec2-performance-ai-triage-v1",
+            generation_mode: "deterministic_no_llm",
+            max_prompt_tokens: 1200,
+            provider_routing: ["primary_ops_llm", "fallback_ops_llm"],
+            guardrails: {
+              read_only_mode: true,
+              evidence_required: true,
+              separate_facts_from_hypotheses: true,
+              ask_for_missing_data: true,
+              no_llm_invocation: true,
+              no_mutation_planning: true,
+            },
+            facts: [
+              "EC2_PERF_MISSING_CORE_TELEMETRY affects i-perf-gap with Medium severity",
+              "EC2_PERF_HIGH_CPU_TELEMETRY affects i-perf-hot with High severity",
+            ],
+            hypotheses: [
+              "i-perf-hot may be CPU constrained; compare instance type before resizing",
+            ],
+            missing_data_questions: [
+              "Collect CPUUtilization, NetworkIn, NetworkOut, DiskReadOps, and DiskWriteOps telemetry for i-perf-gap before diagnosing EC2 performance bottlenecks",
+            ],
+            evidence_citations: [
+              {
+                reason_code: "EC2_PERF_HIGH_CPU_TELEMETRY",
+                resource_id: "i-perf-hot",
+                severity: "high",
+                evidence: { metric_name: "CPUUtilization", max: 94 },
+              },
+            ],
+          },
+          forecasting: {
+            workflow_id: "ec2_performance_forecasting",
+            read_only_mode: true,
+            baseline_window_days: 30,
+            forecast_horizon_days: 30,
+            confidence_level: 75,
+            forecast_band: {
+              horizon_days: 30,
+              lower_performance_pressure_index: 128,
+              expected_performance_pressure_index: 158,
+              upper_performance_pressure_index: 188,
+              confidence_level: 75,
+            },
+            risk_level: "high",
+            performance_capacity_risk: "cpu_constrained_compute_capacity",
+            backtesting_fixture_status: "ready_performance_findings_baseline",
+            threshold_controls: [
+              "performance_pressure_index_warning_threshold",
+              "performance_pressure_index_critical_threshold",
+            ],
+            what_if_inputs: [
+              "restore_core_performance_telemetry",
+              "compare_cpu_pressure_to_workload_demand",
+            ],
+            blocked_by_stale_data: false,
+            blast_radius_summary:
+              "instances_with_high_cpu_can_expand_latency_or_throttle_risk",
+            missing_data_reason_codes: ["EC2_PERF_MISSING_CORE_TELEMETRY"],
+            risk_drivers: [
+              {
+                reason_code: "EC2_PERF_HIGH_CPU_TELEMETRY",
+                affected_resources: ["i-perf-hot"],
+                performance_pressure_index_delta: 38,
+              },
+            ],
+            evidence_reason_codes: [
+              "EC2_PERF_MISSING_CORE_TELEMETRY",
+              "EC2_PERF_HIGH_CPU_TELEMETRY",
+            ],
+          },
+          findings: [
+            {
+              severity: "medium",
+              reason_code: "EC2_PERF_MISSING_CORE_TELEMETRY",
+              resource_id: "i-perf-gap",
+              message: "Instance i-perf-gap is missing core EC2 performance telemetry",
+              evidence: { missing_metrics: ["NetworkIn"] },
+            },
+            {
+              severity: "high",
+              reason_code: "EC2_PERF_HIGH_CPU_TELEMETRY",
+              resource_id: "i-perf-hot",
+              message: "Instance i-perf-hot has high CPUUtilization telemetry",
+              evidence: { metric_name: "CPUUtilization", max: 94 },
+            },
+          ],
+        },
+      ],
+    };
+
+    const view = await render(<PillarScorecard data={data} />);
+    const text = view.container.textContent;
+
+    expect(text).toContain("performance");
+    expect(text).toContain("Performance Posture");
+    expect(text).toContain("2 failed of 3");
+    expect(text).toContain("ec2-performance-inventory-freshness");
+    expect(text).toContain("ec2-performance-core-telemetry-present");
+    expect(text).toContain("ec2-performance-cpu-headroom");
+    expect(text).toContain("EC2_INV_STALE_DATA");
+    expect(text).toContain("Performance Triage Context");
+    expect(text).toContain("Deterministic No Llm");
+    expect(text).toContain("ec2-performance-deterministic-context-v1");
+    expect(text).toContain("ec2-performance-ai-triage-v1");
+    expect(text).toContain("Provider Routing (not invoked)");
+    expect(text).toContain("primary_ops_llm");
+    expect(text).toContain("1200 token budget");
+    expect(text).toContain("Read only");
+    expect(text).toContain("Deterministic context only");
+    expect(text).toContain("CPU constrained");
+    expect(text).toContain("Performance Forecast");
+    expect(text).toContain("ec2_performance_forecasting");
+    expect(text).toContain("expected 158");
+    expect(text).toContain("128-188");
+    expect(text).toContain("Cpu Constrained Compute Capacity");
+    expect(text).toContain("Ready Performance Findings Baseline");
+    expect(text).toContain("instances_with_high_cpu_can_expand_latency_or_throttle_risk");
+    expect(text).toContain("Performance Pressure Index Warning Threshold");
+    expect(text).toContain("Collect CPUUtilization");
+    expect(text).toContain("EC2_PERF_MISSING_CORE_TELEMETRY");
+    expect(text).toContain("EC2_PERF_HIGH_CPU_TELEMETRY");
+    expect(text).toContain("i-perf-gap");
+    expect(text).toContain("i-perf-hot");
+    expect(text).toContain("high CPUUtilization telemetry");
+
+    await view.unmount();
+  });
+
+  it("renders EC2 scalability posture rule gaps for operator review", async () => {
+    const data = {
+      evaluated_at: "2026-06-18T05:45:00Z",
+      stale_after_hours: 24,
+      reports: [
+        {
+          pillar: "scalability",
+          score: 68,
+          resources_evaluated: 2,
+          stale_resources: 0,
+          posture: {
+            status: "fail",
+            rules_evaluated: 3,
+            rules_failed: 2,
+            affected_resources: ["i-scale-gap", "i-scale-hot"],
+            rules: [
+              {
+                rule_id: "ec2-scalability-inventory-freshness",
+                status: "pass",
+                reason_codes: ["EC2_INV_STALE_DATA"],
+                affected_resources: [],
+              },
+              {
+                rule_id: "ec2-scalability-demand-telemetry-present",
+                status: "fail",
+                reason_codes: ["EC2_SCALE_MISSING_DEMAND_TELEMETRY"],
+                affected_resources: ["i-scale-gap"],
+              },
+              {
+                rule_id: "ec2-scalability-cpu-pressure",
+                status: "fail",
+                reason_codes: ["EC2_SCALE_HIGH_CPU_PRESSURE_TELEMETRY"],
+                affected_resources: ["i-scale-hot"],
+              },
+            ],
+          },
+          triage_context: {
+            workflow_id: "ec2_scalability_triage_context",
+            context_builder_id: "ec2-scalability-deterministic-context-v1",
+            prompt_template_id: "ec2-scalability-ai-triage-v1",
+            generation_mode: "deterministic_no_llm",
+            max_prompt_tokens: 1200,
+            provider_routing: ["primary_ops_llm", "fallback_ops_llm"],
+            guardrails: {
+              read_only_mode: true,
+              no_llm_invocation: true,
+            },
+            facts: [
+              "EC2_SCALE_MISSING_DEMAND_TELEMETRY affects i-scale-gap with Medium severity",
+              "EC2_SCALE_HIGH_CPU_PRESSURE_TELEMETRY affects i-scale-hot with High severity",
+            ],
+            hypotheses: [
+              "i-scale-hot may need scale-out, workload distribution, or rightsizing",
+            ],
+            missing_data_questions: [
+              "Collect CPUUtilization, NetworkIn, and NetworkOut telemetry for i-scale-gap before diagnosing EC2 scaling pressure",
+            ],
+            evidence_citations: [
+              {
+                reason_code: "EC2_SCALE_MISSING_DEMAND_TELEMETRY",
+                resource_id: "i-scale-gap",
+                severity: "medium",
+                evidence: { missing_metrics: ["NetworkIn"] },
+              },
+              {
+                reason_code: "EC2_SCALE_HIGH_CPU_PRESSURE_TELEMETRY",
+                resource_id: "i-scale-hot",
+                severity: "high",
+                evidence: { metric_name: "CPUUtilization", max: 92 },
+              },
+            ],
+          },
+          findings: [
+            {
+              severity: "medium",
+              reason_code: "EC2_SCALE_MISSING_DEMAND_TELEMETRY",
+              resource_id: "i-scale-gap",
+              message:
+                "Instance i-scale-gap is missing EC2 demand telemetry needed to assess scaling pressure",
+              evidence: { missing_metrics: ["NetworkIn"] },
+            },
+            {
+              severity: "high",
+              reason_code: "EC2_SCALE_HIGH_CPU_PRESSURE_TELEMETRY",
+              resource_id: "i-scale-hot",
+              message:
+                "Instance i-scale-hot has high CPUUtilization telemetry; scale-out or rightsizing pressure is likely",
+              evidence: { metric_name: "CPUUtilization", max: 92 },
+            },
+          ],
+        },
+      ],
+    };
+
+    const view = await render(<PillarScorecard data={data} />);
+    const text = view.container.textContent;
+
+    expect(text).toContain("scalability");
+    expect(text).toContain("Scalability Posture");
+    expect(text).toContain("2 failed of 3");
+    expect(text).toContain("ec2-scalability-inventory-freshness");
+    expect(text).toContain("ec2-scalability-demand-telemetry-present");
+    expect(text).toContain("ec2-scalability-cpu-pressure");
+    expect(text).toContain("EC2_INV_STALE_DATA");
+    expect(text).toContain("EC2_SCALE_MISSING_DEMAND_TELEMETRY");
+    expect(text).toContain("EC2_SCALE_HIGH_CPU_PRESSURE_TELEMETRY");
+    expect(text).toContain("i-scale-gap");
+    expect(text).toContain("i-scale-hot");
+    expect(text).toContain("scale-out or rightsizing pressure");
+    expect(text).toContain("Scalability Triage Context");
+    expect(text).toContain("ec2-scalability-deterministic-context-v1");
+    expect(text).toContain("ec2-scalability-ai-triage-v1");
+    expect(text).toContain("Deterministic No Llm");
+    expect(text).toContain("Provider Routing (not invoked)");
+    expect(text).toContain("Read only");
+    expect(text).toContain("Deterministic context only");
+    expect(text).toContain("workload distribution");
+    expect(text).toContain("before diagnosing EC2 scaling pressure");
+    expect(text).toContain("Evidence Citations");
+    expect(text).toContain("EC2_SCALE_HIGH_CPU_PRESSURE_TELEMETRY");
+    expect(text).toContain('"metric_name":"CPUUtilization"');
+    expect(text).toContain('"missing_metrics":["NetworkIn"]');
+
+    await view.unmount();
+  });
+
+  it("renders EC2 security posture rule gaps for operator review", async () => {
+    const data = {
+      evaluated_at: "2026-06-18T06:10:00Z",
+      stale_after_hours: 24,
+      reports: [
+        {
+          pillar: "security",
+          score: 62,
+          resources_evaluated: 2,
+          stale_resources: 0,
+          posture: {
+            status: "fail",
+            rules_evaluated: 5,
+            rules_failed: 4,
+            affected_resources: ["i-sec-exposed", "i-sec-gap"],
+            rules: [
+              {
+                rule_id: "ec2-security-inventory-freshness",
+                status: "pass",
+                reason_codes: ["EC2_INV_STALE_DATA"],
+                affected_resources: [],
+              },
+              {
+                rule_id: "ec2-security-public-ip-exposure",
+                status: "fail",
+                reason_codes: ["EC2_SEC_PUBLIC_IP_ASSIGNED"],
+                affected_resources: ["i-sec-exposed"],
+              },
+              {
+                rule_id: "ec2-security-owner-routing-present",
+                status: "fail",
+                reason_codes: ["EC2_SEC_MISSING_OWNER_TAG"],
+                affected_resources: ["i-sec-exposed"],
+              },
+              {
+                rule_id: "ec2-security-packet-telemetry-present",
+                status: "fail",
+                reason_codes: ["EC2_SEC_MISSING_PACKET_TELEMETRY"],
+                affected_resources: ["i-sec-gap"],
+              },
+              {
+                rule_id: "ec2-security-public-packet-traffic",
+                status: "fail",
+                reason_codes: ["EC2_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY"],
+                affected_resources: ["i-sec-exposed"],
+              },
+            ],
+          },
+          triage_context: {
+            workflow_id: "ec2_security_triage_context",
+            context_builder_id: "ec2-security-deterministic-context-v1",
+            prompt_template_id: "ec2-security-ai-triage-v1",
+            generation_mode: "deterministic_no_llm",
+            max_prompt_tokens: 1200,
+            provider_routing: ["primary_ops_llm", "fallback_ops_llm"],
+            guardrails: {
+              read_only_mode: true,
+              evidence_required: true,
+              separate_facts_from_hypotheses: true,
+              ask_for_missing_data: true,
+              no_llm_invocation: true,
+              no_mutation_planning: true,
+            },
+            facts: [
+              "EC2_SEC_PUBLIC_IP_ASSIGNED affects i-sec-exposed with High severity",
+              "EC2_SEC_MISSING_PACKET_TELEMETRY affects i-sec-gap with Medium severity",
+            ],
+            hypotheses: [
+              "i-sec-exposed has a public IP assignment in collected EC2 evidence; verify security groups, network ACLs, route tables, and business intent before treating it as internet-reachable exposure",
+              "i-sec-exposed has packet telemetry alongside public IP evidence; compare flow logs, security groups, and allowed ingress before recommending any access change",
+            ],
+            missing_data_questions: [
+              "Assign owner, team, or service metadata for i-sec-exposed before routing security posture follow-up",
+              "Collect NetworkPacketsIn and NetworkPacketsOut telemetry for i-sec-gap before judging observed packet exposure",
+            ],
+            evidence_citations: [
+              {
+                reason_code: "EC2_SEC_PUBLIC_IP_ASSIGNED",
+                resource_id: "i-sec-exposed",
+                severity: "high",
+                evidence: { public_ip: "54.0.0.1" },
+              },
+              {
+                reason_code: "EC2_SEC_MISSING_PACKET_TELEMETRY",
+                resource_id: "i-sec-gap",
+                severity: "medium",
+                evidence: { missing_metrics: ["NetworkPacketsIn"] },
+              },
+            ],
+          },
+          agentic_investigation: {
+            workflow_id: "ec2_security_agentic_investigation",
+            default_tool_mode: "read_only",
+            max_tool_calls: 5,
+            max_evidence_citations: 2,
+            replay_required: true,
+            steps: [
+              {
+                step_id: "ec2-security-step-01",
+                kind: "inspect",
+                tool_name: "ec2.describe_instance_networking",
+                tool_mode: "read_only",
+                target_resource_id: "i-sec-exposed",
+                reason_code: "EC2_SEC_PUBLIC_IP_ASSIGNED",
+                stop_condition:
+                  "stop when public IP, security group, subnet route table, and internet gateway evidence are recorded or confirmed absent",
+              },
+              {
+                step_id: "ec2-security-step-02",
+                kind: "compare",
+                tool_name: "ec2.compare_security_group_ingress",
+                tool_mode: "read_only",
+                target_resource_id: "i-sec-exposed",
+                reason_code: "EC2_SEC_PUBLIC_IP_ASSIGNED",
+                stop_condition:
+                  "stop when allowed ingress is compared against owner intent and known exposure exceptions",
+              },
+              {
+                step_id: "ec2-security-step-03",
+                kind: "propose_mutation_plan",
+                tool_name: "ec2.security.prepare_approval_plan",
+                tool_mode: "approval_required",
+                target_resource_id: "investigation",
+                reason_code: "EC2_SECURITY_APPROVAL_PLAN_REQUIRED",
+                stop_condition:
+                  "stop before mutation; require explicit operator approval, blast-radius summary, rollback note, and replayable evidence",
+              },
+            ],
+            approval_gates: [
+              {
+                gate_id: "ec2-security-approval-01",
+                target_resource_id: "i-sec-exposed",
+                required_approval:
+                  "Approve any security group, route, public IP, or exposure suppression change only after owner review, blast-radius summary, and rollback note",
+                blast_radius:
+                  "single EC2 instance i-sec-exposed; no mutation is executable from the investigation plan",
+                rollback_note_required: true,
+                evidence_reason_codes: ["EC2_SEC_PUBLIC_IP_ASSIGNED"],
+              },
+            ],
+            evidence_citations: [
+              {
+                reason_code: "EC2_SEC_PUBLIC_IP_ASSIGNED",
+                resource_id: "i-sec-exposed",
+                severity: "high",
+                evidence: { public_ip: "54.0.0.1" },
+              },
+              {
+                reason_code: "EC2_SEC_MISSING_PACKET_TELEMETRY",
+                resource_id: "i-sec-gap",
+                severity: "medium",
+                evidence: { missing_metrics: ["NetworkPacketsIn"] },
+              },
+            ],
+          },
+          remediation_workflow: {
+            workflow_id: "ec2_security_safe_remediation",
+            read_only_mode: true,
+            rbac_permission: "aws.ec2.security.remediation.approve",
+            audit_stream: "ec2_security_remediation_audit",
+            stale_data_blocks_execution: false,
+            actions: [
+              {
+                action_id: "ec2-security-remediation-01",
+                kind: "review_security_exposure",
+                status: "dry_run_pending_approval",
+                target_resource_id: "i-sec-exposed",
+                dry_run: true,
+                requires_approval: true,
+                approval_gate_id: "ec2-security-approval-01",
+                audit_event_type: "ec2.security.remediation.dry_run_planned",
+                rollback_note:
+                  "Before approval, record rollback or recovery notes for review-security-exposure on i-sec-exposed.",
+                evidence_reason_codes: ["EC2_SEC_PUBLIC_IP_ASSIGNED"],
+              },
+              {
+                action_id: "ec2-security-remediation-02",
+                kind: "review_security_owner_metadata",
+                status: "dry_run_pending_approval",
+                target_resource_id: "i-sec-exposed",
+                dry_run: true,
+                requires_approval: true,
+                approval_gate_id: "ec2-security-approval-02",
+                audit_event_type: "ec2.security.remediation.dry_run_planned",
+                rollback_note:
+                  "Before approval, record rollback or recovery notes for review-security-owner-metadata on i-sec-exposed.",
+                evidence_reason_codes: ["EC2_SEC_MISSING_OWNER_TAG"],
+              },
+            ],
+            approval_gates: [
+              {
+                gate_id: "ec2-security-approval-01",
+                target_resource_id: "i-sec-exposed",
+                required_approval:
+                  "Approve any security group, route, public IP, or exposure suppression change only after owner review, blast-radius summary, and rollback note",
+                blast_radius:
+                  "single EC2 instance i-sec-exposed; no mutation is executable from the investigation plan",
+                rollback_note_required: true,
+                evidence_reason_codes: ["EC2_SEC_PUBLIC_IP_ASSIGNED"],
+              },
+              {
+                gate_id: "ec2-security-approval-02",
+                target_resource_id: "i-sec-exposed",
+                required_approval:
+                  "Approve tag writes or assignment changes after ownership is verified",
+                blast_radius:
+                  "single EC2 instance i-sec-exposed; no mutation is executable from the investigation plan",
+                rollback_note_required: true,
+                evidence_reason_codes: ["EC2_SEC_MISSING_OWNER_TAG"],
+              },
+            ],
+          },
+          slo_policy_tracking: {
+            workflow_id: "ec2_security_slo_policy",
+            read_only_mode: true,
+            freshness_required: true,
+            objective: {
+              objective_id: "ec2-security-score-min-95",
+              status: "breached",
+              target_score_min: 95,
+              current_score: 55,
+              trend_direction: "degrading",
+              failed_rule_count: 4,
+              affected_resource_count: 2,
+              owner_filters: ["security"],
+              environment_filters: ["prod"],
+              application_filters: ["payments"],
+              notification_targets: ["environment:prod", "owner:security"],
+              policy_state: "active_with_findings",
+              status_history: [
+                "snapshot_collected",
+                "security_policy_evaluated",
+                "notification_targets_resolved",
+              ],
+            },
+            evidence_reason_codes: [
+              "EC2_SEC_PUBLIC_IP_ASSIGNED",
+              "EC2_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY",
+            ],
+          },
+          forecasting: {
+            workflow_id: "ec2_security_forecasting",
+            read_only_mode: true,
+            baseline_window_days: 30,
+            forecast_horizon_days: 30,
+            confidence_level: 75,
+            forecast_band: {
+              horizon_days: 30,
+              lower_security_exposure_index: 140,
+              expected_security_exposure_index: 168,
+              upper_security_exposure_index: 196,
+              confidence_level: 75,
+            },
+            risk_level: "high",
+            exposure_capacity_risk: "public_exposure_with_observed_packet_traffic",
+            backtesting_fixture_status: "ready_security_findings_baseline",
+            threshold_controls: [
+              "security_exposure_index_warning_threshold",
+              "security_exposure_index_critical_threshold",
+            ],
+            what_if_inputs: [
+              "verify_public_ip_business_intent",
+              "restore_packet_telemetry",
+            ],
+            blocked_by_stale_data: false,
+            blast_radius_summary:
+              "public_ip_instances_with_packet_traffic_need_sg_nacl_route_verification",
+            missing_data_reason_codes: [],
+            risk_drivers: [
+              {
+                reason_code: "EC2_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY",
+                affected_resources: ["i-sec-exposed"],
+                security_exposure_index_delta: 40,
+              },
+            ],
+            evidence_reason_codes: [
+              "EC2_SEC_PUBLIC_IP_ASSIGNED",
+              "EC2_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY",
+            ],
+          },
+          findings: [
+            {
+              severity: "high",
+              reason_code: "EC2_SEC_PUBLIC_IP_ASSIGNED",
+              resource_id: "i-sec-exposed",
+              message:
+                "Instance i-sec-exposed has a public IP address assigned; verify it is intentionally internet-facing",
+              evidence: { public_ip: "54.0.0.1" },
+            },
+            {
+              severity: "medium",
+              reason_code: "EC2_SEC_MISSING_PACKET_TELEMETRY",
+              resource_id: "i-sec-gap",
+              message:
+                "Instance i-sec-gap is missing EC2 packet telemetry; network exposure cannot be verified from evidence",
+              evidence: { missing_metrics: ["NetworkPacketsIn"] },
+            },
+          ],
+        },
+      ],
+    };
+
+    const view = await render(<PillarScorecard data={data} />);
+    const text = view.container.textContent;
+
+    expect(text).toContain("security");
+    expect(text).toContain("Security Posture");
+    expect(text).toContain("4 failed of 5");
+    expect(text).toContain("ec2-security-public-ip-exposure");
+    expect(text).toContain("ec2-security-owner-routing-present");
+    expect(text).toContain("ec2-security-packet-telemetry-present");
+    expect(text).toContain("ec2-security-public-packet-traffic");
+    expect(text).toContain("EC2_SEC_PUBLIC_IP_ASSIGNED");
+    expect(text).toContain("EC2_SEC_MISSING_OWNER_TAG");
+    expect(text).toContain("EC2_SEC_MISSING_PACKET_TELEMETRY");
+    expect(text).toContain("EC2_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY");
+    expect(text).toContain("Security SLO Policy");
+    expect(text).toContain("Breached");
+    expect(text).toContain("ec2-security-score-min-95");
+    expect(text).toContain("score 55 / target 95");
+    expect(text).toContain("Active With Findings");
+    expect(text).toContain("Degrading trend");
+    expect(text).toContain("security");
+    expect(text).toContain("prod");
+    expect(text).toContain("environment:prod, owner:security");
+    expect(text).toContain("payments");
+    expect(text).toContain("Security Policy Evaluated");
+    expect(text).toContain("Security Forecast");
+    expect(text).toContain("High");
+    expect(text).toContain("ec2_security_forecasting");
+    expect(text).toContain("30d baseline");
+    expect(text).toContain("30d horizon");
+    expect(text).toContain("expected 168");
+    expect(text).toContain("140-196");
+    expect(text).toContain("75% confidence");
+    expect(text).toContain("Public Exposure With Observed Packet Traffic");
+    expect(text).toContain("Fresh enough");
+    expect(text).toContain("Ready Security Findings Baseline");
+    expect(text).toContain("1 risk driver");
+    expect(text).toContain(
+      "public_ip_instances_with_packet_traffic_need_sg_nacl_route_verification"
+    );
+    expect(text).toContain("Security Exposure Index Warning Threshold");
+    expect(text).toContain("Security Triage Context");
+    expect(text).toContain("ec2-security-deterministic-context-v1");
+    expect(text).toContain("ec2-security-ai-triage-v1");
+    expect(text).toContain("Provider Routing (not invoked)");
+    expect(text).toContain("primary_ops_llm");
+    expect(text).toContain("1200 token budget");
+    expect(text).toContain("Read only");
+    expect(text).toContain("Deterministic context only");
+    expect(text).toContain("public IP assignment");
+    expect(text).toContain("security groups");
+    expect(text).toContain("NetworkPacketsIn and NetworkPacketsOut");
+    expect(text).toContain("Security Agentic Investigation");
+    expect(text).toContain("ec2_security_agentic_investigation");
+    expect(text).toContain("Replay required");
+    expect(text).toContain("5 max tool call");
+    expect(text).toContain("2 evidence citation");
+    expect(text).toContain("Mutation planning requires approval");
+    expect(text).toContain("ec2.describe_instance_networking");
+    expect(text).toContain("ec2.compare_security_group_ingress");
+    expect(text).toContain("ec2.security.prepare_approval_plan");
+    expect(text).toContain("Approval Required");
+    expect(text).toContain("EC2_SECURITY_APPROVAL_PLAN_REQUIRED");
+    expect(text).toContain("ec2-security-approval-01");
+    expect(text).toContain("no mutation is executable from the investigation plan");
+    expect(text).toContain("Rollback note required");
+    expect(text).toContain("Security Remediation");
+    expect(text).toContain("Dry Run");
+    expect(text).toContain("ec2_security_safe_remediation");
+    expect(text).toContain("ec2_security_remediation_audit");
+    expect(text).toContain("aws.ec2.security.remediation.approve");
+    expect(text).toContain("Pending approval");
+    expect(text).toContain("2 dry-run action");
+    expect(text).toContain("ec2-security-remediation-01");
+    expect(text).toContain("Review Security Exposure");
+    expect(text).toContain("Review Security Owner Metadata");
+    expect(text).toContain("Dry Run Pending Approval");
+    expect(text).toContain("ec2.security.remediation.dry_run_planned");
+    expect(text).toContain("i-sec-exposed");
+    expect(text).toContain("i-sec-gap");
+    expect(text).toContain("intentionally internet-facing");
+
+    await view.unmount();
+  });
+
+  it("renders Lambda cost telemetry posture rules", async () => {
+    const data = {
+      evaluated_at: "2026-06-18T05:00:00Z",
+      stale_after_hours: 24,
+      reports: [
+        {
+          pillar: "cost",
+          score: 78,
+          resources_evaluated: 1,
+          stale_resources: 0,
+          findings: [
+            {
+              severity: "medium",
+              reason_code: "LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY",
+              resource_id: "fn-no-telemetry",
+              message:
+                "Function fn-no-telemetry is missing Lambda CloudWatch cost telemetry for Invocations",
+              evidence: {
+                missing_metrics: ["Invocations"],
+              },
+            },
+          ],
+          assessment_scope:
+            "lambda_cost_invocation_duration_error_and_throttle_telemetry",
+          posture: {
+            workflow_id: "lambda_cost_posture",
+            rule_pack_id: "lambda-cost-posture-rules-v1",
+            audit_event_type: "lambda_cost_posture_evaluated",
+            read_only_mode: true,
+            status: "fail",
+            rules_evaluated: 7,
+            rules_failed: 1,
+            affected_resources: ["fn-no-telemetry"],
+            suppression_policy: {
+              supported: true,
+              scope: "resource_reason_code",
+              requires_reason: true,
+            },
+            assignment_policy: {
+              supported: true,
+              owner_sources: ["tag:owner", "tag:team"],
+              fallback_owner: "unassigned",
+            },
+            recommendations: [
+              {
+                resource_id: "fn-no-telemetry",
+                reason_code: "LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY",
+                recommendation:
+                  "collect_lambda_invocation_duration_error_and_throttle_metrics",
+                confidence: "medium",
+                effort: "low",
+                risk: "low",
+                suppression_key:
+                  "fn-no-telemetry:LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY",
+              },
+            ],
+            rules: [
+              {
+                rule_id: "lambda-cost-cloudwatch-metrics-present",
+                status: "fail",
+                reason_codes: ["LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY"],
+                affected_resources: ["fn-no-telemetry"],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+              {
+                rule_id: "lambda-cost-allocation-tags-present",
+                status: "pass",
+                reason_codes: ["LAMBDA_COST_MISSING_ALLOCATION_TAGS"],
+                affected_resources: [],
+                suppression_supported: true,
+                assignment_supported: true,
+              },
+            ],
+          },
+          triage_context: {
+            workflow_id: "lambda_cost_triage_context",
+            pillar: "cost",
+            api_path: "/api/aws/inventory/lambda/pillars",
+            context_builder_id: "lambda-cost-deterministic-context-v1",
+            prompt_template_id: "lambda-cost-ai-triage-v1",
+            generation_mode: "deterministic_no_llm",
+            max_prompt_tokens: 1200,
+            provider_routing: ["primary_ops_llm", "fallback_ops_llm"],
+            audit_event_type: "lambda_cost_ai_triage_context_built",
+            audit_id_prefix: "lambda-cost-ai-triage",
+            pagination: {
+              default_limit: 50,
+              max_limit: 200,
+              evidence_cursor: "evidence_citations",
+            },
+            freshness: {
+              stale_data_blocks_ai_summary: false,
+              stale_resources: 0,
+              freshness_source: "lambda_inventory_last_synced_at",
+            },
+            export_formats: ["json", "markdown_runbook"],
+            error_codes: [
+              "LAMBDA_COST_AI_TRIAGE_STALE_DATA",
+              "LAMBDA_COST_AI_TRIAGE_MISSING_EVIDENCE",
+            ],
+            guardrails: {
+              read_only_mode: true,
+              evidence_required: true,
+              separate_facts_from_hypotheses: true,
+              ask_for_missing_data: true,
+              no_llm_invocation: true,
+              no_mutation_planning: true,
+            },
+            facts: [
+              "LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY affects fn-no-telemetry with Medium severity",
+            ],
+            hypotheses: [],
+            missing_data_questions: [
+              "Collect Invocations, Duration, Errors, and Throttles telemetry for fn-no-telemetry before explaining Lambda cost behavior",
+            ],
+            follow_up_questions: [
+              "Which Invocations, Duration, Errors, and Throttles datapoints are missing for the affected Lambda function?",
+            ],
+            runbook_copy_markdown:
+              "Lambda cost AI triage: score 78 across 1 function(s), 0 stale. Evidence reason codes: LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY.",
+            feedback_capture: {
+              supported: true,
+              feedback_event_type: "lambda_cost_ai_triage_feedback_captured",
+              fields: ["helpful", "accuracy", "missing_evidence"],
+            },
+            evidence_citations: [
+              {
+                reason_code: "LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY",
+                resource_id: "fn-no-telemetry",
+                severity: "medium",
+                evidence: {
+                  missing_metrics: ["Invocations"],
+                },
+              },
+            ],
+          },
+          agentic_investigation: {
+            workflow_id: "lambda_cost_agentic_investigation",
+            default_tool_mode: "read_only",
+            max_tool_calls: 2,
+            max_evidence_citations: 1,
+            replay_required: true,
+            steps: [
+              {
+                step_id: "lambda-cost-step-01",
+                kind: "inspect",
+                tool_name: "lambda.event_sources.inspect_invocation_paths",
+                tool_mode: "read_only",
+                target_resource_id: "fn-no-telemetry",
+                reason_code: "LAMBDA_COST_NO_INVOCATIONS_TELEMETRY",
+                stop_condition:
+                  "stop when schedules, event source mappings, and retention expectations explain zero invocation telemetry",
+              },
+              {
+                step_id: "lambda-cost-step-02",
+                kind: "propose_mutation_plan",
+                tool_name: "lambda.cost.prepare_approval_plan",
+                tool_mode: "approval_required",
+                target_resource_id: "investigation",
+                reason_code: "LAMBDA_COST_APPROVAL_PLAN_REQUIRED",
+                stop_condition:
+                  "stop before mutation; require explicit operator approval, blast-radius summary, and rollback note",
+              },
+            ],
+            approval_gates: [
+              {
+                gate_id: "lambda-cost-gate-01",
+                target_resource_id: "fn-no-telemetry",
+                required_approval:
+                  "Approve disable or cleanup plan after owner confirmation",
+                blast_radius:
+                  "Potential Lambda cost mutation affects fn-no-telemetry for LAMBDA_COST_NO_INVOCATIONS_TELEMETRY",
+                rollback_note_required: true,
+                evidence_reason_codes: ["LAMBDA_COST_NO_INVOCATIONS_TELEMETRY"],
+              },
+            ],
+            evidence_citations: [
+              {
+                reason_code: "LAMBDA_COST_NO_INVOCATIONS_TELEMETRY",
+                resource_id: "fn-no-telemetry",
+              },
+            ],
+          },
+          remediation_workflow: {
+            workflow_id: "lambda_cost_safe_remediation",
+            read_only_mode: true,
+            rbac_permission: "aws.lambda.cost.remediation.approve",
+            audit_stream: "lambda_cost_remediation_audit",
+            stale_data_blocks_execution: false,
+            actions: [
+              {
+                action_id: "lambda-cost-remediation-01",
+                kind: "review_unused_function_cleanup",
+                status: "dry_run_pending_approval",
+                target_resource_id: "fn-no-telemetry",
+                dry_run: true,
+                requires_approval: true,
+                approval_gate_id: "lambda-cost-gate-01",
+                audit_event_type: "lambda.cost.remediation.dry_run_planned",
+                idempotency_key:
+                  "lambda-cost-fn-no-telemetry-review-unused-function-cleanup",
+                blast_radius:
+                  "Potential Lambda cost mutation affects fn-no-telemetry for LAMBDA_COST_NO_INVOCATIONS_TELEMETRY",
+                rollback_note:
+                  "Before approval, record rollback or recovery notes for review-unused-function-cleanup on fn-no-telemetry.",
+                validation_steps: [
+                  "refresh Lambda inventory, tag, architecture, invocation, error, and throttle evidence",
+                  "capture operator approval, rollback note, and audit id before execution",
+                ],
+                evidence_reason_codes: ["LAMBDA_COST_NO_INVOCATIONS_TELEMETRY"],
+              },
+            ],
+            approval_gates: [
+              {
+                gate_id: "lambda-cost-gate-01",
+                target_resource_id: "fn-no-telemetry",
+                required_approval:
+                  "Approve disable or cleanup plan after owner confirmation",
+              },
+            ],
+          },
+          slo_policy_tracking: {
+            workflow_id: "lambda_cost_slo_policy",
+            read_only_mode: true,
+            freshness_required: true,
+            objective: {
+              objective_id: "lambda-cost-score-min-90",
+              status: "at_risk",
+              target_score_min: 90,
+              current_score: 78,
+              trend_direction: "stable",
+              failed_rule_count: 1,
+              affected_resource_count: 1,
+              owner_filters: ["sre"],
+              environment_filters: ["prod"],
+              application_filters: ["checkout"],
+              notification_targets: ["environment:prod", "owner:sre"],
+              policy_state: "active_with_findings",
+              status_history: [
+                "snapshot_collected",
+                "policy_evaluated",
+                "notification_targets_resolved",
+              ],
+            },
+            evidence_reason_codes: ["LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY"],
+          },
+          forecasting: {
+            workflow_id: "lambda_cost_forecasting",
+            read_only_mode: true,
+            baseline_window_days: 30,
+            forecast_horizon_days: 30,
+            confidence_level: 80,
+            forecast_band: {
+              horizon_days: 30,
+              lower_monthly_cost_index: 108,
+              expected_monthly_cost_index: 116,
+              upper_monthly_cost_index: 124,
+              confidence_level: 80,
+            },
+            risk_level: "moderate",
+            capacity_risk: "telemetry_gap_limits_forecast",
+            backtesting_fixture_status: "needs_fresh_lambda_cost_fixture",
+            threshold_controls: [
+              "monthly_cost_index_warning_threshold",
+              "monthly_cost_index_critical_threshold",
+            ],
+            what_if_inputs: [
+              "migrate_x86_functions_to_arm64",
+              "review_unused_function_cleanup",
+              "restore_lambda_cost_telemetry",
+            ],
+            blocked_by_stale_data: false,
+            blast_radius_summary:
+              "1 Lambda function(s) have cost forecast risk across architecture, invocation, error, throttle, or telemetry evidence.",
+            missing_data_reason_codes: ["LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY"],
+            risk_drivers: [
+              {
+                reason_code: "LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY",
+                affected_resources: ["fn-no-telemetry"],
+                monthly_cost_index_delta: 16,
+              },
+            ],
+            evidence_reason_codes: ["LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY"],
+          },
+          reporting: {
+            workflow_id: "lambda_cost_reporting",
+            read_only_mode: true,
+            scheduled_delivery_state: "ready_for_schedule",
+            stale_data_blocks_delivery: false,
+            portfolio_summary_ready: true,
+            workload_summary_ready: true,
+            export_formats: ["json", "csv"],
+            saved_view_id: "lambda-cost-posture-report",
+            executive_summary: {
+              report_id: "lambda-cost-executive-summary",
+              score: 78,
+              resources_evaluated: 1,
+              stale_resources: 0,
+              rules_failed: 1,
+              affected_resources: ["fn-no-telemetry"],
+              top_reason_codes: ["LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY"],
+              blast_radius_summary: "1 Lambda function(s) require cost reporting review.",
+            },
+            engineering_backlog: {
+              report_id: "lambda-cost-engineering-backlog",
+              page: 0,
+              page_size: 50,
+              total: 1,
+              rows: [
+                {
+                  resource_id: "fn-no-telemetry",
+                  severity: "medium",
+                  reason_code: "LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY",
+                  message:
+                    "Function fn-no-telemetry is missing Lambda CloudWatch cost telemetry for Invocations, Duration, Errors, Throttles",
+                  recovery_note:
+                    "Collect Invocations, Duration, Errors, and Throttles before quantifying Lambda cost action.",
+                  suppression_supported: true,
+                  evidence: {
+                    missing_metrics: ["Invocations", "Duration", "Errors", "Throttles"],
+                  },
+                },
+              ],
+            },
+            incident_review: {
+              report_id: "lambda-cost-incident-review",
+              page: 0,
+              page_size: 50,
+              total: 1,
+              rows: [
+                {
+                  resource_id: "fn-no-telemetry",
+                  severity: "medium",
+                  reason_code: "LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY",
+                  message:
+                    "Function fn-no-telemetry is missing Lambda CloudWatch cost telemetry for Invocations, Duration, Errors, Throttles",
+                  recovery_note:
+                    "Collect Invocations, Duration, Errors, and Throttles before quantifying Lambda cost action.",
+                  suppression_supported: true,
+                  evidence: {
+                    missing_metrics: ["Invocations", "Duration", "Errors", "Throttles"],
+                  },
+                },
+              ],
+            },
+            missing_data_reason_codes: ["LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY"],
+            evidence_reason_codes: ["LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY"],
+          },
+          telemetry: {
+            workflow_id: "lambda_cost_telemetry",
+            cloudwatch_namespace: "AWS/Lambda",
+            cloudwatch_dimension: "FunctionName",
+            required_metrics: ["Invocations", "Duration", "Errors", "Throttles"],
+          },
+        },
+      ],
+    };
+
+    const view = await render(<PillarScorecard data={data} />);
+    const text = view.container.textContent;
+
+    expect(text).toContain("cost");
+    expect(text).toContain("78");
+    expect(text).toContain("Posture");
+    expect(text).toContain("1 failed of 7");
+    expect(text).toContain("fn-no-telemetry");
+    expect(text).toContain("lambda-cost-cloudwatch-metrics-present");
+    expect(text).toContain("LAMBDA_COST_MISSING_CLOUDWATCH_TELEMETRY");
+    expect(text).toContain("Suppress supported");
+    expect(text).toContain("Assign supported");
+    expect(text).toContain("Cost Triage Context");
+    expect(text).toContain("lambda-cost-deterministic-context-v1");
+    expect(text).toContain("lambda-cost-ai-triage-v1");
+    expect(text).toContain("/api/aws/inventory/lambda/pillars");
+    expect(text).toContain("Provider Routing (not invoked)");
+    expect(text).toContain("primary_ops_llm");
+    expect(text).toContain("1200 token budget");
+    expect(text).toContain("Read only");
+    expect(text).toContain("Deterministic context only");
+    expect(text).toContain("lambda-cost-ai-triage");
+    expect(text).toContain("Runbook Copy");
+    expect(text).toContain("Lambda cost AI triage: score 78");
+    expect(text).toContain("markdown_runbook");
+    expect(text).toContain("50 default / 200 max evidence rows");
+    expect(text).toContain("Feedback capture enabled");
+    expect(text).toContain("lambda_cost_ai_triage_feedback_captured");
+    expect(text).toContain("Fresh enough for AI summary");
+    expect(text).toContain("lambda_inventory_last_synced_at");
+    expect(text).toContain("LAMBDA_COST_AI_TRIAGE_MISSING_EVIDENCE");
+    expect(text).toContain("Follow-up Questions");
+    expect(text).toContain("Invocations, Duration, Errors, and Throttles");
+    expect(text).toContain("Cost Agentic Investigation");
+    expect(text).toContain("lambda_cost_agentic_investigation");
+    expect(text).toContain("Replay required");
+    expect(text).toContain("2 max tool call");
+    expect(text).toContain("lambda.event_sources.inspect_invocation_paths");
+    expect(text).toContain("lambda.cost.prepare_approval_plan");
+    expect(text).toContain("Approval Required");
+    expect(text).toContain("Mutation planning requires approval");
+    expect(text).toContain("Rollback note required");
+    expect(text).toContain("Investigation Evidence");
+    expect(text).toContain("Cost Remediation");
+    expect(text).toContain("lambda_cost_safe_remediation");
+    expect(text).toContain("lambda_cost_remediation_audit");
+    expect(text).toContain("aws.lambda.cost.remediation.approve");
+    expect(text).toContain("Pending approval");
+    expect(text).toContain("1 dry-run action");
+    expect(text).toContain("lambda-cost-remediation-01");
+    expect(text).toContain("lambda.cost.remediation.dry_run_planned");
+    expect(text).toContain("Dry run");
+    expect(text).toContain("Review Unused Function Cleanup");
+    expect(text).toContain("lambda-cost-gate-01");
+    expect(text).toContain("Cost SLO Policy");
+    expect(text).toContain("At Risk");
+    expect(text).toContain("lambda-cost-score-min-90");
+    expect(text).toContain("score 78 / target 90");
+    expect(text).toContain("Active With Findings");
+    expect(text).toContain("Stable trend");
+    expect(text).toContain("sre");
+    expect(text).toContain("prod");
+    expect(text).toContain("environment:prod, owner:sre");
+    expect(text).toContain("checkout");
+    expect(text).toContain("Snapshot Collected");
+    expect(text).toContain("Policy Evaluated");
+    expect(text).toContain("Notification Targets Resolved");
+    expect(text).toContain("Cost Forecast");
+    expect(text).toContain("lambda_cost_forecasting");
+    expect(text).toContain("30d baseline");
+    expect(text).toContain("30d horizon");
+    expect(text).toContain("expected 116");
+    expect(text).toContain("108-124");
+    expect(text).toContain("80% confidence");
+    expect(text).toContain("Telemetry Gap Limits Forecast");
+    expect(text).toContain("Fresh enough");
+    expect(text).toContain("Needs Fresh Lambda Cost Fixture");
+    expect(text).toContain("1 risk driver");
+    expect(text).toContain(
+      "1 Lambda function(s) have cost forecast risk across architecture, invocation, error, throttle, or telemetry evidence.",
+    );
+    expect(text).toContain("Monthly Cost Index Warning Threshold");
+    expect(text).toContain("Monthly Cost Index Critical Threshold");
+    expect(text).toContain("Cost Reporting");
+    expect(text).toContain("Ready For Schedule");
+    expect(text).toContain("lambda-cost-executive-summary");
+    expect(text).toContain("1 failed rule(s) · 1 affected");
+    expect(text).toContain("Require Cost Reporting Review");
+    expect(text).toContain("Ready for review");
+    expect(text).toContain("lambda-cost-incident-review");
+    expect(text).toContain(
+      "Collect Invocations, Duration, Errors, and Throttles before quantifying Lambda cost action.",
+    );
+    expect(text).toContain("Supported");
+
+    await view.unmount();
+  });
+});

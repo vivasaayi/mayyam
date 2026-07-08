@@ -88,6 +88,34 @@ async fn llm_tool_call_trace_inventory_pillar_reports_contract() {
     assert_eq!(body["resource_type"], "AiLlmToolCallTrace");
     assert_eq!(body["resources_evaluated"].as_u64().unwrap_or(0), 2);
     assert_eq!(body["reports"].as_array().unwrap().len(), 3);
+    assert_eq!(
+        body["replay_workflow"]["workflow_id"],
+        "ai_llm_tool_call_trace_replay_workflow"
+    );
+    assert_eq!(
+        body["replay_workflow"]["audit_stream"],
+        "ai.llm.tool_call_trace.replay"
+    );
+    assert_eq!(body["replay_workflow"]["read_only_mode"], true);
+    assert_eq!(body["replay_workflow"]["replay_supported"], true);
+    let actions = body["replay_workflow"]["actions"].as_array().unwrap();
+    assert_eq!(actions.len(), 2);
+    assert!(actions
+        .iter()
+        .any(|action| action["status"] == "ready_for_replay"));
+    let blocked_action = actions
+        .iter()
+        .find(|action| action["model_name"] == "untraced-agent")
+        .expect("untraced workflow action");
+    assert_eq!(blocked_action["status"], "blocked_missing_evidence");
+    assert!(blocked_action["required_evidence"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("trace_sample")));
+    assert!(blocked_action["required_evidence"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("replay_enabled")));
 
     let req = test::TestRequest::get()
         .uri("/api/v1/llm-providers/tool-call-trace-inventory/pillars?pillar=resilience,security")

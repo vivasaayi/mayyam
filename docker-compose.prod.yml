@@ -15,7 +15,7 @@ services:
       - MYSQL_URL=mysql://mayyam_user:${MYSQL_PASSWORD:-mayyam_password}@mysql:3306/mayyam_db
       - KAFKA_BROKERS=kafka:29092
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/"]
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 30s
       timeout: 10s
       retries: 3

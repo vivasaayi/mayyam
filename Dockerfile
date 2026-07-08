@@ -2,6 +2,7 @@
 
 ARG RUST_VERSION=1.94
 ARG SCCACHE_VERSION=0.14.0
+ARG CARGO_BUILD_JOBS=4
 ARG BACKEND_BASE_IMAGE=backend-base-local
 
 # Combined Dockerfile for Mayyam Frontend + Backend
@@ -25,16 +26,18 @@ COPY frontend/ ./
 RUN npm run build
 
 # ===== BACKEND BASE FALLBACK STAGE =====
-FROM rust:${RUST_VERSION}-slim AS backend-base-local
+FROM rust:${RUST_VERSION}-slim-bookworm AS backend-base-local
 
 ARG TARGETARCH
 ARG SCCACHE_VERSION
+ARG CARGO_BUILD_JOBS
 
 WORKDIR /usr/src/app
 
 ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH \
     LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH \
     RUSTC_WRAPPER=/usr/local/cargo/bin/sccache \
+    CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS} \
     SCCACHE_DIR=/var/cache/sccache \
     SCCACHE_CACHE_SIZE=10G
 
@@ -94,10 +97,15 @@ RUN rm -rf src \
 # ===== BACKEND BUILD STAGE =====
 FROM ${BACKEND_BASE_IMAGE} AS backend-builder
 
+ARG CARGO_BUILD_JOBS
+
 WORKDIR /usr/src/app
+
+ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
 
 COPY backend/Cargo.toml backend/Cargo.lock ./
 COPY backend/src ./src/
+COPY backend/migrations ./migrations/
 COPY backend/config.default.yml backend/config.yml ./
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
@@ -117,9 +125,15 @@ FROM debian:bookworm-slim
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         nginx \
+        bash \
         ca-certificates \
+        libsasl2-2 \
         libssl3 \
+        liblz4-1 \
+        libzstd1 \
+        zlib1g \
         curl && \
+    rm -f /etc/nginx/sites-enabled/default /etc/nginx/sites-available/default && \
     rm -rf /var/lib/apt/lists/*
 
 # Create app directory
@@ -136,21 +150,16 @@ COPY --from=backend-builder /usr/local/lib/librdkafka* /usr/local/lib/
 # Copy frontend build output
 COPY --from=frontend-builder /app/frontend/build /usr/share/nginx/html
 
-# Copy custom nginx config
-COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+# Copy single-container nginx config
+COPY frontend/nginx.single-container.conf /etc/nginx/conf.d/default.conf
 
 # Create non-root user for backend
 RUN useradd --create-home --shell /bin/bash appuser && \
     chown -R appuser:appuser /app
 
-# Create a startup script
-RUN echo '#!/bin/bash\n\
-# Start nginx in background\n\
-nginx -g "daemon off;" &\n\
-\n\
-# Switch to appuser and start backend\n\
-su - appuser -c "cd /app && LD_LIBRARY_PATH=/usr/local/lib ./mayyam server --host 127.0.0.1 --port 8080"' > /start.sh && \
-    chmod +x /start.sh
+# Copy startup script
+COPY docker/start-container.sh /start.sh
+RUN chmod +x /start.sh
 
 # Runtime config
 ENV RUST_LOG=info
@@ -161,7 +170,7 @@ EXPOSE 80 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost/ || exit 1
+    CMD curl -f http://127.0.0.1:8080/health || exit 1
 
 # Start both services
 CMD ["/start.sh"]
