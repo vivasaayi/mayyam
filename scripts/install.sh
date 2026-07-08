@@ -2,7 +2,7 @@
 
 # Mayyam Remote Bootstrapper
 # This script installs and starts Mayyam in distributable mode.
-# Usage: curl -sSL https://raw.githubusercontent.com/sumitharajan/mayyam/main/scripts/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/sumitharajan/mayyam/main/scripts/install.sh | bash
 
 set -euo pipefail
 

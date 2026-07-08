@@ -22,7 +22,9 @@
 // uses_mixed_instances_policy, suspended_process_count, plus the tags column.
 
 use chrono::{DateTime, Utc};
+use serde::Serialize;
 use serde_json::{json, Value};
+use std::collections::BTreeSet;
 
 use crate::models::aws_resource::Model as AwsResourceModel;
 use crate::services::aws::inventory::types::{
@@ -54,6 +56,456 @@ pub const REASON_SEC_TELEMETRY_COLLECTION_ERRORS: &str = "ASG_SEC_TELEMETRY_COLL
 pub const REASON_TEL_MISSING_COLLECTION_METADATA: &str = "ASG_TEL_MISSING_COLLECTION_METADATA";
 pub const REASON_TEL_COLLECTION_ERRORS: &str = "ASG_TEL_COLLECTION_ERRORS";
 pub const REASON_INV_STALE_DATA: &str = "ASG_INV_STALE_DATA";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AsgPostureStatus {
+    Pass,
+    Fail,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgPostureRule {
+    pub rule_id: &'static str,
+    pub status: AsgPostureStatus,
+    pub reason_codes: Vec<&'static str>,
+    pub affected_resources: Vec<String>,
+    pub suppression_supported: bool,
+    pub assignment_supported: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgPostureSummary {
+    pub status: AsgPostureStatus,
+    pub rules_evaluated: usize,
+    pub rules_failed: usize,
+    pub affected_resources: Vec<String>,
+    pub rules: Vec<AsgPostureRule>,
+}
+
+pub type AsgCostPostureSummary = AsgPostureSummary;
+pub type AsgResiliencePostureSummary = AsgPostureSummary;
+pub type AsgSecurityPostureSummary = AsgPostureSummary;
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AsgEvidenceCitation {
+    pub reason_code: String,
+    pub resource_id: String,
+    pub severity: Severity,
+    pub evidence: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AsgAiTriageGuardrails {
+    pub read_only_mode: bool,
+    pub evidence_required: bool,
+    pub separate_facts_from_hypotheses: bool,
+    pub ask_for_missing_data: bool,
+    pub no_llm_invocation: bool,
+    pub no_mutation_planning: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AsgTriageContext {
+    pub workflow_id: &'static str,
+    pub pillar: Pillar,
+    pub context_builder_id: &'static str,
+    pub prompt_template_id: &'static str,
+    pub generation_mode: &'static str,
+    pub max_prompt_tokens: u16,
+    pub provider_routing: Vec<&'static str>,
+    pub audit_event_type: &'static str,
+    pub guardrails: AsgAiTriageGuardrails,
+    pub facts: Vec<String>,
+    pub hypotheses: Vec<String>,
+    pub missing_data_questions: Vec<String>,
+    pub evidence_citations: Vec<AsgEvidenceCitation>,
+}
+
+pub type AsgCostTriageContext = AsgTriageContext;
+pub type AsgResilienceTriageContext = AsgTriageContext;
+pub type AsgSecurityTriageContext = AsgTriageContext;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AsgInvestigationStepKind {
+    Inspect,
+    Compare,
+    Diagnose,
+    ProposeMutationPlan,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AsgInvestigationToolMode {
+    ReadOnly,
+    ApprovalRequired,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AsgInvestigationStep {
+    pub step_id: String,
+    pub kind: AsgInvestigationStepKind,
+    pub tool_name: &'static str,
+    pub tool_mode: AsgInvestigationToolMode,
+    pub target_resource_id: String,
+    pub reason_code: String,
+    pub stop_condition: String,
+    pub evidence: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AsgMutationApprovalGate {
+    pub gate_id: String,
+    pub target_resource_id: String,
+    pub required_approval: &'static str,
+    pub blast_radius: String,
+    pub rollback_note_required: bool,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AsgAgenticInvestigationPlan {
+    pub workflow_id: &'static str,
+    pub default_tool_mode: AsgInvestigationToolMode,
+    pub max_tool_calls: usize,
+    pub max_evidence_citations: usize,
+    pub replay_required: bool,
+    pub steps: Vec<AsgInvestigationStep>,
+    pub approval_gates: Vec<AsgMutationApprovalGate>,
+    pub evidence_citations: Vec<AsgEvidenceCitation>,
+}
+
+pub type AsgCostAgenticInvestigationPlan = AsgAgenticInvestigationPlan;
+pub type AsgResilienceAgenticInvestigationPlan = AsgAgenticInvestigationPlan;
+pub type AsgSecurityAgenticInvestigationPlan = AsgAgenticInvestigationPlan;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AsgRemediationActionKind {
+    ReviewCostAllocationTags,
+    ReviewScalingPolicyCapacity,
+    PlanMultiAzCoverage,
+    ReviewElbHealthCheckPolicy,
+    ReviewScalingProcessRecovery,
+    ReviewCapacityBounds,
+    ReviewUnhealthyInstanceRecovery,
+    ReviewLaunchSourceSecurityMigration,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AsgRemediationStatus {
+    DryRunPendingApproval,
+    BlockedMissingEvidence,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AsgCostRemediationAction {
+    pub action_id: String,
+    pub kind: AsgRemediationActionKind,
+    pub status: AsgRemediationStatus,
+    pub target_resource_id: String,
+    pub dry_run: bool,
+    pub requires_approval: bool,
+    pub approval_gate_id: Option<String>,
+    pub audit_event_type: &'static str,
+    pub idempotency_key: String,
+    pub blast_radius: String,
+    pub rollback_note: String,
+    pub validation_steps: Vec<&'static str>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AsgCostRemediationWorkflow {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub rbac_permission: &'static str,
+    pub audit_stream: &'static str,
+    pub stale_data_blocks_execution: bool,
+    pub actions: Vec<AsgCostRemediationAction>,
+    pub approval_gates: Vec<AsgMutationApprovalGate>,
+}
+
+pub type AsgResilienceRemediationAction = AsgCostRemediationAction;
+pub type AsgResilienceRemediationWorkflow = AsgCostRemediationWorkflow;
+pub type AsgSecurityRemediationAction = AsgCostRemediationAction;
+pub type AsgSecurityRemediationWorkflow = AsgCostRemediationWorkflow;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AsgCostObjectiveStatus {
+    OnTrack,
+    AtRisk,
+    Breached,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AsgCostTrendDirection {
+    Stable,
+    Degrading,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AsgCostPolicyObjective {
+    pub objective_id: &'static str,
+    pub status: AsgCostObjectiveStatus,
+    pub target_score_min: u8,
+    pub current_score: u8,
+    pub trend_direction: AsgCostTrendDirection,
+    pub failed_rule_count: usize,
+    pub affected_resource_count: usize,
+    pub owner_filters: Vec<String>,
+    pub environment_filters: Vec<String>,
+    pub application_filters: Vec<String>,
+    pub notification_targets: Vec<String>,
+    pub policy_state: &'static str,
+    pub status_history: Vec<&'static str>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AsgCostSloPolicySnapshot {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub freshness_required: bool,
+    pub objective: AsgCostPolicyObjective,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+pub type AsgResilienceObjectiveStatus = AsgCostObjectiveStatus;
+pub type AsgResilienceTrendDirection = AsgCostTrendDirection;
+pub type AsgResiliencePolicyObjective = AsgCostPolicyObjective;
+pub type AsgResilienceSloPolicySnapshot = AsgCostSloPolicySnapshot;
+pub type AsgSecurityObjectiveStatus = AsgCostObjectiveStatus;
+pub type AsgSecurityTrendDirection = AsgCostTrendDirection;
+pub type AsgSecurityPolicyObjective = AsgCostPolicyObjective;
+pub type AsgSecuritySloPolicySnapshot = AsgCostSloPolicySnapshot;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AsgCostForecastRisk {
+    Low,
+    Moderate,
+    High,
+    Blocked,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgCostForecastBand {
+    pub horizon_days: u16,
+    pub lower_monthly_cost_index: u16,
+    pub expected_monthly_cost_index: u16,
+    pub upper_monthly_cost_index: u16,
+    pub confidence_level: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgCostForecastRiskDriver {
+    pub reason_code: String,
+    pub affected_resources: Vec<String>,
+    pub monthly_cost_index_delta: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgCostForecastSnapshot {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub baseline_window_days: u16,
+    pub forecast_horizon_days: u16,
+    pub confidence_level: u8,
+    pub forecast_band: AsgCostForecastBand,
+    pub risk_level: AsgCostForecastRisk,
+    pub capacity_risk: &'static str,
+    pub backtesting_fixture_status: &'static str,
+    pub threshold_controls: Vec<&'static str>,
+    pub what_if_inputs: Vec<&'static str>,
+    pub blocked_by_stale_data: bool,
+    pub blast_radius_summary: String,
+    pub missing_data_reason_codes: Vec<String>,
+    pub risk_drivers: Vec<AsgCostForecastRiskDriver>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+pub type AsgResilienceForecastRisk = AsgCostForecastRisk;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgResilienceForecastBand {
+    pub horizon_days: u16,
+    pub lower_recovery_exposure_index: u16,
+    pub expected_recovery_exposure_index: u16,
+    pub upper_recovery_exposure_index: u16,
+    pub confidence_level: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgResilienceForecastRiskDriver {
+    pub reason_code: String,
+    pub affected_resources: Vec<String>,
+    pub recovery_exposure_index_delta: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgResilienceForecastSnapshot {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub baseline_window_days: u16,
+    pub forecast_horizon_days: u16,
+    pub confidence_level: u8,
+    pub forecast_band: AsgResilienceForecastBand,
+    pub risk_level: AsgResilienceForecastRisk,
+    pub recovery_capacity_risk: &'static str,
+    pub backtesting_fixture_status: &'static str,
+    pub threshold_controls: Vec<&'static str>,
+    pub what_if_inputs: Vec<&'static str>,
+    pub blocked_by_stale_data: bool,
+    pub blast_radius_summary: String,
+    pub recovery_note: &'static str,
+    pub missing_data_reason_codes: Vec<String>,
+    pub risk_drivers: Vec<AsgResilienceForecastRiskDriver>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+pub type AsgSecurityForecastRisk = AsgCostForecastRisk;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgSecurityForecastBand {
+    pub horizon_days: u16,
+    pub lower_security_exposure_index: u16,
+    pub expected_security_exposure_index: u16,
+    pub upper_security_exposure_index: u16,
+    pub confidence_level: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgSecurityForecastRiskDriver {
+    pub reason_code: String,
+    pub affected_resources: Vec<String>,
+    pub security_exposure_index_delta: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgSecurityForecastSnapshot {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub baseline_window_days: u16,
+    pub forecast_horizon_days: u16,
+    pub confidence_level: u8,
+    pub forecast_band: AsgSecurityForecastBand,
+    pub risk_level: AsgSecurityForecastRisk,
+    pub exposure_capacity_risk: &'static str,
+    pub backtesting_fixture_status: &'static str,
+    pub threshold_controls: Vec<&'static str>,
+    pub what_if_inputs: Vec<&'static str>,
+    pub blocked_by_stale_data: bool,
+    pub blast_radius_summary: String,
+    pub missing_data_reason_codes: Vec<String>,
+    pub risk_drivers: Vec<AsgSecurityForecastRiskDriver>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgCostExecutiveSummary {
+    pub report_id: &'static str,
+    pub score: u8,
+    pub resources_evaluated: usize,
+    pub stale_resources: usize,
+    pub rules_failed: usize,
+    pub affected_resources: Vec<String>,
+    pub top_reason_codes: Vec<String>,
+    pub blast_radius_summary: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgCostReportRow {
+    pub resource_id: String,
+    pub severity: Severity,
+    pub reason_code: String,
+    pub message: String,
+    pub recovery_note: String,
+    pub suppression_supported: bool,
+    pub evidence: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgCostEngineeringBacklog {
+    pub report_id: &'static str,
+    pub page: u16,
+    pub page_size: u16,
+    pub total: usize,
+    pub rows: Vec<AsgCostReportRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgCostIncidentReview {
+    pub report_id: &'static str,
+    pub page: u16,
+    pub page_size: u16,
+    pub total: usize,
+    pub rows: Vec<AsgCostReportRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgCostReportingBundle {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub scheduled_delivery_state: &'static str,
+    pub stale_data_blocks_delivery: bool,
+    pub portfolio_summary_ready: bool,
+    pub workload_summary_ready: bool,
+    pub export_formats: Vec<&'static str>,
+    pub saved_view_id: &'static str,
+    pub executive_summary: AsgCostExecutiveSummary,
+    pub engineering_backlog: AsgCostEngineeringBacklog,
+    pub incident_review: AsgCostIncidentReview,
+    pub missing_data_reason_codes: Vec<String>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+pub type AsgResilienceReportRow = AsgCostReportRow;
+pub type AsgResilienceExecutiveSummary = AsgCostExecutiveSummary;
+pub type AsgResilienceEngineeringBacklog = AsgCostEngineeringBacklog;
+pub type AsgResilienceIncidentReview = AsgCostIncidentReview;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgResilienceReportingBundle {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub scheduled_delivery_state: &'static str,
+    pub stale_data_blocks_delivery: bool,
+    pub portfolio_summary_ready: bool,
+    pub workload_summary_ready: bool,
+    pub export_formats: Vec<&'static str>,
+    pub saved_view_id: &'static str,
+    pub executive_summary: AsgResilienceExecutiveSummary,
+    pub engineering_backlog: AsgResilienceEngineeringBacklog,
+    pub incident_review: AsgResilienceIncidentReview,
+    pub missing_data_reason_codes: Vec<String>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+pub type AsgSecurityReportRow = AsgCostReportRow;
+pub type AsgSecurityExecutiveSummary = AsgCostExecutiveSummary;
+pub type AsgSecurityEngineeringBacklog = AsgCostEngineeringBacklog;
+pub type AsgSecurityIncidentReview = AsgCostIncidentReview;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AsgSecurityReportingBundle {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub scheduled_delivery_state: &'static str,
+    pub stale_data_blocks_delivery: bool,
+    pub portfolio_summary_ready: bool,
+    pub workload_summary_ready: bool,
+    pub export_formats: Vec<&'static str>,
+    pub saved_view_id: &'static str,
+    pub executive_summary: AsgSecurityExecutiveSummary,
+    pub engineering_backlog: AsgSecurityEngineeringBacklog,
+    pub incident_review: AsgSecurityIncidentReview,
+    pub missing_data_reason_codes: Vec<String>,
+    pub evidence_reason_codes: Vec<String>,
+}
 
 /// Evaluate every Auto Scaling group in the fleet for one pillar. Rows whose
 /// `resource_type` is not `AutoScalingGroup` are skipped and not counted.
@@ -102,6 +554,2423 @@ pub fn evaluate_autoscaling_fleet(
         score,
         findings,
     }
+}
+
+pub fn asg_cost_agentic_investigation_plan(
+    report: &PillarReport,
+) -> AsgCostAgenticInvestigationPlan {
+    let triage = asg_cost_triage_context(report);
+    let mut steps = Vec::new();
+    let mut approval_gates = Vec::new();
+
+    for citation in &triage.evidence_citations {
+        if citation.resource_id == "fleet" {
+            continue;
+        }
+
+        match citation.reason_code.as_str() {
+            REASON_INV_STALE_DATA => {
+                steps.push(asg_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.describe_group_inventory",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when the Auto Scaling group inventory is refreshed or stale evidence is confirmed",
+                ));
+            }
+            REASON_TEL_MISSING_COLLECTION_METADATA => {
+                steps.push(asg_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.inspect_collection_metadata",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when collection start, completion, duration, success, failure, and error counts are recorded",
+                ));
+            }
+            REASON_TEL_COLLECTION_ERRORS => {
+                steps.push(asg_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Diagnose,
+                    "autoscaling.inspect_collector_errors",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when collector logs, throttling, permissions, and retry evidence explain the collection gap",
+                ));
+            }
+            REASON_COST_MISSING_CAPACITY_TELEMETRY => {
+                steps.push(asg_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.describe_group_capacity",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when min, max, desired, and instance counts are recorded",
+                ));
+            }
+            REASON_COST_MISSING_GROUP_METRICS_TELEMETRY => {
+                steps.push(asg_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.describe_enabled_metrics",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when enabled group metrics are collected or confirmed disabled",
+                ));
+            }
+            REASON_COST_NO_TAGS => {
+                steps.push(asg_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Diagnose,
+                    "autoscaling.resource_groups.get_tagging_context",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when owner, team, project, or cost-center can be inferred or the gap is assigned",
+                ));
+                approval_gates.push(asg_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve tag writes after ownership is verified",
+                ));
+            }
+            REASON_COST_FIXED_SIZE => {
+                steps.push(asg_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Compare,
+                    "autoscaling.compare_scaling_policy_capacity",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when fixed capacity is compared with demand, scheduled scaling, and scaling policy evidence",
+                ));
+                approval_gates.push(asg_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve scaling policy or capacity changes after owner review",
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    steps.push(AsgInvestigationStep {
+        step_id: format!("autoscaling-cost-step-{:02}", steps.len() + 1),
+        kind: AsgInvestigationStepKind::ProposeMutationPlan,
+        tool_name: "autoscaling.cost.prepare_approval_plan",
+        tool_mode: AsgInvestigationToolMode::ApprovalRequired,
+        target_resource_id: "investigation".to_string(),
+        reason_code: "ASG_COST_APPROVAL_PLAN_REQUIRED".to_string(),
+        stop_condition:
+            "stop before mutation; require explicit operator approval, blast-radius summary, and rollback note"
+                .to_string(),
+        evidence: json!({
+            "approval_gate_count": approval_gates.len(),
+            "read_only_step_count": steps.len(),
+        }),
+    });
+
+    AsgCostAgenticInvestigationPlan {
+        workflow_id: "autoscaling_cost_agentic_investigation",
+        default_tool_mode: AsgInvestigationToolMode::ReadOnly,
+        max_tool_calls: steps.len().min(12),
+        max_evidence_citations: triage.evidence_citations.len(),
+        replay_required: true,
+        steps,
+        approval_gates,
+        evidence_citations: triage.evidence_citations,
+    }
+}
+
+pub fn asg_resilience_agentic_investigation_plan(
+    report: &PillarReport,
+) -> AsgResilienceAgenticInvestigationPlan {
+    let triage = asg_resilience_triage_context(report);
+    let mut steps = Vec::new();
+    let mut approval_gates = Vec::new();
+
+    for citation in &triage.evidence_citations {
+        if citation.resource_id == "fleet" {
+            continue;
+        }
+
+        match citation.reason_code.as_str() {
+            REASON_INV_STALE_DATA => {
+                steps.push(asg_resilience_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.describe_group_inventory",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when the Auto Scaling group inventory is refreshed or stale evidence is confirmed",
+                ));
+            }
+            REASON_TEL_MISSING_COLLECTION_METADATA => {
+                steps.push(asg_resilience_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.inspect_collection_metadata",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when collection start, completion, duration, success, failure, and error counts are recorded",
+                ));
+            }
+            REASON_TEL_COLLECTION_ERRORS => {
+                steps.push(asg_resilience_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Diagnose,
+                    "autoscaling.inspect_collector_errors",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when collector logs, throttling, permissions, and retry evidence explain the resilience evidence gap",
+                ));
+            }
+            REASON_RES_MISSING_REPLACEMENT_TELEMETRY => {
+                steps.push(asg_resilience_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.describe_replacement_activity",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when recent launch, terminate, lifecycle, and replacement activity evidence is recorded",
+                ));
+            }
+            REASON_RES_MISSING_INSTANCE_HEALTH_TELEMETRY => {
+                steps.push(asg_resilience_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.describe_instance_health",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when healthy, unhealthy, lifecycle, and protected instance evidence is recorded",
+                ));
+            }
+            REASON_RES_UNHEALTHY_INSTANCE_TELEMETRY => {
+                steps.push(asg_resilience_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Diagnose,
+                    "autoscaling.diagnose_unhealthy_replacement",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when instance health, lifecycle hooks, termination policy, and replacement timing explain unhealthy capacity",
+                ));
+                approval_gates.push(asg_resilience_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve replacement policy changes after resilience owner review",
+                ));
+            }
+            REASON_RES_SINGLE_AZ => {
+                steps.push(asg_resilience_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Compare,
+                    "autoscaling.compare_availability_zone_coverage",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when subnet, AZ, target capacity, and cross-zone evidence explain replacement exposure",
+                ));
+                approval_gates.push(asg_resilience_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve subnet or capacity changes after resilience owner review",
+                ));
+            }
+            REASON_RES_ELB_HEALTH_CHECK_EC2_ONLY => {
+                steps.push(asg_resilience_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.inspect_elb_health_check_policy",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when load balancer attachment and EC2 versus ELB health check evidence are recorded",
+                ));
+                approval_gates.push(asg_resilience_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve health check policy changes after application owner review",
+                ));
+            }
+            REASON_RES_SUSPENDED_PROCESSES => {
+                steps.push(asg_resilience_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Diagnose,
+                    "autoscaling.inspect_suspended_processes",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when suspended process names, suspension reason, and owner intent are recorded",
+                ));
+                approval_gates.push(asg_resilience_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve scaling process resume after owner review",
+                ));
+            }
+            REASON_RES_DESIRED_BELOW_MIN => {
+                steps.push(asg_resilience_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Compare,
+                    "autoscaling.compare_capacity_bounds",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when desired, min, max, warm pool, and pending capacity evidence explain the inconsistency",
+                ));
+                approval_gates.push(asg_resilience_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve capacity correction after resilience owner review",
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    steps.push(AsgInvestigationStep {
+        step_id: format!("autoscaling-resilience-step-{:02}", steps.len() + 1),
+        kind: AsgInvestigationStepKind::ProposeMutationPlan,
+        tool_name: "autoscaling.resilience.prepare_approval_plan",
+        tool_mode: AsgInvestigationToolMode::ApprovalRequired,
+        target_resource_id: "investigation".to_string(),
+        reason_code: "ASG_RESILIENCE_APPROVAL_PLAN_REQUIRED".to_string(),
+        stop_condition:
+            "stop before mutation; require explicit operator approval, blast-radius summary, and rollback note"
+                .to_string(),
+        evidence: json!({
+            "approval_gate_count": approval_gates.len(),
+            "read_only_step_count": steps.len(),
+        }),
+    });
+
+    AsgAgenticInvestigationPlan {
+        workflow_id: "autoscaling_resilience_agentic_investigation",
+        default_tool_mode: AsgInvestigationToolMode::ReadOnly,
+        max_tool_calls: steps.len().min(12),
+        max_evidence_citations: triage.evidence_citations.len(),
+        replay_required: true,
+        steps,
+        approval_gates,
+        evidence_citations: triage.evidence_citations,
+    }
+}
+
+pub fn asg_security_agentic_investigation_plan(
+    report: &PillarReport,
+) -> AsgSecurityAgenticInvestigationPlan {
+    let triage = asg_security_triage_context(report);
+    let mut steps = Vec::new();
+    let mut approval_gates = Vec::new();
+
+    for citation in &triage.evidence_citations {
+        if citation.resource_id == "fleet" {
+            continue;
+        }
+
+        match citation.reason_code.as_str() {
+            REASON_INV_STALE_DATA => {
+                steps.push(asg_security_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.describe_group_inventory",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when the Auto Scaling group inventory is refreshed or stale evidence is confirmed",
+                ));
+            }
+            REASON_TEL_MISSING_COLLECTION_METADATA => {
+                steps.push(asg_security_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.inspect_collection_metadata",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when collection start, completion, duration, success, failure, and error counts are recorded",
+                ));
+            }
+            REASON_TEL_COLLECTION_ERRORS | REASON_SEC_TELEMETRY_COLLECTION_ERRORS => {
+                steps.push(asg_security_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Diagnose,
+                    "autoscaling.inspect_collector_errors",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when collector logs, throttling, permissions, and retry evidence explain the security evidence gap",
+                ));
+            }
+            REASON_SEC_MISSING_INSTANCE_TELEMETRY => {
+                steps.push(asg_security_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.describe_instance_health",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when instance health, lifecycle, protected instance, and launch source evidence are recorded",
+                ));
+            }
+            REASON_SEC_LEGACY_LAUNCH_CONFIGURATION => {
+                steps.push(asg_security_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Compare,
+                    "autoscaling.inspect_launch_configuration_security",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when launch configuration is compared with launch template migration, AMI source, IAM instance profile, user-data, and cost side-effect evidence",
+                ));
+                approval_gates.push(asg_security_mutation_gate(
+                    &approval_gates,
+                    citation,
+                    "Approve launch-template migration or launch source changes after security owner review",
+                ));
+            }
+            REASON_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED => {
+                steps.push(asg_security_investigation_step(
+                    &steps,
+                    AsgInvestigationStepKind::Inspect,
+                    "autoscaling.inspect_launch_source_configuration",
+                    AsgInvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when launch template, mixed instances policy, launch configuration, and cost side-effect evidence are recorded",
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    if !approval_gates.is_empty() {
+        steps.push(AsgInvestigationStep {
+            step_id: format!("autoscaling-security-step-{:02}", steps.len() + 1),
+            kind: AsgInvestigationStepKind::ProposeMutationPlan,
+            tool_name: "autoscaling.security.prepare_approval_plan",
+            tool_mode: AsgInvestigationToolMode::ApprovalRequired,
+            target_resource_id: "investigation".to_string(),
+            reason_code: "ASG_SECURITY_APPROVAL_PLAN_REQUIRED".to_string(),
+            stop_condition:
+                "stop before mutation; require explicit operator approval, blast-radius summary, rollback note, replayable evidence, and cost side-effect review"
+                    .to_string(),
+            evidence: json!({
+                "approval_gate_count": approval_gates.len(),
+                "read_only_step_count": steps.len(),
+                "mutation_execution": "not_available_from_investigation_plan",
+            }),
+        });
+    }
+
+    AsgAgenticInvestigationPlan {
+        workflow_id: "autoscaling_security_agentic_investigation",
+        default_tool_mode: AsgInvestigationToolMode::ReadOnly,
+        max_tool_calls: steps.len().min(12),
+        max_evidence_citations: triage.evidence_citations.len(),
+        replay_required: true,
+        steps,
+        approval_gates,
+        evidence_citations: triage.evidence_citations,
+    }
+}
+
+pub fn asg_cost_remediation_workflow(report: &PillarReport) -> AsgCostRemediationWorkflow {
+    let investigation = asg_cost_agentic_investigation_plan(report);
+    let has_stale_data = report
+        .findings
+        .iter()
+        .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+    let mut actions = Vec::new();
+
+    for gate in &investigation.approval_gates {
+        for reason_code in &gate.evidence_reason_codes {
+            if let Some(kind) = asg_remediation_action_kind(reason_code) {
+                actions.push(asg_remediation_action(
+                    &actions,
+                    kind,
+                    gate,
+                    if has_stale_data {
+                        AsgRemediationStatus::BlockedMissingEvidence
+                    } else {
+                        AsgRemediationStatus::DryRunPendingApproval
+                    },
+                ));
+            }
+        }
+    }
+
+    AsgCostRemediationWorkflow {
+        workflow_id: "autoscaling_cost_safe_remediation",
+        read_only_mode: true,
+        rbac_permission: "aws.autoscaling.cost.remediation.approve",
+        audit_stream: "autoscaling_cost_remediation_audit",
+        stale_data_blocks_execution: has_stale_data,
+        actions,
+        approval_gates: investigation.approval_gates,
+    }
+}
+
+pub fn asg_resilience_remediation_workflow(
+    report: &PillarReport,
+) -> AsgResilienceRemediationWorkflow {
+    let investigation = asg_resilience_agentic_investigation_plan(report);
+    let has_stale_data = report
+        .findings
+        .iter()
+        .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+    let mut actions = Vec::new();
+
+    for gate in &investigation.approval_gates {
+        for reason_code in &gate.evidence_reason_codes {
+            if let Some(kind) = asg_resilience_remediation_action_kind(reason_code) {
+                actions.push(asg_remediation_action_with_contract(
+                    "autoscaling-resilience",
+                    "autoscaling.resilience.remediation.dry_run_planned",
+                    &[
+                        "refresh Auto Scaling replacement, health, and placement evidence",
+                        "verify owner, blast radius, health-check policy, and scaling-process intent",
+                        "capture operator approval, rollback note, and audit id before execution",
+                    ],
+                    &actions,
+                    kind,
+                    gate,
+                    if has_stale_data {
+                        AsgRemediationStatus::BlockedMissingEvidence
+                    } else {
+                        AsgRemediationStatus::DryRunPendingApproval
+                    },
+                ));
+            }
+        }
+    }
+
+    AsgResilienceRemediationWorkflow {
+        workflow_id: "autoscaling_resilience_safe_remediation",
+        read_only_mode: true,
+        rbac_permission: "aws.autoscaling.resilience.remediation.approve",
+        audit_stream: "autoscaling_resilience_remediation_audit",
+        stale_data_blocks_execution: has_stale_data,
+        actions,
+        approval_gates: investigation.approval_gates,
+    }
+}
+
+pub fn asg_security_remediation_workflow(report: &PillarReport) -> AsgSecurityRemediationWorkflow {
+    let investigation = asg_security_agentic_investigation_plan(report);
+    let has_stale_data = report
+        .findings
+        .iter()
+        .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+    let mut actions = Vec::new();
+
+    for gate in &investigation.approval_gates {
+        for reason_code in &gate.evidence_reason_codes {
+            if let Some(kind) = asg_security_remediation_action_kind(reason_code) {
+                actions.push(asg_remediation_action_with_contract(
+                    "autoscaling-security",
+                    "autoscaling.security.remediation.dry_run_planned",
+                    &[
+                        "refresh Auto Scaling launch source, instance health, and collection evidence",
+                        "verify security owner, blast radius, launch-template migration path, and cost side-effect review",
+                        "capture operator approval, rollback note, and audit id before execution",
+                    ],
+                    &actions,
+                    kind,
+                    gate,
+                    if has_stale_data {
+                        AsgRemediationStatus::BlockedMissingEvidence
+                    } else {
+                        AsgRemediationStatus::DryRunPendingApproval
+                    },
+                ));
+            }
+        }
+    }
+
+    AsgSecurityRemediationWorkflow {
+        workflow_id: "autoscaling_security_safe_remediation",
+        read_only_mode: true,
+        rbac_permission: "aws.autoscaling.security.remediation.approve",
+        audit_stream: "autoscaling_security_remediation_audit",
+        stale_data_blocks_execution: has_stale_data,
+        actions,
+        approval_gates: investigation.approval_gates,
+    }
+}
+
+pub fn asg_cost_slo_policy_snapshot(report: &PillarReport) -> AsgCostSloPolicySnapshot {
+    let posture = asg_cost_posture_summary(report);
+    let failed_rule_count = posture.rules_failed;
+    let affected_resource_count = posture.affected_resources.len();
+    let status = asg_cost_objective_status(report.score, failed_rule_count, report.stale_resources);
+    let owner_filters = sorted_unique_evidence_values(report, &["owner", "team"]);
+    let environment_filters = sorted_unique_evidence_values(report, &["environment", "env"]);
+    let application_filters = sorted_unique_evidence_values(report, &["application", "app"]);
+    let notification_targets = notification_targets(&owner_filters, &environment_filters);
+
+    AsgCostSloPolicySnapshot {
+        workflow_id: "autoscaling_cost_slo_policy",
+        read_only_mode: true,
+        freshness_required: true,
+        objective: AsgCostPolicyObjective {
+            objective_id: "autoscaling-cost-score-min-90",
+            status,
+            target_score_min: 90,
+            current_score: report.score,
+            trend_direction: asg_cost_trend_direction(status, failed_rule_count),
+            failed_rule_count,
+            affected_resource_count,
+            owner_filters,
+            environment_filters,
+            application_filters,
+            notification_targets,
+            policy_state: if report.stale_resources > 0 {
+                "blocked_stale_data"
+            } else if failed_rule_count > 0 {
+                "active_with_findings"
+            } else {
+                "active"
+            },
+            status_history: vec![
+                "snapshot_collected",
+                "policy_evaluated",
+                "notification_targets_resolved",
+            ],
+        },
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
+pub fn asg_resilience_slo_policy_snapshot(report: &PillarReport) -> AsgResilienceSloPolicySnapshot {
+    let posture = asg_resilience_posture_summary(report);
+    let failed_rule_count = posture.rules_failed;
+    let affected_resource_count = posture.affected_resources.len();
+    let status = asg_cost_objective_status(report.score, failed_rule_count, report.stale_resources);
+    let owner_filters = sorted_unique_evidence_values(report, &["owner", "team"]);
+    let environment_filters = sorted_unique_evidence_values(report, &["environment", "env"]);
+    let application_filters = sorted_unique_evidence_values(report, &["application", "app"]);
+    let notification_targets = notification_targets(&owner_filters, &environment_filters);
+
+    AsgResilienceSloPolicySnapshot {
+        workflow_id: "autoscaling_resilience_slo_policy",
+        read_only_mode: true,
+        freshness_required: true,
+        objective: AsgResiliencePolicyObjective {
+            objective_id: "autoscaling-resilience-score-min-95",
+            status,
+            target_score_min: 95,
+            current_score: report.score,
+            trend_direction: asg_resilience_trend_direction(status, failed_rule_count),
+            failed_rule_count,
+            affected_resource_count,
+            owner_filters,
+            environment_filters,
+            application_filters,
+            notification_targets,
+            policy_state: if report.stale_resources > 0 {
+                "blocked_stale_data"
+            } else if failed_rule_count > 0 {
+                "active_with_findings"
+            } else {
+                "active"
+            },
+            status_history: vec![
+                "snapshot_collected",
+                "resilience_policy_evaluated",
+                "notification_targets_resolved",
+            ],
+        },
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
+pub fn asg_security_slo_policy_snapshot(report: &PillarReport) -> AsgSecuritySloPolicySnapshot {
+    let posture = asg_security_posture_summary(report);
+    let failed_rule_count = posture.rules_failed;
+    let affected_resource_count = posture.affected_resources.len();
+    let status =
+        asg_security_objective_status(report.score, failed_rule_count, report.stale_resources);
+    let owner_filters = sorted_unique_evidence_values(report, &["owner", "team"]);
+    let environment_filters = sorted_unique_evidence_values(report, &["environment", "env"]);
+    let application_filters =
+        sorted_unique_evidence_values(report, &["application", "app", "service"]);
+    let notification_targets = notification_targets_with_default(
+        &owner_filters,
+        &environment_filters,
+        "security-operations",
+    );
+
+    AsgSecuritySloPolicySnapshot {
+        workflow_id: "autoscaling_security_slo_policy",
+        read_only_mode: true,
+        freshness_required: true,
+        objective: AsgSecurityPolicyObjective {
+            objective_id: "autoscaling-security-score-min-95",
+            status,
+            target_score_min: 95,
+            current_score: report.score,
+            trend_direction: asg_security_trend_direction(report, status, failed_rule_count),
+            failed_rule_count,
+            affected_resource_count,
+            owner_filters,
+            environment_filters,
+            application_filters,
+            notification_targets,
+            policy_state: if report.stale_resources > 0 {
+                "blocked_stale_data"
+            } else if failed_rule_count > 0 {
+                "active_with_findings"
+            } else {
+                "active"
+            },
+            status_history: vec![
+                "snapshot_collected",
+                "security_policy_evaluated",
+                "notification_targets_resolved",
+            ],
+        },
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
+pub fn asg_cost_forecast_snapshot(report: &PillarReport) -> AsgCostForecastSnapshot {
+    const BASELINE_WINDOW_DAYS: u16 = 30;
+    const FORECAST_HORIZON_DAYS: u16 = 30;
+    const CONFIDENCE_LEVEL: u8 = 80;
+
+    let stale_count = count_reason(report, REASON_INV_STALE_DATA);
+    let telemetry_error_count = count_reason(report, REASON_TEL_COLLECTION_ERRORS);
+    let missing_capacity_count = count_reason(report, REASON_COST_MISSING_CAPACITY_TELEMETRY);
+    let missing_metrics_count = count_reason(report, REASON_COST_MISSING_GROUP_METRICS_TELEMETRY);
+    let fixed_size_count = count_reason(report, REASON_COST_FIXED_SIZE);
+    let missing_tag_count = count_reason(report, REASON_COST_NO_TAGS);
+    let missing_collection_metadata_count =
+        count_reason(report, REASON_TEL_MISSING_COLLECTION_METADATA);
+    let blocked_by_stale_data = report.stale_resources > 0 || stale_count > 0;
+    let forecast_blocked = blocked_by_stale_data || telemetry_error_count > 0;
+
+    let expected_monthly_cost_index = 100u16
+        + (fixed_size_count as u16 * 22)
+        + (missing_capacity_count as u16 * 18)
+        + (missing_metrics_count as u16 * 16)
+        + (missing_collection_metadata_count as u16 * 10)
+        + (missing_tag_count as u16 * 5)
+        + (stale_count as u16 * 25)
+        + (telemetry_error_count as u16 * 20);
+    let uncertainty = 8u16
+        + (missing_capacity_count as u16 * 8)
+        + (missing_metrics_count as u16 * 6)
+        + (missing_collection_metadata_count as u16 * 5)
+        + (missing_tag_count as u16 * 2)
+        + (report.stale_resources as u16 * 10)
+        + (report.resources_evaluated == 0) as u16 * 20;
+    let lower_monthly_cost_index = expected_monthly_cost_index.saturating_sub(uncertainty);
+    let upper_monthly_cost_index = expected_monthly_cost_index + uncertainty;
+    let risk_level = if forecast_blocked {
+        AsgCostForecastRisk::Blocked
+    } else if upper_monthly_cost_index >= 145 {
+        AsgCostForecastRisk::High
+    } else if expected_monthly_cost_index > 100 {
+        AsgCostForecastRisk::Moderate
+    } else {
+        AsgCostForecastRisk::Low
+    };
+    let risk_drivers = asg_cost_forecast_risk_drivers(report);
+    let impacted_groups = sorted_unique_resources(
+        risk_drivers
+            .iter()
+            .flat_map(|driver| driver.affected_resources.iter().cloned()),
+    );
+
+    AsgCostForecastSnapshot {
+        workflow_id: "autoscaling_cost_forecasting",
+        read_only_mode: true,
+        baseline_window_days: BASELINE_WINDOW_DAYS,
+        forecast_horizon_days: FORECAST_HORIZON_DAYS,
+        confidence_level: CONFIDENCE_LEVEL,
+        forecast_band: AsgCostForecastBand {
+            horizon_days: FORECAST_HORIZON_DAYS,
+            lower_monthly_cost_index,
+            expected_monthly_cost_index,
+            upper_monthly_cost_index,
+            confidence_level: CONFIDENCE_LEVEL,
+        },
+        risk_level,
+        capacity_risk: asg_cost_capacity_risk(
+            forecast_blocked,
+            fixed_size_count,
+            missing_capacity_count,
+            missing_metrics_count,
+            missing_collection_metadata_count,
+        ),
+        backtesting_fixture_status: if report.findings.is_empty() {
+            "ready_clean_baseline"
+        } else if forecast_blocked || missing_capacity_count > 0 || missing_metrics_count > 0 {
+            "needs_fresh_capacity_fixture"
+        } else {
+            "ready_findings_baseline"
+        },
+        threshold_controls: vec![
+            "monthly_cost_index_warning_threshold",
+            "monthly_cost_index_critical_threshold",
+        ],
+        what_if_inputs: vec![
+            "allow_scale_in_for_fixed_groups",
+            "restore_missing_capacity_telemetry",
+            "enable_group_metrics_collection",
+            "apply_cost_allocation_tags",
+        ],
+        blocked_by_stale_data,
+        blast_radius_summary: if impacted_groups.is_empty() {
+            "No Auto Scaling groups have cost forecast risk in the current evidence.".to_string()
+        } else {
+            format!(
+                "{} Auto Scaling group(s) have cost forecast risk across capacity and telemetry findings.",
+                impacted_groups.len()
+            )
+        },
+        missing_data_reason_codes: asg_cost_forecast_missing_data_reason_codes(report),
+        risk_drivers,
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
+pub fn asg_resilience_forecast_snapshot(report: &PillarReport) -> AsgResilienceForecastSnapshot {
+    const BASELINE_WINDOW_DAYS: u16 = 30;
+    const FORECAST_HORIZON_DAYS: u16 = 30;
+    const CONFIDENCE_LEVEL: u8 = 75;
+
+    let stale_count = count_reason(report, REASON_INV_STALE_DATA);
+    let telemetry_error_count = count_reason(report, REASON_TEL_COLLECTION_ERRORS);
+    let missing_replacement_count = count_reason(report, REASON_RES_MISSING_REPLACEMENT_TELEMETRY);
+    let missing_health_count = count_reason(report, REASON_RES_MISSING_INSTANCE_HEALTH_TELEMETRY);
+    let unhealthy_count = count_reason(report, REASON_RES_UNHEALTHY_INSTANCE_TELEMETRY);
+    let single_az_count = count_reason(report, REASON_RES_SINGLE_AZ);
+    let ec2_health_check_count = count_reason(report, REASON_RES_ELB_HEALTH_CHECK_EC2_ONLY);
+    let suspended_process_count = count_reason(report, REASON_RES_SUSPENDED_PROCESSES);
+    let desired_below_min_count = count_reason(report, REASON_RES_DESIRED_BELOW_MIN);
+    let missing_collection_metadata_count =
+        count_reason(report, REASON_TEL_MISSING_COLLECTION_METADATA);
+    let blocked_by_stale_data = report.stale_resources > 0 || stale_count > 0;
+
+    let expected_recovery_exposure_index = 100u16
+        + (unhealthy_count as u16 * 35)
+        + (single_az_count as u16 * 30)
+        + (suspended_process_count as u16 * 24)
+        + (ec2_health_check_count as u16 * 18)
+        + (missing_health_count as u16 * 16)
+        + (missing_replacement_count as u16 * 14)
+        + (desired_below_min_count as u16 * 12)
+        + (missing_collection_metadata_count as u16 * 8)
+        + (telemetry_error_count as u16 * 20)
+        + (report.stale_resources as u16 * 28);
+    let uncertainty = 10u16
+        + (missing_health_count as u16 * 8)
+        + (missing_replacement_count as u16 * 6)
+        + (missing_collection_metadata_count as u16 * 5)
+        + (telemetry_error_count as u16 * 8)
+        + (report.stale_resources as u16 * 12)
+        + (report.resources_evaluated == 0) as u16 * 25;
+    let lower_recovery_exposure_index =
+        expected_recovery_exposure_index.saturating_sub(uncertainty);
+    let upper_recovery_exposure_index = expected_recovery_exposure_index + uncertainty;
+    let risk_level = if blocked_by_stale_data {
+        AsgResilienceForecastRisk::Blocked
+    } else if unhealthy_count > 0 || upper_recovery_exposure_index >= 155 {
+        AsgResilienceForecastRisk::High
+    } else if single_az_count > 0
+        || suspended_process_count > 0
+        || ec2_health_check_count > 0
+        || missing_health_count > 0
+        || missing_replacement_count > 0
+        || desired_below_min_count > 0
+        || telemetry_error_count > 0
+        || expected_recovery_exposure_index > 100
+    {
+        AsgResilienceForecastRisk::Moderate
+    } else {
+        AsgResilienceForecastRisk::Low
+    };
+    let risk_drivers = asg_resilience_forecast_risk_drivers(report);
+
+    AsgResilienceForecastSnapshot {
+        workflow_id: "autoscaling_resilience_forecasting",
+        read_only_mode: true,
+        baseline_window_days: BASELINE_WINDOW_DAYS,
+        forecast_horizon_days: FORECAST_HORIZON_DAYS,
+        confidence_level: CONFIDENCE_LEVEL,
+        forecast_band: AsgResilienceForecastBand {
+            horizon_days: FORECAST_HORIZON_DAYS,
+            lower_recovery_exposure_index,
+            expected_recovery_exposure_index,
+            upper_recovery_exposure_index,
+            confidence_level: CONFIDENCE_LEVEL,
+        },
+        risk_level,
+        recovery_capacity_risk: asg_resilience_recovery_capacity_risk(
+            blocked_by_stale_data,
+            unhealthy_count,
+            single_az_count,
+            suspended_process_count,
+            missing_health_count,
+            missing_replacement_count,
+        ),
+        backtesting_fixture_status: if report.findings.is_empty() {
+            "ready_clean_resilience_baseline"
+        } else if blocked_by_stale_data
+            || missing_health_count > 0
+            || missing_replacement_count > 0
+            || telemetry_error_count > 0
+        {
+            "needs_fresh_resilience_telemetry_fixture"
+        } else {
+            "ready_resilience_findings_baseline"
+        },
+        threshold_controls: vec![
+            "recovery_exposure_index_warning_threshold",
+            "recovery_exposure_index_critical_threshold",
+        ],
+        what_if_inputs: vec![
+            "distribute_auto_scaling_capacity_across_availability_zones",
+            "restore_instance_health_and_replacement_telemetry",
+            "review_suspended_scaling_process_recovery",
+            "switch_load_balanced_groups_to_elb_health_checks",
+        ],
+        blocked_by_stale_data,
+        blast_radius_summary: asg_resilience_forecast_blast_radius_summary(&risk_drivers),
+        recovery_note:
+            "Forecast is read-only; recovery actions require remediation approval and rollback notes.",
+        missing_data_reason_codes: asg_resilience_forecast_missing_data_reason_codes(report),
+        risk_drivers,
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
+pub fn asg_security_forecast_snapshot(report: &PillarReport) -> AsgSecurityForecastSnapshot {
+    const BASELINE_WINDOW_DAYS: u16 = 30;
+    const FORECAST_HORIZON_DAYS: u16 = 30;
+    const CONFIDENCE_LEVEL: u8 = 75;
+
+    let empty_inventory = report.resources_evaluated == 0;
+    let stale_count = count_reason(report, REASON_INV_STALE_DATA);
+    let telemetry_error_count = count_reason(report, REASON_TEL_COLLECTION_ERRORS)
+        + count_reason(report, REASON_SEC_TELEMETRY_COLLECTION_ERRORS);
+    let legacy_launch_count = count_reason(report, REASON_SEC_LEGACY_LAUNCH_CONFIGURATION);
+    let launch_source_gap_count = count_reason(report, REASON_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED);
+    let missing_instance_telemetry_count =
+        count_reason(report, REASON_SEC_MISSING_INSTANCE_TELEMETRY);
+    let missing_collection_metadata_count =
+        count_reason(report, REASON_TEL_MISSING_COLLECTION_METADATA);
+    let blocked_by_stale_data = report.stale_resources > 0 || stale_count > 0;
+
+    let expected_security_exposure_index = 100u16
+        + (legacy_launch_count as u16 * 34)
+        + (telemetry_error_count as u16 * 26)
+        + (launch_source_gap_count as u16 * 20)
+        + (missing_instance_telemetry_count as u16 * 16)
+        + (missing_collection_metadata_count as u16 * 8)
+        + (report.stale_resources as u16 * 30);
+    let uncertainty = 10u16
+        + (launch_source_gap_count as u16 * 9)
+        + (missing_instance_telemetry_count as u16 * 8)
+        + (missing_collection_metadata_count as u16 * 5)
+        + (telemetry_error_count as u16 * 8)
+        + (report.stale_resources as u16 * 14)
+        + (empty_inventory as u16 * 25);
+    let lower_security_exposure_index =
+        expected_security_exposure_index.saturating_sub(uncertainty);
+    let upper_security_exposure_index = expected_security_exposure_index + uncertainty;
+    let risk_level = if blocked_by_stale_data || empty_inventory {
+        AsgSecurityForecastRisk::Blocked
+    } else if legacy_launch_count > 0 || upper_security_exposure_index >= 160 {
+        AsgSecurityForecastRisk::High
+    } else if launch_source_gap_count > 0
+        || missing_instance_telemetry_count > 0
+        || telemetry_error_count > 0
+        || expected_security_exposure_index > 100
+    {
+        AsgSecurityForecastRisk::Moderate
+    } else {
+        AsgSecurityForecastRisk::Low
+    };
+    let risk_drivers = asg_security_forecast_risk_drivers(report);
+
+    AsgSecurityForecastSnapshot {
+        workflow_id: "autoscaling_security_forecasting",
+        read_only_mode: true,
+        baseline_window_days: BASELINE_WINDOW_DAYS,
+        forecast_horizon_days: FORECAST_HORIZON_DAYS,
+        confidence_level: CONFIDENCE_LEVEL,
+        forecast_band: AsgSecurityForecastBand {
+            horizon_days: FORECAST_HORIZON_DAYS,
+            lower_security_exposure_index,
+            expected_security_exposure_index,
+            upper_security_exposure_index,
+            confidence_level: CONFIDENCE_LEVEL,
+        },
+        risk_level,
+        exposure_capacity_risk: asg_security_exposure_capacity_risk(
+            blocked_by_stale_data,
+            empty_inventory,
+            legacy_launch_count,
+            launch_source_gap_count,
+            missing_instance_telemetry_count,
+            telemetry_error_count,
+        ),
+        backtesting_fixture_status: if empty_inventory {
+            "blocked_missing_security_inventory_fixture"
+        } else if report.findings.is_empty() {
+            "ready_clean_security_baseline"
+        } else if blocked_by_stale_data
+            || launch_source_gap_count > 0
+            || missing_instance_telemetry_count > 0
+            || telemetry_error_count > 0
+        {
+            "needs_fresh_security_telemetry_fixture"
+        } else {
+            "ready_security_findings_baseline"
+        },
+        threshold_controls: vec![
+            "security_exposure_index_warning_threshold",
+            "security_exposure_index_critical_threshold",
+        ],
+        what_if_inputs: vec![
+            "migrate_legacy_launch_configuration_to_launch_template",
+            "restore_launch_source_collection",
+            "refresh_instance_security_telemetry",
+            "route_security_findings_to_owner",
+        ],
+        blocked_by_stale_data,
+        blast_radius_summary: asg_security_forecast_blast_radius_summary(
+            empty_inventory,
+            legacy_launch_count,
+            launch_source_gap_count,
+            missing_instance_telemetry_count,
+        ),
+        missing_data_reason_codes: asg_security_forecast_missing_data_reason_codes(report),
+        risk_drivers,
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
+pub fn asg_cost_reporting_bundle(report: &PillarReport) -> AsgCostReportingBundle {
+    let posture = asg_cost_posture_summary(report);
+    let reason_codes = sorted_unique_reason_codes(report);
+    let rows = asg_cost_report_rows(report);
+    let stale_data_blocks_delivery = report.stale_resources > 0
+        || report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+    let blast_radius_summary = if posture.affected_resources.is_empty() {
+        "No Auto Scaling groups require cost reporting review.".to_string()
+    } else {
+        format!(
+            "{} Auto Scaling group(s) require cost reporting review.",
+            posture.affected_resources.len()
+        )
+    };
+
+    AsgCostReportingBundle {
+        workflow_id: "autoscaling_cost_reporting",
+        read_only_mode: true,
+        scheduled_delivery_state: if stale_data_blocks_delivery {
+            "blocked_until_fresh_inventory"
+        } else {
+            "ready_for_schedule"
+        },
+        stale_data_blocks_delivery,
+        portfolio_summary_ready: !stale_data_blocks_delivery,
+        workload_summary_ready: !stale_data_blocks_delivery,
+        export_formats: vec!["json", "csv"],
+        saved_view_id: "autoscaling-cost-posture-report",
+        executive_summary: AsgCostExecutiveSummary {
+            report_id: "autoscaling-cost-executive-summary",
+            score: report.score,
+            resources_evaluated: report.resources_evaluated,
+            stale_resources: report.stale_resources,
+            rules_failed: posture.rules_failed,
+            affected_resources: posture.affected_resources,
+            top_reason_codes: reason_codes.clone(),
+            blast_radius_summary,
+        },
+        engineering_backlog: AsgCostEngineeringBacklog {
+            report_id: "autoscaling-cost-engineering-backlog",
+            page: 0,
+            page_size: 50,
+            total: rows.len(),
+            rows: rows.clone(),
+        },
+        incident_review: AsgCostIncidentReview {
+            report_id: "autoscaling-cost-incident-review",
+            page: 0,
+            page_size: 50,
+            total: rows.len(),
+            rows,
+        },
+        missing_data_reason_codes: asg_cost_reporting_missing_data_reason_codes(report),
+        evidence_reason_codes: reason_codes,
+    }
+}
+
+pub fn asg_resilience_reporting_bundle(report: &PillarReport) -> AsgResilienceReportingBundle {
+    let posture = asg_resilience_posture_summary(report);
+    let forecast = asg_resilience_forecast_snapshot(report);
+    let reason_codes = sorted_unique_reason_codes(report);
+    let missing_data_reason_codes = asg_resilience_reporting_missing_data_reason_codes(report);
+    let rows = asg_resilience_report_rows(report);
+    let stale_data_blocks_delivery = report.stale_resources > 0
+        || report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+
+    AsgResilienceReportingBundle {
+        workflow_id: "autoscaling_resilience_reporting",
+        read_only_mode: true,
+        scheduled_delivery_state: if stale_data_blocks_delivery {
+            "blocked_until_fresh_resilience_evidence"
+        } else if !missing_data_reason_codes.is_empty() {
+            "ready_with_resilience_evidence_gaps"
+        } else {
+            "ready_for_schedule"
+        },
+        stale_data_blocks_delivery,
+        portfolio_summary_ready: !stale_data_blocks_delivery,
+        workload_summary_ready: !stale_data_blocks_delivery && report.resources_evaluated > 0,
+        export_formats: vec!["json", "csv"],
+        saved_view_id: "autoscaling-resilience-posture-report",
+        executive_summary: AsgResilienceExecutiveSummary {
+            report_id: "autoscaling-resilience-executive-summary",
+            score: report.score,
+            resources_evaluated: report.resources_evaluated,
+            stale_resources: report.stale_resources,
+            rules_failed: posture.rules_failed,
+            affected_resources: posture.affected_resources,
+            top_reason_codes: reason_codes.clone(),
+            blast_radius_summary: forecast.blast_radius_summary,
+        },
+        engineering_backlog: AsgResilienceEngineeringBacklog {
+            report_id: "autoscaling-resilience-engineering-backlog",
+            page: 0,
+            page_size: 50,
+            total: rows.len(),
+            rows: rows.clone(),
+        },
+        incident_review: AsgResilienceIncidentReview {
+            report_id: "autoscaling-resilience-incident-review",
+            page: 0,
+            page_size: 50,
+            total: rows.len(),
+            rows,
+        },
+        missing_data_reason_codes,
+        evidence_reason_codes: reason_codes,
+    }
+}
+
+pub fn asg_security_reporting_bundle(report: &PillarReport) -> AsgSecurityReportingBundle {
+    let posture = asg_security_posture_summary(report);
+    let forecast = asg_security_forecast_snapshot(report);
+    let reason_codes = sorted_unique_reason_codes(report);
+    let missing_data_reason_codes = asg_security_reporting_missing_data_reason_codes(report);
+    let rows = asg_security_report_rows(report);
+    let stale_data_blocks_delivery = report.stale_resources > 0
+        || report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+
+    AsgSecurityReportingBundle {
+        workflow_id: "autoscaling_security_reporting",
+        read_only_mode: true,
+        scheduled_delivery_state: if stale_data_blocks_delivery {
+            "blocked_until_fresh_security_evidence"
+        } else if !missing_data_reason_codes.is_empty() {
+            "ready_with_security_evidence_gaps"
+        } else {
+            "ready_for_schedule"
+        },
+        stale_data_blocks_delivery,
+        portfolio_summary_ready: !stale_data_blocks_delivery,
+        workload_summary_ready: !stale_data_blocks_delivery && report.resources_evaluated > 0,
+        export_formats: vec!["json", "csv"],
+        saved_view_id: "autoscaling-security-posture-report",
+        executive_summary: AsgSecurityExecutiveSummary {
+            report_id: "autoscaling-security-executive-summary",
+            score: report.score,
+            resources_evaluated: report.resources_evaluated,
+            stale_resources: report.stale_resources,
+            rules_failed: posture.rules_failed,
+            affected_resources: posture.affected_resources,
+            top_reason_codes: reason_codes.clone(),
+            blast_radius_summary: forecast.blast_radius_summary,
+        },
+        engineering_backlog: AsgSecurityEngineeringBacklog {
+            report_id: "autoscaling-security-engineering-backlog",
+            page: 0,
+            page_size: 50,
+            total: rows.len(),
+            rows: rows.clone(),
+        },
+        incident_review: AsgSecurityIncidentReview {
+            report_id: "autoscaling-security-incident-review",
+            page: 0,
+            page_size: 50,
+            total: rows.len(),
+            rows,
+        },
+        missing_data_reason_codes,
+        evidence_reason_codes: reason_codes,
+    }
+}
+
+fn asg_cost_objective_status(
+    score: u8,
+    failed_rule_count: usize,
+    stale_resources: usize,
+) -> AsgCostObjectiveStatus {
+    if stale_resources > 0 || score < 70 {
+        AsgCostObjectiveStatus::Breached
+    } else if failed_rule_count > 0 || score < 90 {
+        AsgCostObjectiveStatus::AtRisk
+    } else {
+        AsgCostObjectiveStatus::OnTrack
+    }
+}
+
+fn asg_cost_trend_direction(
+    status: AsgCostObjectiveStatus,
+    failed_rule_count: usize,
+) -> AsgCostTrendDirection {
+    match status {
+        AsgCostObjectiveStatus::OnTrack => AsgCostTrendDirection::Stable,
+        AsgCostObjectiveStatus::AtRisk if failed_rule_count <= 1 => AsgCostTrendDirection::Stable,
+        AsgCostObjectiveStatus::AtRisk | AsgCostObjectiveStatus::Breached => {
+            AsgCostTrendDirection::Degrading
+        }
+    }
+}
+
+fn asg_resilience_trend_direction(
+    status: AsgResilienceObjectiveStatus,
+    failed_rule_count: usize,
+) -> AsgResilienceTrendDirection {
+    match status {
+        AsgResilienceObjectiveStatus::OnTrack => AsgResilienceTrendDirection::Stable,
+        AsgResilienceObjectiveStatus::AtRisk if failed_rule_count == 0 => {
+            AsgResilienceTrendDirection::Stable
+        }
+        AsgResilienceObjectiveStatus::AtRisk | AsgResilienceObjectiveStatus::Breached => {
+            AsgResilienceTrendDirection::Degrading
+        }
+    }
+}
+
+fn asg_security_objective_status(
+    score: u8,
+    failed_rule_count: usize,
+    stale_resources: usize,
+) -> AsgSecurityObjectiveStatus {
+    if stale_resources > 0 || score < 75 {
+        AsgSecurityObjectiveStatus::Breached
+    } else if failed_rule_count > 0 || score < 95 {
+        AsgSecurityObjectiveStatus::AtRisk
+    } else {
+        AsgSecurityObjectiveStatus::OnTrack
+    }
+}
+
+fn asg_security_trend_direction(
+    report: &PillarReport,
+    status: AsgSecurityObjectiveStatus,
+    failed_rule_count: usize,
+) -> AsgSecurityTrendDirection {
+    if report.findings.iter().any(|finding| {
+        matches!(
+            finding.reason_code.as_str(),
+            REASON_INV_STALE_DATA
+                | REASON_SEC_LEGACY_LAUNCH_CONFIGURATION
+                | REASON_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED
+                | REASON_SEC_MISSING_INSTANCE_TELEMETRY
+                | REASON_SEC_TELEMETRY_COLLECTION_ERRORS
+        )
+    }) {
+        return AsgSecurityTrendDirection::Degrading;
+    }
+
+    match status {
+        AsgSecurityObjectiveStatus::OnTrack => AsgSecurityTrendDirection::Stable,
+        AsgSecurityObjectiveStatus::AtRisk if failed_rule_count <= 1 => {
+            AsgSecurityTrendDirection::Stable
+        }
+        AsgSecurityObjectiveStatus::AtRisk | AsgSecurityObjectiveStatus::Breached => {
+            AsgSecurityTrendDirection::Degrading
+        }
+    }
+}
+
+fn sorted_unique_reason_codes(report: &PillarReport) -> Vec<String> {
+    report
+        .findings
+        .iter()
+        .map(|finding| finding.reason_code.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn sorted_unique_evidence_values(report: &PillarReport, keys: &[&str]) -> Vec<String> {
+    report
+        .findings
+        .iter()
+        .filter_map(|finding| evidence_string(&finding.evidence, keys))
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn evidence_string(evidence: &Value, keys: &[&str]) -> Option<String> {
+    keys.iter()
+        .find_map(|key| {
+            evidence
+                .get("tags")
+                .and_then(|tags| tags.get(*key))
+                .or_else(|| evidence.get(*key))
+                .and_then(Value::as_str)
+        })
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| value.trim().to_string())
+}
+
+fn notification_targets(owner_filters: &[String], environment_filters: &[String]) -> Vec<String> {
+    notification_targets_with_default(owner_filters, environment_filters, "cost-operations")
+}
+
+fn notification_targets_with_default(
+    owner_filters: &[String],
+    environment_filters: &[String],
+    default_target: &str,
+) -> Vec<String> {
+    let mut targets: BTreeSet<String> = owner_filters
+        .iter()
+        .map(|owner| format!("owner:{}", owner))
+        .collect();
+    targets.extend(
+        environment_filters
+            .iter()
+            .map(|environment| format!("environment:{}", environment)),
+    );
+    if targets.is_empty() {
+        targets.insert(default_target.to_string());
+    }
+    targets.into_iter().collect()
+}
+
+fn count_reason(report: &PillarReport, reason_code: &str) -> usize {
+    report
+        .findings
+        .iter()
+        .filter(|finding| finding.reason_code == reason_code)
+        .count()
+}
+
+fn resources_for_reason(report: &PillarReport, reason_code: &str) -> Vec<String> {
+    sorted_unique_resources(
+        report
+            .findings
+            .iter()
+            .filter(|finding| finding.reason_code == reason_code)
+            .map(|finding| finding.resource_id.clone()),
+    )
+}
+
+fn asg_cost_forecast_missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    [
+        REASON_INV_STALE_DATA,
+        REASON_TEL_MISSING_COLLECTION_METADATA,
+        REASON_TEL_COLLECTION_ERRORS,
+        REASON_COST_MISSING_CAPACITY_TELEMETRY,
+        REASON_COST_MISSING_GROUP_METRICS_TELEMETRY,
+    ]
+    .into_iter()
+    .filter(|reason_code| {
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == *reason_code)
+    })
+    .map(str::to_string)
+    .collect()
+}
+
+fn asg_cost_forecast_risk_drivers(report: &PillarReport) -> Vec<AsgCostForecastRiskDriver> {
+    [
+        (REASON_INV_STALE_DATA, 25u16),
+        (REASON_TEL_COLLECTION_ERRORS, 20u16),
+        (REASON_COST_FIXED_SIZE, 22u16),
+        (REASON_COST_MISSING_CAPACITY_TELEMETRY, 18u16),
+        (REASON_COST_MISSING_GROUP_METRICS_TELEMETRY, 16u16),
+        (REASON_TEL_MISSING_COLLECTION_METADATA, 10u16),
+        (REASON_COST_NO_TAGS, 5u16),
+    ]
+    .into_iter()
+    .filter_map(|(reason_code, delta)| {
+        let affected_resources = resources_for_reason(report, reason_code);
+        if affected_resources.is_empty() {
+            None
+        } else {
+            Some(AsgCostForecastRiskDriver {
+                reason_code: reason_code.to_string(),
+                monthly_cost_index_delta: delta * affected_resources.len() as u16,
+                affected_resources,
+            })
+        }
+    })
+    .collect()
+}
+
+fn asg_resilience_forecast_missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    [
+        REASON_INV_STALE_DATA,
+        REASON_TEL_MISSING_COLLECTION_METADATA,
+        REASON_TEL_COLLECTION_ERRORS,
+        REASON_RES_MISSING_REPLACEMENT_TELEMETRY,
+        REASON_RES_MISSING_INSTANCE_HEALTH_TELEMETRY,
+    ]
+    .into_iter()
+    .filter(|reason_code| {
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == *reason_code)
+    })
+    .map(str::to_string)
+    .collect()
+}
+
+fn asg_security_forecast_missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    [
+        REASON_INV_STALE_DATA,
+        REASON_TEL_MISSING_COLLECTION_METADATA,
+        REASON_TEL_COLLECTION_ERRORS,
+        REASON_SEC_TELEMETRY_COLLECTION_ERRORS,
+        REASON_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED,
+        REASON_SEC_MISSING_INSTANCE_TELEMETRY,
+    ]
+    .into_iter()
+    .filter(|reason_code| {
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == *reason_code)
+    })
+    .map(str::to_string)
+    .collect()
+}
+
+fn asg_resilience_forecast_risk_drivers(
+    report: &PillarReport,
+) -> Vec<AsgResilienceForecastRiskDriver> {
+    [
+        (REASON_INV_STALE_DATA, 28u16),
+        (REASON_TEL_COLLECTION_ERRORS, 20u16),
+        (REASON_RES_UNHEALTHY_INSTANCE_TELEMETRY, 35u16),
+        (REASON_RES_SINGLE_AZ, 30u16),
+        (REASON_RES_SUSPENDED_PROCESSES, 24u16),
+        (REASON_RES_ELB_HEALTH_CHECK_EC2_ONLY, 18u16),
+        (REASON_RES_MISSING_INSTANCE_HEALTH_TELEMETRY, 16u16),
+        (REASON_RES_MISSING_REPLACEMENT_TELEMETRY, 14u16),
+        (REASON_RES_DESIRED_BELOW_MIN, 12u16),
+        (REASON_TEL_MISSING_COLLECTION_METADATA, 8u16),
+    ]
+    .into_iter()
+    .filter_map(|(reason_code, delta)| {
+        let affected_resources = resources_for_reason(report, reason_code);
+        if affected_resources.is_empty() {
+            None
+        } else {
+            Some(AsgResilienceForecastRiskDriver {
+                reason_code: reason_code.to_string(),
+                recovery_exposure_index_delta: delta * affected_resources.len() as u16,
+                affected_resources,
+            })
+        }
+    })
+    .collect()
+}
+
+fn asg_security_forecast_risk_drivers(report: &PillarReport) -> Vec<AsgSecurityForecastRiskDriver> {
+    [
+        (REASON_INV_STALE_DATA, 30u16),
+        (REASON_SEC_LEGACY_LAUNCH_CONFIGURATION, 34u16),
+        (REASON_SEC_TELEMETRY_COLLECTION_ERRORS, 26u16),
+        (REASON_TEL_COLLECTION_ERRORS, 26u16),
+        (REASON_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED, 20u16),
+        (REASON_SEC_MISSING_INSTANCE_TELEMETRY, 16u16),
+        (REASON_TEL_MISSING_COLLECTION_METADATA, 8u16),
+    ]
+    .into_iter()
+    .filter_map(|(reason_code, delta)| {
+        let affected_resources = resources_for_reason(report, reason_code);
+        if affected_resources.is_empty() {
+            None
+        } else {
+            Some(AsgSecurityForecastRiskDriver {
+                reason_code: reason_code.to_string(),
+                security_exposure_index_delta: delta * affected_resources.len() as u16,
+                affected_resources,
+            })
+        }
+    })
+    .collect()
+}
+
+fn asg_resilience_recovery_capacity_risk(
+    forecast_blocked: bool,
+    unhealthy_count: usize,
+    single_az_count: usize,
+    suspended_process_count: usize,
+    missing_health_count: usize,
+    missing_replacement_count: usize,
+) -> &'static str {
+    if forecast_blocked {
+        "blocked_until_inventory_refresh"
+    } else if unhealthy_count > 0 {
+        "active_unhealthy_instance_replacement_exposure"
+    } else if suspended_process_count > 0 {
+        "scaling_process_recovery_exposure"
+    } else if single_az_count > 0 {
+        "single_az_recovery_exposure"
+    } else if missing_health_count > 0 || missing_replacement_count > 0 {
+        "missing_recovery_telemetry"
+    } else {
+        "low_recovery_exposure"
+    }
+}
+
+fn asg_security_exposure_capacity_risk(
+    forecast_blocked: bool,
+    empty_inventory: bool,
+    legacy_launch_count: usize,
+    launch_source_gap_count: usize,
+    missing_instance_telemetry_count: usize,
+    telemetry_error_count: usize,
+) -> &'static str {
+    if forecast_blocked {
+        "blocked_until_inventory_refresh"
+    } else if empty_inventory {
+        "blocked_until_security_inventory_exists"
+    } else if legacy_launch_count > 0 {
+        "legacy_launch_configuration_security_exposure"
+    } else if telemetry_error_count > 0 {
+        "collector_errors_hide_security_exposure"
+    } else if launch_source_gap_count > 0 {
+        "unknown_due_to_missing_launch_source_evidence"
+    } else if missing_instance_telemetry_count > 0 {
+        "unknown_due_to_missing_instance_security_telemetry"
+    } else {
+        "within_observed_security_baseline"
+    }
+}
+
+fn asg_security_forecast_blast_radius_summary(
+    empty_inventory: bool,
+    legacy_launch_count: usize,
+    launch_source_gap_count: usize,
+    missing_instance_telemetry_count: usize,
+) -> String {
+    if empty_inventory {
+        "Auto Scaling security blast radius is unknown until inventory exists.".to_string()
+    } else if legacy_launch_count > 0 {
+        format!(
+            "{} Auto Scaling group(s) have legacy launch-source security exposure requiring launch-template migration review.",
+            legacy_launch_count
+        )
+    } else if launch_source_gap_count > 0 || missing_instance_telemetry_count > 0 {
+        "Auto Scaling security blast radius is incomplete until launch-source and instance telemetry gaps are refreshed.".to_string()
+    } else {
+        "No Auto Scaling groups have security forecast risk in the current evidence.".to_string()
+    }
+}
+
+fn asg_resilience_forecast_blast_radius_summary(
+    risk_drivers: &[AsgResilienceForecastRiskDriver],
+) -> String {
+    let impacted_groups = sorted_unique_resources(
+        risk_drivers
+            .iter()
+            .flat_map(|driver| driver.affected_resources.iter().cloned()),
+    );
+
+    if impacted_groups.is_empty() {
+        "No Auto Scaling groups have resilience forecast risk in the current evidence.".to_string()
+    } else {
+        format!(
+            "{} Auto Scaling group(s) have resilience recovery forecast risk across placement, replacement, health, or scaling-process evidence.",
+            impacted_groups.len()
+        )
+    }
+}
+
+fn asg_cost_capacity_risk(
+    forecast_blocked: bool,
+    fixed_size_count: usize,
+    missing_capacity_count: usize,
+    missing_metrics_count: usize,
+    missing_collection_metadata_count: usize,
+) -> &'static str {
+    if forecast_blocked {
+        "blocked_until_inventory_refresh"
+    } else if fixed_size_count > 0 && missing_metrics_count > 0 {
+        "fixed_capacity_and_missing_group_metrics"
+    } else if fixed_size_count > 0 {
+        "fixed_capacity_scale_in_disabled"
+    } else if missing_capacity_count > 0 {
+        "unknown_due_to_missing_capacity_telemetry"
+    } else if missing_metrics_count > 0 {
+        "unknown_due_to_missing_group_metrics"
+    } else if missing_collection_metadata_count > 0 {
+        "unknown_due_to_missing_collection_metadata"
+    } else {
+        "cost_capacity_within_current_thresholds"
+    }
+}
+
+fn asg_cost_reporting_missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    [
+        REASON_INV_STALE_DATA,
+        REASON_TEL_MISSING_COLLECTION_METADATA,
+        REASON_TEL_COLLECTION_ERRORS,
+        REASON_COST_MISSING_CAPACITY_TELEMETRY,
+        REASON_COST_MISSING_GROUP_METRICS_TELEMETRY,
+    ]
+    .into_iter()
+    .filter(|reason_code| {
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == *reason_code)
+    })
+    .map(str::to_string)
+    .collect()
+}
+
+fn asg_resilience_reporting_missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    [
+        REASON_INV_STALE_DATA,
+        REASON_TEL_MISSING_COLLECTION_METADATA,
+        REASON_TEL_COLLECTION_ERRORS,
+        REASON_RES_MISSING_REPLACEMENT_TELEMETRY,
+        REASON_RES_MISSING_INSTANCE_HEALTH_TELEMETRY,
+    ]
+    .into_iter()
+    .filter(|reason_code| {
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == *reason_code)
+    })
+    .map(str::to_string)
+    .collect()
+}
+
+fn asg_security_reporting_missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    [
+        REASON_INV_STALE_DATA,
+        REASON_TEL_MISSING_COLLECTION_METADATA,
+        REASON_TEL_COLLECTION_ERRORS,
+        REASON_SEC_TELEMETRY_COLLECTION_ERRORS,
+        REASON_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED,
+        REASON_SEC_MISSING_INSTANCE_TELEMETRY,
+    ]
+    .into_iter()
+    .filter(|reason_code| {
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == *reason_code)
+    })
+    .map(str::to_string)
+    .collect()
+}
+
+fn asg_cost_report_rows(report: &PillarReport) -> Vec<AsgCostReportRow> {
+    report
+        .findings
+        .iter()
+        .map(|finding| AsgCostReportRow {
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            reason_code: finding.reason_code.clone(),
+            message: finding.message.clone(),
+            recovery_note: asg_cost_reporting_recovery_note(&finding.reason_code).to_string(),
+            suppression_supported: true,
+            evidence: finding.evidence.clone(),
+        })
+        .collect()
+}
+
+fn asg_resilience_report_rows(report: &PillarReport) -> Vec<AsgResilienceReportRow> {
+    report
+        .findings
+        .iter()
+        .map(|finding| AsgResilienceReportRow {
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            reason_code: finding.reason_code.clone(),
+            message: finding.message.clone(),
+            recovery_note: asg_resilience_reporting_recovery_note(&finding.reason_code).to_string(),
+            suppression_supported: true,
+            evidence: finding.evidence.clone(),
+        })
+        .collect()
+}
+
+fn asg_security_report_rows(report: &PillarReport) -> Vec<AsgSecurityReportRow> {
+    report
+        .findings
+        .iter()
+        .map(|finding| AsgSecurityReportRow {
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            reason_code: finding.reason_code.clone(),
+            message: finding.message.clone(),
+            recovery_note: asg_security_reporting_recovery_note(&finding.reason_code).to_string(),
+            suppression_supported: true,
+            evidence: finding.evidence.clone(),
+        })
+        .collect()
+}
+
+fn asg_cost_reporting_recovery_note(reason_code: &str) -> &'static str {
+    match reason_code {
+        REASON_INV_STALE_DATA => {
+            "Refresh Auto Scaling inventory before sharing the cost report."
+        }
+        REASON_TEL_MISSING_COLLECTION_METADATA => {
+            "Collect telemetry run metadata before scheduling report delivery."
+        }
+        REASON_TEL_COLLECTION_ERRORS => {
+            "Resolve Auto Scaling collector errors before publishing report findings."
+        }
+        REASON_COST_MISSING_CAPACITY_TELEMETRY => {
+            "Collect min, max, desired, and instance-count evidence before prioritizing cost actions."
+        }
+        REASON_COST_MISSING_GROUP_METRICS_TELEMETRY => {
+            "Enable or collect group metrics before quantifying utilization and scale-in opportunity."
+        }
+        REASON_COST_NO_TAGS => {
+            "Add owner, environment, and application tags before routing cost findings."
+        }
+        REASON_COST_FIXED_SIZE => {
+            "Review scaling policy and capacity history before changing min or max size."
+        }
+        _ => "Review Auto Scaling cost evidence and owner context before action.",
+    }
+}
+
+fn asg_resilience_reporting_recovery_note(reason_code: &str) -> &'static str {
+    match reason_code {
+        REASON_INV_STALE_DATA => {
+            "Refresh Auto Scaling resilience inventory before scheduling report delivery."
+        }
+        REASON_TEL_MISSING_COLLECTION_METADATA => {
+            "Collect telemetry run metadata before publishing resilience report findings."
+        }
+        REASON_TEL_COLLECTION_ERRORS => {
+            "Resolve Auto Scaling collector errors before sharing the resilience report."
+        }
+        REASON_RES_MISSING_REPLACEMENT_TELEMETRY | REASON_RES_MISSING_INSTANCE_HEALTH_TELEMETRY => {
+            "Refresh replacement and instance-health telemetry before incident review."
+        }
+        REASON_RES_UNHEALTHY_INSTANCE_TELEMETRY => {
+            "Review unhealthy instance replacement evidence and recovery notes before action."
+        }
+        REASON_RES_SINGLE_AZ => {
+            "Review multi-AZ placement plan before any approved recovery change."
+        }
+        REASON_RES_ELB_HEALTH_CHECK_EC2_ONLY => {
+            "Review ELB health check policy before changing replacement behavior."
+        }
+        REASON_RES_SUSPENDED_PROCESSES => {
+            "Review suspended scaling processes and rollback notes before recovery action."
+        }
+        REASON_RES_DESIRED_BELOW_MIN => {
+            "Review desired and minimum capacity evidence before adjusting capacity bounds."
+        }
+        _ => "Review Auto Scaling resilience evidence and owner context before action.",
+    }
+}
+
+fn asg_security_reporting_recovery_note(reason_code: &str) -> &'static str {
+    match reason_code {
+        REASON_INV_STALE_DATA => {
+            "Refresh Auto Scaling security inventory before scheduling report delivery."
+        }
+        REASON_TEL_MISSING_COLLECTION_METADATA => {
+            "Collect telemetry run metadata before publishing security report findings."
+        }
+        REASON_TEL_COLLECTION_ERRORS | REASON_SEC_TELEMETRY_COLLECTION_ERRORS => {
+            "Resolve Auto Scaling collector errors before sharing the security report."
+        }
+        REASON_SEC_MISSING_INSTANCE_TELEMETRY => {
+            "Refresh instance security telemetry before incident review."
+        }
+        REASON_SEC_LEGACY_LAUNCH_CONFIGURATION => {
+            "Review launch-template migration, security owner, and rollback notes before action."
+        }
+        REASON_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED => {
+            "Collect launch source evidence before reporting security posture."
+        }
+        _ => "Review Auto Scaling security evidence and owner context before action.",
+    }
+}
+
+fn asg_remediation_action_kind(reason_code: &str) -> Option<AsgRemediationActionKind> {
+    match reason_code {
+        REASON_COST_NO_TAGS => Some(AsgRemediationActionKind::ReviewCostAllocationTags),
+        REASON_COST_FIXED_SIZE => Some(AsgRemediationActionKind::ReviewScalingPolicyCapacity),
+        _ => None,
+    }
+}
+
+fn asg_resilience_remediation_action_kind(reason_code: &str) -> Option<AsgRemediationActionKind> {
+    match reason_code {
+        REASON_RES_UNHEALTHY_INSTANCE_TELEMETRY => {
+            Some(AsgRemediationActionKind::ReviewUnhealthyInstanceRecovery)
+        }
+        REASON_RES_SINGLE_AZ => Some(AsgRemediationActionKind::PlanMultiAzCoverage),
+        REASON_RES_ELB_HEALTH_CHECK_EC2_ONLY => {
+            Some(AsgRemediationActionKind::ReviewElbHealthCheckPolicy)
+        }
+        REASON_RES_SUSPENDED_PROCESSES => {
+            Some(AsgRemediationActionKind::ReviewScalingProcessRecovery)
+        }
+        REASON_RES_DESIRED_BELOW_MIN => Some(AsgRemediationActionKind::ReviewCapacityBounds),
+        _ => None,
+    }
+}
+
+fn asg_security_remediation_action_kind(reason_code: &str) -> Option<AsgRemediationActionKind> {
+    match reason_code {
+        REASON_SEC_LEGACY_LAUNCH_CONFIGURATION => {
+            Some(AsgRemediationActionKind::ReviewLaunchSourceSecurityMigration)
+        }
+        _ => None,
+    }
+}
+
+fn asg_remediation_action(
+    existing_actions: &[AsgCostRemediationAction],
+    kind: AsgRemediationActionKind,
+    gate: &AsgMutationApprovalGate,
+    status: AsgRemediationStatus,
+) -> AsgCostRemediationAction {
+    asg_remediation_action_with_contract(
+        "autoscaling-cost",
+        "autoscaling.cost.remediation.dry_run_planned",
+        &[
+            "refresh Auto Scaling capacity, tag, and group metric evidence",
+            "verify owner, blast radius, budget impact, and scaling-policy intent",
+            "capture operator approval, rollback note, and audit id before execution",
+        ],
+        existing_actions,
+        kind,
+        gate,
+        status,
+    )
+}
+
+fn asg_remediation_action_with_contract(
+    action_id_prefix: &str,
+    audit_event_type: &'static str,
+    validation_steps: &[&'static str],
+    existing_actions: &[AsgCostRemediationAction],
+    kind: AsgRemediationActionKind,
+    gate: &AsgMutationApprovalGate,
+    status: AsgRemediationStatus,
+) -> AsgCostRemediationAction {
+    let action_number = existing_actions.len() + 1;
+    let action_slug = match kind {
+        AsgRemediationActionKind::ReviewCostAllocationTags => "review-cost-allocation-tags",
+        AsgRemediationActionKind::ReviewScalingPolicyCapacity => "review-scaling-policy-capacity",
+        AsgRemediationActionKind::PlanMultiAzCoverage => "plan-multi-az-coverage",
+        AsgRemediationActionKind::ReviewElbHealthCheckPolicy => "review-elb-health-check-policy",
+        AsgRemediationActionKind::ReviewScalingProcessRecovery => "review-scaling-process-recovery",
+        AsgRemediationActionKind::ReviewCapacityBounds => "review-capacity-bounds",
+        AsgRemediationActionKind::ReviewUnhealthyInstanceRecovery => {
+            "review-unhealthy-instance-recovery"
+        }
+        AsgRemediationActionKind::ReviewLaunchSourceSecurityMigration => {
+            "review-launch-source-security-migration"
+        }
+    };
+
+    AsgCostRemediationAction {
+        action_id: format!("{}-remediation-{:02}", action_id_prefix, action_number),
+        kind,
+        status,
+        target_resource_id: gate.target_resource_id.clone(),
+        dry_run: true,
+        requires_approval: true,
+        approval_gate_id: Some(gate.gate_id.clone()),
+        audit_event_type,
+        idempotency_key: format!(
+            "{}-{}-{}",
+            action_id_prefix, gate.target_resource_id, action_slug
+        ),
+        blast_radius: gate.blast_radius.clone(),
+        rollback_note: format!(
+            "Before approval, record rollback or recovery notes for {} on {}.",
+            action_slug, gate.target_resource_id
+        ),
+        validation_steps: validation_steps.to_vec(),
+        evidence_reason_codes: gate.evidence_reason_codes.clone(),
+    }
+}
+
+fn asg_investigation_step(
+    existing_steps: &[AsgInvestigationStep],
+    kind: AsgInvestigationStepKind,
+    tool_name: &'static str,
+    tool_mode: AsgInvestigationToolMode,
+    citation: &AsgEvidenceCitation,
+    stop_condition: &str,
+) -> AsgInvestigationStep {
+    AsgInvestigationStep {
+        step_id: format!("autoscaling-cost-step-{:02}", existing_steps.len() + 1),
+        kind,
+        tool_name,
+        tool_mode,
+        target_resource_id: citation.resource_id.clone(),
+        reason_code: citation.reason_code.clone(),
+        stop_condition: stop_condition.to_string(),
+        evidence: citation.evidence.clone(),
+    }
+}
+
+fn asg_resilience_investigation_step(
+    existing_steps: &[AsgInvestigationStep],
+    kind: AsgInvestigationStepKind,
+    tool_name: &'static str,
+    tool_mode: AsgInvestigationToolMode,
+    citation: &AsgEvidenceCitation,
+    stop_condition: &str,
+) -> AsgInvestigationStep {
+    AsgInvestigationStep {
+        step_id: format!(
+            "autoscaling-resilience-step-{:02}",
+            existing_steps.len() + 1
+        ),
+        kind,
+        tool_name,
+        tool_mode,
+        target_resource_id: citation.resource_id.clone(),
+        reason_code: citation.reason_code.clone(),
+        stop_condition: stop_condition.to_string(),
+        evidence: citation.evidence.clone(),
+    }
+}
+
+fn asg_security_investigation_step(
+    existing_steps: &[AsgInvestigationStep],
+    kind: AsgInvestigationStepKind,
+    tool_name: &'static str,
+    tool_mode: AsgInvestigationToolMode,
+    citation: &AsgEvidenceCitation,
+    stop_condition: &str,
+) -> AsgInvestigationStep {
+    AsgInvestigationStep {
+        step_id: format!("autoscaling-security-step-{:02}", existing_steps.len() + 1),
+        kind,
+        tool_name,
+        tool_mode,
+        target_resource_id: citation.resource_id.clone(),
+        reason_code: citation.reason_code.clone(),
+        stop_condition: stop_condition.to_string(),
+        evidence: citation.evidence.clone(),
+    }
+}
+
+fn asg_mutation_gate(
+    existing_gates: &[AsgMutationApprovalGate],
+    citation: &AsgEvidenceCitation,
+    required_approval: &'static str,
+) -> AsgMutationApprovalGate {
+    AsgMutationApprovalGate {
+        gate_id: format!("autoscaling-cost-approval-{:02}", existing_gates.len() + 1),
+        target_resource_id: citation.resource_id.clone(),
+        required_approval,
+        blast_radius: format!(
+            "single Auto Scaling group {}; no mutation is executable from the investigation plan",
+            citation.resource_id
+        ),
+        rollback_note_required: true,
+        evidence_reason_codes: vec![citation.reason_code.clone()],
+    }
+}
+
+fn asg_resilience_mutation_gate(
+    existing_gates: &[AsgMutationApprovalGate],
+    citation: &AsgEvidenceCitation,
+    required_approval: &'static str,
+) -> AsgMutationApprovalGate {
+    AsgMutationApprovalGate {
+        gate_id: format!(
+            "autoscaling-resilience-approval-{:02}",
+            existing_gates.len() + 1
+        ),
+        target_resource_id: citation.resource_id.clone(),
+        required_approval,
+        blast_radius: format!(
+            "single Auto Scaling group {}; no mutation is executable from the investigation plan",
+            citation.resource_id
+        ),
+        rollback_note_required: true,
+        evidence_reason_codes: vec![citation.reason_code.clone()],
+    }
+}
+
+fn asg_security_mutation_gate(
+    existing_gates: &[AsgMutationApprovalGate],
+    citation: &AsgEvidenceCitation,
+    required_approval: &'static str,
+) -> AsgMutationApprovalGate {
+    AsgMutationApprovalGate {
+        gate_id: format!(
+            "autoscaling-security-approval-{:02}",
+            existing_gates.len() + 1
+        ),
+        target_resource_id: citation.resource_id.clone(),
+        required_approval,
+        blast_radius: format!(
+            "single Auto Scaling group {}; no mutation is executable from the investigation plan",
+            citation.resource_id
+        ),
+        rollback_note_required: true,
+        evidence_reason_codes: vec![citation.reason_code.clone()],
+    }
+}
+
+pub fn asg_cost_triage_context(report: &PillarReport) -> AsgCostTriageContext {
+    let mut facts = Vec::new();
+    let mut hypotheses = Vec::new();
+    let mut missing_data_questions = Vec::new();
+    let mut evidence_citations = Vec::new();
+
+    for finding in &report.findings {
+        facts.push(format!(
+            "{} affects {} with {:?} severity",
+            finding.reason_code, finding.resource_id, finding.severity
+        ));
+        evidence_citations.push(AsgEvidenceCitation {
+            reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            evidence: finding.evidence.clone(),
+        });
+
+        match finding.reason_code.as_str() {
+            REASON_INV_STALE_DATA => missing_data_questions.push(format!(
+                "Refresh Auto Scaling inventory for {} before generating cost triage",
+                finding.resource_id
+            )),
+            REASON_TEL_MISSING_COLLECTION_METADATA => missing_data_questions.push(format!(
+                "Collect telemetry collection metadata for {} before trusting Auto Scaling cost evidence",
+                finding.resource_id
+            )),
+            REASON_TEL_COLLECTION_ERRORS => hypotheses.push(format!(
+                "{} has telemetry collection errors; inspect collector logs, Auto Scaling API throttling, permissions, and retry evidence before changing scaling policy or capacity",
+                finding.resource_id
+            )),
+            REASON_COST_MISSING_CAPACITY_TELEMETRY => missing_data_questions.push(format!(
+                "Collect capacity telemetry for {} before quantifying ASG cost posture",
+                finding.resource_id
+            )),
+            REASON_COST_MISSING_GROUP_METRICS_TELEMETRY => missing_data_questions.push(format!(
+                "Enable or collect Auto Scaling group metrics for {} before explaining scaling cost behavior",
+                finding.resource_id
+            )),
+            REASON_COST_NO_TAGS => missing_data_questions.push(format!(
+                "Assign owner, team, project, or cost-center metadata for {} so Auto Scaling savings can be routed",
+                finding.resource_id
+            )),
+            REASON_COST_FIXED_SIZE => hypotheses.push(format!(
+                "{} may be paying for fixed capacity because scale-in is disabled by min == max; verify steady-state demand, scheduled scaling, and availability requirements before recommending capacity changes",
+                finding.resource_id
+            )),
+            _ => {}
+        }
+    }
+
+    AsgTriageContext {
+        workflow_id: "autoscaling_cost_triage_context",
+        pillar: report.pillar,
+        context_builder_id: "autoscaling-cost-deterministic-context-v1",
+        prompt_template_id: "autoscaling-cost-ai-triage-v1",
+        generation_mode: "deterministic_no_llm",
+        max_prompt_tokens: 1200,
+        provider_routing: vec!["primary_ops_llm", "fallback_ops_llm"],
+        audit_event_type: "autoscaling_ai_triage_context_built",
+        guardrails: AsgAiTriageGuardrails {
+            read_only_mode: true,
+            evidence_required: true,
+            separate_facts_from_hypotheses: true,
+            ask_for_missing_data: true,
+            no_llm_invocation: true,
+            no_mutation_planning: true,
+        },
+        facts,
+        hypotheses,
+        missing_data_questions,
+        evidence_citations,
+    }
+}
+
+pub fn asg_resilience_triage_context(report: &PillarReport) -> AsgResilienceTriageContext {
+    let mut facts = Vec::new();
+    let mut hypotheses = Vec::new();
+    let mut missing_data_questions = Vec::new();
+    let mut evidence_citations = Vec::new();
+
+    for finding in &report.findings {
+        facts.push(format!(
+            "{} affects {} with {:?} severity",
+            finding.reason_code, finding.resource_id, finding.severity
+        ));
+        evidence_citations.push(AsgEvidenceCitation {
+            reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            evidence: finding.evidence.clone(),
+        });
+
+        match finding.reason_code.as_str() {
+            REASON_INV_STALE_DATA => missing_data_questions.push(format!(
+                "Refresh Auto Scaling inventory for {} before generating resilience triage",
+                finding.resource_id
+            )),
+            REASON_TEL_MISSING_COLLECTION_METADATA => missing_data_questions.push(format!(
+                "Collect telemetry collection metadata for {} before trusting Auto Scaling resilience evidence",
+                finding.resource_id
+            )),
+            REASON_TEL_COLLECTION_ERRORS => hypotheses.push(format!(
+                "{} has telemetry collection errors; inspect collector logs, Auto Scaling API throttling, permissions, and retry evidence before changing replacement behavior",
+                finding.resource_id
+            )),
+            REASON_RES_MISSING_REPLACEMENT_TELEMETRY => missing_data_questions.push(format!(
+                "Collect replacement telemetry for {} before explaining resilience posture",
+                finding.resource_id
+            )),
+            REASON_RES_MISSING_INSTANCE_HEALTH_TELEMETRY => missing_data_questions.push(format!(
+                "Collect instance health telemetry for {} before explaining replacement behavior",
+                finding.resource_id
+            )),
+            REASON_RES_UNHEALTHY_INSTANCE_TELEMETRY => hypotheses.push(format!(
+                "{} may not be replacing unhealthy instances quickly enough; verify instance health, lifecycle state, and termination policy evidence before recommending changes",
+                finding.resource_id
+            )),
+            REASON_RES_SINGLE_AZ => hypotheses.push(format!(
+                "{} may lose replacement capacity during an AZ outage; verify cross-zone target capacity and load balancer health checks before recommending changes",
+                finding.resource_id
+            )),
+            REASON_RES_ELB_HEALTH_CHECK_EC2_ONLY => hypotheses.push(format!(
+                "{} may keep instances that fail application health checks because the group uses EC2 health checks while load balanced; verify ELB health check configuration before recommending changes",
+                finding.resource_id
+            )),
+            REASON_RES_SUSPENDED_PROCESSES => hypotheses.push(format!(
+                "{} may not replace unhealthy capacity while scaling processes are suspended; verify suspension reason and owner intent before recommending changes",
+                finding.resource_id
+            )),
+            REASON_RES_DESIRED_BELOW_MIN => missing_data_questions.push(format!(
+                "Re-sync capacity telemetry for {} because desired capacity is below min size in the latest snapshot",
+                finding.resource_id
+            )),
+            _ => {}
+        }
+    }
+
+    AsgTriageContext {
+        workflow_id: "autoscaling_resilience_triage_context",
+        pillar: report.pillar,
+        context_builder_id: "autoscaling-resilience-deterministic-context-v1",
+        prompt_template_id: "autoscaling-resilience-ai-triage-v1",
+        generation_mode: "deterministic_no_llm",
+        max_prompt_tokens: 1200,
+        provider_routing: vec!["primary_ops_llm", "fallback_ops_llm"],
+        audit_event_type: "autoscaling_resilience_ai_triage_context_built",
+        guardrails: AsgAiTriageGuardrails {
+            read_only_mode: true,
+            evidence_required: true,
+            separate_facts_from_hypotheses: true,
+            ask_for_missing_data: true,
+            no_llm_invocation: true,
+            no_mutation_planning: true,
+        },
+        facts,
+        hypotheses,
+        missing_data_questions,
+        evidence_citations,
+    }
+}
+
+pub fn asg_security_triage_context(report: &PillarReport) -> AsgSecurityTriageContext {
+    let mut facts = Vec::new();
+    let mut hypotheses = Vec::new();
+    let mut missing_data_questions = Vec::new();
+    let mut evidence_citations = Vec::new();
+
+    for finding in &report.findings {
+        facts.push(format!(
+            "{} affects {} with {:?} severity",
+            finding.reason_code, finding.resource_id, finding.severity
+        ));
+        evidence_citations.push(AsgEvidenceCitation {
+            reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            evidence: finding.evidence.clone(),
+        });
+
+        match finding.reason_code.as_str() {
+            REASON_INV_STALE_DATA => missing_data_questions.push(format!(
+                "Refresh Auto Scaling inventory for {} before generating security triage",
+                finding.resource_id
+            )),
+            REASON_TEL_MISSING_COLLECTION_METADATA => missing_data_questions.push(format!(
+                "Collect telemetry collection metadata for {} before trusting Auto Scaling security evidence",
+                finding.resource_id
+            )),
+            REASON_TEL_COLLECTION_ERRORS | REASON_SEC_TELEMETRY_COLLECTION_ERRORS => {
+                hypotheses.push(format!(
+                    "{} has telemetry collection errors; inspect collector logs, Auto Scaling API throttling, permissions, and retry evidence before explaining security posture",
+                    finding.resource_id
+                ))
+            }
+            REASON_SEC_MISSING_INSTANCE_TELEMETRY => missing_data_questions.push(format!(
+                "Collect instance health telemetry for {} before explaining Auto Scaling security posture",
+                finding.resource_id
+            )),
+            REASON_SEC_LEGACY_LAUNCH_CONFIGURATION => hypotheses.push(format!(
+                "{} uses a legacy launch configuration; verify AMI source, IAM instance profile, user-data handling, and launch-template migration evidence before recommending security changes",
+                finding.resource_id
+            )),
+            REASON_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED => missing_data_questions.push(format!(
+                "Collect launch template, mixed instances policy, or launch configuration evidence for {} before judging Auto Scaling launch-source security",
+                finding.resource_id
+            )),
+            _ => {}
+        }
+    }
+
+    AsgTriageContext {
+        workflow_id: "autoscaling_security_triage_context",
+        pillar: report.pillar,
+        context_builder_id: "autoscaling-security-deterministic-context-v1",
+        prompt_template_id: "autoscaling-security-ai-triage-v1",
+        generation_mode: "deterministic_no_llm",
+        max_prompt_tokens: 1200,
+        provider_routing: vec!["primary_ops_llm", "fallback_ops_llm"],
+        audit_event_type: "autoscaling_security_ai_triage_context_built",
+        guardrails: AsgAiTriageGuardrails {
+            read_only_mode: true,
+            evidence_required: true,
+            separate_facts_from_hypotheses: true,
+            ask_for_missing_data: true,
+            no_llm_invocation: true,
+            no_mutation_planning: true,
+        },
+        facts,
+        hypotheses,
+        missing_data_questions,
+        evidence_citations,
+    }
+}
+
+pub fn asg_cost_posture_summary(report: &PillarReport) -> AsgCostPostureSummary {
+    let rules = vec![
+        asg_posture_rule(
+            report,
+            "asg-cost-inventory-freshness",
+            &[REASON_INV_STALE_DATA],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-cost-telemetry-collection-metadata-present",
+            &[REASON_TEL_MISSING_COLLECTION_METADATA],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-cost-telemetry-collection-errors-clear",
+            &[REASON_TEL_COLLECTION_ERRORS],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-cost-capacity-telemetry-present",
+            &[REASON_COST_MISSING_CAPACITY_TELEMETRY],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-cost-group-metrics-telemetry-present",
+            &[REASON_COST_MISSING_GROUP_METRICS_TELEMETRY],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-cost-allocation-tags-present",
+            &[REASON_COST_NO_TAGS],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-cost-scale-in-capable",
+            &[REASON_COST_FIXED_SIZE],
+        ),
+    ];
+    asg_posture_summary(rules)
+}
+
+pub fn asg_resilience_posture_summary(report: &PillarReport) -> AsgResiliencePostureSummary {
+    let rules = vec![
+        asg_posture_rule(
+            report,
+            "asg-resilience-inventory-freshness",
+            &[REASON_INV_STALE_DATA],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-resilience-telemetry-collection-metadata-present",
+            &[REASON_TEL_MISSING_COLLECTION_METADATA],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-resilience-telemetry-collection-errors-clear",
+            &[REASON_TEL_COLLECTION_ERRORS],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-resilience-replacement-telemetry-present",
+            &[REASON_RES_MISSING_REPLACEMENT_TELEMETRY],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-resilience-instance-health-telemetry-present",
+            &[REASON_RES_MISSING_INSTANCE_HEALTH_TELEMETRY],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-resilience-instance-health-clean",
+            &[REASON_RES_UNHEALTHY_INSTANCE_TELEMETRY],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-resilience-multi-az-placement",
+            &[REASON_RES_SINGLE_AZ],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-resilience-elb-health-checks",
+            &[REASON_RES_ELB_HEALTH_CHECK_EC2_ONLY],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-resilience-scaling-processes-active",
+            &[REASON_RES_SUSPENDED_PROCESSES],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-resilience-desired-capacity-at-or-above-min",
+            &[REASON_RES_DESIRED_BELOW_MIN],
+        ),
+    ];
+    asg_posture_summary(rules)
+}
+
+pub fn asg_security_posture_summary(report: &PillarReport) -> AsgSecurityPostureSummary {
+    let rules = vec![
+        asg_posture_rule(
+            report,
+            "asg-security-inventory-freshness",
+            &[REASON_INV_STALE_DATA],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-security-telemetry-collection-metadata-present",
+            &[REASON_TEL_MISSING_COLLECTION_METADATA],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-security-telemetry-collection-errors-clear",
+            &[
+                REASON_TEL_COLLECTION_ERRORS,
+                REASON_SEC_TELEMETRY_COLLECTION_ERRORS,
+            ],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-security-instance-telemetry-present",
+            &[REASON_SEC_MISSING_INSTANCE_TELEMETRY],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-security-launch-source-modern",
+            &[REASON_SEC_LEGACY_LAUNCH_CONFIGURATION],
+        ),
+        asg_posture_rule(
+            report,
+            "asg-security-launch-source-collected",
+            &[REASON_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED],
+        ),
+    ];
+    asg_posture_summary(rules)
+}
+
+fn asg_posture_summary(rules: Vec<AsgPostureRule>) -> AsgPostureSummary {
+    let affected_resources = sorted_unique_resources(
+        rules
+            .iter()
+            .flat_map(|rule| rule.affected_resources.iter().cloned()),
+    );
+    let rules_failed = rules
+        .iter()
+        .filter(|rule| rule.status == AsgPostureStatus::Fail)
+        .count();
+
+    AsgPostureSummary {
+        status: if rules_failed == 0 {
+            AsgPostureStatus::Pass
+        } else {
+            AsgPostureStatus::Fail
+        },
+        rules_evaluated: rules.len(),
+        rules_failed,
+        affected_resources,
+        rules,
+    }
+}
+
+fn asg_posture_rule(
+    report: &PillarReport,
+    rule_id: &'static str,
+    reason_codes: &[&'static str],
+) -> AsgPostureRule {
+    let affected_resources = sorted_unique_resources(
+        report
+            .findings
+            .iter()
+            .filter(|finding| reason_codes.contains(&finding.reason_code.as_str()))
+            .map(|finding| finding.resource_id.clone()),
+    );
+
+    AsgPostureRule {
+        rule_id,
+        status: if affected_resources.is_empty() {
+            AsgPostureStatus::Pass
+        } else {
+            AsgPostureStatus::Fail
+        },
+        reason_codes: reason_codes.to_vec(),
+        affected_resources,
+        suppression_supported: true,
+        assignment_supported: true,
+    }
+}
+
+fn sorted_unique_resources(resources: impl Iterator<Item = String>) -> Vec<String> {
+    resources
+        .filter(|resource_id| !resource_id.is_empty())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 fn data_i64(resource_data: &Value, key: &str) -> Option<i64> {
@@ -286,7 +3155,7 @@ fn evaluate_cost(resource: &AwsResourceModel, findings: &mut Vec<InventoryFindin
                     "Auto Scaling group {} is pinned to a fixed size (min == max == {}); it can never scale in, so idle capacity is still billed",
                     resource.resource_id, max
                 ),
-                evidence: json!({ "min_size": min, "max_size": max }),
+                evidence: json!({ "min_size": min, "max_size": max, "tags": resource.tags }),
             });
         }
     }
@@ -307,6 +3176,7 @@ fn evaluate_security(resource: &AwsResourceModel, findings: &mut Vec<InventoryFi
             evidence: json!({
                 "required_fields": ["instance_health"],
                 "resource_data_keys": resource_data_keys(resource),
+                "tags": resource.tags,
             }),
         });
     }
@@ -327,6 +3197,7 @@ fn evaluate_security(resource: &AwsResourceModel, findings: &mut Vec<InventoryFi
             evidence: json!({
                 "telemetry_collection_error_count": telemetry_error_count,
                 "telemetry_collection_errors": resource.resource_data.get("telemetry_collection_errors"),
+                "tags": resource.tags,
             }),
         });
     }
@@ -357,7 +3228,8 @@ fn evaluate_security(resource: &AwsResourceModel, findings: &mut Vec<InventoryFi
             ),
             evidence: json!({
                 "launch_configuration_name":
-                    data_str(&resource.resource_data, "launch_configuration_name")
+                    data_str(&resource.resource_data, "launch_configuration_name"),
+                "tags": resource.tags,
             }),
         });
     } else if !uses_launch_template && !uses_mixed_instances_policy {
@@ -371,7 +3243,10 @@ fn evaluate_security(resource: &AwsResourceModel, findings: &mut Vec<InventoryFi
                 "Launch source for Auto Scaling group {} is not collected yet (no launch configuration, launch template, or mixed instances policy recorded); security pillar cannot be fully assessed",
                 resource.resource_id
             ),
-            evidence: json!({ "launch_source_collected": false }),
+            evidence: json!({
+                "launch_source_collected": false,
+                "tags": resource.tags,
+            }),
         });
     }
 }
@@ -427,6 +3302,7 @@ fn evaluate_resilience(resource: &AwsResourceModel, findings: &mut Vec<Inventory
                 "required_fields": instance_health_fields,
                 "missing_fields": missing_instance_health,
                 "resource_data_keys": resource_data_keys(resource),
+                "tags": resource.tags,
             }),
         });
     }
@@ -446,6 +3322,7 @@ fn evaluate_resilience(resource: &AwsResourceModel, findings: &mut Vec<Inventory
             evidence: json!({
                 "unhealthy_instance_count": unhealthy,
                 "instance_health": resource.resource_data.get("instance_health"),
+                "tags": resource.tags,
             }),
         });
     }
@@ -463,7 +3340,8 @@ fn evaluate_resilience(resource: &AwsResourceModel, findings: &mut Vec<Inventory
                     resource.resource_id, az_count
                 ),
                 evidence: json!({
-                    "availability_zones": resource.resource_data.get("availability_zones")
+                    "availability_zones": resource.resource_data.get("availability_zones"),
+                    "tags": resource.tags,
                 }),
             });
         }
@@ -483,7 +3361,11 @@ fn evaluate_resilience(resource: &AwsResourceModel, findings: &mut Vec<Inventory
                 "Auto Scaling group {} is attached to a load balancer but uses EC2-only health checks; instances failing application health checks are not replaced",
                 resource.resource_id
             ),
-            evidence: json!({ "health_check_type": "EC2", "elb_attached": true }),
+            evidence: json!({
+                "health_check_type": "EC2",
+                "elb_attached": true,
+                "tags": resource.tags,
+            }),
         });
     }
 
@@ -499,7 +3381,10 @@ fn evaluate_resilience(resource: &AwsResourceModel, findings: &mut Vec<Inventory
                 "Auto Scaling group {} has {} scaling process(es) suspended; unhealthy instances may not be replaced while suspension is in effect",
                 resource.resource_id, suspended
             ),
-            evidence: json!({ "suspended_process_count": suspended }),
+            evidence: json!({
+                "suspended_process_count": suspended,
+                "tags": resource.tags,
+            }),
         });
     }
 
@@ -517,7 +3402,11 @@ fn evaluate_resilience(resource: &AwsResourceModel, findings: &mut Vec<Inventory
                     "Auto Scaling group {} reports desired capacity {} below min size {}; this is an inconsistent collection snapshot worth re-syncing",
                     resource.resource_id, desired, min
                 ),
-                evidence: json!({ "desired_capacity": desired, "min_size": min }),
+                evidence: json!({
+                    "desired_capacity": desired,
+                    "min_size": min,
+                    "tags": resource.tags,
+                }),
             });
         }
     }
@@ -934,6 +3823,2009 @@ mod tests {
             "expected capacity telemetry gap: {:?}",
             report.findings
         );
+    }
+
+    #[test]
+    fn asg_cost_posture_summary_flags_cost_rules() {
+        let mut missing_data = healthy_data();
+        for field in [
+            "enabled_metrics",
+            "enabled_metric_count",
+            "desired_capacity",
+            "telemetry_collection_duration_ms",
+        ] {
+            missing_data.as_object_mut().expect("object").remove(field);
+        }
+        let missing = fixture("asg-cost-missing", json!({}), missing_data, now());
+
+        let mut fixed_data = healthy_data();
+        fixed_data["min_size"] = json!(3);
+        fixed_data["max_size"] = json!(3);
+        fixed_data["desired_capacity"] = json!(3);
+        let fixed = fixture("asg-fixed", json!({"team": "core"}), fixed_data, now());
+
+        let report = evaluate_autoscaling_fleet(&[missing, fixed], Pillar::Cost, now());
+        let posture = asg_cost_posture_summary(&report);
+
+        assert_eq!(posture.status, AsgPostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 7);
+        assert_eq!(posture.rules_failed, 5);
+        assert_eq!(
+            posture.affected_resources,
+            vec!["asg-cost-missing".to_string(), "asg-fixed".to_string()]
+        );
+        assert!(posture
+            .rules
+            .iter()
+            .all(|rule| { rule.suppression_supported && rule.assignment_supported }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-cost-telemetry-collection-metadata-present"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_TEL_MISSING_COLLECTION_METADATA]
+                && rule.affected_resources == vec!["asg-cost-missing".to_string()]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-cost-capacity-telemetry-present"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_COST_MISSING_CAPACITY_TELEMETRY]
+                && rule.affected_resources == vec!["asg-cost-missing".to_string()]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-cost-group-metrics-telemetry-present"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_COST_MISSING_GROUP_METRICS_TELEMETRY]
+                && rule.affected_resources == vec!["asg-cost-missing".to_string()]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-cost-allocation-tags-present"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_COST_NO_TAGS]
+                && rule.affected_resources == vec!["asg-cost-missing".to_string()]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-cost-scale-in-capable"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_COST_FIXED_SIZE]
+                && rule.affected_resources == vec!["asg-fixed".to_string()]
+        }));
+    }
+
+    #[test]
+    fn asg_cost_posture_summary_tracks_stale_inventory() {
+        let mut stale = fixture("asg-stale", json!({"team": "core"}), healthy_data(), now());
+        stale.last_refreshed = now() - Duration::hours(48);
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Cost, now());
+        let posture = asg_cost_posture_summary(&report);
+
+        assert_eq!(posture.status, AsgPostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 7);
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-cost-inventory-freshness"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_INV_STALE_DATA]
+                && rule.affected_resources == vec!["asg-stale".to_string()]
+        }));
+    }
+
+    #[test]
+    fn asg_cost_posture_summary_passes_for_healthy_group() {
+        let healthy = fixture("asg-ok", json!({"team": "core"}), healthy_data(), now());
+        let report = evaluate_autoscaling_fleet(&[healthy], Pillar::Cost, now());
+        let posture = asg_cost_posture_summary(&report);
+
+        assert_eq!(posture.status, AsgPostureStatus::Pass);
+        assert_eq!(posture.rules_evaluated, 7);
+        assert_eq!(posture.rules_failed, 0);
+        assert!(posture.affected_resources.is_empty());
+        assert!(posture
+            .rules
+            .iter()
+            .all(|rule| rule.status == AsgPostureStatus::Pass));
+    }
+
+    #[test]
+    fn asg_resilience_posture_summary_flags_replacement_rules() {
+        let mut single_az_data = healthy_data();
+        single_az_data["availability_zones"] = json!(["us-east-1a"]);
+        single_az_data["health_check_type"] = json!("EC2");
+        single_az_data["suspended_process_count"] = json!(1);
+        let single_az = fixture(
+            "asg-single-az",
+            json!({"team": "core"}),
+            single_az_data,
+            now(),
+        );
+
+        let mut unhealthy_data = healthy_data();
+        unhealthy_data["unhealthy_instance_count"] = json!(1);
+        unhealthy_data["instance_health"] = json!([
+            {
+                "instance_id": "i-unhealthy",
+                "health_status": "Unhealthy",
+                "lifecycle_state": "InService"
+            }
+        ]);
+        let unhealthy = fixture(
+            "asg-unhealthy-posture",
+            json!({"team": "core"}),
+            unhealthy_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[single_az, unhealthy], Pillar::Resilience, now());
+        let posture = asg_resilience_posture_summary(&report);
+
+        assert_eq!(posture.status, AsgPostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 10);
+        assert_eq!(posture.rules_failed, 4);
+        assert_eq!(
+            posture.affected_resources,
+            vec![
+                "asg-single-az".to_string(),
+                "asg-unhealthy-posture".to_string()
+            ]
+        );
+        assert!(posture
+            .rules
+            .iter()
+            .all(|rule| { rule.suppression_supported && rule.assignment_supported }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-resilience-multi-az-placement"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_RES_SINGLE_AZ]
+                && rule.affected_resources == vec!["asg-single-az".to_string()]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-resilience-elb-health-checks"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_RES_ELB_HEALTH_CHECK_EC2_ONLY]
+                && rule.affected_resources == vec!["asg-single-az".to_string()]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-resilience-scaling-processes-active"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_RES_SUSPENDED_PROCESSES]
+                && rule.affected_resources == vec!["asg-single-az".to_string()]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-resilience-instance-health-clean"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_RES_UNHEALTHY_INSTANCE_TELEMETRY]
+                && rule.affected_resources == vec!["asg-unhealthy-posture".to_string()]
+        }));
+    }
+
+    #[test]
+    fn asg_resilience_posture_summary_passes_for_healthy_multi_az_group() {
+        let healthy = fixture("asg-res-ok", json!({"team": "core"}), healthy_data(), now());
+        let report = evaluate_autoscaling_fleet(&[healthy], Pillar::Resilience, now());
+        let posture = asg_resilience_posture_summary(&report);
+
+        assert_eq!(posture.status, AsgPostureStatus::Pass);
+        assert_eq!(posture.rules_evaluated, 10);
+        assert_eq!(posture.rules_failed, 0);
+        assert!(posture.affected_resources.is_empty());
+        assert!(posture
+            .rules
+            .iter()
+            .all(|rule| rule.status == AsgPostureStatus::Pass));
+    }
+
+    #[test]
+    fn asg_resilience_posture_summary_tracks_stale_inventory() {
+        let mut stale = fixture(
+            "asg-res-stale",
+            json!({"team": "core"}),
+            healthy_data(),
+            now(),
+        );
+        stale.last_refreshed = now() - Duration::hours(48);
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Resilience, now());
+        let posture = asg_resilience_posture_summary(&report);
+
+        assert_eq!(posture.status, AsgPostureStatus::Fail);
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-resilience-inventory-freshness"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_INV_STALE_DATA]
+                && rule.affected_resources == vec!["asg-res-stale".to_string()]
+        }));
+    }
+
+    #[test]
+    fn asg_security_posture_summary_flags_security_rules() {
+        let mut legacy_data = healthy_data();
+        legacy_data["launch_configuration_name"] = json!("legacy-lc");
+        legacy_data["uses_launch_template"] = json!(false);
+        let legacy = fixture(
+            "asg-legacy-launch",
+            json!({"team": "core"}),
+            legacy_data,
+            now(),
+        );
+
+        let mut launch_gap_data = healthy_data();
+        launch_gap_data["uses_launch_template"] = json!(false);
+        launch_gap_data["uses_mixed_instances_policy"] = json!(false);
+        let launch_gap = fixture(
+            "asg-launch-source-gap",
+            json!({"team": "core"}),
+            launch_gap_data,
+            now(),
+        );
+
+        let mut missing_instance_data = healthy_data();
+        missing_instance_data
+            .as_object_mut()
+            .unwrap()
+            .remove("instance_health");
+        let missing_instance = fixture(
+            "asg-missing-instance-telemetry",
+            json!({"team": "core"}),
+            missing_instance_data,
+            now(),
+        );
+
+        let mut collection_error_data = healthy_data();
+        collection_error_data["telemetry_collection_success_count"] = json!(0);
+        collection_error_data["telemetry_collection_failure_count"] = json!(1);
+        collection_error_data["telemetry_collection_error_count"] = json!(1);
+        collection_error_data["telemetry_collection_errors"] = json!([
+            {
+                "source": "autoscaling",
+                "operation": "DescribeAutoScalingGroups",
+                "error": "throttled"
+            }
+        ]);
+        let collection_error = fixture(
+            "asg-security-collection-error",
+            json!({"team": "core"}),
+            collection_error_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(
+            &[legacy, launch_gap, missing_instance, collection_error],
+            Pillar::Security,
+            now(),
+        );
+        let posture = asg_security_posture_summary(&report);
+
+        assert_eq!(posture.status, AsgPostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 6);
+        assert_eq!(posture.rules_failed, 4);
+        assert_eq!(
+            posture.affected_resources,
+            vec![
+                "asg-launch-source-gap".to_string(),
+                "asg-legacy-launch".to_string(),
+                "asg-missing-instance-telemetry".to_string(),
+                "asg-security-collection-error".to_string()
+            ]
+        );
+        assert!(posture
+            .rules
+            .iter()
+            .all(|rule| { rule.suppression_supported && rule.assignment_supported }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-security-telemetry-collection-errors-clear"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes
+                    == vec![
+                        REASON_TEL_COLLECTION_ERRORS,
+                        REASON_SEC_TELEMETRY_COLLECTION_ERRORS,
+                    ]
+                && rule.affected_resources == vec!["asg-security-collection-error".to_string()]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-security-instance-telemetry-present"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_SEC_MISSING_INSTANCE_TELEMETRY]
+                && rule.affected_resources == vec!["asg-missing-instance-telemetry".to_string()]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-security-launch-source-modern"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_SEC_LEGACY_LAUNCH_CONFIGURATION]
+                && rule.affected_resources == vec!["asg-legacy-launch".to_string()]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-security-launch-source-collected"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED]
+                && rule.affected_resources == vec!["asg-launch-source-gap".to_string()]
+        }));
+    }
+
+    #[test]
+    fn asg_security_posture_summary_tracks_stale_inventory_and_missing_metadata() {
+        let mut stale = fixture(
+            "asg-security-stale",
+            json!({"team": "core"}),
+            healthy_data(),
+            now(),
+        );
+        stale.last_refreshed = now() - Duration::hours(48);
+
+        let mut missing_metadata_data = healthy_data();
+        missing_metadata_data
+            .as_object_mut()
+            .unwrap()
+            .remove("telemetry_collection_started_at");
+        let missing_metadata = fixture(
+            "asg-security-missing-metadata",
+            json!({"team": "core"}),
+            missing_metadata_data,
+            now(),
+        );
+
+        let report =
+            evaluate_autoscaling_fleet(&[stale, missing_metadata], Pillar::Security, now());
+        let posture = asg_security_posture_summary(&report);
+
+        assert_eq!(posture.status, AsgPostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 6);
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-security-inventory-freshness"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_INV_STALE_DATA]
+                && rule.affected_resources == vec!["asg-security-stale".to_string()]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "asg-security-telemetry-collection-metadata-present"
+                && rule.status == AsgPostureStatus::Fail
+                && rule.reason_codes == vec![REASON_TEL_MISSING_COLLECTION_METADATA]
+                && rule.affected_resources == vec!["asg-security-missing-metadata".to_string()]
+        }));
+    }
+
+    #[test]
+    fn asg_security_posture_summary_passes_for_modern_launch_template_group() {
+        let healthy = fixture("asg-sec-ok", json!({"team": "core"}), healthy_data(), now());
+        let report = evaluate_autoscaling_fleet(&[healthy], Pillar::Security, now());
+        let posture = asg_security_posture_summary(&report);
+
+        assert_eq!(posture.status, AsgPostureStatus::Pass);
+        assert_eq!(posture.rules_evaluated, 6);
+        assert_eq!(posture.rules_failed, 0);
+        assert!(posture.affected_resources.is_empty());
+        assert!(posture
+            .rules
+            .iter()
+            .all(|rule| rule.status == AsgPostureStatus::Pass));
+    }
+
+    #[test]
+    fn asg_security_triage_context_separates_facts_hypotheses_and_questions() {
+        let mut legacy_data = healthy_data();
+        legacy_data["launch_configuration_name"] = json!("legacy-lc");
+        legacy_data["uses_launch_template"] = json!(false);
+        let legacy = fixture(
+            "asg-security-legacy-triage",
+            json!({"team": "core"}),
+            legacy_data,
+            now(),
+        );
+
+        let mut missing_instance_data = healthy_data();
+        missing_instance_data
+            .as_object_mut()
+            .expect("object")
+            .remove("instance_health");
+        let missing_instance = fixture(
+            "asg-security-missing-instance-triage",
+            json!({"team": "core"}),
+            missing_instance_data,
+            now(),
+        );
+
+        let mut collection_error_data = healthy_data();
+        collection_error_data["telemetry_collection_success_count"] = json!(0);
+        collection_error_data["telemetry_collection_failure_count"] = json!(1);
+        collection_error_data["telemetry_collection_error_count"] = json!(1);
+        collection_error_data["telemetry_collection_errors"] = json!([
+            {
+                "source": "autoscaling",
+                "operation": "DescribeAutoScalingGroups",
+                "error": "throttled"
+            }
+        ]);
+        let collection_error = fixture(
+            "asg-security-error-triage",
+            json!({"team": "core"}),
+            collection_error_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(
+            &[legacy, missing_instance, collection_error],
+            Pillar::Security,
+            now(),
+        );
+        let triage = asg_security_triage_context(&report);
+
+        assert_eq!(triage.workflow_id, "autoscaling_security_triage_context");
+        assert_eq!(
+            triage.context_builder_id,
+            "autoscaling-security-deterministic-context-v1"
+        );
+        assert_eq!(
+            triage.prompt_template_id,
+            "autoscaling-security-ai-triage-v1"
+        );
+        assert_eq!(triage.generation_mode, "deterministic_no_llm");
+        assert_eq!(triage.max_prompt_tokens, 1200);
+        assert_eq!(
+            triage.provider_routing,
+            vec!["primary_ops_llm", "fallback_ops_llm"]
+        );
+        assert_eq!(
+            triage.audit_event_type,
+            "autoscaling_security_ai_triage_context_built"
+        );
+        assert!(triage.guardrails.read_only_mode);
+        assert!(triage.guardrails.evidence_required);
+        assert!(triage.guardrails.separate_facts_from_hypotheses);
+        assert!(triage.guardrails.ask_for_missing_data);
+        assert!(triage.guardrails.no_llm_invocation);
+        assert!(triage.guardrails.no_mutation_planning);
+        assert!(triage
+            .facts
+            .iter()
+            .any(|fact| fact.contains(REASON_SEC_LEGACY_LAUNCH_CONFIGURATION)));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("legacy launch configuration")));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("collector logs")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("instance health telemetry")));
+        assert_eq!(triage.evidence_citations.len(), report.findings.len());
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_SEC_LEGACY_LAUNCH_CONFIGURATION
+                && citation.resource_id == "asg-security-legacy-triage"
+        }));
+    }
+
+    #[test]
+    fn asg_security_triage_context_tracks_stale_and_missing_launch_source_evidence() {
+        let mut stale = fixture(
+            "asg-security-stale-triage",
+            json!({"team": "core"}),
+            healthy_data(),
+            now(),
+        );
+        stale.last_refreshed = now() - Duration::hours(48);
+
+        let mut launch_gap_data = healthy_data();
+        launch_gap_data["uses_launch_template"] = json!(false);
+        launch_gap_data["uses_mixed_instances_policy"] = json!(false);
+        let launch_gap = fixture(
+            "asg-security-launch-gap-triage",
+            json!({"team": "core"}),
+            launch_gap_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale, launch_gap], Pillar::Security, now());
+        let triage = asg_security_triage_context(&report);
+
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("Refresh Auto Scaling inventory")));
+        assert!(triage.missing_data_questions.iter().any(|question| question
+            .contains("Collect launch template, mixed instances policy, or launch configuration")));
+        assert_eq!(triage.evidence_citations.len(), report.findings.len());
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_SEC_LAUNCH_SOURCE_DATA_NOT_COLLECTED
+                && citation.resource_id == "asg-security-launch-gap-triage"
+        }));
+    }
+
+    #[test]
+    fn asg_security_agentic_investigation_plan_is_read_only_until_approval() {
+        let mut legacy_data = healthy_data();
+        legacy_data["launch_configuration_name"] = json!("legacy-lc");
+        legacy_data["uses_launch_template"] = json!(false);
+        let legacy = fixture(
+            "asg-security-legacy-plan",
+            json!({"team": "core"}),
+            legacy_data,
+            now(),
+        );
+
+        let mut missing_instance_data = healthy_data();
+        missing_instance_data
+            .as_object_mut()
+            .expect("object")
+            .remove("instance_health");
+        let missing_instance = fixture(
+            "asg-security-missing-instance-plan",
+            json!({"team": "core"}),
+            missing_instance_data,
+            now(),
+        );
+
+        let mut launch_gap_data = healthy_data();
+        launch_gap_data["uses_launch_template"] = json!(false);
+        launch_gap_data["uses_mixed_instances_policy"] = json!(false);
+        let launch_gap = fixture(
+            "asg-security-launch-gap-plan",
+            json!({"team": "core"}),
+            launch_gap_data,
+            now(),
+        );
+
+        let mut collection_error_data = healthy_data();
+        collection_error_data["telemetry_collection_success_count"] = json!(0);
+        collection_error_data["telemetry_collection_failure_count"] = json!(1);
+        collection_error_data["telemetry_collection_error_count"] = json!(1);
+        collection_error_data["telemetry_collection_errors"] = json!([
+            {
+                "source": "autoscaling",
+                "operation": "DescribeAutoScalingGroups",
+                "error": "throttled"
+            }
+        ]);
+        let collection_error = fixture(
+            "asg-security-collection-error-plan",
+            json!({"team": "core"}),
+            collection_error_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(
+            &[legacy, missing_instance, launch_gap, collection_error],
+            Pillar::Security,
+            now(),
+        );
+        let plan = asg_security_agentic_investigation_plan(&report);
+
+        assert_eq!(
+            plan.workflow_id,
+            "autoscaling_security_agentic_investigation"
+        );
+        assert_eq!(plan.default_tool_mode, AsgInvestigationToolMode::ReadOnly);
+        assert!(plan.replay_required);
+        assert_eq!(plan.evidence_citations.len(), report.findings.len());
+        assert_eq!(plan.approval_gates.len(), 1);
+        assert_eq!(
+            plan.approval_gates[0].gate_id,
+            "autoscaling-security-approval-01"
+        );
+        assert_eq!(
+            plan.approval_gates[0].target_resource_id,
+            "asg-security-legacy-plan"
+        );
+        assert!(plan.approval_gates[0].rollback_note_required);
+        assert_eq!(
+            plan.approval_gates[0].evidence_reason_codes,
+            vec![REASON_SEC_LEGACY_LAUNCH_CONFIGURATION.to_string()]
+        );
+
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "autoscaling.inspect_launch_configuration_security"
+                && step.kind == AsgInvestigationStepKind::Compare
+                && step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                && step.target_resource_id == "asg-security-legacy-plan"
+                && step.stop_condition.contains("cost side-effect evidence")
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "autoscaling.describe_instance_health"
+                && step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                && step.target_resource_id == "asg-security-missing-instance-plan"
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "autoscaling.inspect_launch_source_configuration"
+                && step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                && step.target_resource_id == "asg-security-launch-gap-plan"
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "autoscaling.inspect_collector_errors"
+                && step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                && step.target_resource_id == "asg-security-collection-error-plan"
+        }));
+        let final_step = plan.steps.last().expect("approval planning step");
+        assert_eq!(
+            final_step.tool_name,
+            "autoscaling.security.prepare_approval_plan"
+        );
+        assert_eq!(
+            final_step.tool_mode,
+            AsgInvestigationToolMode::ApprovalRequired
+        );
+        assert_eq!(
+            final_step.reason_code,
+            "ASG_SECURITY_APPROVAL_PLAN_REQUIRED"
+        );
+        assert_eq!(final_step.evidence["approval_gate_count"], 1);
+        assert!(plan.steps.iter().all(|step| {
+            step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                || step.tool_name == "autoscaling.security.prepare_approval_plan"
+        }));
+    }
+
+    #[test]
+    fn asg_security_agentic_investigation_plan_omits_approval_step_without_gates() {
+        let mut stale = fixture(
+            "asg-security-stale-plan",
+            json!({"team": "core"}),
+            healthy_data(),
+            now(),
+        );
+        stale.last_refreshed = now() - Duration::hours(48);
+
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Security, now());
+        let plan = asg_security_agentic_investigation_plan(&report);
+
+        assert!(plan.approval_gates.is_empty());
+        assert!(plan
+            .steps
+            .iter()
+            .all(|step| step.tool_mode == AsgInvestigationToolMode::ReadOnly));
+        assert!(!plan
+            .steps
+            .iter()
+            .any(|step| step.tool_name == "autoscaling.security.prepare_approval_plan"));
+    }
+
+    #[test]
+    fn asg_security_remediation_workflow_plans_dry_run_actions_until_approved() {
+        let mut legacy_data = healthy_data();
+        legacy_data["launch_configuration_name"] = json!("legacy-lc");
+        legacy_data["uses_launch_template"] = json!(false);
+        let legacy = fixture(
+            "asg-security-legacy-remediation",
+            json!({"owner": "security"}),
+            legacy_data,
+            now(),
+        );
+
+        let mut launch_gap_data = healthy_data();
+        launch_gap_data["uses_launch_template"] = json!(false);
+        launch_gap_data["uses_mixed_instances_policy"] = json!(false);
+        let launch_gap = fixture(
+            "asg-security-launch-gap-remediation",
+            json!({"owner": "security"}),
+            launch_gap_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[legacy, launch_gap], Pillar::Security, now());
+        let workflow = asg_security_remediation_workflow(&report);
+
+        assert_eq!(
+            workflow.workflow_id,
+            "autoscaling_security_safe_remediation"
+        );
+        assert!(workflow.read_only_mode);
+        assert_eq!(
+            workflow.rbac_permission,
+            "aws.autoscaling.security.remediation.approve"
+        );
+        assert_eq!(
+            workflow.audit_stream,
+            "autoscaling_security_remediation_audit"
+        );
+        assert!(!workflow.stale_data_blocks_execution);
+        assert_eq!(workflow.approval_gates.len(), 1);
+        assert_eq!(workflow.actions.len(), 1);
+
+        let action = workflow
+            .actions
+            .first()
+            .expect("security remediation action");
+        assert_eq!(
+            action.kind,
+            AsgRemediationActionKind::ReviewLaunchSourceSecurityMigration
+        );
+        assert_eq!(action.target_resource_id, "asg-security-legacy-remediation");
+        assert!(action.dry_run);
+        assert!(action.requires_approval);
+        assert_eq!(action.status, AsgRemediationStatus::DryRunPendingApproval);
+        assert_eq!(
+            action.audit_event_type,
+            "autoscaling.security.remediation.dry_run_planned"
+        );
+        assert_eq!(
+            action.approval_gate_id.as_deref(),
+            Some("autoscaling-security-approval-01")
+        );
+        assert!(action
+            .idempotency_key
+            .starts_with("autoscaling-security-asg-security-legacy-remediation-"));
+        assert!(action.rollback_note.contains("rollback"));
+        assert!(action.blast_radius.contains("no mutation is executable"));
+        assert!(action.validation_steps.contains(&"verify security owner, blast radius, launch-template migration path, and cost side-effect review"));
+        assert!(action
+            .evidence_reason_codes
+            .contains(&REASON_SEC_LEGACY_LAUNCH_CONFIGURATION.to_string()));
+    }
+
+    #[test]
+    fn asg_security_remediation_workflow_blocks_execution_when_data_is_stale() {
+        let mut stale_data = healthy_data();
+        stale_data["launch_configuration_name"] = json!("legacy-lc");
+        stale_data["uses_launch_template"] = json!(false);
+        let stale = fixture(
+            "asg-security-stale-remediation",
+            json!({"owner": "security"}),
+            stale_data,
+            now() - Duration::hours(30),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Security, now());
+        let workflow = asg_security_remediation_workflow(&report);
+
+        assert!(workflow.stale_data_blocks_execution);
+        assert!(!workflow.actions.is_empty());
+        assert!(workflow.actions.iter().all(|action| {
+            action.dry_run && action.status == AsgRemediationStatus::BlockedMissingEvidence
+        }));
+    }
+
+    #[test]
+    fn asg_security_slo_policy_snapshot_tracks_owner_policy_and_notifications() {
+        let mut legacy_data = healthy_data();
+        legacy_data["launch_configuration_name"] = json!("legacy-lc");
+        legacy_data["uses_launch_template"] = json!(false);
+        let legacy = fixture(
+            "asg-security-slo-legacy",
+            json!({"owner": "security", "environment": "prod", "application": "payments"}),
+            legacy_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[legacy], Pillar::Security, now());
+        let snapshot = asg_security_slo_policy_snapshot(&report);
+
+        assert_eq!(snapshot.workflow_id, "autoscaling_security_slo_policy");
+        assert!(snapshot.read_only_mode);
+        assert!(snapshot.freshness_required);
+        assert_eq!(
+            snapshot.objective.objective_id,
+            "autoscaling-security-score-min-95"
+        );
+        assert_eq!(snapshot.objective.target_score_min, 95);
+        assert_eq!(snapshot.objective.current_score, report.score);
+        assert_eq!(
+            snapshot.objective.status,
+            AsgSecurityObjectiveStatus::AtRisk
+        );
+        assert_eq!(
+            snapshot.objective.trend_direction,
+            AsgSecurityTrendDirection::Degrading
+        );
+        assert_eq!(snapshot.objective.failed_rule_count, 1);
+        assert_eq!(snapshot.objective.affected_resource_count, 1);
+        assert_eq!(snapshot.objective.owner_filters, vec!["security"]);
+        assert_eq!(snapshot.objective.environment_filters, vec!["prod"]);
+        assert_eq!(snapshot.objective.application_filters, vec!["payments"]);
+        assert_eq!(
+            snapshot.objective.notification_targets,
+            vec!["environment:prod", "owner:security"]
+        );
+        assert_eq!(snapshot.objective.policy_state, "active_with_findings");
+        assert_eq!(
+            snapshot.objective.status_history,
+            vec![
+                "snapshot_collected",
+                "security_policy_evaluated",
+                "notification_targets_resolved"
+            ]
+        );
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_SEC_LEGACY_LAUNCH_CONFIGURATION.to_string()));
+    }
+
+    #[test]
+    fn asg_security_slo_policy_snapshot_marks_stale_data_as_breached() {
+        let mut stale_data = healthy_data();
+        stale_data["launch_configuration_name"] = json!("legacy-lc");
+        stale_data["uses_launch_template"] = json!(false);
+        let stale = fixture(
+            "asg-security-slo-stale",
+            json!({}),
+            stale_data,
+            now() - Duration::hours(30),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Security, now());
+        let snapshot = asg_security_slo_policy_snapshot(&report);
+
+        assert_eq!(
+            snapshot.objective.status,
+            AsgSecurityObjectiveStatus::Breached
+        );
+        assert_eq!(snapshot.objective.policy_state, "blocked_stale_data");
+        assert_eq!(
+            snapshot.objective.trend_direction,
+            AsgSecurityTrendDirection::Degrading
+        );
+        assert_eq!(
+            snapshot.objective.notification_targets,
+            vec!["security-operations"]
+        );
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+    }
+
+    #[test]
+    fn asg_security_forecast_snapshot_builds_read_only_exposure_band_from_evidence() {
+        let mut legacy_data = healthy_data();
+        legacy_data["launch_configuration_name"] = json!("legacy-lc");
+        legacy_data["uses_launch_template"] = json!(false);
+        let legacy = fixture(
+            "asg-security-forecast-legacy",
+            json!({"owner": "security"}),
+            legacy_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[legacy], Pillar::Security, now());
+        let forecast = asg_security_forecast_snapshot(&report);
+
+        assert_eq!(forecast.workflow_id, "autoscaling_security_forecasting");
+        assert!(forecast.read_only_mode);
+        assert_eq!(forecast.baseline_window_days, 30);
+        assert_eq!(forecast.forecast_horizon_days, 30);
+        assert_eq!(forecast.confidence_level, 75);
+        assert_eq!(forecast.risk_level, AsgSecurityForecastRisk::High);
+        assert_eq!(
+            forecast.exposure_capacity_risk,
+            "legacy_launch_configuration_security_exposure"
+        );
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "ready_security_findings_baseline"
+        );
+        assert_eq!(forecast.forecast_band.horizon_days, 30);
+        assert!(forecast.forecast_band.expected_security_exposure_index > 100);
+        assert!(
+            forecast.forecast_band.upper_security_exposure_index
+                > forecast.forecast_band.lower_security_exposure_index
+        );
+        assert!(forecast
+            .threshold_controls
+            .contains(&"security_exposure_index_warning_threshold"));
+        assert!(forecast
+            .what_if_inputs
+            .contains(&"migrate_legacy_launch_configuration_to_launch_template"));
+        assert!(!forecast.blocked_by_stale_data);
+        assert!(forecast
+            .blast_radius_summary
+            .contains("legacy launch-source security exposure"));
+        assert!(forecast.missing_data_reason_codes.is_empty());
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_SEC_LEGACY_LAUNCH_CONFIGURATION
+                && driver.affected_resources == vec!["asg-security-forecast-legacy"]
+                && driver.security_exposure_index_delta == 34
+        }));
+        assert!(forecast
+            .evidence_reason_codes
+            .contains(&REASON_SEC_LEGACY_LAUNCH_CONFIGURATION.to_string()));
+    }
+
+    #[test]
+    fn asg_security_forecast_snapshot_blocks_when_security_data_is_stale() {
+        let mut stale_data = healthy_data();
+        stale_data["launch_configuration_name"] = json!("legacy-lc");
+        stale_data["uses_launch_template"] = json!(false);
+        let stale = fixture(
+            "asg-security-forecast-stale",
+            json!({"owner": "security"}),
+            stale_data,
+            now() - Duration::hours(30),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Security, now());
+        let forecast = asg_security_forecast_snapshot(&report);
+
+        assert_eq!(forecast.risk_level, AsgSecurityForecastRisk::Blocked);
+        assert!(forecast.blocked_by_stale_data);
+        assert_eq!(
+            forecast.exposure_capacity_risk,
+            "blocked_until_inventory_refresh"
+        );
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "needs_fresh_security_telemetry_fixture"
+        );
+        assert!(forecast
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_INV_STALE_DATA
+                && driver.affected_resources == vec!["asg-security-forecast-stale"]
+        }));
+    }
+
+    #[test]
+    fn asg_security_reporting_bundle_materializes_executive_engineering_and_incident_views() {
+        let mut legacy_data = healthy_data();
+        legacy_data["launch_configuration_name"] = json!("legacy-lc");
+        legacy_data["uses_launch_template"] = json!(false);
+        let legacy = fixture(
+            "asg-security-report-legacy",
+            json!({"owner": "security", "environment": "prod"}),
+            legacy_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[legacy], Pillar::Security, now());
+        let bundle = asg_security_reporting_bundle(&report);
+
+        assert_eq!(bundle.workflow_id, "autoscaling_security_reporting");
+        assert!(bundle.read_only_mode);
+        assert_eq!(bundle.scheduled_delivery_state, "ready_for_schedule");
+        assert!(bundle.portfolio_summary_ready);
+        assert!(bundle.workload_summary_ready);
+        assert_eq!(bundle.export_formats, vec!["json", "csv"]);
+        assert_eq!(bundle.saved_view_id, "autoscaling-security-posture-report");
+        assert_eq!(
+            bundle.executive_summary.report_id,
+            "autoscaling-security-executive-summary"
+        );
+        assert_eq!(bundle.executive_summary.score, report.score);
+        assert_eq!(bundle.executive_summary.resources_evaluated, 1);
+        assert_eq!(bundle.executive_summary.stale_resources, 0);
+        assert!(bundle
+            .executive_summary
+            .affected_resources
+            .contains(&"asg-security-report-legacy".to_string()));
+        assert!(bundle
+            .executive_summary
+            .top_reason_codes
+            .contains(&REASON_SEC_LEGACY_LAUNCH_CONFIGURATION.to_string()));
+        assert!(bundle
+            .executive_summary
+            .blast_radius_summary
+            .contains("legacy launch-source security exposure"));
+        assert_eq!(
+            bundle.engineering_backlog.report_id,
+            "autoscaling-security-engineering-backlog"
+        );
+        assert_eq!(bundle.engineering_backlog.page, 0);
+        assert_eq!(bundle.engineering_backlog.page_size, 50);
+        assert_eq!(bundle.engineering_backlog.total, report.findings.len());
+        assert_eq!(
+            bundle.incident_review.report_id,
+            "autoscaling-security-incident-review"
+        );
+        assert!(bundle.incident_review.rows.iter().any(|row| {
+            row.resource_id == "asg-security-report-legacy"
+                && row.reason_code == REASON_SEC_LEGACY_LAUNCH_CONFIGURATION
+                && row.suppression_supported
+                && row
+                    .recovery_note
+                    .contains("Review launch-template migration")
+        }));
+        assert!(bundle.missing_data_reason_codes.is_empty());
+        assert!(bundle
+            .evidence_reason_codes
+            .contains(&REASON_SEC_LEGACY_LAUNCH_CONFIGURATION.to_string()));
+    }
+
+    #[test]
+    fn asg_security_reporting_bundle_blocks_delivery_for_stale_security_evidence() {
+        let stale = fixture(
+            "asg-security-report-stale",
+            json!({"owner": "security"}),
+            healthy_data(),
+            now() - Duration::hours(30),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Security, now());
+        let bundle = asg_security_reporting_bundle(&report);
+
+        assert_eq!(
+            bundle.scheduled_delivery_state,
+            "blocked_until_fresh_security_evidence"
+        );
+        assert!(bundle.stale_data_blocks_delivery);
+        assert!(!bundle.portfolio_summary_ready);
+        assert!(!bundle.workload_summary_ready);
+        assert_eq!(bundle.executive_summary.stale_resources, 1);
+        assert!(bundle
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(bundle
+            .evidence_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+    }
+
+    #[test]
+    fn asg_resilience_triage_context_separates_facts_hypotheses_and_questions() {
+        let mut single_az_data = healthy_data();
+        single_az_data["availability_zones"] = json!(["us-east-1a"]);
+        single_az_data["health_check_type"] = json!("EC2");
+        let single_az = fixture(
+            "asg-res-single-az-triage",
+            json!({"team": "core"}),
+            single_az_data,
+            now(),
+        );
+
+        let mut missing_health_data = healthy_data();
+        missing_health_data
+            .as_object_mut()
+            .expect("object")
+            .remove("instance_health");
+        missing_health_data
+            .as_object_mut()
+            .expect("object")
+            .remove("healthy_instance_count");
+        missing_health_data
+            .as_object_mut()
+            .expect("object")
+            .remove("unhealthy_instance_count");
+        let missing_health = fixture(
+            "asg-res-missing-health-triage",
+            json!({"team": "core"}),
+            missing_health_data,
+            now(),
+        );
+
+        let report =
+            evaluate_autoscaling_fleet(&[single_az, missing_health], Pillar::Resilience, now());
+        let triage = asg_resilience_triage_context(&report);
+
+        assert_eq!(triage.workflow_id, "autoscaling_resilience_triage_context");
+        assert_eq!(
+            triage.context_builder_id,
+            "autoscaling-resilience-deterministic-context-v1"
+        );
+        assert_eq!(
+            triage.prompt_template_id,
+            "autoscaling-resilience-ai-triage-v1"
+        );
+        assert_eq!(triage.generation_mode, "deterministic_no_llm");
+        assert_eq!(triage.max_prompt_tokens, 1200);
+        assert_eq!(
+            triage.audit_event_type,
+            "autoscaling_resilience_ai_triage_context_built"
+        );
+        assert!(triage.guardrails.read_only_mode);
+        assert!(triage.guardrails.evidence_required);
+        assert!(triage.guardrails.no_llm_invocation);
+        assert!(triage.guardrails.no_mutation_planning);
+        assert!(triage
+            .facts
+            .iter()
+            .any(|fact| fact.contains(REASON_RES_SINGLE_AZ)));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("AZ outage")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("instance health telemetry")));
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_RES_ELB_HEALTH_CHECK_EC2_ONLY
+                && citation.resource_id == "asg-res-single-az-triage"
+        }));
+    }
+
+    #[test]
+    fn asg_resilience_agentic_investigation_plan_is_read_only_until_approval() {
+        let mut single_az_data = healthy_data();
+        single_az_data["availability_zones"] = json!(["us-east-1a"]);
+        single_az_data["health_check_type"] = json!("EC2");
+        let single_az = fixture(
+            "asg-res-single-az-investigation",
+            json!({"team": "core"}),
+            single_az_data,
+            now(),
+        );
+
+        let mut missing_health_data = healthy_data();
+        for field in [
+            "health_check_type",
+            "instance_health",
+            "healthy_instance_count",
+            "unhealthy_instance_count",
+        ] {
+            missing_health_data
+                .as_object_mut()
+                .expect("object")
+                .remove(field);
+        }
+        let missing_health = fixture(
+            "asg-res-missing-health-investigation",
+            json!({"team": "core"}),
+            missing_health_data,
+            now(),
+        );
+
+        let report =
+            evaluate_autoscaling_fleet(&[single_az, missing_health], Pillar::Resilience, now());
+        let plan = asg_resilience_agentic_investigation_plan(&report);
+
+        assert_eq!(
+            plan.workflow_id,
+            "autoscaling_resilience_agentic_investigation"
+        );
+        assert_eq!(plan.default_tool_mode, AsgInvestigationToolMode::ReadOnly);
+        assert!(plan.replay_required);
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "autoscaling.describe_replacement_activity"
+                && step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                && step.target_resource_id == "asg-res-missing-health-investigation"
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "autoscaling.describe_instance_health"
+                && step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                && step.target_resource_id == "asg-res-missing-health-investigation"
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "autoscaling.compare_availability_zone_coverage"
+                && step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                && step.target_resource_id == "asg-res-single-az-investigation"
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "autoscaling.inspect_elb_health_check_policy"
+                && step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                && step.target_resource_id == "asg-res-single-az-investigation"
+        }));
+        assert_eq!(
+            plan.steps.last().map(|step| step.tool_mode),
+            Some(AsgInvestigationToolMode::ApprovalRequired)
+        );
+        assert!(plan.steps.iter().all(|step| {
+            step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                || step.tool_name == "autoscaling.resilience.prepare_approval_plan"
+        }));
+        assert!(plan.approval_gates.iter().any(|gate| {
+            gate.target_resource_id == "asg-res-single-az-investigation"
+                && gate.rollback_note_required
+                && gate
+                    .evidence_reason_codes
+                    .contains(&REASON_RES_SINGLE_AZ.to_string())
+        }));
+        assert_eq!(plan.max_evidence_citations, report.findings.len());
+    }
+
+    #[test]
+    fn asg_resilience_remediation_workflow_plans_dry_run_actions_until_approved() {
+        let mut single_az_data = healthy_data();
+        single_az_data["availability_zones"] = json!(["us-east-1a"]);
+        single_az_data["health_check_type"] = json!("EC2");
+        let single_az = fixture(
+            "asg-res-single-az-remediation",
+            json!({"owner": "sre"}),
+            single_az_data,
+            now(),
+        );
+
+        let mut suspended_process_data = healthy_data();
+        suspended_process_data["suspended_process_count"] = json!(1);
+        let suspended_process = fixture(
+            "asg-res-suspended-process-remediation",
+            json!({"owner": "sre"}),
+            suspended_process_data,
+            now(),
+        );
+
+        let report =
+            evaluate_autoscaling_fleet(&[single_az, suspended_process], Pillar::Resilience, now());
+        let workflow = asg_resilience_remediation_workflow(&report);
+
+        assert_eq!(
+            workflow.workflow_id,
+            "autoscaling_resilience_safe_remediation"
+        );
+        assert!(workflow.read_only_mode);
+        assert_eq!(
+            workflow.rbac_permission,
+            "aws.autoscaling.resilience.remediation.approve"
+        );
+        assert_eq!(
+            workflow.audit_stream,
+            "autoscaling_resilience_remediation_audit"
+        );
+        assert!(!workflow.stale_data_blocks_execution);
+        assert_eq!(workflow.actions.len(), 3);
+        assert!(workflow.actions.iter().all(|action| {
+            let action_text = format!(
+                "{} {} {}",
+                action.action_id, action.audit_event_type, action.idempotency_key
+            );
+            action
+                .action_id
+                .starts_with("autoscaling-resilience-remediation-")
+                && action.dry_run
+                && action.requires_approval
+                && action.approval_gate_id.is_some()
+                && action.status == AsgRemediationStatus::DryRunPendingApproval
+                && action.audit_event_type == "autoscaling.resilience.remediation.dry_run_planned"
+                && action.rollback_note.contains("rollback")
+                && !["execute", "terminate", "modify", "resume", "detach"]
+                    .iter()
+                    .any(|term| action_text.contains(term))
+                && action.validation_steps.contains(
+                    &"capture operator approval, rollback note, and audit id before execution",
+                )
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == AsgRemediationActionKind::PlanMultiAzCoverage
+                && action.target_resource_id == "asg-res-single-az-remediation"
+                && action
+                    .evidence_reason_codes
+                    .contains(&REASON_RES_SINGLE_AZ.to_string())
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == AsgRemediationActionKind::ReviewScalingProcessRecovery
+                && action.target_resource_id == "asg-res-suspended-process-remediation"
+                && action
+                    .evidence_reason_codes
+                    .contains(&REASON_RES_SUSPENDED_PROCESSES.to_string())
+        }));
+    }
+
+    #[test]
+    fn asg_resilience_remediation_workflow_blocks_execution_when_data_is_stale() {
+        let mut stale_data = healthy_data();
+        stale_data["availability_zones"] = json!(["us-east-1a"]);
+        let stale = fixture(
+            "asg-res-stale-remediation",
+            json!({"owner": "sre"}),
+            stale_data,
+            now() - Duration::hours(30),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Resilience, now());
+        let workflow = asg_resilience_remediation_workflow(&report);
+
+        assert!(workflow.stale_data_blocks_execution);
+        assert!(!workflow.actions.is_empty());
+        assert!(workflow.actions.iter().all(|action| {
+            action.dry_run && action.status == AsgRemediationStatus::BlockedMissingEvidence
+        }));
+    }
+
+    #[test]
+    fn asg_resilience_slo_policy_snapshot_tracks_owner_policy_and_notifications() {
+        let mut single_az_data = healthy_data();
+        single_az_data["availability_zones"] = json!(["us-east-1a"]);
+        let single_az = fixture(
+            "asg-res-slo-single-az",
+            json!({
+                "owner": "sre",
+                "environment": "prod",
+                "application": "checkout"
+            }),
+            single_az_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[single_az], Pillar::Resilience, now());
+        let snapshot = asg_resilience_slo_policy_snapshot(&report);
+
+        assert_eq!(snapshot.workflow_id, "autoscaling_resilience_slo_policy");
+        assert!(snapshot.read_only_mode);
+        assert!(snapshot.freshness_required);
+        assert_eq!(
+            snapshot.objective.objective_id,
+            "autoscaling-resilience-score-min-95"
+        );
+        assert_eq!(
+            snapshot.objective.status,
+            AsgResilienceObjectiveStatus::AtRisk
+        );
+        assert_eq!(snapshot.objective.target_score_min, 95);
+        assert_eq!(snapshot.objective.failed_rule_count, 1);
+        assert_eq!(snapshot.objective.affected_resource_count, 1);
+        assert_eq!(
+            snapshot.objective.trend_direction,
+            AsgResilienceTrendDirection::Degrading
+        );
+        assert_eq!(snapshot.objective.owner_filters, vec!["sre"]);
+        assert_eq!(snapshot.objective.environment_filters, vec!["prod"]);
+        assert_eq!(snapshot.objective.application_filters, vec!["checkout"]);
+        assert_eq!(
+            snapshot.objective.notification_targets,
+            vec!["environment:prod", "owner:sre"]
+        );
+        assert_eq!(snapshot.objective.policy_state, "active_with_findings");
+        assert!(snapshot
+            .objective
+            .status_history
+            .contains(&"resilience_policy_evaluated"));
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_RES_SINGLE_AZ.to_string()));
+    }
+
+    #[test]
+    fn asg_resilience_slo_policy_snapshot_marks_stale_data_as_breached() {
+        let stale = fixture(
+            "asg-res-slo-stale",
+            json!({"owner": "sre"}),
+            healthy_data(),
+            now() - Duration::hours(30),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Resilience, now());
+        let snapshot = asg_resilience_slo_policy_snapshot(&report);
+
+        assert_eq!(
+            snapshot.objective.status,
+            AsgResilienceObjectiveStatus::Breached
+        );
+        assert_eq!(
+            snapshot.objective.trend_direction,
+            AsgResilienceTrendDirection::Degrading
+        );
+        assert_eq!(snapshot.objective.policy_state, "blocked_stale_data");
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+    }
+
+    #[test]
+    fn asg_resilience_forecast_snapshot_builds_read_only_recovery_exposure() {
+        let mut single_az_data = healthy_data();
+        single_az_data["availability_zones"] = json!(["us-east-1a"]);
+        let single_az = fixture(
+            "asg-res-forecast-single-az",
+            json!({"owner": "sre"}),
+            single_az_data,
+            now(),
+        );
+
+        let mut unhealthy_data = healthy_data();
+        unhealthy_data["unhealthy_instance_count"] = json!(2);
+        unhealthy_data["instance_health"] = json!([
+            {"instance_id": "i-1", "health_status": "Unhealthy"},
+            {"instance_id": "i-2", "health_status": "Unhealthy"}
+        ]);
+        let unhealthy = fixture(
+            "asg-res-forecast-unhealthy",
+            json!({"owner": "sre"}),
+            unhealthy_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[single_az, unhealthy], Pillar::Resilience, now());
+        let forecast = asg_resilience_forecast_snapshot(&report);
+
+        assert_eq!(forecast.workflow_id, "autoscaling_resilience_forecasting");
+        assert!(forecast.read_only_mode);
+        assert_eq!(forecast.baseline_window_days, 30);
+        assert_eq!(forecast.forecast_horizon_days, 30);
+        assert_eq!(forecast.confidence_level, 75);
+        assert_eq!(forecast.risk_level, AsgResilienceForecastRisk::High);
+        assert_eq!(
+            forecast.recovery_capacity_risk,
+            "active_unhealthy_instance_replacement_exposure"
+        );
+        assert!(!forecast.blocked_by_stale_data);
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "ready_resilience_findings_baseline"
+        );
+        assert!(forecast
+            .threshold_controls
+            .contains(&"recovery_exposure_index_warning_threshold"));
+        assert!(forecast
+            .what_if_inputs
+            .contains(&"distribute_auto_scaling_capacity_across_availability_zones"));
+        assert!(forecast.forecast_band.expected_recovery_exposure_index > 100);
+        assert!(forecast.blast_radius_summary.contains("Auto Scaling group"));
+        assert!(forecast.recovery_note.contains("read-only"));
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_RES_SINGLE_AZ
+                && driver.affected_resources == vec!["asg-res-forecast-single-az"]
+        }));
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_RES_UNHEALTHY_INSTANCE_TELEMETRY
+                && driver.affected_resources == vec!["asg-res-forecast-unhealthy"]
+        }));
+        assert!(forecast.missing_data_reason_codes.is_empty());
+        assert!(forecast
+            .evidence_reason_codes
+            .contains(&REASON_RES_UNHEALTHY_INSTANCE_TELEMETRY.to_string()));
+    }
+
+    #[test]
+    fn asg_resilience_forecast_snapshot_blocks_on_stale_or_missing_recovery_data() {
+        let mut missing_data = healthy_data();
+        for field in [
+            "availability_zones",
+            "unhealthy_instance_count",
+            "in_service_instance_count",
+        ] {
+            missing_data.as_object_mut().expect("object").remove(field);
+        }
+        let stale_missing = fixture(
+            "asg-res-forecast-stale",
+            json!({"owner": "sre"}),
+            missing_data,
+            now() - Duration::hours(30),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale_missing], Pillar::Resilience, now());
+        let forecast = asg_resilience_forecast_snapshot(&report);
+
+        assert_eq!(forecast.risk_level, AsgResilienceForecastRisk::Blocked);
+        assert!(forecast.blocked_by_stale_data);
+        assert_eq!(
+            forecast.recovery_capacity_risk,
+            "blocked_until_inventory_refresh"
+        );
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "needs_fresh_resilience_telemetry_fixture"
+        );
+        assert!(forecast
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(forecast
+            .missing_data_reason_codes
+            .contains(&REASON_RES_MISSING_INSTANCE_HEALTH_TELEMETRY.to_string()));
+    }
+
+    #[test]
+    fn asg_resilience_reporting_bundle_materializes_executive_engineering_and_incident_views() {
+        let mut single_az_data = healthy_data();
+        single_az_data["availability_zones"] = json!(["us-east-1a"]);
+        single_az_data["suspended_process_count"] = json!(1);
+        let single_az = fixture(
+            "asg-res-report-single-az",
+            json!({"owner": "sre"}),
+            single_az_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[single_az], Pillar::Resilience, now());
+        let bundle = asg_resilience_reporting_bundle(&report);
+
+        assert_eq!(bundle.workflow_id, "autoscaling_resilience_reporting");
+        assert!(bundle.read_only_mode);
+        assert_eq!(bundle.scheduled_delivery_state, "ready_for_schedule");
+        assert!(!bundle.stale_data_blocks_delivery);
+        assert!(bundle.portfolio_summary_ready);
+        assert!(bundle.workload_summary_ready);
+        assert_eq!(bundle.export_formats, vec!["json", "csv"]);
+        assert_eq!(
+            bundle.saved_view_id,
+            "autoscaling-resilience-posture-report"
+        );
+        assert_eq!(
+            bundle.executive_summary.report_id,
+            "autoscaling-resilience-executive-summary"
+        );
+        assert_eq!(bundle.executive_summary.resources_evaluated, 1);
+        assert_eq!(bundle.executive_summary.affected_resources.len(), 1);
+        assert!(bundle
+            .executive_summary
+            .blast_radius_summary
+            .contains("Auto Scaling group"));
+        assert!(bundle
+            .executive_summary
+            .top_reason_codes
+            .contains(&REASON_RES_SINGLE_AZ.to_string()));
+        assert_eq!(
+            bundle.engineering_backlog.report_id,
+            "autoscaling-resilience-engineering-backlog"
+        );
+        assert_eq!(bundle.engineering_backlog.page, 0);
+        assert_eq!(bundle.engineering_backlog.page_size, 50);
+        assert_eq!(
+            bundle.engineering_backlog.total,
+            bundle.incident_review.total
+        );
+        assert_eq!(
+            bundle.incident_review.report_id,
+            "autoscaling-resilience-incident-review"
+        );
+        assert!(bundle.incident_review.rows.iter().any(|row| {
+            row.reason_code == REASON_RES_SINGLE_AZ
+                && row.recovery_note.contains("multi-AZ placement")
+                && row.suppression_supported
+        }));
+        assert!(bundle.missing_data_reason_codes.is_empty());
+        assert!(bundle
+            .evidence_reason_codes
+            .contains(&REASON_RES_SUSPENDED_PROCESSES.to_string()));
+    }
+
+    #[test]
+    fn asg_resilience_reporting_bundle_blocks_delivery_for_stale_or_missing_evidence() {
+        let mut missing_data = healthy_data();
+        for field in [
+            "availability_zones",
+            "unhealthy_instance_count",
+            "in_service_instance_count",
+        ] {
+            missing_data.as_object_mut().expect("object").remove(field);
+        }
+        let stale_missing = fixture(
+            "asg-res-report-stale",
+            json!({"owner": "sre"}),
+            missing_data,
+            now() - Duration::hours(30),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale_missing], Pillar::Resilience, now());
+        let bundle = asg_resilience_reporting_bundle(&report);
+
+        assert_eq!(
+            bundle.scheduled_delivery_state,
+            "blocked_until_fresh_resilience_evidence"
+        );
+        assert!(bundle.stale_data_blocks_delivery);
+        assert!(!bundle.portfolio_summary_ready);
+        assert!(!bundle.workload_summary_ready);
+        assert!(bundle
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(bundle
+            .missing_data_reason_codes
+            .contains(&REASON_RES_MISSING_INSTANCE_HEALTH_TELEMETRY.to_string()));
+        assert!(bundle.incident_review.rows.iter().any(|row| {
+            row.reason_code == REASON_INV_STALE_DATA
+                && row
+                    .recovery_note
+                    .contains("Refresh Auto Scaling resilience inventory")
+        }));
+    }
+
+    #[test]
+    fn asg_cost_triage_context_separates_facts_hypotheses_and_questions() {
+        let mut missing_data = healthy_data();
+        for field in [
+            "enabled_metrics",
+            "enabled_metric_count",
+            "desired_capacity",
+            "telemetry_collection_duration_ms",
+        ] {
+            missing_data.as_object_mut().expect("object").remove(field);
+        }
+        let missing = fixture("asg-cost-missing", json!({}), missing_data, now());
+
+        let mut fixed_data = healthy_data();
+        fixed_data["min_size"] = json!(3);
+        fixed_data["max_size"] = json!(3);
+        fixed_data["desired_capacity"] = json!(3);
+        let fixed = fixture("asg-fixed", json!({"team": "core"}), fixed_data, now());
+
+        let mut errored_data = healthy_data();
+        errored_data["telemetry_collection_success_count"] = json!(0);
+        errored_data["telemetry_collection_failure_count"] = json!(1);
+        errored_data["telemetry_collection_error_count"] = json!(1);
+        errored_data["telemetry_collection_errors"] = json!([
+            {
+                "source": "autoscaling",
+                "operation": "DescribeAutoScalingGroups",
+                "error": "throttled"
+            }
+        ]);
+        let errored = fixture(
+            "asg-telemetry-error",
+            json!({"team": "core"}),
+            errored_data,
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[missing, fixed, errored], Pillar::Cost, now());
+        let triage = asg_cost_triage_context(&report);
+
+        assert_eq!(triage.workflow_id, "autoscaling_cost_triage_context");
+        assert_eq!(
+            triage.context_builder_id,
+            "autoscaling-cost-deterministic-context-v1"
+        );
+        assert_eq!(triage.prompt_template_id, "autoscaling-cost-ai-triage-v1");
+        assert_eq!(triage.generation_mode, "deterministic_no_llm");
+        assert_eq!(triage.max_prompt_tokens, 1200);
+        assert_eq!(
+            triage.provider_routing,
+            vec!["primary_ops_llm", "fallback_ops_llm"]
+        );
+        assert_eq!(
+            triage.audit_event_type,
+            "autoscaling_ai_triage_context_built"
+        );
+        assert!(triage.guardrails.read_only_mode);
+        assert!(triage.guardrails.evidence_required);
+        assert!(triage.guardrails.separate_facts_from_hypotheses);
+        assert!(triage.guardrails.ask_for_missing_data);
+        assert!(triage.guardrails.no_llm_invocation);
+        assert!(triage.guardrails.no_mutation_planning);
+        assert!(triage
+            .facts
+            .iter()
+            .any(|fact| fact.contains(REASON_COST_MISSING_CAPACITY_TELEMETRY)));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("scale-in")));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("collector logs")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("capacity telemetry")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("group metrics")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("owner, team, project, or cost-center")));
+        assert_eq!(triage.evidence_citations.len(), report.findings.len());
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_TEL_COLLECTION_ERRORS
+                && citation.resource_id == "asg-telemetry-error"
+        }));
+    }
+
+    #[test]
+    fn asg_cost_agentic_investigation_plan_is_read_only_until_approval() {
+        let mut fixed_data = healthy_data();
+        fixed_data["min_size"] = json!(3);
+        fixed_data["max_size"] = json!(3);
+        fixed_data["desired_capacity"] = json!(3);
+        let fixed = fixture("asg-fixed", json!({"team": "core"}), fixed_data, now());
+
+        let mut missing_data = healthy_data();
+        for field in [
+            "enabled_metrics",
+            "enabled_metric_count",
+            "desired_capacity",
+        ] {
+            missing_data.as_object_mut().expect("object").remove(field);
+        }
+        let missing = fixture("asg-cost-missing", json!({}), missing_data, now());
+
+        let report = evaluate_autoscaling_fleet(&[fixed, missing], Pillar::Cost, now());
+        let plan = asg_cost_agentic_investigation_plan(&report);
+
+        assert_eq!(plan.workflow_id, "autoscaling_cost_agentic_investigation");
+        assert_eq!(plan.default_tool_mode, AsgInvestigationToolMode::ReadOnly);
+        assert!(plan.replay_required);
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "autoscaling.describe_group_capacity"
+                && step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                && step.target_resource_id == "asg-cost-missing"
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "autoscaling.describe_enabled_metrics"
+                && step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                && step.target_resource_id == "asg-cost-missing"
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "autoscaling.compare_scaling_policy_capacity"
+                && step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                && step.target_resource_id == "asg-fixed"
+        }));
+        assert_eq!(
+            plan.steps.last().map(|step| step.tool_mode),
+            Some(AsgInvestigationToolMode::ApprovalRequired)
+        );
+        assert!(plan.steps.iter().all(|step| {
+            step.tool_mode == AsgInvestigationToolMode::ReadOnly
+                || step.tool_name == "autoscaling.cost.prepare_approval_plan"
+        }));
+        assert_eq!(plan.approval_gates.len(), 2);
+        assert!(plan
+            .approval_gates
+            .iter()
+            .all(|gate| gate.rollback_note_required));
+        assert_eq!(plan.max_evidence_citations, report.findings.len());
+    }
+
+    #[test]
+    fn asg_cost_remediation_workflow_plans_dry_run_actions_until_approved() {
+        let mut fixed_data = healthy_data();
+        fixed_data["min_size"] = json!(3);
+        fixed_data["max_size"] = json!(3);
+        fixed_data["desired_capacity"] = json!(3);
+        let fixed = fixture("asg-fixed", json!({"team": "core"}), fixed_data, now());
+
+        let mut missing_tags_data = healthy_data();
+        missing_tags_data["enabled_metric_count"] = json!(2);
+        let missing_tags = fixture("asg-missing-tags", json!({}), missing_tags_data, now());
+
+        let report = evaluate_autoscaling_fleet(&[fixed, missing_tags], Pillar::Cost, now());
+        let workflow = asg_cost_remediation_workflow(&report);
+
+        assert_eq!(workflow.workflow_id, "autoscaling_cost_safe_remediation");
+        assert!(workflow.read_only_mode);
+        assert_eq!(
+            workflow.rbac_permission,
+            "aws.autoscaling.cost.remediation.approve"
+        );
+        assert_eq!(workflow.audit_stream, "autoscaling_cost_remediation_audit");
+        assert!(!workflow.stale_data_blocks_execution);
+        assert_eq!(workflow.actions.len(), 2);
+        assert!(workflow.actions.iter().all(|action| {
+            action.dry_run
+                && action.requires_approval
+                && action.approval_gate_id.is_some()
+                && action.status == AsgRemediationStatus::DryRunPendingApproval
+                && action.audit_event_type == "autoscaling.cost.remediation.dry_run_planned"
+                && action.rollback_note.contains("rollback")
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == AsgRemediationActionKind::ReviewCostAllocationTags
+                && action.target_resource_id == "asg-missing-tags"
+                && action
+                    .evidence_reason_codes
+                    .contains(&REASON_COST_NO_TAGS.to_string())
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == AsgRemediationActionKind::ReviewScalingPolicyCapacity
+                && action.target_resource_id == "asg-fixed"
+                && action
+                    .evidence_reason_codes
+                    .contains(&REASON_COST_FIXED_SIZE.to_string())
+        }));
+    }
+
+    #[test]
+    fn asg_cost_remediation_workflow_blocks_execution_when_cost_data_is_stale() {
+        let stale = fixture(
+            "asg-stale",
+            json!({"team": "core"}),
+            healthy_data(),
+            now() - chrono::Duration::hours(30),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Cost, now());
+        let workflow = asg_cost_remediation_workflow(&report);
+
+        assert!(workflow.stale_data_blocks_execution);
+        assert!(workflow.actions.iter().all(|action| {
+            action.dry_run && action.status == AsgRemediationStatus::BlockedMissingEvidence
+        }));
+    }
+
+    #[test]
+    fn asg_cost_slo_policy_snapshot_tracks_owner_policy_and_notifications() {
+        let mut fixed_data = healthy_data();
+        fixed_data["min_size"] = json!(3);
+        fixed_data["max_size"] = json!(3);
+        fixed_data["desired_capacity"] = json!(3);
+        let fixed = fixture(
+            "asg-fixed",
+            json!({
+                "owner": "sre",
+                "environment": "prod",
+                "application": "checkout"
+            }),
+            fixed_data,
+            now(),
+        );
+        let missing_tags = fixture("asg-missing-tags", json!({}), healthy_data(), now());
+
+        let report = evaluate_autoscaling_fleet(&[fixed, missing_tags], Pillar::Cost, now());
+        let snapshot = asg_cost_slo_policy_snapshot(&report);
+
+        assert_eq!(snapshot.workflow_id, "autoscaling_cost_slo_policy");
+        assert!(snapshot.read_only_mode);
+        assert!(snapshot.freshness_required);
+        assert_eq!(
+            snapshot.objective.objective_id,
+            "autoscaling-cost-score-min-90"
+        );
+        assert_eq!(snapshot.objective.status, AsgCostObjectiveStatus::AtRisk);
+        assert_eq!(snapshot.objective.target_score_min, 90);
+        assert_eq!(snapshot.objective.failed_rule_count, 2);
+        assert_eq!(snapshot.objective.owner_filters, vec!["sre"]);
+        assert_eq!(snapshot.objective.environment_filters, vec!["prod"]);
+        assert_eq!(snapshot.objective.application_filters, vec!["checkout"]);
+        assert_eq!(
+            snapshot.objective.notification_targets,
+            vec!["environment:prod", "owner:sre"]
+        );
+        assert_eq!(snapshot.objective.policy_state, "active_with_findings");
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_COST_FIXED_SIZE.to_string()));
+    }
+
+    #[test]
+    fn asg_cost_slo_policy_snapshot_marks_stale_data_as_breached() {
+        let stale = fixture(
+            "asg-stale",
+            json!({"owner": "sre"}),
+            healthy_data(),
+            now() - chrono::Duration::hours(30),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Cost, now());
+        let snapshot = asg_cost_slo_policy_snapshot(&report);
+
+        assert_eq!(snapshot.objective.status, AsgCostObjectiveStatus::Breached);
+        assert_eq!(
+            snapshot.objective.trend_direction,
+            AsgCostTrendDirection::Degrading
+        );
+        assert_eq!(snapshot.objective.policy_state, "blocked_stale_data");
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+    }
+
+    #[test]
+    fn asg_cost_forecast_snapshot_builds_read_only_cost_band_from_capacity_evidence() {
+        let mut fixed_data = healthy_data();
+        fixed_data["min_size"] = json!(4);
+        fixed_data["max_size"] = json!(4);
+        fixed_data["desired_capacity"] = json!(4);
+        let fixed = fixture("asg-fixed", json!({"owner": "sre"}), fixed_data, now());
+        let missing_metrics = fixture(
+            "asg-missing-metrics",
+            json!({"owner": "platform"}),
+            json!({
+                "min_size": 1,
+                "max_size": 4,
+                "desired_capacity": 2
+            }),
+            now(),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[fixed, missing_metrics], Pillar::Cost, now());
+        let forecast = asg_cost_forecast_snapshot(&report);
+
+        assert_eq!(forecast.workflow_id, "autoscaling_cost_forecasting");
+        assert!(forecast.read_only_mode);
+        assert_eq!(forecast.baseline_window_days, 30);
+        assert_eq!(forecast.forecast_horizon_days, 30);
+        assert_eq!(forecast.confidence_level, 80);
+        assert_eq!(forecast.risk_level, AsgCostForecastRisk::High);
+        assert_eq!(
+            forecast.capacity_risk,
+            "fixed_capacity_and_missing_group_metrics"
+        );
+        assert_eq!(forecast.forecast_band.horizon_days, 30);
+        assert!(forecast.forecast_band.expected_monthly_cost_index > 130);
+        assert!(
+            forecast.forecast_band.upper_monthly_cost_index
+                > forecast.forecast_band.lower_monthly_cost_index
+        );
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "needs_fresh_capacity_fixture"
+        );
+        assert!(forecast
+            .what_if_inputs
+            .contains(&"enable_group_metrics_collection"));
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_COST_FIXED_SIZE
+                && driver.affected_resources == vec!["asg-fixed"]
+        }));
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_COST_MISSING_GROUP_METRICS_TELEMETRY
+                && driver.affected_resources == vec!["asg-missing-metrics"]
+        }));
+        assert!(forecast
+            .missing_data_reason_codes
+            .contains(&REASON_COST_MISSING_GROUP_METRICS_TELEMETRY.to_string()));
+    }
+
+    #[test]
+    fn asg_cost_forecast_snapshot_blocks_on_stale_or_missing_capacity_data() {
+        let stale = fixture(
+            "asg-stale-forecast",
+            json!({"owner": "sre"}),
+            healthy_data(),
+            now() - chrono::Duration::hours(30),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Cost, now());
+        let forecast = asg_cost_forecast_snapshot(&report);
+
+        assert_eq!(forecast.risk_level, AsgCostForecastRisk::Blocked);
+        assert!(forecast.blocked_by_stale_data);
+        assert_eq!(forecast.capacity_risk, "blocked_until_inventory_refresh");
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "needs_fresh_capacity_fixture"
+        );
+        assert!(forecast
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(forecast.forecast_band.upper_monthly_cost_index > 100);
+    }
+
+    #[test]
+    fn asg_cost_reporting_bundle_materializes_executive_engineering_and_incident_views() {
+        let mut fixed_data = healthy_data();
+        fixed_data["min_size"] = json!(3);
+        fixed_data["max_size"] = json!(3);
+        fixed_data["desired_capacity"] = json!(3);
+        let fixed = fixture(
+            "asg-fixed-report",
+            json!({"owner": "sre", "environment": "prod"}),
+            fixed_data,
+            now(),
+        );
+        let missing_tags = fixture("asg-missing-tags-report", json!({}), healthy_data(), now());
+
+        let report = evaluate_autoscaling_fleet(&[fixed, missing_tags], Pillar::Cost, now());
+        let bundle = asg_cost_reporting_bundle(&report);
+
+        assert_eq!(bundle.workflow_id, "autoscaling_cost_reporting");
+        assert!(bundle.read_only_mode);
+        assert_eq!(bundle.scheduled_delivery_state, "ready_for_schedule");
+        assert!(bundle.portfolio_summary_ready);
+        assert!(bundle.workload_summary_ready);
+        assert_eq!(bundle.export_formats, vec!["json", "csv"]);
+        assert_eq!(
+            bundle.executive_summary.report_id,
+            "autoscaling-cost-executive-summary"
+        );
+        assert_eq!(bundle.executive_summary.score, report.score);
+        assert_eq!(bundle.executive_summary.resources_evaluated, 2);
+        assert_eq!(bundle.executive_summary.stale_resources, 0);
+        assert!(bundle
+            .executive_summary
+            .affected_resources
+            .contains(&"asg-fixed-report".to_string()));
+        assert!(bundle
+            .executive_summary
+            .top_reason_codes
+            .contains(&REASON_COST_FIXED_SIZE.to_string()));
+        assert_eq!(
+            bundle.engineering_backlog.report_id,
+            "autoscaling-cost-engineering-backlog"
+        );
+        assert_eq!(bundle.engineering_backlog.page, 0);
+        assert_eq!(bundle.engineering_backlog.page_size, 50);
+        assert_eq!(bundle.engineering_backlog.total, report.findings.len());
+        assert_eq!(
+            bundle.incident_review.report_id,
+            "autoscaling-cost-incident-review"
+        );
+        assert!(bundle.incident_review.rows.iter().any(|row| {
+            row.resource_id == "asg-fixed-report"
+                && row.reason_code == REASON_COST_FIXED_SIZE
+                && row.suppression_supported
+                && row.recovery_note.contains("Review scaling policy")
+        }));
+    }
+
+    #[test]
+    fn asg_cost_reporting_bundle_blocks_delivery_for_stale_inventory() {
+        let stale = fixture(
+            "asg-stale-report",
+            json!({"owner": "sre"}),
+            healthy_data(),
+            now() - chrono::Duration::hours(30),
+        );
+
+        let report = evaluate_autoscaling_fleet(&[stale], Pillar::Cost, now());
+        let bundle = asg_cost_reporting_bundle(&report);
+
+        assert_eq!(
+            bundle.scheduled_delivery_state,
+            "blocked_until_fresh_inventory"
+        );
+        assert!(bundle.stale_data_blocks_delivery);
+        assert!(!bundle.portfolio_summary_ready);
+        assert!(!bundle.workload_summary_ready);
+        assert_eq!(bundle.executive_summary.stale_resources, 1);
+        assert!(bundle
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(bundle
+            .evidence_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
     }
 
     #[test]

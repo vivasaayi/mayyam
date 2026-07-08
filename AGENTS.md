@@ -29,6 +29,17 @@ Mayyam is an SRE, cloud, database, Kafka, Kubernetes, Linux, FinOps, and operati
 - If validation fails, report the exact command and the failing behavior.
 - If the working tree is dirty, stage only files that belong to the requested change.
 
+## Token Efficiency
+
+- Prefer the smallest source set that can answer the current task. Reuse MCP and checkpoint state before rereading old chat, logs, or the full roadmap.
+- Keep status updates compact: feature IDs, file paths, commands, exit codes, and next action only when possible.
+- Batch related work by module, route, screen, or contract boundary. Avoid mixing unrelated features in one context window.
+- For roadmap automation, aim to claim and implement 20-30 dependency-ready items in one batch when they share a clear boundary and validation path.
+- Use smaller batches only when items cross conflict zones, touch unrelated modules, require uncertain design work, or cannot be validated together.
+- For broad discovery, do one pass, write the result into durable state, and then work from that state instead of reconstructing it repeatedly.
+- When a batch is verified, checkpoint it and start the next batch from fresh context if possible.
+- Do not paste large logs or whole files unless needed for diagnosis; quote the failing lines or smallest relevant diff.
+
 ## Engineering Standards
 
 - Use test-driven development for non-trivial behavior: write or update the smallest meaningful failing test first, implement the behavior, then refactor with tests passing.
@@ -108,6 +119,8 @@ When the task is to execute the Mayyam product roadmap, do not ask the user whic
 - Process large or cross-domain roadmap runs through the Roadmap MapReduce Execution Model below. Do not attempt to load all rows into context at once.
 - Prioritize P0, then P1, then P2. Within each priority, prefer M1 inventory and M2 observable foundations before M3, M4, and M5 work.
 - Use Aruvi tasktracker MCP as the progress ledger so a later run can resume exactly.
+- If a valid checkpoint exists, resume from the checkpoint's next action and avoid re-enumerating the full roadmap unless the hash changed.
+- Default batch size is 20-30 feature IDs when the ready queue supports it. If fewer items are chosen, record the concrete reason in MCP evidence.
 - If subagents are available, use them for backlog triage, Rust backend, React UI, tests, and independent verification. If subagents are unavailable, run those passes sequentially.
 - Commit each completed, verified batch when the task definition requires commits.
 - Never claim the whole roadmap is complete unless every row has been processed and verified.
@@ -142,10 +155,11 @@ Rules:
 - Prefer independent lanes: backend domain/service work, provider integrations, React UI, roadmap/test fixtures, validation, and independent verification.
 - If work overlaps, serialize it through the coordinator.
 - If a conflict appears, pause the lower-priority lane, record the event in MCP, and requeue, merge, or split the work.
+- A lane should normally carry 20-30 feature IDs. Split the lane only for explicit file conflicts, unclear acceptance criteria, or validation boundaries.
 
 ### Worker Phase: Independent Implementation
 
-Each worker lane implements only its claimed macro-batch.
+Each worker lane implements only its claimed macro-batch. Within a claimed batch, gather context once, write or update the required tests first for non-trivial behavior, then generate the code for the full batch in one focused implementation pass before running batch-level validation.
 
 Workers must return compact evidence:
 
@@ -159,7 +173,7 @@ Workers must return compact evidence:
 - Commit readiness.
 - Exact next action.
 
-Workers must avoid broad speculative scaffolding. Code is valuable only when it supports a verified workflow, shared foundation, acceptance gate, test fixture, or critical-path dependency.
+Workers must avoid broad speculative scaffolding. Code is valuable only when it supports a verified workflow, shared foundation, acceptance gate, test fixture, or critical-path dependency. Do not run full validation after each individual feature unless it is needed to isolate a failure; prefer one clear validation pass after the batch implementation is complete, followed by focused fixes if validation fails.
 
 ### Reduce Phase: Integration
 

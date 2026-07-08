@@ -13,14 +13,18 @@
 // limitations under the License.
 
 mod agent_inventory_api;
+mod ai_spend_report_api;
 mod error_rate_inventory_api;
 mod evaluation_dataset_inventory_api;
 mod grounding_score_inventory_api;
+mod hallucination_feedback_inventory_api;
 mod latency_inventory_api;
 mod model_cost_inventory_api;
 mod model_inventory_api;
 mod prompt_inventory_api;
+mod prompt_safety_inventory_api;
 mod provider_and_models_crud;
 mod response_quality_score_inventory_api;
 mod token_usage_inventory_api;
 mod tool_call_trace_inventory_api;
+mod unsafe_tool_call_inventory_api;

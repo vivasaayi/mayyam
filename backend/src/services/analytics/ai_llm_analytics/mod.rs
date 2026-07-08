@@ -13,13 +13,19 @@
 // limitations under the License.
 
 pub mod agent_inventory;
+pub mod ai_spend_report;
 pub mod error_rate_inventory;
 pub mod evaluation_dataset_inventory;
 pub mod grounding_score_inventory;
+pub mod hallucination_feedback_inventory;
 pub mod latency_inventory;
 pub mod model_cost_inventory;
 pub mod model_inventory;
+pub mod prompt_injection_inventory;
 pub mod prompt_inventory;
 pub mod response_quality_score_inventory;
+pub mod sensitive_data_leakage_inventory;
 pub mod token_usage_inventory;
 pub mod tool_call_trace_inventory;
+pub mod tool_call_trace_replay_workflow;
+pub mod unsafe_tool_call_inventory;

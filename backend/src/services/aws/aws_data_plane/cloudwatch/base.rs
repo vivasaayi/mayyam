@@ -74,6 +74,10 @@ impl CloudWatchService {
                 .name("QueueName")
                 .value(resource_id)
                 .build()],
+            "LambdaFunction" => vec![Dimension::builder()
+                .name("FunctionName")
+                .value(resource_id)
+                .build()],
             "ElasticacheCluster" => vec![Dimension::builder()
                 .name("CacheClusterId")
                 .value(resource_id)

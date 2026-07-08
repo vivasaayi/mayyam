@@ -3,17 +3,20 @@
 # Base image containing compiled Rust dependencies to speed up backend builds.
 ARG RUST_VERSION=1.94
 ARG SCCACHE_VERSION=0.14.0
+ARG CARGO_BUILD_JOBS=4
 
-FROM rust:${RUST_VERSION}-slim
+FROM rust:${RUST_VERSION}-slim-bookworm
 
 ARG TARGETARCH
 ARG SCCACHE_VERSION
+ARG CARGO_BUILD_JOBS
 
 WORKDIR /usr/src/app
 
 ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH \
     LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH \
     RUSTC_WRAPPER=/usr/local/cargo/bin/sccache \
+    CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS} \
     SCCACHE_DIR=/var/cache/sccache \
     SCCACHE_CACHE_SIZE=10G
 

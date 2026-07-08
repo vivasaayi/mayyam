@@ -30,13 +30,13 @@ Repository:
   - every `docs/product-roadmap/*/feature-backlog.csv`
 
 Backlog iteration rules:
-- First enumerate all roadmap folders and count all `feature-backlog.csv` rows.
+- On the first run, enumerate all roadmap folders and count all `feature-backlog.csv` rows; on resume, use the checkpoint and do not repeat that scan unless the roadmap hash changed.
 - Read the top-level sequencing and each module `release-plan.md`.
 - Build and maintain the SQLite checkpoint database at `.claude/checkpoints/roadmap-run/checkpoint.sqlite`.
 - Maintain a tiny human/model resume file at `.claude/checkpoints/roadmap-run/RESUME.md`.
 - Prioritize P0 work first, then P1, then P2.
 - Within each priority, prefer M1 inventory and M2 observable foundations before M3 explainable, M4 interactive, and M5 autonomous-assist.
-- Prefer vertical slices that can be implemented, tested, verified, and committed in one batch.
+- Prefer vertical slices that can be implemented, tested, verified, and committed in one batch, ideally within a single module, route, screen, or contract boundary.
 - Do not claim the full backlog is complete unless every row has been processed and the repo proves it.
 - If the full backlog cannot be completed in the current hour/context, checkpoint exact progress and continue after the harness resumes.
 
@@ -49,6 +49,7 @@ SQLite checkpointing rules:
 - Use feature IDs from `feature-backlog.csv` as stable checkpoint cursors.
 - Hash roadmap inputs before selecting work: all `feature-backlog.csv`, all `release-plan.md`, and `scripts/generate-product-roadmap.js`.
 - Store one row per feature ID in `feature_progress`; do not store the full backlog in context.
+- Prefer the checkpoint and `next_action` over rereading prior chat or roadmap prose when resuming.
 - Use statuses: `pending`, `claimed`, `in_progress`, `implemented`, `tests_passed`, `committed`, `blocked`, `skipped`.
 - Claim work atomically so multiple agents do not duplicate effort: move a feature from `pending` to `claimed` only if it is still pending.
 - Append every important action to `events`: batch selection, claim, file edit, test command, failure, verifier result, commit, pause, resume, and blocker.

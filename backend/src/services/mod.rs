@@ -28,6 +28,7 @@ pub mod resource_cost_enrichment;
 pub mod slow_query_ingestion_service;
 pub mod user;
 
+pub mod alerting;
 pub mod analytics;
 pub mod cloudwatch_scraper;
 pub mod data_collection;

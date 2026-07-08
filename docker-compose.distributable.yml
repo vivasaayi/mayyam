@@ -32,6 +32,12 @@ services:
     depends_on:
       app-db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"

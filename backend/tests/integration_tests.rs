@@ -19,6 +19,8 @@ mod integration {
     pub mod api_tests;
     pub mod aws_control_plane_api_tests;
     pub mod aws_inventory_api_tests;
+    pub mod cloud_alerts_api_tests;
+    pub mod cost_alerts_api_tests;
     pub mod cost_analytics_api_tests;
     pub mod ec2_api_tests;
     pub mod helpers;
@@ -28,6 +30,7 @@ mod integration {
     pub mod kubernetes_smoke_tests;
     pub mod llm;
     pub mod mysql_inventory_api_tests;
+    pub mod mysql_slow_query_alerts_api_tests;
     pub mod postgres_inventory_api_tests;
 }
 
@@ -35,6 +38,8 @@ mod integration {
 pub use integration::api_tests::*;
 pub use integration::aws_control_plane_api_tests::*;
 pub use integration::aws_inventory_api_tests::*;
+pub use integration::cloud_alerts_api_tests::*;
+pub use integration::cost_alerts_api_tests::*;
 pub use integration::cost_analytics_api_tests::*;
 pub use integration::ec2_api_tests::*;
 pub use integration::helpers;
@@ -44,4 +49,5 @@ pub use integration::kafka_inventory_api_tests::*;
 pub use integration::kubernetes_smoke_tests::*;
 pub use integration::llm::*;
 pub use integration::mysql_inventory_api_tests::*;
+pub use integration::mysql_slow_query_alerts_api_tests::*;
 pub use integration::postgres_inventory_api_tests::*;

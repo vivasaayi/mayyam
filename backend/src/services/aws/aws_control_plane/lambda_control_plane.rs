@@ -14,12 +14,14 @@
 
 use crate::errors::AppError;
 use crate::models::aws_account::AwsAccountDto;
-use crate::models::aws_auth::AccountAuthInfo;
-use crate::models::aws_resource;
 use crate::models::aws_resource::{AwsResourceDto, AwsResourceType, Model as AwsResourceModel};
+use crate::services::aws::aws_data_plane::cloudwatch::{
+    CloudWatchMetrics, CloudWatchMetricsRequest, CloudWatchService,
+};
 use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::AwsService;
-use serde_json::json;
+use chrono::{Duration, Utc};
+use serde_json::{json, Value};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -43,6 +45,7 @@ impl LambdaControlPlane {
             .aws_service
             .create_lambda_client(aws_account_dto)
             .await?;
+        let cloudwatch_service = CloudWatchService::new(self.aws_service.clone());
 
         let mut functions: Vec<AwsResourceDto> = Vec::new();
         let mut marker = None;
@@ -166,6 +169,14 @@ impl LambdaControlPlane {
                         function_data.insert("architectures".to_string(), json!(arch_list));
                     }
 
+                    self.attach_cloudwatch_telemetry(
+                        &cloudwatch_service,
+                        aws_account_dto,
+                        function_name,
+                        &mut function_data,
+                    )
+                    .await;
+
                     // Create resource DTO
                     let function = AwsResourceDto {
                         id: None,
@@ -194,4 +205,189 @@ impl LambdaControlPlane {
         // Convert DTOs into Models for uniform handling by orchestrator
         Ok(functions.into_iter().map(|f| f.into()).collect())
     }
+
+    async fn attach_cloudwatch_telemetry(
+        &self,
+        cloudwatch_service: &CloudWatchService,
+        aws_account_dto: &AwsAccountDto,
+        function_name: &str,
+        resource_data: &mut serde_json::Map<String, Value>,
+    ) {
+        let collection_started_at = Utc::now();
+        let telemetry_result = self
+            .collect_cloudwatch_metric_sample(cloudwatch_service, aws_account_dto, function_name)
+            .await;
+        let collection_completed_at = Utc::now();
+        let duration_ms = (collection_completed_at - collection_started_at).num_milliseconds();
+
+        resource_data.insert(
+            "telemetry_collection_started_at".to_string(),
+            json!(collection_started_at.to_rfc3339()),
+        );
+        resource_data.insert(
+            "telemetry_collection_completed_at".to_string(),
+            json!(collection_completed_at.to_rfc3339()),
+        );
+        resource_data.insert(
+            "telemetry_collection_duration_ms".to_string(),
+            json!(duration_ms.max(0)),
+        );
+
+        match telemetry_result {
+            Ok(cloudwatch_metrics) => {
+                let metric_names: Vec<String> = cloudwatch_metrics
+                    .get("metrics")
+                    .and_then(|metrics| metrics.as_array())
+                    .map(|metrics| {
+                        metrics
+                            .iter()
+                            .filter_map(|metric| {
+                                metric
+                                    .get("metric_name")
+                                    .and_then(|name| name.as_str())
+                                    .map(|name| name.to_string())
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let metric_count = metric_names.len();
+
+                resource_data.insert("cloudwatch_metrics".to_string(), cloudwatch_metrics);
+                resource_data.insert("cloudwatch_metric_names".to_string(), json!(metric_names));
+                resource_data.insert("cloudwatch_metric_count".to_string(), json!(metric_count));
+                resource_data.insert(
+                    "lambda_invocation_metric_observed".to_string(),
+                    json!(has_metric(resource_data, "Invocations")),
+                );
+                resource_data.insert(
+                    "lambda_duration_metric_observed".to_string(),
+                    json!(has_metric(resource_data, "Duration")),
+                );
+                resource_data.insert(
+                    "lambda_error_metric_observed".to_string(),
+                    json!(has_metric(resource_data, "Errors")),
+                );
+                resource_data.insert(
+                    "lambda_throttle_metric_observed".to_string(),
+                    json!(has_metric(resource_data, "Throttles")),
+                );
+                resource_data.insert("telemetry_collection_success_count".to_string(), json!(1));
+                resource_data.insert("telemetry_collection_failure_count".to_string(), json!(0));
+                resource_data.insert("telemetry_collection_error_count".to_string(), json!(0));
+                resource_data.insert("telemetry_collection_errors".to_string(), json!([]));
+            }
+            Err(error) => {
+                resource_data.insert("cloudwatch_metrics".to_string(), json!({ "metrics": [] }));
+                resource_data.insert("cloudwatch_metric_names".to_string(), json!([]));
+                resource_data.insert("cloudwatch_metric_count".to_string(), json!(0));
+                resource_data.insert(
+                    "lambda_invocation_metric_observed".to_string(),
+                    json!(false),
+                );
+                resource_data.insert("lambda_duration_metric_observed".to_string(), json!(false));
+                resource_data.insert("lambda_error_metric_observed".to_string(), json!(false));
+                resource_data.insert("lambda_throttle_metric_observed".to_string(), json!(false));
+                resource_data.insert("telemetry_collection_success_count".to_string(), json!(0));
+                resource_data.insert("telemetry_collection_failure_count".to_string(), json!(1));
+                resource_data.insert("telemetry_collection_error_count".to_string(), json!(1));
+                resource_data.insert(
+                    "telemetry_collection_errors".to_string(),
+                    json!([{
+                        "source": "cloudwatch",
+                        "operation": "GetMetricData",
+                        "error": error.to_string(),
+                    }]),
+                );
+            }
+        }
+    }
+
+    async fn collect_cloudwatch_metric_sample(
+        &self,
+        cloudwatch_service: &CloudWatchService,
+        aws_account_dto: &AwsAccountDto,
+        function_name: &str,
+    ) -> Result<Value, AppError> {
+        let end_time = Utc::now();
+        let start_time = end_time - Duration::hours(3);
+        let metrics = lambda_cost_metric_names()
+            .iter()
+            .map(|metric| metric.to_string())
+            .collect::<Vec<_>>();
+        let request = CloudWatchMetricsRequest {
+            resource_type: AwsResourceType::LambdaFunction.to_string(),
+            resource_id: function_name.to_string(),
+            region: aws_account_dto.default_region.clone(),
+            metrics: metrics.clone(),
+            start_time,
+            end_time,
+            period: 300,
+        };
+
+        let result = cloudwatch_service
+            .get_metrics(aws_account_dto, &request)
+            .await?;
+        let metric_samples = result
+            .metrics
+            .into_iter()
+            .map(|metric| {
+                json!({
+                    "namespace": metric.namespace,
+                    "metric_name": metric.metric_name,
+                    "unit": metric.unit,
+                    "datapoints": metric
+                        .datapoints
+                        .into_iter()
+                        .map(|datapoint| {
+                            json!({
+                                "timestamp": datapoint.timestamp.to_rfc3339(),
+                                "value": datapoint.value,
+                                "unit": datapoint.unit,
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect::<Vec<_>>();
+
+        Ok(json!({
+            "source": "CloudWatch",
+            "namespace": "AWS/Lambda",
+            "resource_id": function_name,
+            "dimension_name": "FunctionName",
+            "lookback_hours": 3,
+            "period_seconds": 300,
+            "requested_metrics": metrics,
+            "metrics": metric_samples,
+            "collected_at": end_time.to_rfc3339(),
+        }))
+    }
+}
+
+fn lambda_cost_metric_names() -> [&'static str; 4] {
+    ["Invocations", "Duration", "Errors", "Throttles"]
+}
+
+fn has_metric(resource_data: &serde_json::Map<String, Value>, metric_name: &str) -> bool {
+    resource_data
+        .get("cloudwatch_metrics")
+        .and_then(|cloudwatch| cloudwatch.get("metrics"))
+        .and_then(|metrics| metrics.as_array())
+        .map(|metrics| {
+            metrics.iter().any(|metric| {
+                metric
+                    .get("metric_name")
+                    .or_else(|| metric.get("MetricName"))
+                    .and_then(|name| name.as_str())
+                    .map(|name| name == metric_name)
+                    .unwrap_or(false)
+                    && metric
+                        .get("datapoints")
+                        .or_else(|| metric.get("Datapoints"))
+                        .and_then(|datapoints| datapoints.as_array())
+                        .map(|datapoints| !datapoints.is_empty())
+                        .unwrap_or(false)
+            })
+        })
+        .unwrap_or(false)
 }

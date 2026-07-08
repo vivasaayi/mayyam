@@ -33,7 +33,17 @@ use crate::services::aws::inventory::apprunner_pillar_evaluator::evaluate_apprun
 use crate::services::aws::inventory::appsync_pillar_evaluator::evaluate_appsync_fleet;
 use crate::services::aws::inventory::athena_pillar_evaluator::evaluate_athena_fleet;
 use crate::services::aws::inventory::aurora_pillar_evaluator::evaluate_aurora_fleet;
-use crate::services::aws::inventory::autoscaling_pillar_evaluator::evaluate_autoscaling_fleet;
+use crate::services::aws::inventory::autoscaling_pillar_evaluator::{
+    asg_cost_agentic_investigation_plan, asg_cost_forecast_snapshot, asg_cost_posture_summary,
+    asg_cost_remediation_workflow, asg_cost_reporting_bundle, asg_cost_slo_policy_snapshot,
+    asg_cost_triage_context, asg_resilience_agentic_investigation_plan,
+    asg_resilience_forecast_snapshot, asg_resilience_posture_summary,
+    asg_resilience_remediation_workflow, asg_resilience_reporting_bundle,
+    asg_resilience_slo_policy_snapshot, asg_resilience_triage_context,
+    asg_security_agentic_investigation_plan, asg_security_forecast_snapshot,
+    asg_security_posture_summary, asg_security_remediation_workflow, asg_security_reporting_bundle,
+    asg_security_slo_policy_snapshot, asg_security_triage_context, evaluate_autoscaling_fleet,
+};
 use crate::services::aws::inventory::backup_pillar_evaluator::evaluate_backup_fleet;
 use crate::services::aws::inventory::batch_pillar_evaluator::evaluate_batch_fleet;
 use crate::services::aws::inventory::bedrock_pillar_evaluator::evaluate_bedrock_fleet;
@@ -53,9 +63,24 @@ use crate::services::aws::inventory::drs_pillar_evaluator::evaluate_drs_fleet;
 use crate::services::aws::inventory::dynamodb_pillar_evaluator::evaluate_dynamodb_fleet;
 use crate::services::aws::inventory::ebs_pillar_evaluator::evaluate_ebs_fleet;
 use crate::services::aws::inventory::ec2_pillar_evaluator::{
-    ec2_cost_posture_summary, ec2_cost_triage_context, evaluate_ec2_fleet,
+    ec2_cost_forecast_snapshot, ec2_cost_posture_summary, ec2_cost_remediation_workflow,
+    ec2_cost_reporting_bundle, ec2_cost_slo_policy_snapshot, ec2_cost_triage_context,
+    ec2_disaster_recovery_posture_summary, ec2_disaster_recovery_triage_context,
+    ec2_operational_excellence_posture_summary, ec2_operational_excellence_triage_context,
+    ec2_performance_forecast_snapshot, ec2_performance_posture_summary,
+    ec2_performance_triage_context, ec2_resilience_agentic_investigation_plan,
+    ec2_resilience_forecast_snapshot, ec2_resilience_posture_summary,
+    ec2_resilience_remediation_workflow, ec2_resilience_reporting_bundle,
+    ec2_resilience_slo_policy_snapshot, ec2_resilience_triage_context,
+    ec2_scalability_posture_summary, ec2_scalability_triage_context,
+    ec2_security_agentic_investigation_plan, ec2_security_forecast_snapshot,
+    ec2_security_posture_summary, ec2_security_remediation_workflow,
+    ec2_security_slo_policy_snapshot, ec2_security_triage_context, evaluate_ec2_fleet,
 };
-use crate::services::aws::inventory::ecs_pillar_evaluator::evaluate_ecs_fleet;
+use crate::services::aws::inventory::ecs_pillar_evaluator::{
+    ecs_cost_agentic_investigation_plan, ecs_cost_posture_summary, ecs_cost_remediation_workflow,
+    ecs_cost_telemetry_summary, ecs_cost_triage_context, evaluate_ecs_fleet,
+};
 use crate::services::aws::inventory::efs_pillar_evaluator::evaluate_efs_fleet;
 use crate::services::aws::inventory::eks_pillar_evaluator::evaluate_eks_fleet;
 use crate::services::aws::inventory::elasticache_pillar_evaluator::evaluate_elasticache_fleet;
@@ -77,7 +102,24 @@ use crate::services::aws::inventory::kinesis_pillar_evaluator::evaluate_kinesis_
 use crate::services::aws::inventory::kinesisanalytics_pillar_evaluator::evaluate_kinesisanalytics_fleet;
 use crate::services::aws::inventory::kms_pillar_evaluator::evaluate_kms_fleet;
 use crate::services::aws::inventory::lakeformation_pillar_evaluator::evaluate_lakeformation_fleet;
-use crate::services::aws::inventory::lambda_pillar_evaluator::evaluate_lambda_fleet;
+use crate::services::aws::inventory::lambda_pillar_evaluator::{
+    evaluate_lambda_fleet, lambda_cost_agentic_investigation_plan, lambda_cost_forecast_snapshot,
+    lambda_cost_posture_summary, lambda_cost_remediation_workflow, lambda_cost_reporting_bundle,
+    lambda_cost_slo_policy_snapshot, lambda_cost_telemetry_summary, lambda_cost_triage_context,
+    lambda_operational_posture_summary, lambda_operational_telemetry_summary,
+    lambda_operational_triage_context, lambda_performance_posture_summary,
+    lambda_performance_telemetry_summary, lambda_performance_triage_context,
+    lambda_resilience_agentic_investigation_plan, lambda_resilience_forecast_snapshot,
+    lambda_resilience_posture_summary, lambda_resilience_remediation_workflow,
+    lambda_resilience_reporting_bundle, lambda_resilience_slo_policy_snapshot,
+    lambda_resilience_telemetry_summary, lambda_resilience_triage_context,
+    lambda_scalability_posture_summary, lambda_scalability_telemetry_summary,
+    lambda_scalability_triage_context, lambda_security_agentic_investigation_plan,
+    lambda_security_forecast_snapshot, lambda_security_posture_summary,
+    lambda_security_remediation_workflow, lambda_security_reporting_bundle,
+    lambda_security_slo_policy_snapshot, lambda_security_telemetry_summary,
+    lambda_security_triage_context,
+};
 use crate::services::aws::inventory::lightsail_pillar_evaluator::evaluate_lightsail_fleet;
 use crate::services::aws::inventory::load_balancer_pillar_evaluator::evaluate_load_balancer_fleet;
 use crate::services::aws::inventory::macie_pillar_evaluator::evaluate_macie_fleet;
@@ -138,6 +180,14 @@ pub struct Ec2PillarQuery {
 
 /// Pillars every inventory evaluator implements.
 const BASE_PILLARS: &[Pillar] = &[Pillar::Cost, Pillar::Security, Pillar::Resilience];
+/// Lambda now has M2 performance telemetry coverage in addition to its base pillars.
+const LAMBDA_PILLARS: &[Pillar] = &[
+    Pillar::Cost,
+    Pillar::Security,
+    Pillar::Resilience,
+    Pillar::Performance,
+    Pillar::Scalability,
+];
 /// EC2 has M2 telemetry coverage for performance in addition to its M1 pillars.
 const EC2_PILLARS: &[Pillar] = &[
     Pillar::Cost,
@@ -323,6 +373,103 @@ pub async fn get_ec2_pillar_reports(
                     "findings": report.findings,
                     "posture": ec2_cost_posture_summary(&report),
                     "triage_context": ec2_cost_triage_context(&report),
+                    "remediation_workflow": ec2_cost_remediation_workflow(&report),
+                    "slo_policy_tracking": ec2_cost_slo_policy_snapshot(&report),
+                    "forecasting": ec2_cost_forecast_snapshot(&report),
+                    "reporting": ec2_cost_reporting_bundle(&report),
+                })
+            } else if *pillar == Pillar::Security {
+                json!({
+                    "pillar": report.pillar,
+                    "assessment_scope": "ec2_public_exposure_owner_routing_and_packet_telemetry",
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "posture": ec2_security_posture_summary(&report),
+                    "triage_context": ec2_security_triage_context(&report),
+                    "agentic_investigation": ec2_security_agentic_investigation_plan(&report),
+                    "remediation_workflow": ec2_security_remediation_workflow(&report),
+                    "slo_policy_tracking": ec2_security_slo_policy_snapshot(&report),
+                    "forecasting": ec2_security_forecast_snapshot(&report),
+                })
+            } else if *pillar == Pillar::Security {
+                json!({
+                    "pillar": report.pillar,
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "assessment_scope": "lambda_security_metrics_logs_events_and_code_signing_telemetry",
+                    "posture": lambda_security_posture_summary(&report),
+                    "triage_context": lambda_security_triage_context(&report),
+                    "agentic_investigation": lambda_security_agentic_investigation_plan(&report),
+                    "remediation_workflow": lambda_security_remediation_workflow(&report),
+                    "slo_policy_tracking": lambda_security_slo_policy_snapshot(&report),
+                    "forecasting": lambda_security_forecast_snapshot(&report),
+                    "reporting": lambda_security_reporting_bundle(&report),
+                    "telemetry": lambda_security_telemetry_summary(&report),
+                })
+            } else if *pillar == Pillar::Resilience {
+                json!({
+                    "pillar": report.pillar,
+                    "assessment_scope": "ec2_instance_placement_and_status_checks",
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "posture": ec2_resilience_posture_summary(&report),
+                    "triage_context": ec2_resilience_triage_context(&report),
+                    "agentic_investigation": ec2_resilience_agentic_investigation_plan(&report),
+                    "remediation_workflow": ec2_resilience_remediation_workflow(&report),
+                    "slo_policy_tracking": ec2_resilience_slo_policy_snapshot(&report),
+                    "forecasting": ec2_resilience_forecast_snapshot(&report),
+                    "reporting": ec2_resilience_reporting_bundle(&report),
+                })
+            } else if *pillar == Pillar::Performance {
+                json!({
+                    "pillar": report.pillar,
+                    "assessment_scope": "ec2_core_performance_telemetry_and_cpu_headroom",
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "posture": ec2_performance_posture_summary(&report),
+                    "triage_context": ec2_performance_triage_context(&report),
+                    "forecasting": ec2_performance_forecast_snapshot(&report),
+                })
+            } else if *pillar == Pillar::Scalability {
+                json!({
+                    "pillar": report.pillar,
+                    "assessment_scope": "ec2_demand_telemetry_and_cpu_scaling_pressure",
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "posture": ec2_scalability_posture_summary(&report),
+                    "triage_context": ec2_scalability_triage_context(&report),
+                })
+            } else if *pillar == Pillar::DisasterRecovery {
+                json!({
+                    "pillar": report.pillar,
+                    "assessment_scope": "ec2_recovery_point_freshness_and_restore_evidence",
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "posture": ec2_disaster_recovery_posture_summary(&report),
+                    "triage_context": ec2_disaster_recovery_triage_context(&report),
+                })
+            } else if *pillar == Pillar::OperationalExcellence {
+                json!({
+                    "pillar": report.pillar,
+                    "assessment_scope": "ec2_telemetry_collection_runbook_readiness",
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "posture": ec2_operational_excellence_posture_summary(&report),
+                    "triage_context": ec2_operational_excellence_triage_context(&report),
                 })
             } else {
                 json!(report)
@@ -348,13 +495,106 @@ pub async fn get_lambda_pillar_reports(
 ) -> Result<HttpResponse, AppError> {
     let query = query.into_inner();
     debug!("Lambda pillar report request: {:?}", query);
-    pillar_reports(
-        &controller,
-        query,
-        AwsResourceType::LambdaFunction,
-        evaluate_lambda_fleet,
-    )
-    .await
+    let pillars = parse_pillars(&query.pillar, LAMBDA_PILLARS)?;
+    let resources = controller
+        .aws_resource_repo
+        .find_by_account_and_type(
+            &query.account_id,
+            &AwsResourceType::LambdaFunction.to_string(),
+        )
+        .await?;
+
+    let now = Utc::now();
+    let reports: Vec<_> = pillars
+        .iter()
+        .map(|pillar| {
+            let report = evaluate_lambda_fleet(&resources, *pillar, now);
+            if *pillar == Pillar::Cost {
+                json!({
+                    "pillar": report.pillar,
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "assessment_scope": "lambda_cost_invocation_duration_error_and_throttle_telemetry",
+                    "posture": lambda_cost_posture_summary(&report),
+                    "triage_context": lambda_cost_triage_context(&report),
+                    "agentic_investigation": lambda_cost_agentic_investigation_plan(&report),
+                    "remediation_workflow": lambda_cost_remediation_workflow(&report),
+                    "slo_policy_tracking": lambda_cost_slo_policy_snapshot(&report),
+                    "forecasting": lambda_cost_forecast_snapshot(&report),
+                    "reporting": lambda_cost_reporting_bundle(&report),
+                    "telemetry": lambda_cost_telemetry_summary(&report),
+                })
+            } else if *pillar == Pillar::Resilience {
+                json!({
+                    "pillar": report.pillar,
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "assessment_scope": "lambda_resilience_metrics_logs_events_quotas_limits_and_health_signals",
+                    "posture": lambda_resilience_posture_summary(&report),
+                    "triage_context": lambda_resilience_triage_context(&report),
+                    "agentic_investigation": lambda_resilience_agentic_investigation_plan(&report),
+                    "remediation_workflow": lambda_resilience_remediation_workflow(&report),
+                    "slo_policy_tracking": lambda_resilience_slo_policy_snapshot(&report),
+                    "forecasting": lambda_resilience_forecast_snapshot(&report),
+                    "reporting": lambda_resilience_reporting_bundle(&report),
+                    "telemetry": lambda_resilience_telemetry_summary(&report),
+                })
+            } else if *pillar == Pillar::Performance {
+                json!({
+                    "pillar": report.pillar,
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "assessment_scope": "lambda_performance_duration_error_throttle_and_concurrency_telemetry",
+                    "posture": lambda_performance_posture_summary(&report),
+                    "triage_context": lambda_performance_triage_context(&report),
+                    "telemetry": lambda_performance_telemetry_summary(&report),
+                })
+            } else if *pillar == Pillar::Scalability {
+                json!({
+                    "pillar": report.pillar,
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "assessment_scope": "lambda_scalability_invocation_throttle_and_concurrency_telemetry",
+                    "posture": lambda_scalability_posture_summary(&report),
+                    "triage_context": lambda_scalability_triage_context(&report),
+                    "telemetry": lambda_scalability_telemetry_summary(&report),
+                })
+            } else if *pillar == Pillar::OperationalExcellence {
+                json!({
+                    "pillar": report.pillar,
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "assessment_scope": "lambda_operational_metrics_logs_events_quotas_limits_and_health_signals",
+                    "posture": lambda_operational_posture_summary(&report),
+                    "triage_context": lambda_operational_triage_context(&report),
+                    "telemetry": lambda_operational_telemetry_summary(&report),
+                })
+            } else {
+                json!(report)
+            }
+        })
+        .collect();
+    let oldest_refresh = resources.iter().map(|r| r.last_refreshed).min();
+
+    Ok(HttpResponse::Ok().json(json!({
+        "account_id": query.account_id,
+        "resource_type": AwsResourceType::LambdaFunction.to_string(),
+        "evaluated_at": now,
+        "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
+        "resources_evaluated": resources.len(),
+        "oldest_refresh": oldest_refresh,
+        "reports": reports,
+    })))
 }
 
 pub async fn get_s3_pillar_reports(
@@ -441,7 +681,26 @@ pub async fn get_ecs_pillar_reports(
     let now = Utc::now();
     let reports: Vec<_> = pillars
         .iter()
-        .map(|pillar| evaluate_ecs_fleet(&resources, *pillar, now))
+        .map(|pillar| {
+            let report = evaluate_ecs_fleet(&resources, *pillar, now);
+            if *pillar == Pillar::Cost {
+                json!({
+                    "pillar": report.pillar,
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "assessment_scope": "ecs_cluster_service_utilization_cost_telemetry",
+                    "posture": ecs_cost_posture_summary(&report),
+                    "triage_context": ecs_cost_triage_context(&report),
+                    "agentic_investigation": ecs_cost_agentic_investigation_plan(&report),
+                    "remediation_workflow": ecs_cost_remediation_workflow(&report),
+                    "telemetry": ecs_cost_telemetry_summary(&report),
+                })
+            } else {
+                json!(report)
+            }
+        })
         .collect();
     let oldest_refresh = resources.iter().map(|r| r.last_refreshed).min();
 
@@ -1076,13 +1335,84 @@ pub async fn get_autoscaling_pillar_reports(
 ) -> Result<HttpResponse, AppError> {
     let query = query.into_inner();
     debug!("Auto Scaling pillar report request: {:?}", query);
-    pillar_reports(
-        &controller,
-        query,
-        AwsResourceType::AutoScalingGroup,
-        evaluate_autoscaling_fleet,
-    )
-    .await
+    let pillars = parse_pillars(&query.pillar, BASE_PILLARS)?;
+    let resources = controller
+        .aws_resource_repo
+        .find_by_account_and_type(
+            &query.account_id,
+            &AwsResourceType::AutoScalingGroup.to_string(),
+        )
+        .await?;
+
+    let now = Utc::now();
+    let reports: Vec<_> = pillars
+        .iter()
+        .map(|pillar| {
+            let report = evaluate_autoscaling_fleet(&resources, *pillar, now);
+            if *pillar == Pillar::Cost {
+                json!({
+                    "pillar": report.pillar,
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "assessment_scope": "autoscaling_cost_capacity_tags_and_group_metrics",
+                    "posture": asg_cost_posture_summary(&report),
+                    "triage_context": asg_cost_triage_context(&report),
+                    "agentic_investigation": asg_cost_agentic_investigation_plan(&report),
+                    "remediation_workflow": asg_cost_remediation_workflow(&report),
+                    "slo_policy_tracking": asg_cost_slo_policy_snapshot(&report),
+                    "forecasting": asg_cost_forecast_snapshot(&report),
+                    "reporting": asg_cost_reporting_bundle(&report),
+                })
+            } else if *pillar == Pillar::Resilience {
+                json!({
+                    "pillar": report.pillar,
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "assessment_scope": "autoscaling_resilience_replacement_health_and_multi_az",
+                    "posture": asg_resilience_posture_summary(&report),
+                    "triage_context": asg_resilience_triage_context(&report),
+                    "agentic_investigation": asg_resilience_agentic_investigation_plan(&report),
+                    "remediation_workflow": asg_resilience_remediation_workflow(&report),
+                    "slo_policy_tracking": asg_resilience_slo_policy_snapshot(&report),
+                    "forecasting": asg_resilience_forecast_snapshot(&report),
+                    "reporting": asg_resilience_reporting_bundle(&report),
+                })
+            } else if *pillar == Pillar::Security {
+                json!({
+                    "pillar": report.pillar,
+                    "resources_evaluated": report.resources_evaluated,
+                    "stale_resources": report.stale_resources,
+                    "score": report.score,
+                    "findings": report.findings,
+                    "assessment_scope": "autoscaling_security_launch_source_and_instance_telemetry",
+                    "posture": asg_security_posture_summary(&report),
+                    "triage_context": asg_security_triage_context(&report),
+                    "agentic_investigation": asg_security_agentic_investigation_plan(&report),
+                    "remediation_workflow": asg_security_remediation_workflow(&report),
+                    "slo_policy_tracking": asg_security_slo_policy_snapshot(&report),
+                    "forecasting": asg_security_forecast_snapshot(&report),
+                    "reporting": asg_security_reporting_bundle(&report),
+                })
+            } else {
+                json!(report)
+            }
+        })
+        .collect();
+    let oldest_refresh = resources.iter().map(|r| r.last_refreshed).min();
+
+    Ok(HttpResponse::Ok().json(json!({
+        "account_id": query.account_id,
+        "resource_type": AwsResourceType::AutoScalingGroup.to_string(),
+        "evaluated_at": now,
+        "stale_after_hours": DEFAULT_STALE_AFTER_HOURS,
+        "resources_evaluated": resources.len(),
+        "oldest_refresh": oldest_refresh,
+        "reports": reports,
+    })))
 }
 
 pub async fn get_route53_pillar_reports(

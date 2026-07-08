@@ -112,8 +112,10 @@ async fn llm_agent_inventory_pillar_reports_contract() {
                 "timeout_ms": 30000,
                 "max_iterations": 8,
                 "allowed_tools": ["kafka.read", "kubernetes.read"],
+                "provider_failover_policy": "fail over to approved standby provider after dry-run health check",
                 "tool_policy": "read-only diagnostics by default",
                 "approval_policy": "approval required for mutations",
+                "model_routing_policy": "route regulated workloads to approved provider set",
                 "audit_enabled": true
             }),
             true,
@@ -147,6 +149,66 @@ async fn llm_agent_inventory_pillar_reports_contract() {
     assert_eq!(body["resource_type"], "AiLlmAgent");
     assert_eq!(body["resources_evaluated"].as_u64().unwrap_or(0), 2);
     assert_eq!(body["reports"].as_array().unwrap().len(), 3);
+    assert_eq!(
+        body["control_workflow"]["workflow_id"],
+        "ai_llm_agent_budget_stop_control_workflow"
+    );
+    assert_eq!(
+        body["control_workflow"]["approval_gate_permission"],
+        "ai.llm.agent.controls.approve"
+    );
+    assert_eq!(
+        body["governance_workflow"]["workflow_id"],
+        "ai_llm_agent_governance_workflow"
+    );
+    assert_eq!(
+        body["governance_workflow"]["approval_gate_permission"],
+        "ai.llm.agent.governance.approve"
+    );
+    assert_eq!(body["governance_workflow"]["read_only_mode"], true);
+    assert_eq!(body["control_workflow"]["read_only_mode"], true);
+    assert_eq!(body["control_workflow"]["dry_run_only"], true);
+    let actions = body["control_workflow"]["actions"].as_array().unwrap();
+    assert_eq!(actions.len(), 2);
+    assert!(actions.iter().all(|action| action["dry_run"] == true));
+    assert!(actions
+        .iter()
+        .any(|action| action["status"] == "ready_for_approval"));
+    let blocked_action = actions
+        .iter()
+        .find(|action| action["model_name"] == "unsafe-agent")
+        .expect("unsafe agent workflow action");
+    assert_eq!(blocked_action["status"], "blocked_missing_evidence");
+    assert!(blocked_action["required_evidence"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("monthly_budget_usd")));
+    assert!(blocked_action["required_evidence"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("max_iterations_or_stop_condition")));
+    let blocked_governance_action = body["governance_workflow"]["actions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|action| action["model_name"] == "unsafe-agent")
+        .expect("unsafe governance action");
+    assert_eq!(
+        blocked_governance_action["status"],
+        "blocked_missing_evidence"
+    );
+    assert!(blocked_governance_action["required_evidence"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("approval_policy")));
+    assert!(blocked_governance_action["required_evidence"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("model_routing_policy")));
+    assert!(blocked_governance_action["required_evidence"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("provider_failover_policy")));
 
     let req = test::TestRequest::get()
         .uri("/api/v1/llm-providers/agent-inventory/pillars?pillar=resilience,security")

@@ -23,7 +23,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use std::collections::BTreeSet;
 
 use crate::models::aws_resource::Model as AwsResourceModel;
@@ -60,6 +60,7 @@ pub const REASON_OE_MISSING_TELEMETRY_COLLECTION_METADATA: &str =
 pub const REASON_OE_TELEMETRY_COLLECTION_ERRORS: &str = "EC2_OE_TELEMETRY_COLLECTION_ERRORS";
 pub const REASON_OE_BASIC_MONITORING: &str = "EC2_OE_BASIC_MONITORING";
 pub const REASON_INV_STALE_DATA: &str = "EC2_INV_STALE_DATA";
+pub const REASON_INV_NO_RESOURCES: &str = "EC2_INV_NO_RESOURCES";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -79,13 +80,21 @@ pub struct Ec2PostureRule {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct Ec2CostPostureSummary {
+pub struct Ec2PostureSummary {
     pub status: Ec2PostureStatus,
     pub rules_evaluated: usize,
     pub rules_failed: usize,
     pub affected_resources: Vec<String>,
     pub rules: Vec<Ec2PostureRule>,
 }
+
+pub type Ec2CostPostureSummary = Ec2PostureSummary;
+pub type Ec2SecurityPostureSummary = Ec2PostureSummary;
+pub type Ec2ResiliencePostureSummary = Ec2PostureSummary;
+pub type Ec2PerformancePostureSummary = Ec2PostureSummary;
+pub type Ec2ScalabilityPostureSummary = Ec2PostureSummary;
+pub type Ec2DisasterRecoveryPostureSummary = Ec2PostureSummary;
+pub type Ec2OperationalExcellencePostureSummary = Ec2PostureSummary;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Ec2EvidenceCitation {
@@ -96,13 +105,39 @@ pub struct Ec2EvidenceCitation {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Ec2CostTriageContext {
+pub struct Ec2AiTriageGuardrails {
+    pub read_only_mode: bool,
+    pub evidence_required: bool,
+    pub separate_facts_from_hypotheses: bool,
+    pub ask_for_missing_data: bool,
+    pub no_llm_invocation: bool,
+    pub no_mutation_planning: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Ec2TriageContext {
+    pub workflow_id: &'static str,
     pub pillar: Pillar,
+    pub context_builder_id: &'static str,
+    pub prompt_template_id: &'static str,
+    pub generation_mode: &'static str,
+    pub max_prompt_tokens: u16,
+    pub provider_routing: Vec<&'static str>,
+    pub audit_event_type: &'static str,
+    pub guardrails: Ec2AiTriageGuardrails,
     pub facts: Vec<String>,
     pub hypotheses: Vec<String>,
     pub missing_data_questions: Vec<String>,
     pub evidence_citations: Vec<Ec2EvidenceCitation>,
 }
+
+pub type Ec2CostTriageContext = Ec2TriageContext;
+pub type Ec2SecurityTriageContext = Ec2TriageContext;
+pub type Ec2ResilienceTriageContext = Ec2TriageContext;
+pub type Ec2PerformanceTriageContext = Ec2TriageContext;
+pub type Ec2ScalabilityTriageContext = Ec2TriageContext;
+pub type Ec2DisasterRecoveryTriageContext = Ec2TriageContext;
+pub type Ec2OperationalExcellenceTriageContext = Ec2TriageContext;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -143,7 +178,7 @@ pub struct Ec2MutationApprovalGate {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Ec2CostAgenticInvestigationPlan {
+pub struct Ec2AgenticInvestigationPlan {
     pub workflow_id: &'static str,
     pub default_tool_mode: Ec2InvestigationToolMode,
     pub max_tool_calls: usize,
@@ -152,6 +187,401 @@ pub struct Ec2CostAgenticInvestigationPlan {
     pub steps: Vec<Ec2InvestigationStep>,
     pub approval_gates: Vec<Ec2MutationApprovalGate>,
     pub evidence_citations: Vec<Ec2EvidenceCitation>,
+}
+
+pub type Ec2CostAgenticInvestigationPlan = Ec2AgenticInvestigationPlan;
+pub type Ec2SecurityAgenticInvestigationPlan = Ec2AgenticInvestigationPlan;
+pub type Ec2ResilienceAgenticInvestigationPlan = Ec2AgenticInvestigationPlan;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Ec2RemediationActionKind {
+    AssignCostTags,
+    ReviewStoppedInstanceArtifacts,
+    RightSizeInstance,
+    PlanMultiAzPlacement,
+    ReviewStatusCheckRecovery,
+    ReviewSecurityExposure,
+    ReviewPublicPacketTraffic,
+    ReviewSecurityOwnerMetadata,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Ec2RemediationStatus {
+    DryRunPendingApproval,
+    BlockedMissingEvidence,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Ec2CostRemediationAction {
+    pub action_id: String,
+    pub kind: Ec2RemediationActionKind,
+    pub status: Ec2RemediationStatus,
+    pub target_resource_id: String,
+    pub dry_run: bool,
+    pub requires_approval: bool,
+    pub approval_gate_id: Option<String>,
+    pub audit_event_type: &'static str,
+    pub idempotency_key: String,
+    pub blast_radius: String,
+    pub rollback_note: String,
+    pub validation_steps: Vec<&'static str>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Ec2CostRemediationWorkflow {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub rbac_permission: &'static str,
+    pub audit_stream: &'static str,
+    pub stale_data_blocks_execution: bool,
+    pub actions: Vec<Ec2CostRemediationAction>,
+    pub approval_gates: Vec<Ec2MutationApprovalGate>,
+}
+
+pub type Ec2ResilienceRemediationAction = Ec2CostRemediationAction;
+pub type Ec2ResilienceRemediationWorkflow = Ec2CostRemediationWorkflow;
+pub type Ec2SecurityRemediationAction = Ec2CostRemediationAction;
+pub type Ec2SecurityRemediationWorkflow = Ec2CostRemediationWorkflow;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Ec2CostObjectiveStatus {
+    OnTrack,
+    AtRisk,
+    Breached,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Ec2CostTrendDirection {
+    Stable,
+    Degrading,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Ec2CostPolicyObjective {
+    pub objective_id: &'static str,
+    pub status: Ec2CostObjectiveStatus,
+    pub target_score_min: u8,
+    pub current_score: u8,
+    pub trend_direction: Ec2CostTrendDirection,
+    pub failed_rule_count: usize,
+    pub affected_resource_count: usize,
+    pub owner_filters: Vec<String>,
+    pub environment_filters: Vec<String>,
+    pub application_filters: Vec<String>,
+    pub notification_targets: Vec<String>,
+    pub policy_state: &'static str,
+    pub status_history: Vec<&'static str>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Ec2CostSloPolicySnapshot {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub freshness_required: bool,
+    pub objective: Ec2CostPolicyObjective,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Ec2ResilienceObjectiveStatus {
+    OnTrack,
+    AtRisk,
+    Breached,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Ec2ResilienceTrendDirection {
+    Stable,
+    Degrading,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Ec2ResiliencePolicyObjective {
+    pub objective_id: &'static str,
+    pub status: Ec2ResilienceObjectiveStatus,
+    pub target_score_min: u8,
+    pub current_score: u8,
+    pub trend_direction: Ec2ResilienceTrendDirection,
+    pub failed_rule_count: usize,
+    pub affected_resource_count: usize,
+    pub owner_filters: Vec<String>,
+    pub environment_filters: Vec<String>,
+    pub application_filters: Vec<String>,
+    pub notification_targets: Vec<String>,
+    pub policy_state: &'static str,
+    pub status_history: Vec<&'static str>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Ec2ResilienceSloPolicySnapshot {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub freshness_required: bool,
+    pub objective: Ec2ResiliencePolicyObjective,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+pub type Ec2SecurityObjectiveStatus = Ec2ResilienceObjectiveStatus;
+pub type Ec2SecurityTrendDirection = Ec2ResilienceTrendDirection;
+pub type Ec2SecurityPolicyObjective = Ec2ResiliencePolicyObjective;
+pub type Ec2SecuritySloPolicySnapshot = Ec2ResilienceSloPolicySnapshot;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Ec2CostForecastRisk {
+    Low,
+    Moderate,
+    High,
+    Blocked,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2CostForecastBand {
+    pub horizon_days: u16,
+    pub lower_monthly_cost_index: u16,
+    pub expected_monthly_cost_index: u16,
+    pub upper_monthly_cost_index: u16,
+    pub confidence_level: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2CostForecastRiskDriver {
+    pub reason_code: String,
+    pub affected_resources: Vec<String>,
+    pub monthly_cost_index_delta: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2CostForecastSnapshot {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub baseline_window_days: u16,
+    pub forecast_horizon_days: u16,
+    pub confidence_level: u8,
+    pub forecast_band: Ec2CostForecastBand,
+    pub risk_level: Ec2CostForecastRisk,
+    pub capacity_risk: &'static str,
+    pub backtesting_fixture_status: &'static str,
+    pub threshold_controls: Vec<&'static str>,
+    pub what_if_inputs: Vec<&'static str>,
+    pub blocked_by_stale_data: bool,
+    pub missing_data_reason_codes: Vec<String>,
+    pub risk_drivers: Vec<Ec2CostForecastRiskDriver>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Ec2ResilienceForecastRisk {
+    Low,
+    Moderate,
+    High,
+    Blocked,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2ResilienceForecastBand {
+    pub horizon_days: u16,
+    pub lower_recovery_exposure_index: u16,
+    pub expected_recovery_exposure_index: u16,
+    pub upper_recovery_exposure_index: u16,
+    pub confidence_level: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2ResilienceForecastRiskDriver {
+    pub reason_code: String,
+    pub affected_resources: Vec<String>,
+    pub recovery_exposure_index_delta: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2ResilienceForecastSnapshot {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub baseline_window_days: u16,
+    pub forecast_horizon_days: u16,
+    pub confidence_level: u8,
+    pub forecast_band: Ec2ResilienceForecastBand,
+    pub risk_level: Ec2ResilienceForecastRisk,
+    pub recovery_capacity_risk: &'static str,
+    pub backtesting_fixture_status: &'static str,
+    pub threshold_controls: Vec<&'static str>,
+    pub what_if_inputs: Vec<&'static str>,
+    pub blocked_by_stale_data: bool,
+    pub blast_radius_summary: &'static str,
+    pub recovery_note: &'static str,
+    pub missing_data_reason_codes: Vec<String>,
+    pub risk_drivers: Vec<Ec2ResilienceForecastRiskDriver>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+pub type Ec2SecurityForecastRisk = Ec2ResilienceForecastRisk;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2SecurityForecastBand {
+    pub horizon_days: u16,
+    pub lower_security_exposure_index: u16,
+    pub expected_security_exposure_index: u16,
+    pub upper_security_exposure_index: u16,
+    pub confidence_level: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2SecurityForecastRiskDriver {
+    pub reason_code: String,
+    pub affected_resources: Vec<String>,
+    pub security_exposure_index_delta: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2SecurityForecastSnapshot {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub baseline_window_days: u16,
+    pub forecast_horizon_days: u16,
+    pub confidence_level: u8,
+    pub forecast_band: Ec2SecurityForecastBand,
+    pub risk_level: Ec2SecurityForecastRisk,
+    pub exposure_capacity_risk: &'static str,
+    pub backtesting_fixture_status: &'static str,
+    pub threshold_controls: Vec<&'static str>,
+    pub what_if_inputs: Vec<&'static str>,
+    pub blocked_by_stale_data: bool,
+    pub blast_radius_summary: &'static str,
+    pub missing_data_reason_codes: Vec<String>,
+    pub risk_drivers: Vec<Ec2SecurityForecastRiskDriver>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+pub type Ec2PerformanceForecastRisk = Ec2ResilienceForecastRisk;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2PerformanceForecastBand {
+    pub horizon_days: u16,
+    pub lower_performance_pressure_index: u16,
+    pub expected_performance_pressure_index: u16,
+    pub upper_performance_pressure_index: u16,
+    pub confidence_level: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2PerformanceForecastRiskDriver {
+    pub reason_code: String,
+    pub affected_resources: Vec<String>,
+    pub performance_pressure_index_delta: u16,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2PerformanceForecastSnapshot {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub baseline_window_days: u16,
+    pub forecast_horizon_days: u16,
+    pub confidence_level: u8,
+    pub forecast_band: Ec2PerformanceForecastBand,
+    pub risk_level: Ec2PerformanceForecastRisk,
+    pub performance_capacity_risk: &'static str,
+    pub backtesting_fixture_status: &'static str,
+    pub threshold_controls: Vec<&'static str>,
+    pub what_if_inputs: Vec<&'static str>,
+    pub blocked_by_stale_data: bool,
+    pub blast_radius_summary: &'static str,
+    pub missing_data_reason_codes: Vec<String>,
+    pub risk_drivers: Vec<Ec2PerformanceForecastRiskDriver>,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2CostExecutiveSummary {
+    pub report_id: &'static str,
+    pub score: u8,
+    pub resources_evaluated: usize,
+    pub stale_resources: usize,
+    pub rules_failed: usize,
+    pub affected_resources: Vec<String>,
+    pub top_reason_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2CostReportRow {
+    pub resource_id: String,
+    pub severity: Severity,
+    pub reason_code: String,
+    pub message: String,
+    pub evidence: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2CostEngineeringBacklog {
+    pub report_id: &'static str,
+    pub page: u16,
+    pub page_size: u16,
+    pub total: usize,
+    pub rows: Vec<Ec2CostReportRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2CostReportingBundle {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub scheduled_delivery_state: &'static str,
+    pub executive_summary: Ec2CostExecutiveSummary,
+    pub engineering_backlog: Ec2CostEngineeringBacklog,
+    pub evidence_reason_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2ResilienceExecutiveSummary {
+    pub report_id: &'static str,
+    pub score: u8,
+    pub resources_evaluated: usize,
+    pub stale_resources: usize,
+    pub rules_failed: usize,
+    pub affected_resources: Vec<String>,
+    pub blast_radius_summary: &'static str,
+    pub top_reason_codes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2ResilienceReportRow {
+    pub resource_id: String,
+    pub severity: Severity,
+    pub reason_code: String,
+    pub message: String,
+    pub suppression_supported: bool,
+    pub recovery_note: &'static str,
+    pub evidence: Value,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2ResilienceIncidentReview {
+    pub report_id: &'static str,
+    pub page: u16,
+    pub page_size: u16,
+    pub total: usize,
+    pub rows: Vec<Ec2ResilienceReportRow>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Ec2ResilienceReportingBundle {
+    pub workflow_id: &'static str,
+    pub read_only_mode: bool,
+    pub scheduled_delivery_state: &'static str,
+    pub portfolio_summary_ready: bool,
+    pub workload_summary_ready: bool,
+    pub stale_data_blocks_delivery: bool,
+    pub executive_summary: Ec2ResilienceExecutiveSummary,
+    pub incident_review: Ec2ResilienceIncidentReview,
+    pub missing_data_reason_codes: Vec<String>,
+    pub evidence_reason_codes: Vec<String>,
 }
 
 /// Evaluate every EC2 instance in the fleet for one pillar.
@@ -164,7 +594,10 @@ pub fn evaluate_ec2_fleet(
     let mut stale_resources = 0usize;
 
     for resource in resources {
-        if let Some(stale) = check_stale(resource, pillar, REASON_INV_STALE_DATA, now) {
+        if let Some(mut stale) = check_stale(resource, pillar, REASON_INV_STALE_DATA, now) {
+            if matches!(pillar, Pillar::Security | Pillar::Resilience) {
+                stale.evidence["tags"] = resource.tags.clone();
+            }
             stale_resources += 1;
             findings.push(stale);
         }
@@ -230,7 +663,272 @@ pub fn ec2_cost_posture_summary(report: &PillarReport) -> Ec2CostPostureSummary 
         .filter(|rule| rule.status == Ec2PostureStatus::Fail)
         .count();
 
-    Ec2CostPostureSummary {
+    Ec2PostureSummary {
+        status: if rules_failed == 0 {
+            Ec2PostureStatus::Pass
+        } else {
+            Ec2PostureStatus::Fail
+        },
+        rules_evaluated: rules.len(),
+        rules_failed,
+        affected_resources,
+        rules,
+    }
+}
+
+pub fn ec2_security_posture_summary(report: &PillarReport) -> Ec2SecurityPostureSummary {
+    let rules = vec![
+        ec2_security_posture_rule(
+            report,
+            "ec2-security-inventory-freshness",
+            &[REASON_INV_STALE_DATA],
+        ),
+        ec2_security_posture_rule(
+            report,
+            "ec2-security-public-ip-exposure",
+            &[REASON_SEC_PUBLIC_IP],
+        ),
+        ec2_security_posture_rule(
+            report,
+            "ec2-security-owner-routing-present",
+            &[REASON_SEC_MISSING_OWNER_TAG],
+        ),
+        ec2_security_posture_rule(
+            report,
+            "ec2-security-packet-telemetry-present",
+            &[REASON_SEC_MISSING_PACKET_TELEMETRY],
+        ),
+        ec2_security_posture_rule(
+            report,
+            "ec2-security-public-packet-traffic",
+            &[REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY],
+        ),
+    ];
+    let rules_failed = rules
+        .iter()
+        .filter(|rule| rule.status == Ec2PostureStatus::Fail)
+        .count();
+    let affected_resources = sorted_unique_resources(
+        rules
+            .iter()
+            .flat_map(|rule| rule.affected_resources.iter().cloned()),
+    );
+    Ec2SecurityPostureSummary {
+        status: if rules_failed == 0 {
+            Ec2PostureStatus::Pass
+        } else {
+            Ec2PostureStatus::Fail
+        },
+        rules_evaluated: rules.len(),
+        rules_failed,
+        affected_resources,
+        rules,
+    }
+}
+
+pub fn ec2_resilience_posture_summary(report: &PillarReport) -> Ec2ResiliencePostureSummary {
+    let rules = vec![
+        ec2_resilience_posture_rule(
+            report,
+            "ec2-resilience-availability-zone-recorded",
+            &[REASON_RES_MISSING_AZ],
+        ),
+        ec2_resilience_posture_rule(
+            report,
+            "ec2-resilience-multi-az-placement",
+            &[REASON_RES_SINGLE_AZ_CONCENTRATION],
+        ),
+        ec2_resilience_posture_rule(
+            report,
+            "ec2-resilience-status-check-telemetry",
+            &[REASON_RES_MISSING_STATUS_TELEMETRY],
+        ),
+        ec2_resilience_posture_rule(
+            report,
+            "ec2-resilience-status-check-health",
+            &[REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY],
+        ),
+    ];
+    let affected_resources = sorted_unique_resources(
+        rules
+            .iter()
+            .flat_map(|rule| rule.affected_resources.iter().cloned()),
+    );
+    let rules_failed = rules
+        .iter()
+        .filter(|rule| rule.status == Ec2PostureStatus::Fail)
+        .count();
+
+    Ec2PostureSummary {
+        status: if rules_failed == 0 {
+            Ec2PostureStatus::Pass
+        } else {
+            Ec2PostureStatus::Fail
+        },
+        rules_evaluated: rules.len(),
+        rules_failed,
+        affected_resources,
+        rules,
+    }
+}
+
+pub fn ec2_performance_posture_summary(report: &PillarReport) -> Ec2PerformancePostureSummary {
+    let rules = vec![
+        ec2_performance_posture_rule(
+            report,
+            "ec2-performance-inventory-freshness",
+            &[REASON_INV_STALE_DATA],
+        ),
+        ec2_performance_posture_rule(
+            report,
+            "ec2-performance-core-telemetry-present",
+            &[REASON_PERF_MISSING_CORE_TELEMETRY],
+        ),
+        ec2_performance_posture_rule(
+            report,
+            "ec2-performance-cpu-headroom",
+            &[REASON_PERF_HIGH_CPU_TELEMETRY],
+        ),
+    ];
+    let rules_failed = rules
+        .iter()
+        .filter(|rule| rule.status == Ec2PostureStatus::Fail)
+        .count();
+    let affected_resources = sorted_unique_resources(
+        rules
+            .iter()
+            .flat_map(|rule| rule.affected_resources.iter().cloned()),
+    );
+    Ec2PerformancePostureSummary {
+        status: if rules_failed == 0 {
+            Ec2PostureStatus::Pass
+        } else {
+            Ec2PostureStatus::Fail
+        },
+        rules_evaluated: rules.len(),
+        rules_failed,
+        affected_resources,
+        rules,
+    }
+}
+
+pub fn ec2_scalability_posture_summary(report: &PillarReport) -> Ec2ScalabilityPostureSummary {
+    let rules = vec![
+        ec2_scalability_posture_rule(
+            report,
+            "ec2-scalability-inventory-freshness",
+            &[REASON_INV_STALE_DATA],
+        ),
+        ec2_scalability_posture_rule(
+            report,
+            "ec2-scalability-demand-telemetry-present",
+            &[REASON_SCALE_MISSING_DEMAND_TELEMETRY],
+        ),
+        ec2_scalability_posture_rule(
+            report,
+            "ec2-scalability-cpu-pressure",
+            &[REASON_SCALE_HIGH_CPU_PRESSURE_TELEMETRY],
+        ),
+    ];
+    let rules_failed = rules
+        .iter()
+        .filter(|rule| rule.status == Ec2PostureStatus::Fail)
+        .count();
+    let affected_resources = sorted_unique_resources(
+        rules
+            .iter()
+            .flat_map(|rule| rule.affected_resources.iter().cloned()),
+    );
+    Ec2ScalabilityPostureSummary {
+        status: if rules_failed == 0 {
+            Ec2PostureStatus::Pass
+        } else {
+            Ec2PostureStatus::Fail
+        },
+        rules_evaluated: rules.len(),
+        rules_failed,
+        affected_resources,
+        rules,
+    }
+}
+
+pub fn ec2_disaster_recovery_posture_summary(
+    report: &PillarReport,
+) -> Ec2DisasterRecoveryPostureSummary {
+    let rules = vec![
+        ec2_disaster_recovery_posture_rule(
+            report,
+            "ec2-disaster-recovery-inventory-freshness",
+            &[REASON_INV_STALE_DATA],
+        ),
+        ec2_disaster_recovery_posture_rule(
+            report,
+            "ec2-disaster-recovery-recovery-point-telemetry-present",
+            &[REASON_DR_MISSING_RECOVERY_POINT_TELEMETRY],
+        ),
+        ec2_disaster_recovery_posture_rule(
+            report,
+            "ec2-disaster-recovery-recovery-point-freshness",
+            &[REASON_DR_STALE_RECOVERY_POINT_TELEMETRY],
+        ),
+    ];
+    let rules_failed = rules
+        .iter()
+        .filter(|rule| rule.status == Ec2PostureStatus::Fail)
+        .count();
+    let affected_resources = sorted_unique_resources(
+        rules
+            .iter()
+            .flat_map(|rule| rule.affected_resources.iter().cloned()),
+    );
+    Ec2DisasterRecoveryPostureSummary {
+        status: if rules_failed == 0 {
+            Ec2PostureStatus::Pass
+        } else {
+            Ec2PostureStatus::Fail
+        },
+        rules_evaluated: rules.len(),
+        rules_failed,
+        affected_resources,
+        rules,
+    }
+}
+
+pub fn ec2_operational_excellence_posture_summary(
+    report: &PillarReport,
+) -> Ec2OperationalExcellencePostureSummary {
+    let rules = vec![
+        ec2_operational_excellence_posture_rule(
+            report,
+            "ec2-operational-excellence-inventory-freshness",
+            &[REASON_INV_STALE_DATA],
+        ),
+        ec2_operational_excellence_posture_rule(
+            report,
+            "ec2-operational-excellence-collection-metadata-present",
+            &[REASON_OE_MISSING_TELEMETRY_COLLECTION_METADATA],
+        ),
+        ec2_operational_excellence_posture_rule(
+            report,
+            "ec2-operational-excellence-collection-errors-clear",
+            &[REASON_OE_TELEMETRY_COLLECTION_ERRORS],
+        ),
+        ec2_operational_excellence_posture_rule(
+            report,
+            "ec2-operational-excellence-detailed-monitoring-enabled",
+            &[REASON_OE_BASIC_MONITORING],
+        ),
+    ];
+    let rules_failed = rules
+        .iter()
+        .filter(|rule| rule.status == Ec2PostureStatus::Fail)
+        .count();
+    let affected_resources = sorted_unique_resources(
+        rules
+            .iter()
+            .flat_map(|rule| rule.affected_resources.iter().cloned()),
+    );
+    Ec2OperationalExcellencePostureSummary {
         status: if rules_failed == 0 {
             Ec2PostureStatus::Pass
         } else {
@@ -282,8 +980,408 @@ pub fn ec2_cost_triage_context(report: &PillarReport) -> Ec2CostTriageContext {
         }
     }
 
-    Ec2CostTriageContext {
-        pillar: report.pillar,
+    ec2_triage_context(
+        "ec2_cost_triage_context",
+        report.pillar,
+        "ec2-cost-deterministic-context-v1",
+        "ec2-cost-ai-triage-v1",
+        facts,
+        hypotheses,
+        missing_data_questions,
+        evidence_citations,
+    )
+}
+
+pub fn ec2_security_triage_context(report: &PillarReport) -> Ec2SecurityTriageContext {
+    let mut facts = Vec::new();
+    let mut hypotheses = Vec::new();
+    let mut missing_data_questions = Vec::new();
+    let mut evidence_citations = Vec::new();
+    let stale_resource_ids: BTreeSet<&str> = report
+        .findings
+        .iter()
+        .filter(|finding| finding.reason_code == REASON_INV_STALE_DATA)
+        .map(|finding| finding.resource_id.as_str())
+        .collect();
+
+    for finding in &report.findings {
+        facts.push(format!(
+            "{} affects {} with {:?} severity",
+            finding.reason_code, finding.resource_id, finding.severity
+        ));
+        evidence_citations.push(Ec2EvidenceCitation {
+            reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            evidence: finding.evidence.clone(),
+        });
+
+        match finding.reason_code.as_str() {
+            REASON_SEC_PUBLIC_IP => {
+                if stale_resource_ids.contains(finding.resource_id.as_str()) {
+                    missing_data_questions.push(format!(
+                        "Refresh EC2 inventory for {} before interpreting public IP assignment as current exposure",
+                        finding.resource_id
+                    ));
+                } else {
+                    hypotheses.push(format!(
+                        "{} has a public IP assignment in collected EC2 evidence; verify security groups, network ACLs, route tables, and business intent before treating it as internet-reachable exposure",
+                        finding.resource_id
+                    ));
+                }
+            }
+            REASON_SEC_MISSING_OWNER_TAG => missing_data_questions.push(format!(
+                "Assign owner, team, or service metadata for {} before routing security posture follow-up",
+                finding.resource_id
+            )),
+            REASON_SEC_MISSING_PACKET_TELEMETRY => missing_data_questions.push(format!(
+                "Collect NetworkPacketsIn and NetworkPacketsOut telemetry for {} before judging observed packet exposure",
+                finding.resource_id
+            )),
+            REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY => {
+                if stale_resource_ids.contains(finding.resource_id.as_str()) {
+                    missing_data_questions.push(format!(
+                        "Refresh EC2 inventory for {} before interpreting packet telemetry as current public traffic",
+                        finding.resource_id
+                    ));
+                } else {
+                    hypotheses.push(format!(
+                        "{} has packet telemetry alongside public IP evidence; compare flow logs, security groups, and allowed ingress before recommending any access change",
+                        finding.resource_id
+                    ));
+                }
+            }
+            REASON_INV_STALE_DATA => missing_data_questions.push(format!(
+                "Refresh EC2 inventory for {} before generating security triage",
+                finding.resource_id
+            )),
+            _ => {}
+        }
+    }
+
+    ec2_triage_context(
+        "ec2_security_triage_context",
+        report.pillar,
+        "ec2-security-deterministic-context-v1",
+        "ec2-security-ai-triage-v1",
+        facts,
+        hypotheses,
+        missing_data_questions,
+        evidence_citations,
+    )
+}
+
+pub fn ec2_resilience_triage_context(report: &PillarReport) -> Ec2ResilienceTriageContext {
+    let mut facts = Vec::new();
+    let mut hypotheses = Vec::new();
+    let mut missing_data_questions = Vec::new();
+    let mut evidence_citations = Vec::new();
+
+    for finding in &report.findings {
+        facts.push(format!(
+            "{} affects {} with {:?} severity",
+            finding.reason_code, finding.resource_id, finding.severity
+        ));
+        evidence_citations.push(Ec2EvidenceCitation {
+            reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            evidence: finding.evidence.clone(),
+        });
+
+        match finding.reason_code.as_str() {
+            REASON_RES_SINGLE_AZ_CONCENTRATION => hypotheses.push(
+                "Running EC2 capacity is currently observed in one availability zone; confirm whether placement evidence for additional running instances is missing before treating the fleet as concentrated".to_string(),
+            ),
+            REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY => hypotheses.push(format!(
+                "{} has EC2 status-check failure telemetry; inspect StatusCheckFailed, StatusCheckFailed_Instance, and StatusCheckFailed_System evidence before marking reachability healthy",
+                finding.resource_id
+            )),
+            REASON_RES_MISSING_AZ => missing_data_questions.push(format!(
+                "Collect availability zone placement for {} before assessing EC2 placement resilience",
+                finding.resource_id
+            )),
+            REASON_RES_MISSING_STATUS_TELEMETRY => missing_data_questions.push(format!(
+                "Collect StatusCheckFailed, StatusCheckFailed_Instance, and StatusCheckFailed_System telemetry for {} before judging reachability resilience",
+                finding.resource_id
+            )),
+            _ => {}
+        }
+    }
+
+    ec2_triage_context(
+        "ec2_resilience_triage_context",
+        report.pillar,
+        "ec2-resilience-deterministic-context-v1",
+        "ec2-resilience-ai-triage-v1",
+        facts,
+        hypotheses,
+        missing_data_questions,
+        evidence_citations,
+    )
+}
+
+pub fn ec2_performance_triage_context(report: &PillarReport) -> Ec2PerformanceTriageContext {
+    let mut facts = Vec::new();
+    let mut hypotheses = Vec::new();
+    let mut missing_data_questions = Vec::new();
+    let mut evidence_citations = Vec::new();
+
+    for finding in &report.findings {
+        facts.push(format!(
+            "{} affects {} with {:?} severity",
+            finding.reason_code, finding.resource_id, finding.severity
+        ));
+        evidence_citations.push(Ec2EvidenceCitation {
+            reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            evidence: finding.evidence.clone(),
+        });
+
+        match finding.reason_code.as_str() {
+            REASON_PERF_MISSING_CORE_TELEMETRY => {
+                missing_data_questions.push(format!(
+                    "Collect CPUUtilization, NetworkIn, NetworkOut, DiskReadOps, and DiskWriteOps telemetry for {} before diagnosing EC2 performance bottlenecks",
+                    finding.resource_id
+                ));
+            }
+            REASON_PERF_HIGH_CPU_TELEMETRY => hypotheses.push(format!(
+                "{} may be CPU constrained; compare instance type, burst credit, deployment, and workload concurrency evidence before recommending a resize",
+                finding.resource_id
+            )),
+            REASON_INV_STALE_DATA => missing_data_questions.push(format!(
+                "Refresh EC2 inventory for {} before generating performance triage",
+                finding.resource_id
+            )),
+            _ => {}
+        }
+    }
+
+    ec2_triage_context(
+        "ec2_performance_triage_context",
+        report.pillar,
+        "ec2-performance-deterministic-context-v1",
+        "ec2-performance-ai-triage-v1",
+        facts,
+        hypotheses,
+        missing_data_questions,
+        evidence_citations,
+    )
+}
+
+pub fn ec2_scalability_triage_context(report: &PillarReport) -> Ec2ScalabilityTriageContext {
+    let mut facts = Vec::new();
+    let mut hypotheses = Vec::new();
+    let mut missing_data_questions = Vec::new();
+    let mut evidence_citations = Vec::new();
+    let stale_resource_ids: BTreeSet<&str> = report
+        .findings
+        .iter()
+        .filter(|finding| finding.reason_code == REASON_INV_STALE_DATA)
+        .map(|finding| finding.resource_id.as_str())
+        .collect();
+
+    for finding in &report.findings {
+        facts.push(format!(
+            "{} affects {} with {:?} severity",
+            finding.reason_code, finding.resource_id, finding.severity
+        ));
+        evidence_citations.push(Ec2EvidenceCitation {
+            reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            evidence: finding.evidence.clone(),
+        });
+
+        match finding.reason_code.as_str() {
+            REASON_SCALE_MISSING_DEMAND_TELEMETRY => {
+                missing_data_questions.push(format!(
+                    "Collect CPUUtilization, NetworkIn, and NetworkOut telemetry for {} before diagnosing EC2 scaling pressure",
+                    finding.resource_id
+                ));
+            }
+            REASON_SCALE_HIGH_CPU_PRESSURE_TELEMETRY => {
+                if stale_resource_ids.contains(finding.resource_id.as_str()) {
+                    missing_data_questions.push(format!(
+                        "Refresh EC2 inventory for {} before interpreting high CPUUtilization as current scaling pressure",
+                        finding.resource_id
+                    ));
+                } else {
+                    hypotheses.push(format!(
+                        "{} may need scale-out, workload distribution, or rightsizing; compare CPUUtilization with request, network, autoscaling, and deployment evidence before recommending capacity changes",
+                        finding.resource_id
+                    ));
+                }
+            }
+            REASON_INV_STALE_DATA => missing_data_questions.push(format!(
+                "Refresh EC2 inventory for {} before generating scalability triage",
+                finding.resource_id
+            )),
+            _ => {}
+        }
+    }
+
+    ec2_triage_context(
+        "ec2_scalability_triage_context",
+        report.pillar,
+        "ec2-scalability-deterministic-context-v1",
+        "ec2-scalability-ai-triage-v1",
+        facts,
+        hypotheses,
+        missing_data_questions,
+        evidence_citations,
+    )
+}
+
+pub fn ec2_disaster_recovery_triage_context(
+    report: &PillarReport,
+) -> Ec2DisasterRecoveryTriageContext {
+    let mut facts = Vec::new();
+    let mut hypotheses = Vec::new();
+    let mut missing_data_questions = Vec::new();
+    let mut evidence_citations = Vec::new();
+    let stale_resource_ids: BTreeSet<&str> = report
+        .findings
+        .iter()
+        .filter(|finding| finding.reason_code == REASON_INV_STALE_DATA)
+        .map(|finding| finding.resource_id.as_str())
+        .collect();
+
+    for finding in &report.findings {
+        facts.push(format!(
+            "{} affects {} with {:?} severity",
+            finding.reason_code, finding.resource_id, finding.severity
+        ));
+        evidence_citations.push(Ec2EvidenceCitation {
+            reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            evidence: finding.evidence.clone(),
+        });
+
+        match finding.reason_code.as_str() {
+            REASON_DR_MISSING_RECOVERY_POINT_TELEMETRY => {
+                missing_data_questions.push(format!(
+                    "Collect latest recovery point age or timestamp evidence for {} before judging EC2 disaster-recovery posture",
+                    finding.resource_id
+                ));
+            }
+            REASON_DR_STALE_RECOVERY_POINT_TELEMETRY => {
+                if stale_resource_ids.contains(finding.resource_id.as_str()) {
+                    missing_data_questions.push(format!(
+                        "Refresh EC2 inventory for {} before interpreting stale recovery point telemetry as current DR exposure",
+                        finding.resource_id
+                    ));
+                } else {
+                    hypotheses.push(format!(
+                        "{} has stale recovery point telemetry; verify backup policy, AWS Elastic Disaster Recovery replication health, snapshot cadence, and restore objectives before recommending recovery workflow changes",
+                        finding.resource_id
+                    ));
+                }
+            }
+            REASON_INV_STALE_DATA => missing_data_questions.push(format!(
+                "Refresh EC2 inventory for {} before generating disaster-recovery triage",
+                finding.resource_id
+            )),
+            _ => {}
+        }
+    }
+
+    ec2_triage_context(
+        "ec2_disaster_recovery_triage_context",
+        report.pillar,
+        "ec2-disaster-recovery-deterministic-context-v1",
+        "ec2-disaster-recovery-ai-triage-v1",
+        facts,
+        hypotheses,
+        missing_data_questions,
+        evidence_citations,
+    )
+}
+
+pub fn ec2_operational_excellence_triage_context(
+    report: &PillarReport,
+) -> Ec2OperationalExcellenceTriageContext {
+    let mut facts = Vec::new();
+    let mut hypotheses = Vec::new();
+    let mut missing_data_questions = Vec::new();
+    let mut evidence_citations = Vec::new();
+
+    for finding in &report.findings {
+        facts.push(format!(
+            "{} affects {} with {:?} severity",
+            finding.reason_code, finding.resource_id, finding.severity
+        ));
+        evidence_citations.push(Ec2EvidenceCitation {
+            reason_code: finding.reason_code.clone(),
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            evidence: finding.evidence.clone(),
+        });
+
+        match finding.reason_code.as_str() {
+            REASON_OE_MISSING_TELEMETRY_COLLECTION_METADATA => {
+                missing_data_questions.push(format!(
+                    "Collect telemetry collection metadata for {} before generating operational runbook triage",
+                    finding.resource_id
+                ));
+            }
+            REASON_OE_TELEMETRY_COLLECTION_ERRORS => hypotheses.push(format!(
+                "{} has telemetry collection errors; inspect collector logs, CloudWatch API throttling, permissions, and retry evidence before changing runbook workflow",
+                finding.resource_id
+            )),
+            REASON_OE_BASIC_MONITORING => hypotheses.push(format!(
+                "{} uses basic EC2 monitoring; operational diagnosis may rely on lower-resolution telemetry until detailed monitoring evidence is collected",
+                finding.resource_id
+            )),
+            REASON_INV_STALE_DATA => missing_data_questions.push(format!(
+                "Refresh EC2 inventory for {} before generating operational-excellence triage",
+                finding.resource_id
+            )),
+            _ => {}
+        }
+    }
+
+    ec2_triage_context(
+        "ec2_operational_excellence_triage_context",
+        report.pillar,
+        "ec2-operational-excellence-deterministic-context-v1",
+        "ec2-operational-excellence-ai-triage-v1",
+        facts,
+        hypotheses,
+        missing_data_questions,
+        evidence_citations,
+    )
+}
+
+fn ec2_triage_context(
+    workflow_id: &'static str,
+    pillar: Pillar,
+    context_builder_id: &'static str,
+    prompt_template_id: &'static str,
+    facts: Vec<String>,
+    hypotheses: Vec<String>,
+    missing_data_questions: Vec<String>,
+    evidence_citations: Vec<Ec2EvidenceCitation>,
+) -> Ec2TriageContext {
+    Ec2TriageContext {
+        workflow_id,
+        pillar,
+        context_builder_id,
+        prompt_template_id,
+        generation_mode: "deterministic_no_llm",
+        max_prompt_tokens: 1200,
+        provider_routing: vec!["primary_ops_llm", "fallback_ops_llm"],
+        audit_event_type: "ec2_ai_triage_context_built",
+        guardrails: Ec2AiTriageGuardrails {
+            read_only_mode: true,
+            evidence_required: true,
+            separate_facts_from_hypotheses: true,
+            ask_for_missing_data: true,
+            no_llm_invocation: true,
+            no_mutation_planning: true,
+        },
         facts,
         hypotheses,
         missing_data_questions,
@@ -391,6 +1489,1580 @@ pub fn ec2_cost_agentic_investigation_plan(
     }
 }
 
+pub fn ec2_security_agentic_investigation_plan(
+    report: &PillarReport,
+) -> Ec2SecurityAgenticInvestigationPlan {
+    let triage = ec2_security_triage_context(report);
+    let mut steps = Vec::new();
+    let mut approval_gates = Vec::new();
+
+    for citation in &triage.evidence_citations {
+        match citation.reason_code.as_str() {
+            REASON_SEC_PUBLIC_IP => {
+                steps.push(investigation_step_with_prefix(
+                    "ec2-security",
+                    &steps,
+                    Ec2InvestigationStepKind::Inspect,
+                    "ec2.describe_instance_networking",
+                    Ec2InvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when public IP, security group, subnet route table, and internet gateway evidence are recorded or confirmed absent",
+                ));
+                steps.push(investigation_step_with_prefix(
+                    "ec2-security",
+                    &steps,
+                    Ec2InvestigationStepKind::Compare,
+                    "ec2.compare_security_group_ingress",
+                    Ec2InvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when allowed ingress is compared against owner intent and known exposure exceptions",
+                ));
+                approval_gates.push(mutation_gate_with_prefix(
+                    "ec2-security",
+                    &approval_gates,
+                    citation,
+                    "Approve any security group, route, public IP, or exposure suppression change only after owner review, blast-radius summary, and rollback note",
+                ));
+            }
+            REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY => {
+                steps.push(investigation_step_with_prefix(
+                    "ec2-security",
+                    &steps,
+                    Ec2InvestigationStepKind::Diagnose,
+                    "ec2.vpc_flow_logs.query_instance_traffic",
+                    Ec2InvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when packet telemetry is correlated with flow logs, allowed ingress, and source/destination evidence",
+                ));
+                approval_gates.push(mutation_gate_with_prefix(
+                    "ec2-security",
+                    &approval_gates,
+                    citation,
+                    "Approve any access restriction or listener change only after traffic evidence, business impact, and rollback note are captured",
+                ));
+            }
+            REASON_SEC_MISSING_PACKET_TELEMETRY => {
+                steps.push(investigation_step_with_prefix(
+                    "ec2-security",
+                    &steps,
+                    Ec2InvestigationStepKind::Inspect,
+                    "ec2.cloudwatch.get_packet_metrics",
+                    Ec2InvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when NetworkPacketsIn and NetworkPacketsOut are found for the lookback window or confirmed absent",
+                ));
+            }
+            REASON_SEC_MISSING_OWNER_TAG => {
+                steps.push(investigation_step_with_prefix(
+                    "ec2-security",
+                    &steps,
+                    Ec2InvestigationStepKind::Diagnose,
+                    "ec2.resource_groups.get_tagging_context",
+                    Ec2InvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when owner, team, service, or escalation target can be inferred or the gap is assigned",
+                ));
+                approval_gates.push(mutation_gate_with_prefix(
+                    "ec2-security",
+                    &approval_gates,
+                    citation,
+                    "Approve tag writes or assignment changes after ownership is verified",
+                ));
+            }
+            REASON_INV_STALE_DATA => {
+                steps.push(investigation_step_with_prefix(
+                    "ec2-security",
+                    &steps,
+                    Ec2InvestigationStepKind::Inspect,
+                    "ec2.inventory.refresh_status",
+                    Ec2InvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when current EC2 inventory freshness is confirmed or a refresh is queued for operator approval",
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    if !approval_gates.is_empty() {
+        steps.push(Ec2InvestigationStep {
+            step_id: format!("ec2-security-step-{:02}", steps.len() + 1),
+            kind: Ec2InvestigationStepKind::ProposeMutationPlan,
+            tool_name: "ec2.security.prepare_approval_plan",
+            tool_mode: Ec2InvestigationToolMode::ApprovalRequired,
+            target_resource_id: "investigation".to_string(),
+            reason_code: "EC2_SECURITY_APPROVAL_PLAN_REQUIRED".to_string(),
+            stop_condition:
+                "stop before mutation; require explicit operator approval, blast-radius summary, rollback note, and replayable evidence"
+                    .to_string(),
+            evidence: json!({
+                "approval_gate_count": approval_gates.len(),
+                "read_only_step_count": steps.len(),
+                "assessment_scope": "ec2_public_exposure_owner_routing_and_packet_telemetry",
+            }),
+        });
+    }
+
+    Ec2SecurityAgenticInvestigationPlan {
+        workflow_id: "ec2_security_agentic_investigation",
+        default_tool_mode: Ec2InvestigationToolMode::ReadOnly,
+        max_tool_calls: steps.len().min(12),
+        max_evidence_citations: triage.evidence_citations.len(),
+        replay_required: true,
+        steps,
+        approval_gates,
+        evidence_citations: triage.evidence_citations,
+    }
+}
+
+pub fn ec2_resilience_agentic_investigation_plan(
+    report: &PillarReport,
+) -> Ec2ResilienceAgenticInvestigationPlan {
+    let triage = ec2_resilience_triage_context(report);
+    let mut steps = Vec::new();
+    let mut approval_gates = Vec::new();
+
+    for citation in &triage.evidence_citations {
+        match citation.reason_code.as_str() {
+            REASON_RES_MISSING_AZ => {
+                steps.push(investigation_step_with_prefix(
+                    "ec2-resilience",
+                    &steps,
+                    Ec2InvestigationStepKind::Inspect,
+                    "ec2.describe_instances.placement",
+                    Ec2InvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when availability zone placement is recorded or confirmed absent for the instance",
+                ));
+            }
+            REASON_RES_SINGLE_AZ_CONCENTRATION => {
+                steps.push(investigation_step_with_prefix(
+                    "ec2-resilience",
+                    &steps,
+                    Ec2InvestigationStepKind::Compare,
+                    "ec2.describe_running_instance_placement",
+                    Ec2InvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when the running fleet placement distribution is captured from current EC2 instance evidence",
+                ));
+                approval_gates.push(mutation_gate_with_prefix(
+                    "ec2-resilience",
+                    &approval_gates,
+                    citation,
+                    "Approve any placement change plan only after operator review; this investigation does not execute placement mutations",
+                ));
+            }
+            REASON_RES_MISSING_STATUS_TELEMETRY => {
+                steps.push(investigation_step_with_prefix(
+                    "ec2-resilience",
+                    &steps,
+                    Ec2InvestigationStepKind::Inspect,
+                    "ec2.cloudwatch.get_status_check_metrics",
+                    Ec2InvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when EC2 status-check metrics are found for the lookback window or confirmed absent",
+                ));
+            }
+            REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY => {
+                steps.push(investigation_step_with_prefix(
+                    "ec2-resilience",
+                    &steps,
+                    Ec2InvestigationStepKind::Diagnose,
+                    "ec2.describe_instance_status",
+                    Ec2InvestigationToolMode::ReadOnly,
+                    citation,
+                    "stop when EC2 instance and system status-check evidence is recorded for the affected instance",
+                ));
+                approval_gates.push(mutation_gate_with_prefix(
+                    "ec2-resilience",
+                    &approval_gates,
+                    citation,
+                    "Approve any recovery action plan only after status-check evidence, blast radius, and rollback notes are captured; this investigation does not execute recovery actions",
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    if !approval_gates.is_empty() {
+        steps.push(Ec2InvestigationStep {
+            step_id: format!("ec2-resilience-step-{:02}", steps.len() + 1),
+            kind: Ec2InvestigationStepKind::ProposeMutationPlan,
+            tool_name: "ec2.resilience.prepare_approval_plan",
+            tool_mode: Ec2InvestigationToolMode::ApprovalRequired,
+            target_resource_id: "investigation".to_string(),
+            reason_code: "EC2_RESILIENCE_APPROVAL_PLAN_REQUIRED".to_string(),
+            stop_condition:
+                "stop before mutation; require explicit operator approval, blast-radius summary, and rollback note"
+                    .to_string(),
+            evidence: json!({
+                "approval_gate_count": approval_gates.len(),
+                "read_only_step_count": steps.len(),
+                "assessment_scope": "ec2_instance_placement_and_status_checks",
+            }),
+        });
+    }
+
+    Ec2AgenticInvestigationPlan {
+        workflow_id: "ec2_resilience_agentic_investigation",
+        default_tool_mode: Ec2InvestigationToolMode::ReadOnly,
+        max_tool_calls: steps.len().min(12),
+        max_evidence_citations: triage.evidence_citations.len(),
+        replay_required: true,
+        steps,
+        approval_gates,
+        evidence_citations: triage.evidence_citations,
+    }
+}
+
+pub fn ec2_cost_slo_policy_snapshot(report: &PillarReport) -> Ec2CostSloPolicySnapshot {
+    let posture = ec2_cost_posture_summary(report);
+    let failed_rule_count = posture.rules_failed;
+    let affected_resource_count = posture.affected_resources.len();
+    let status = cost_objective_status(report.score, failed_rule_count, report.stale_resources);
+    let owner_filters = sorted_unique_evidence_values(report, &["owner", "team"]);
+    let environment_filters = sorted_unique_evidence_values(report, &["environment", "env"]);
+    let application_filters = sorted_unique_evidence_values(report, &["application", "app"]);
+    let notification_targets = notification_targets(&owner_filters, &environment_filters);
+
+    Ec2CostSloPolicySnapshot {
+        workflow_id: "ec2_cost_slo_policy",
+        read_only_mode: true,
+        freshness_required: true,
+        objective: Ec2CostPolicyObjective {
+            objective_id: "ec2-cost-score-min-90",
+            status,
+            target_score_min: 90,
+            current_score: report.score,
+            trend_direction: cost_trend_direction(status, failed_rule_count),
+            failed_rule_count,
+            affected_resource_count,
+            owner_filters,
+            environment_filters,
+            application_filters,
+            notification_targets,
+            policy_state: if report.stale_resources > 0 {
+                "blocked_stale_data"
+            } else if failed_rule_count > 0 {
+                "active_with_findings"
+            } else {
+                "active"
+            },
+            status_history: vec![
+                "snapshot_collected",
+                "policy_evaluated",
+                "notification_targets_resolved",
+            ],
+        },
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
+pub fn ec2_resilience_slo_policy_snapshot(report: &PillarReport) -> Ec2ResilienceSloPolicySnapshot {
+    let posture = ec2_resilience_posture_summary(report);
+    let failed_rule_count = posture.rules_failed;
+    let affected_resource_count = posture.affected_resources.len();
+    let status =
+        resilience_objective_status(report.score, failed_rule_count, report.stale_resources);
+    let owner_filters = sorted_unique_evidence_values(report, &["owner", "team"]);
+    let environment_filters = sorted_unique_evidence_values(report, &["environment", "env"]);
+    let application_filters = sorted_unique_evidence_values(report, &["application", "app"]);
+    let notification_targets = notification_targets_with_default(
+        &owner_filters,
+        &environment_filters,
+        "resilience-operations",
+    );
+
+    Ec2ResilienceSloPolicySnapshot {
+        workflow_id: "ec2_resilience_slo_policy",
+        read_only_mode: true,
+        freshness_required: true,
+        objective: Ec2ResiliencePolicyObjective {
+            objective_id: "ec2-resilience-score-min-95",
+            status,
+            target_score_min: 95,
+            current_score: report.score,
+            trend_direction: resilience_trend_direction(report, status, failed_rule_count),
+            failed_rule_count,
+            affected_resource_count,
+            owner_filters,
+            environment_filters,
+            application_filters,
+            notification_targets,
+            policy_state: if report.stale_resources > 0 {
+                "blocked_stale_data"
+            } else if failed_rule_count > 0 {
+                "active_with_findings"
+            } else {
+                "active"
+            },
+            status_history: vec![
+                "snapshot_collected",
+                "resilience_policy_evaluated",
+                "notification_targets_resolved",
+            ],
+        },
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
+pub fn ec2_security_slo_policy_snapshot(report: &PillarReport) -> Ec2SecuritySloPolicySnapshot {
+    let posture = ec2_security_posture_summary(report);
+    let failed_rule_count = posture.rules_failed;
+    let affected_resource_count = posture.affected_resources.len();
+    let status = security_objective_status(report.score, failed_rule_count, report.stale_resources);
+    let owner_filters = sorted_unique_evidence_values(report, &["owner", "team"]);
+    let environment_filters = sorted_unique_evidence_values(report, &["environment", "env"]);
+    let application_filters =
+        sorted_unique_evidence_values(report, &["application", "app", "service"]);
+    let notification_targets = notification_targets_with_default(
+        &owner_filters,
+        &environment_filters,
+        "security-operations",
+    );
+
+    Ec2SecuritySloPolicySnapshot {
+        workflow_id: "ec2_security_slo_policy",
+        read_only_mode: true,
+        freshness_required: true,
+        objective: Ec2SecurityPolicyObjective {
+            objective_id: "ec2-security-score-min-95",
+            status,
+            target_score_min: 95,
+            current_score: report.score,
+            trend_direction: security_trend_direction(report, status, failed_rule_count),
+            failed_rule_count,
+            affected_resource_count,
+            owner_filters,
+            environment_filters,
+            application_filters,
+            notification_targets,
+            policy_state: if report.stale_resources > 0 {
+                "blocked_stale_data"
+            } else if failed_rule_count > 0 {
+                "active_with_findings"
+            } else {
+                "active"
+            },
+            status_history: vec![
+                "snapshot_collected",
+                "security_policy_evaluated",
+                "notification_targets_resolved",
+            ],
+        },
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
+pub fn ec2_cost_forecast_snapshot(report: &PillarReport) -> Ec2CostForecastSnapshot {
+    const BASELINE_WINDOW_DAYS: u16 = 30;
+    const FORECAST_HORIZON_DAYS: u16 = 30;
+    const CONFIDENCE_LEVEL: u8 = 80;
+
+    let stale_data = report.stale_resources > 0
+        || report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+    let low_utilization_count = count_reason(report, REASON_COST_LOW_UTILIZATION_TELEMETRY);
+    let stopped_count = count_reason(report, REASON_COST_STOPPED_INSTANCE);
+    let missing_telemetry_count = count_reason(report, REASON_COST_MISSING_UTILIZATION_TELEMETRY);
+    let missing_tag_count = count_reason(report, REASON_COST_MISSING_ALLOCATION_TAGS);
+
+    let expected_monthly_cost_index = 100u16
+        + (low_utilization_count as u16 * 18)
+        + (stopped_count as u16 * 10)
+        + (missing_telemetry_count as u16 * 15)
+        + (missing_tag_count as u16 * 4)
+        + (report.stale_resources as u16 * 25);
+    let uncertainty = 8u16
+        + (missing_telemetry_count as u16 * 6)
+        + (report.stale_resources as u16 * 10)
+        + (report.resources_evaluated == 0) as u16 * 20;
+    let lower_monthly_cost_index = expected_monthly_cost_index.saturating_sub(uncertainty);
+    let upper_monthly_cost_index = expected_monthly_cost_index + uncertainty;
+    let risk_level = if stale_data {
+        Ec2CostForecastRisk::Blocked
+    } else if upper_monthly_cost_index >= 145 {
+        Ec2CostForecastRisk::High
+    } else if expected_monthly_cost_index > 100 {
+        Ec2CostForecastRisk::Moderate
+    } else {
+        Ec2CostForecastRisk::Low
+    };
+
+    Ec2CostForecastSnapshot {
+        workflow_id: "ec2_cost_forecasting",
+        read_only_mode: true,
+        baseline_window_days: BASELINE_WINDOW_DAYS,
+        forecast_horizon_days: FORECAST_HORIZON_DAYS,
+        confidence_level: CONFIDENCE_LEVEL,
+        forecast_band: Ec2CostForecastBand {
+            horizon_days: FORECAST_HORIZON_DAYS,
+            lower_monthly_cost_index,
+            expected_monthly_cost_index,
+            upper_monthly_cost_index,
+            confidence_level: CONFIDENCE_LEVEL,
+        },
+        risk_level,
+        capacity_risk: ec2_cost_capacity_risk(
+            stale_data,
+            low_utilization_count,
+            stopped_count,
+            missing_telemetry_count,
+        ),
+        backtesting_fixture_status: if report.findings.is_empty() {
+            "ready_clean_baseline"
+        } else if stale_data || missing_telemetry_count > 0 {
+            "needs_fresh_telemetry_fixture"
+        } else {
+            "ready_findings_baseline"
+        },
+        threshold_controls: vec![
+            "monthly_cost_index_warning_threshold",
+            "monthly_cost_index_critical_threshold",
+        ],
+        what_if_inputs: vec![
+            "rightsize_low_utilization_instances",
+            "release_stopped_instance_artifacts",
+            "restore_missing_utilization_telemetry",
+        ],
+        blocked_by_stale_data: stale_data,
+        missing_data_reason_codes: missing_data_reason_codes(report),
+        risk_drivers: ec2_cost_forecast_risk_drivers(report),
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
+pub fn ec2_resilience_forecast_snapshot(report: &PillarReport) -> Ec2ResilienceForecastSnapshot {
+    const BASELINE_WINDOW_DAYS: u16 = 30;
+    const FORECAST_HORIZON_DAYS: u16 = 30;
+    const CONFIDENCE_LEVEL: u8 = 75;
+
+    let stale_data = report.stale_resources > 0
+        || report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+    let missing_az_count = count_reason(report, REASON_RES_MISSING_AZ);
+    let single_az_count = count_reason(report, REASON_RES_SINGLE_AZ_CONCENTRATION);
+    let missing_status_count = count_reason(report, REASON_RES_MISSING_STATUS_TELEMETRY);
+    let status_failure_count = count_reason(report, REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY);
+
+    let expected_recovery_exposure_index = 100u16
+        + (single_az_count as u16 * 30)
+        + (status_failure_count as u16 * 35)
+        + (missing_status_count as u16 * 18)
+        + (missing_az_count as u16 * 12)
+        + (report.stale_resources as u16 * 28);
+    let uncertainty = 10u16
+        + (missing_status_count as u16 * 8)
+        + (missing_az_count as u16 * 6)
+        + (report.stale_resources as u16 * 12)
+        + (report.resources_evaluated == 0) as u16 * 25;
+    let lower_recovery_exposure_index =
+        expected_recovery_exposure_index.saturating_sub(uncertainty);
+    let upper_recovery_exposure_index = expected_recovery_exposure_index + uncertainty;
+    let risk_level = if stale_data {
+        Ec2ResilienceForecastRisk::Blocked
+    } else if status_failure_count > 0 || upper_recovery_exposure_index >= 155 {
+        Ec2ResilienceForecastRisk::High
+    } else if single_az_count > 0
+        || missing_status_count > 0
+        || missing_az_count > 0
+        || expected_recovery_exposure_index > 100
+    {
+        Ec2ResilienceForecastRisk::Moderate
+    } else {
+        Ec2ResilienceForecastRisk::Low
+    };
+
+    Ec2ResilienceForecastSnapshot {
+        workflow_id: "ec2_resilience_forecasting",
+        read_only_mode: true,
+        baseline_window_days: BASELINE_WINDOW_DAYS,
+        forecast_horizon_days: FORECAST_HORIZON_DAYS,
+        confidence_level: CONFIDENCE_LEVEL,
+        forecast_band: Ec2ResilienceForecastBand {
+            horizon_days: FORECAST_HORIZON_DAYS,
+            lower_recovery_exposure_index,
+            expected_recovery_exposure_index,
+            upper_recovery_exposure_index,
+            confidence_level: CONFIDENCE_LEVEL,
+        },
+        risk_level,
+        recovery_capacity_risk: ec2_resilience_recovery_capacity_risk(
+            stale_data,
+            single_az_count,
+            status_failure_count,
+            missing_status_count,
+            missing_az_count,
+        ),
+        backtesting_fixture_status: if report.findings.is_empty() {
+            "ready_clean_resilience_baseline"
+        } else if stale_data || missing_status_count > 0 || missing_az_count > 0 {
+            "needs_fresh_resilience_telemetry_fixture"
+        } else {
+            "ready_resilience_findings_baseline"
+        },
+        threshold_controls: vec![
+            "recovery_exposure_index_warning_threshold",
+            "recovery_exposure_index_critical_threshold",
+        ],
+        what_if_inputs: vec![
+            "distribute_instances_across_availability_zones",
+            "restore_ec2_status_check_telemetry",
+            "review_status_check_recovery_plan",
+        ],
+        blocked_by_stale_data: stale_data,
+        blast_radius_summary: ec2_resilience_blast_radius_summary(
+            single_az_count,
+            status_failure_count,
+            missing_status_count,
+            missing_az_count,
+        ),
+        recovery_note: "Forecast is read-only; recovery actions require remediation approval and rollback notes.",
+        missing_data_reason_codes: resilience_missing_data_reason_codes(report),
+        risk_drivers: ec2_resilience_forecast_risk_drivers(report),
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
+pub fn ec2_security_forecast_snapshot(report: &PillarReport) -> Ec2SecurityForecastSnapshot {
+    const BASELINE_WINDOW_DAYS: u16 = 30;
+    const FORECAST_HORIZON_DAYS: u16 = 30;
+    const CONFIDENCE_LEVEL: u8 = 75;
+
+    let empty_inventory = report.resources_evaluated == 0;
+    let stale_data = report.stale_resources > 0
+        || report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+    let public_ip_count = count_reason(report, REASON_SEC_PUBLIC_IP);
+    let public_packet_count = count_reason(report, REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY);
+    let missing_packet_count = count_reason(report, REASON_SEC_MISSING_PACKET_TELEMETRY);
+    let missing_owner_count = count_reason(report, REASON_SEC_MISSING_OWNER_TAG);
+
+    let expected_security_exposure_index = bounded_u16(
+        100u32
+            + (public_packet_count as u32 * 40)
+            + (public_ip_count as u32 * 28)
+            + (missing_packet_count as u32 * 18)
+            + (missing_owner_count as u32 * 8)
+            + (report.stale_resources as u32 * 30),
+    );
+    let uncertainty = bounded_u16(
+        12u32
+            + (missing_packet_count as u32 * 9)
+            + (missing_owner_count as u32 * 3)
+            + (report.stale_resources as u32 * 14)
+            + empty_inventory as u32 * 25,
+    );
+    let lower_security_exposure_index =
+        expected_security_exposure_index.saturating_sub(uncertainty);
+    let upper_security_exposure_index =
+        expected_security_exposure_index.saturating_add(uncertainty);
+    let risk_level = if stale_data || empty_inventory {
+        Ec2SecurityForecastRisk::Blocked
+    } else if public_packet_count > 0 || upper_security_exposure_index >= 160 {
+        Ec2SecurityForecastRisk::High
+    } else if public_ip_count > 0
+        || missing_packet_count > 0
+        || missing_owner_count > 0
+        || expected_security_exposure_index > 100
+    {
+        Ec2SecurityForecastRisk::Moderate
+    } else {
+        Ec2SecurityForecastRisk::Low
+    };
+
+    Ec2SecurityForecastSnapshot {
+        workflow_id: "ec2_security_forecasting",
+        read_only_mode: true,
+        baseline_window_days: BASELINE_WINDOW_DAYS,
+        forecast_horizon_days: FORECAST_HORIZON_DAYS,
+        confidence_level: CONFIDENCE_LEVEL,
+        forecast_band: Ec2SecurityForecastBand {
+            horizon_days: FORECAST_HORIZON_DAYS,
+            lower_security_exposure_index,
+            expected_security_exposure_index,
+            upper_security_exposure_index,
+            confidence_level: CONFIDENCE_LEVEL,
+        },
+        risk_level,
+        exposure_capacity_risk: ec2_security_exposure_capacity_risk(
+            stale_data,
+            empty_inventory,
+            public_packet_count,
+            public_ip_count,
+            missing_packet_count,
+            missing_owner_count,
+        ),
+        backtesting_fixture_status: if empty_inventory {
+            "blocked_missing_security_inventory_fixture"
+        } else if report.findings.is_empty() {
+            "ready_clean_security_baseline"
+        } else if stale_data || missing_packet_count > 0 {
+            "needs_fresh_security_telemetry_fixture"
+        } else {
+            "ready_security_findings_baseline"
+        },
+        threshold_controls: vec![
+            "security_exposure_index_warning_threshold",
+            "security_exposure_index_critical_threshold",
+        ],
+        what_if_inputs: vec![
+            "verify_public_ip_business_intent",
+            "restore_packet_telemetry",
+            "route_security_findings_to_owner",
+        ],
+        blocked_by_stale_data: stale_data,
+        blast_radius_summary: ec2_security_blast_radius_summary(
+            empty_inventory,
+            public_packet_count,
+            public_ip_count,
+            missing_packet_count,
+        ),
+        missing_data_reason_codes: security_missing_data_reason_codes(report),
+        risk_drivers: ec2_security_forecast_risk_drivers(report),
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
+pub fn ec2_performance_forecast_snapshot(report: &PillarReport) -> Ec2PerformanceForecastSnapshot {
+    const BASELINE_WINDOW_DAYS: u16 = 30;
+    const FORECAST_HORIZON_DAYS: u16 = 30;
+    const CONFIDENCE_LEVEL: u8 = 75;
+
+    let empty_inventory = report.resources_evaluated == 0;
+    let stale_data = report.stale_resources > 0
+        || report
+            .findings
+            .iter()
+            .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+    let missing_core_count = count_reason(report, REASON_PERF_MISSING_CORE_TELEMETRY);
+    let high_cpu_count = count_reason(report, REASON_PERF_HIGH_CPU_TELEMETRY);
+
+    let expected_performance_pressure_index = bounded_u16(
+        100u32
+            + (high_cpu_count as u32 * 38)
+            + (missing_core_count as u32 * 20)
+            + (report.stale_resources as u32 * 28),
+    );
+    let uncertainty = bounded_u16(
+        10u32
+            + (missing_core_count as u32 * 10)
+            + (report.stale_resources as u32 * 14)
+            + empty_inventory as u32 * 25,
+    );
+    let lower_performance_pressure_index =
+        expected_performance_pressure_index.saturating_sub(uncertainty);
+    let upper_performance_pressure_index =
+        expected_performance_pressure_index.saturating_add(uncertainty);
+    let risk_level = if stale_data || empty_inventory {
+        Ec2PerformanceForecastRisk::Blocked
+    } else if high_cpu_count > 0 || upper_performance_pressure_index >= 160 {
+        Ec2PerformanceForecastRisk::High
+    } else if missing_core_count > 0 || expected_performance_pressure_index > 100 {
+        Ec2PerformanceForecastRisk::Moderate
+    } else {
+        Ec2PerformanceForecastRisk::Low
+    };
+
+    Ec2PerformanceForecastSnapshot {
+        workflow_id: "ec2_performance_forecasting",
+        read_only_mode: true,
+        baseline_window_days: BASELINE_WINDOW_DAYS,
+        forecast_horizon_days: FORECAST_HORIZON_DAYS,
+        confidence_level: CONFIDENCE_LEVEL,
+        forecast_band: Ec2PerformanceForecastBand {
+            horizon_days: FORECAST_HORIZON_DAYS,
+            lower_performance_pressure_index,
+            expected_performance_pressure_index,
+            upper_performance_pressure_index,
+            confidence_level: CONFIDENCE_LEVEL,
+        },
+        risk_level,
+        performance_capacity_risk: ec2_performance_capacity_risk(
+            stale_data,
+            empty_inventory,
+            high_cpu_count,
+            missing_core_count,
+        ),
+        backtesting_fixture_status: if empty_inventory {
+            "blocked_missing_performance_inventory_fixture"
+        } else if report.findings.is_empty() {
+            "ready_clean_performance_baseline"
+        } else if stale_data || missing_core_count > 0 {
+            "needs_fresh_performance_telemetry_fixture"
+        } else {
+            "ready_performance_findings_baseline"
+        },
+        threshold_controls: vec![
+            "performance_pressure_index_warning_threshold",
+            "performance_pressure_index_critical_threshold",
+        ],
+        what_if_inputs: vec![
+            "restore_core_performance_telemetry",
+            "compare_cpu_pressure_to_workload_demand",
+            "review_instance_type_and_burst_credit_headroom",
+        ],
+        blocked_by_stale_data: stale_data,
+        blast_radius_summary: ec2_performance_blast_radius_summary(
+            empty_inventory,
+            high_cpu_count,
+            missing_core_count,
+        ),
+        missing_data_reason_codes: performance_missing_data_reason_codes(report),
+        risk_drivers: ec2_performance_forecast_risk_drivers(report),
+        evidence_reason_codes: sorted_unique_reason_codes(report),
+    }
+}
+
+pub fn ec2_cost_reporting_bundle(report: &PillarReport) -> Ec2CostReportingBundle {
+    let posture = ec2_cost_posture_summary(report);
+    let reason_codes = sorted_unique_reason_codes(report);
+    let rows = ec2_cost_report_rows(report);
+
+    Ec2CostReportingBundle {
+        workflow_id: "ec2_cost_reporting",
+        read_only_mode: true,
+        scheduled_delivery_state: if report.stale_resources > 0 {
+            "blocked_until_fresh_inventory"
+        } else {
+            "ready_for_schedule"
+        },
+        executive_summary: Ec2CostExecutiveSummary {
+            report_id: "ec2-cost-executive-summary",
+            score: report.score,
+            resources_evaluated: report.resources_evaluated,
+            stale_resources: report.stale_resources,
+            rules_failed: posture.rules_failed,
+            affected_resources: posture.affected_resources,
+            top_reason_codes: reason_codes.clone(),
+        },
+        engineering_backlog: Ec2CostEngineeringBacklog {
+            report_id: "ec2-cost-engineering-backlog",
+            page: 0,
+            page_size: 50,
+            total: rows.len(),
+            rows,
+        },
+        evidence_reason_codes: reason_codes,
+    }
+}
+
+pub fn ec2_resilience_reporting_bundle(report: &PillarReport) -> Ec2ResilienceReportingBundle {
+    let posture = ec2_resilience_posture_summary(report);
+    let forecast = ec2_resilience_forecast_snapshot(report);
+    let reason_codes = sorted_unique_reason_codes(report);
+    let missing_data_reason_codes = resilience_missing_data_reason_codes(report);
+    let rows = ec2_resilience_report_rows(report);
+    let stale_data = report.stale_resources > 0;
+
+    Ec2ResilienceReportingBundle {
+        workflow_id: "ec2_resilience_reporting",
+        read_only_mode: true,
+        scheduled_delivery_state: if stale_data {
+            "blocked_until_fresh_resilience_evidence"
+        } else if !missing_data_reason_codes.is_empty() {
+            "ready_with_resilience_evidence_gaps"
+        } else {
+            "ready_for_schedule"
+        },
+        portfolio_summary_ready: !stale_data,
+        workload_summary_ready: !stale_data && report.resources_evaluated > 0,
+        stale_data_blocks_delivery: stale_data,
+        executive_summary: Ec2ResilienceExecutiveSummary {
+            report_id: "ec2-resilience-executive-summary",
+            score: report.score,
+            resources_evaluated: report.resources_evaluated,
+            stale_resources: report.stale_resources,
+            rules_failed: posture.rules_failed,
+            affected_resources: posture.affected_resources,
+            blast_radius_summary: forecast.blast_radius_summary,
+            top_reason_codes: reason_codes.clone(),
+        },
+        incident_review: Ec2ResilienceIncidentReview {
+            report_id: "ec2-resilience-incident-review",
+            page: 0,
+            page_size: 50,
+            total: rows.len(),
+            rows,
+        },
+        missing_data_reason_codes,
+        evidence_reason_codes: reason_codes,
+    }
+}
+
+fn ec2_cost_report_rows(report: &PillarReport) -> Vec<Ec2CostReportRow> {
+    report
+        .findings
+        .iter()
+        .map(|finding| Ec2CostReportRow {
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            reason_code: finding.reason_code.clone(),
+            message: finding.message.clone(),
+            evidence: finding.evidence.clone(),
+        })
+        .collect()
+}
+
+fn ec2_resilience_report_rows(report: &PillarReport) -> Vec<Ec2ResilienceReportRow> {
+    report
+        .findings
+        .iter()
+        .map(|finding| Ec2ResilienceReportRow {
+            resource_id: finding.resource_id.clone(),
+            severity: finding.severity,
+            reason_code: finding.reason_code.clone(),
+            message: finding.message.clone(),
+            suppression_supported: true,
+            recovery_note: resilience_recovery_note(&finding.reason_code),
+            evidence: finding.evidence.clone(),
+        })
+        .collect()
+}
+
+fn resilience_recovery_note(reason_code: &str) -> &'static str {
+    match reason_code {
+        REASON_RES_SINGLE_AZ_CONCENTRATION => {
+            "Review multi-AZ placement plan before any approved recovery change."
+        }
+        REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY => {
+            "Review status-check recovery runbook and capture rollback notes before action."
+        }
+        REASON_RES_MISSING_STATUS_TELEMETRY | REASON_RES_MISSING_AZ | REASON_INV_STALE_DATA => {
+            "Refresh EC2 resilience evidence before scheduling recovery action."
+        }
+        _ => "Use read-only incident review evidence before planning recovery action.",
+    }
+}
+
+fn count_reason(report: &PillarReport, reason_code: &str) -> usize {
+    report
+        .findings
+        .iter()
+        .filter(|finding| finding.reason_code == reason_code)
+        .count()
+}
+
+fn ec2_cost_capacity_risk(
+    stale_data: bool,
+    low_utilization_count: usize,
+    stopped_count: usize,
+    missing_telemetry_count: usize,
+) -> &'static str {
+    if stale_data {
+        "blocked_until_inventory_refresh"
+    } else if missing_telemetry_count > 0 {
+        "unknown_due_to_missing_utilization"
+    } else if low_utilization_count > 0 {
+        "overprovisioned_compute_capacity"
+    } else if stopped_count > 0 {
+        "stopped_capacity_storage_artifacts"
+    } else {
+        "within_observed_cost_baseline"
+    }
+}
+
+fn missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    report
+        .findings
+        .iter()
+        .filter(|finding| {
+            matches!(
+                finding.reason_code.as_str(),
+                REASON_INV_STALE_DATA | REASON_COST_MISSING_UTILIZATION_TELEMETRY
+            )
+        })
+        .map(|finding| finding.reason_code.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn ec2_cost_forecast_risk_drivers(report: &PillarReport) -> Vec<Ec2CostForecastRiskDriver> {
+    [
+        (REASON_INV_STALE_DATA, 25u16),
+        (REASON_COST_LOW_UTILIZATION_TELEMETRY, 18u16),
+        (REASON_COST_MISSING_UTILIZATION_TELEMETRY, 15u16),
+        (REASON_COST_STOPPED_INSTANCE, 10u16),
+        (REASON_COST_MISSING_ALLOCATION_TAGS, 4u16),
+    ]
+    .into_iter()
+    .filter_map(|(reason_code, delta)| {
+        let affected_resources = resources_for_reason(report, reason_code);
+        if affected_resources.is_empty() {
+            None
+        } else {
+            Some(Ec2CostForecastRiskDriver {
+                reason_code: reason_code.to_string(),
+                monthly_cost_index_delta: delta * affected_resources.len() as u16,
+                affected_resources,
+            })
+        }
+    })
+    .collect()
+}
+
+fn ec2_resilience_recovery_capacity_risk(
+    stale_data: bool,
+    single_az_count: usize,
+    status_failure_count: usize,
+    missing_status_count: usize,
+    missing_az_count: usize,
+) -> &'static str {
+    if stale_data {
+        "blocked_until_inventory_refresh"
+    } else if status_failure_count > 0 {
+        "active_status_check_failure_exposure"
+    } else if single_az_count > 0 {
+        "single_availability_zone_recovery_exposure"
+    } else if missing_status_count > 0 {
+        "unknown_due_to_missing_status_check_telemetry"
+    } else if missing_az_count > 0 {
+        "unknown_due_to_missing_placement_data"
+    } else {
+        "within_observed_resilience_baseline"
+    }
+}
+
+fn ec2_resilience_blast_radius_summary(
+    single_az_count: usize,
+    status_failure_count: usize,
+    missing_status_count: usize,
+    missing_az_count: usize,
+) -> &'static str {
+    if status_failure_count > 0 {
+        "status_check_failures_can_reduce_instance_reachability"
+    } else if single_az_count > 0 {
+        "single_az_placement_can_turn_one_az_event_into_fleet_outage"
+    } else if missing_status_count > 0 || missing_az_count > 0 {
+        "blast_radius_unknown_until_resilience_evidence_is_complete"
+    } else {
+        "no_resilience_blast_radius_detected_from_current_evidence"
+    }
+}
+
+fn resilience_missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    report
+        .findings
+        .iter()
+        .filter(|finding| {
+            matches!(
+                finding.reason_code.as_str(),
+                REASON_INV_STALE_DATA | REASON_RES_MISSING_AZ | REASON_RES_MISSING_STATUS_TELEMETRY
+            )
+        })
+        .map(|finding| finding.reason_code.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn ec2_resilience_forecast_risk_drivers(
+    report: &PillarReport,
+) -> Vec<Ec2ResilienceForecastRiskDriver> {
+    [
+        (REASON_INV_STALE_DATA, 28u16),
+        (REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY, 35u16),
+        (REASON_RES_SINGLE_AZ_CONCENTRATION, 30u16),
+        (REASON_RES_MISSING_STATUS_TELEMETRY, 18u16),
+        (REASON_RES_MISSING_AZ, 12u16),
+    ]
+    .into_iter()
+    .filter_map(|(reason_code, delta)| {
+        let affected_resources = resources_for_reason(report, reason_code);
+        if affected_resources.is_empty() {
+            None
+        } else {
+            Some(Ec2ResilienceForecastRiskDriver {
+                reason_code: reason_code.to_string(),
+                recovery_exposure_index_delta: delta * affected_resources.len() as u16,
+                affected_resources,
+            })
+        }
+    })
+    .collect()
+}
+
+fn ec2_security_exposure_capacity_risk(
+    stale_data: bool,
+    empty_inventory: bool,
+    public_packet_count: usize,
+    public_ip_count: usize,
+    missing_packet_count: usize,
+    missing_owner_count: usize,
+) -> &'static str {
+    if stale_data {
+        "blocked_until_inventory_refresh"
+    } else if empty_inventory {
+        "blocked_until_security_inventory_exists"
+    } else if public_packet_count > 0 {
+        "public_exposure_with_observed_packet_traffic"
+    } else if public_ip_count > 0 {
+        "public_ip_exposure_requires_network_path_verification"
+    } else if missing_packet_count > 0 {
+        "unknown_due_to_missing_packet_telemetry"
+    } else if missing_owner_count > 0 {
+        "routing_gap_for_security_findings"
+    } else {
+        "within_observed_security_baseline"
+    }
+}
+
+fn ec2_security_blast_radius_summary(
+    empty_inventory: bool,
+    public_packet_count: usize,
+    public_ip_count: usize,
+    missing_packet_count: usize,
+) -> &'static str {
+    if empty_inventory {
+        "security_exposure_blast_radius_unknown_until_inventory_exists"
+    } else if public_packet_count > 0 {
+        "public_ip_instances_with_packet_traffic_need_sg_nacl_route_verification"
+    } else if public_ip_count > 0 {
+        "public_ip_instances_may_expand_internet_exposure_if_network_paths_allow"
+    } else if missing_packet_count > 0 {
+        "exposure_blast_radius_unknown_until_packet_telemetry_is_complete"
+    } else {
+        "no_security_exposure_blast_radius_detected_from_current_evidence"
+    }
+}
+
+fn security_missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    if report.resources_evaluated == 0 {
+        return vec![REASON_INV_NO_RESOURCES.to_string()];
+    }
+
+    report
+        .findings
+        .iter()
+        .filter(|finding| {
+            matches!(
+                finding.reason_code.as_str(),
+                REASON_INV_STALE_DATA
+                    | REASON_SEC_MISSING_OWNER_TAG
+                    | REASON_SEC_MISSING_PACKET_TELEMETRY
+            )
+        })
+        .map(|finding| finding.reason_code.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn ec2_security_forecast_risk_drivers(report: &PillarReport) -> Vec<Ec2SecurityForecastRiskDriver> {
+    [
+        (REASON_INV_STALE_DATA, 30u16),
+        (REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY, 40u16),
+        (REASON_SEC_PUBLIC_IP, 28u16),
+        (REASON_SEC_MISSING_PACKET_TELEMETRY, 18u16),
+        (REASON_SEC_MISSING_OWNER_TAG, 8u16),
+    ]
+    .into_iter()
+    .filter_map(|(reason_code, delta)| {
+        let affected_resources = resources_for_reason(report, reason_code);
+        if affected_resources.is_empty() {
+            None
+        } else {
+            Some(Ec2SecurityForecastRiskDriver {
+                reason_code: reason_code.to_string(),
+                security_exposure_index_delta: bounded_u16(
+                    delta as u32 * affected_resources.len() as u32,
+                ),
+                affected_resources,
+            })
+        }
+    })
+    .collect()
+}
+
+fn ec2_performance_capacity_risk(
+    stale_data: bool,
+    empty_inventory: bool,
+    high_cpu_count: usize,
+    missing_core_count: usize,
+) -> &'static str {
+    if stale_data {
+        "blocked_until_inventory_refresh"
+    } else if empty_inventory {
+        "blocked_until_performance_inventory_exists"
+    } else if high_cpu_count > 0 {
+        "cpu_constrained_compute_capacity"
+    } else if missing_core_count > 0 {
+        "unknown_due_to_missing_core_performance_telemetry"
+    } else {
+        "within_observed_performance_baseline"
+    }
+}
+
+fn ec2_performance_blast_radius_summary(
+    empty_inventory: bool,
+    high_cpu_count: usize,
+    missing_core_count: usize,
+) -> &'static str {
+    if empty_inventory {
+        "performance_pressure_blast_radius_unknown_until_inventory_exists"
+    } else if high_cpu_count > 0 {
+        "instances_with_high_cpu_can_expand_latency_or_throttle_risk"
+    } else if missing_core_count > 0 {
+        "performance_blast_radius_unknown_until_core_telemetry_is_complete"
+    } else {
+        "no_performance_pressure_blast_radius_detected_from_current_evidence"
+    }
+}
+
+fn performance_missing_data_reason_codes(report: &PillarReport) -> Vec<String> {
+    if report.resources_evaluated == 0 {
+        return vec![REASON_INV_NO_RESOURCES.to_string()];
+    }
+
+    report
+        .findings
+        .iter()
+        .filter(|finding| {
+            matches!(
+                finding.reason_code.as_str(),
+                REASON_INV_STALE_DATA | REASON_PERF_MISSING_CORE_TELEMETRY
+            )
+        })
+        .map(|finding| finding.reason_code.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn ec2_performance_forecast_risk_drivers(
+    report: &PillarReport,
+) -> Vec<Ec2PerformanceForecastRiskDriver> {
+    [
+        (REASON_INV_STALE_DATA, 28u16),
+        (REASON_PERF_HIGH_CPU_TELEMETRY, 38u16),
+        (REASON_PERF_MISSING_CORE_TELEMETRY, 20u16),
+    ]
+    .into_iter()
+    .filter_map(|(reason_code, delta)| {
+        let affected_resources = resources_for_reason(report, reason_code);
+        if affected_resources.is_empty() {
+            None
+        } else {
+            Some(Ec2PerformanceForecastRiskDriver {
+                reason_code: reason_code.to_string(),
+                performance_pressure_index_delta: bounded_u16(
+                    delta as u32 * affected_resources.len() as u32,
+                ),
+                affected_resources,
+            })
+        }
+    })
+    .collect()
+}
+
+fn bounded_u16(value: u32) -> u16 {
+    value.min(u16::MAX as u32) as u16
+}
+
+fn resources_for_reason(report: &PillarReport, reason_code: &str) -> Vec<String> {
+    sorted_unique_resources(
+        report
+            .findings
+            .iter()
+            .filter(|finding| finding.reason_code == reason_code)
+            .map(|finding| finding.resource_id.clone()),
+    )
+}
+
+fn cost_objective_status(
+    score: u8,
+    failed_rule_count: usize,
+    stale_resources: usize,
+) -> Ec2CostObjectiveStatus {
+    if stale_resources > 0 || score < 70 {
+        Ec2CostObjectiveStatus::Breached
+    } else if failed_rule_count > 0 || score < 90 {
+        Ec2CostObjectiveStatus::AtRisk
+    } else {
+        Ec2CostObjectiveStatus::OnTrack
+    }
+}
+
+fn resilience_objective_status(
+    score: u8,
+    failed_rule_count: usize,
+    stale_resources: usize,
+) -> Ec2ResilienceObjectiveStatus {
+    if stale_resources > 0 || failed_rule_count >= 2 || score < 80 {
+        Ec2ResilienceObjectiveStatus::Breached
+    } else if failed_rule_count > 0 || score < 95 {
+        Ec2ResilienceObjectiveStatus::AtRisk
+    } else {
+        Ec2ResilienceObjectiveStatus::OnTrack
+    }
+}
+
+fn resilience_trend_direction(
+    report: &PillarReport,
+    status: Ec2ResilienceObjectiveStatus,
+    failed_rule_count: usize,
+) -> Ec2ResilienceTrendDirection {
+    if report.findings.iter().any(|finding| {
+        matches!(
+            finding.reason_code.as_str(),
+            REASON_INV_STALE_DATA
+                | REASON_RES_SINGLE_AZ_CONCENTRATION
+                | REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY
+        )
+    }) {
+        return Ec2ResilienceTrendDirection::Degrading;
+    }
+
+    match status {
+        Ec2ResilienceObjectiveStatus::OnTrack => Ec2ResilienceTrendDirection::Stable,
+        Ec2ResilienceObjectiveStatus::AtRisk if failed_rule_count == 0 => {
+            Ec2ResilienceTrendDirection::Stable
+        }
+        Ec2ResilienceObjectiveStatus::AtRisk | Ec2ResilienceObjectiveStatus::Breached => {
+            Ec2ResilienceTrendDirection::Degrading
+        }
+    }
+}
+
+fn security_objective_status(
+    score: u8,
+    failed_rule_count: usize,
+    stale_resources: usize,
+) -> Ec2SecurityObjectiveStatus {
+    if stale_resources > 0 || failed_rule_count >= 2 || score < 80 {
+        Ec2SecurityObjectiveStatus::Breached
+    } else if failed_rule_count > 0 || score < 95 {
+        Ec2SecurityObjectiveStatus::AtRisk
+    } else {
+        Ec2SecurityObjectiveStatus::OnTrack
+    }
+}
+
+fn security_trend_direction(
+    report: &PillarReport,
+    status: Ec2SecurityObjectiveStatus,
+    failed_rule_count: usize,
+) -> Ec2SecurityTrendDirection {
+    if report.findings.iter().any(|finding| {
+        matches!(
+            finding.reason_code.as_str(),
+            REASON_INV_STALE_DATA
+                | REASON_SEC_PUBLIC_IP
+                | REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY
+                | REASON_SEC_MISSING_PACKET_TELEMETRY
+        )
+    }) {
+        return Ec2SecurityTrendDirection::Degrading;
+    }
+
+    match status {
+        Ec2SecurityObjectiveStatus::OnTrack => Ec2SecurityTrendDirection::Stable,
+        Ec2SecurityObjectiveStatus::AtRisk if failed_rule_count <= 1 => {
+            Ec2SecurityTrendDirection::Stable
+        }
+        Ec2SecurityObjectiveStatus::AtRisk | Ec2SecurityObjectiveStatus::Breached => {
+            Ec2SecurityTrendDirection::Degrading
+        }
+    }
+}
+
+fn cost_trend_direction(
+    status: Ec2CostObjectiveStatus,
+    failed_rule_count: usize,
+) -> Ec2CostTrendDirection {
+    match status {
+        Ec2CostObjectiveStatus::OnTrack => Ec2CostTrendDirection::Stable,
+        Ec2CostObjectiveStatus::AtRisk if failed_rule_count <= 1 => Ec2CostTrendDirection::Stable,
+        Ec2CostObjectiveStatus::AtRisk | Ec2CostObjectiveStatus::Breached => {
+            Ec2CostTrendDirection::Degrading
+        }
+    }
+}
+
+fn sorted_unique_evidence_values(report: &PillarReport, keys: &[&str]) -> Vec<String> {
+    report
+        .findings
+        .iter()
+        .flat_map(|finding| {
+            keys.iter()
+                .filter_map(|key| evidence_string(&finding.evidence, key))
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn evidence_string(evidence: &Value, key: &str) -> Option<String> {
+    evidence
+        .get("tags")
+        .and_then(|tags| tags.get(key))
+        .or_else(|| evidence.get(key))
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| value.trim().to_string())
+}
+
+fn notification_targets(owner_filters: &[String], environment_filters: &[String]) -> Vec<String> {
+    notification_targets_with_default(owner_filters, environment_filters, "cost-operations")
+}
+
+fn notification_targets_with_default(
+    owner_filters: &[String],
+    environment_filters: &[String],
+    default_target: &str,
+) -> Vec<String> {
+    let mut targets: BTreeSet<String> = owner_filters
+        .iter()
+        .map(|owner| format!("owner:{}", owner))
+        .collect();
+    targets.extend(
+        environment_filters
+            .iter()
+            .map(|environment| format!("environment:{}", environment)),
+    );
+    if targets.is_empty() {
+        targets.insert(default_target.to_string());
+    }
+    targets.into_iter().collect()
+}
+
+fn sorted_unique_reason_codes(report: &PillarReport) -> Vec<String> {
+    report
+        .findings
+        .iter()
+        .map(|finding| finding.reason_code.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+pub fn ec2_cost_remediation_workflow(report: &PillarReport) -> Ec2CostRemediationWorkflow {
+    let investigation = ec2_cost_agentic_investigation_plan(report);
+    let has_stale_data = report
+        .findings
+        .iter()
+        .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+    let mut actions = Vec::new();
+
+    for gate in &investigation.approval_gates {
+        for reason_code in &gate.evidence_reason_codes {
+            if let Some(kind) = remediation_action_kind(reason_code) {
+                actions.push(remediation_action(
+                    &actions,
+                    kind,
+                    gate,
+                    if has_stale_data {
+                        Ec2RemediationStatus::BlockedMissingEvidence
+                    } else {
+                        Ec2RemediationStatus::DryRunPendingApproval
+                    },
+                ));
+            }
+        }
+    }
+
+    Ec2CostRemediationWorkflow {
+        workflow_id: "ec2_cost_safe_remediation",
+        read_only_mode: true,
+        rbac_permission: "aws.ec2.cost.remediation.approve",
+        audit_stream: "ec2_cost_remediation_audit",
+        stale_data_blocks_execution: has_stale_data,
+        actions,
+        approval_gates: investigation.approval_gates,
+    }
+}
+
+pub fn ec2_resilience_remediation_workflow(
+    report: &PillarReport,
+) -> Ec2ResilienceRemediationWorkflow {
+    let investigation = ec2_resilience_agentic_investigation_plan(report);
+    let has_stale_data = report
+        .findings
+        .iter()
+        .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+    let mut actions = Vec::new();
+
+    for gate in &investigation.approval_gates {
+        for reason_code in &gate.evidence_reason_codes {
+            if let Some(kind) = resilience_remediation_action_kind(reason_code) {
+                actions.push(remediation_action_with_contract(
+                    "ec2-resilience",
+                    "ec2.resilience.remediation.dry_run_planned",
+                    &[
+                        "refresh EC2 placement and status-check evidence",
+                        "verify blast radius, ownership, and suppression policy",
+                        "capture operator approval and audit id before execution",
+                    ],
+                    &actions,
+                    kind,
+                    gate,
+                    if has_stale_data {
+                        Ec2RemediationStatus::BlockedMissingEvidence
+                    } else {
+                        Ec2RemediationStatus::DryRunPendingApproval
+                    },
+                ));
+            }
+        }
+    }
+
+    Ec2ResilienceRemediationWorkflow {
+        workflow_id: "ec2_resilience_safe_remediation",
+        read_only_mode: true,
+        rbac_permission: "aws.ec2.resilience.remediation.approve",
+        audit_stream: "ec2_resilience_remediation_audit",
+        stale_data_blocks_execution: has_stale_data,
+        actions,
+        approval_gates: investigation.approval_gates,
+    }
+}
+
+pub fn ec2_security_remediation_workflow(report: &PillarReport) -> Ec2SecurityRemediationWorkflow {
+    let investigation = ec2_security_agentic_investigation_plan(report);
+    let has_stale_data = report
+        .findings
+        .iter()
+        .any(|finding| finding.reason_code == REASON_INV_STALE_DATA);
+    let mut actions = Vec::new();
+
+    for gate in &investigation.approval_gates {
+        for reason_code in &gate.evidence_reason_codes {
+            if let Some(kind) = security_remediation_action_kind(reason_code) {
+                actions.push(remediation_action_with_contract(
+                    "ec2-security",
+                    "ec2.security.remediation.dry_run_planned",
+                    &[
+                        "refresh EC2 security inventory and packet telemetry",
+                        "verify owner, blast radius, exposure intent, and suppression policy",
+                        "capture operator approval, rollback note, and audit id before execution",
+                    ],
+                    &actions,
+                    kind,
+                    gate,
+                    if has_stale_data {
+                        Ec2RemediationStatus::BlockedMissingEvidence
+                    } else {
+                        Ec2RemediationStatus::DryRunPendingApproval
+                    },
+                ));
+            }
+        }
+    }
+
+    Ec2SecurityRemediationWorkflow {
+        workflow_id: "ec2_security_safe_remediation",
+        read_only_mode: true,
+        rbac_permission: "aws.ec2.security.remediation.approve",
+        audit_stream: "ec2_security_remediation_audit",
+        stale_data_blocks_execution: has_stale_data,
+        actions,
+        approval_gates: investigation.approval_gates,
+    }
+}
+
+fn remediation_action_kind(reason_code: &str) -> Option<Ec2RemediationActionKind> {
+    match reason_code {
+        REASON_COST_MISSING_ALLOCATION_TAGS => Some(Ec2RemediationActionKind::AssignCostTags),
+        REASON_COST_STOPPED_INSTANCE => {
+            Some(Ec2RemediationActionKind::ReviewStoppedInstanceArtifacts)
+        }
+        REASON_COST_LOW_UTILIZATION_TELEMETRY => Some(Ec2RemediationActionKind::RightSizeInstance),
+        _ => None,
+    }
+}
+
+fn security_remediation_action_kind(reason_code: &str) -> Option<Ec2RemediationActionKind> {
+    match reason_code {
+        REASON_SEC_PUBLIC_IP => Some(Ec2RemediationActionKind::ReviewSecurityExposure),
+        REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY => {
+            Some(Ec2RemediationActionKind::ReviewPublicPacketTraffic)
+        }
+        REASON_SEC_MISSING_OWNER_TAG => Some(Ec2RemediationActionKind::ReviewSecurityOwnerMetadata),
+        _ => None,
+    }
+}
+
+fn resilience_remediation_action_kind(reason_code: &str) -> Option<Ec2RemediationActionKind> {
+    match reason_code {
+        REASON_RES_SINGLE_AZ_CONCENTRATION => Some(Ec2RemediationActionKind::PlanMultiAzPlacement),
+        REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY => {
+            Some(Ec2RemediationActionKind::ReviewStatusCheckRecovery)
+        }
+        _ => None,
+    }
+}
+
+fn remediation_action(
+    existing_actions: &[Ec2CostRemediationAction],
+    kind: Ec2RemediationActionKind,
+    gate: &Ec2MutationApprovalGate,
+    status: Ec2RemediationStatus,
+) -> Ec2CostRemediationAction {
+    remediation_action_with_contract(
+        "ec2-cost",
+        "ec2.cost.remediation.dry_run_planned",
+        &[
+            "refresh EC2 inventory and cost telemetry",
+            "verify resource ownership and suppression policy",
+            "capture operator approval and audit id before execution",
+        ],
+        existing_actions,
+        kind,
+        gate,
+        status,
+    )
+}
+
+fn remediation_action_with_contract(
+    action_id_prefix: &str,
+    audit_event_type: &'static str,
+    validation_steps: &[&'static str],
+    existing_actions: &[Ec2CostRemediationAction],
+    kind: Ec2RemediationActionKind,
+    gate: &Ec2MutationApprovalGate,
+    status: Ec2RemediationStatus,
+) -> Ec2CostRemediationAction {
+    let action_number = existing_actions.len() + 1;
+    let action_slug = match kind {
+        Ec2RemediationActionKind::AssignCostTags => "assign-cost-tags",
+        Ec2RemediationActionKind::ReviewStoppedInstanceArtifacts => {
+            "review-stopped-instance-artifacts"
+        }
+        Ec2RemediationActionKind::RightSizeInstance => "rightsize-instance",
+        Ec2RemediationActionKind::PlanMultiAzPlacement => "plan-multi-az-placement",
+        Ec2RemediationActionKind::ReviewStatusCheckRecovery => "review-status-check-recovery",
+        Ec2RemediationActionKind::ReviewSecurityExposure => "review-security-exposure",
+        Ec2RemediationActionKind::ReviewPublicPacketTraffic => "review-public-packet-traffic",
+        Ec2RemediationActionKind::ReviewSecurityOwnerMetadata => "review-security-owner-metadata",
+    };
+
+    Ec2CostRemediationAction {
+        action_id: format!("{}-remediation-{:02}", action_id_prefix, action_number),
+        kind,
+        status,
+        target_resource_id: gate.target_resource_id.clone(),
+        dry_run: true,
+        requires_approval: true,
+        approval_gate_id: Some(gate.gate_id.clone()),
+        audit_event_type,
+        idempotency_key: format!("{}:{}", gate.target_resource_id, action_slug),
+        blast_radius: gate.blast_radius.clone(),
+        rollback_note: format!(
+            "Before approval, record rollback or recovery notes for {} on {}.",
+            action_slug, gate.target_resource_id
+        ),
+        validation_steps: validation_steps.to_vec(),
+        evidence_reason_codes: gate.evidence_reason_codes.clone(),
+    }
+}
+
 fn investigation_step(
     existing_steps: &[Ec2InvestigationStep],
     kind: Ec2InvestigationStepKind,
@@ -399,8 +3071,28 @@ fn investigation_step(
     citation: &Ec2EvidenceCitation,
     stop_condition: &str,
 ) -> Ec2InvestigationStep {
+    investigation_step_with_prefix(
+        "ec2-cost",
+        existing_steps,
+        kind,
+        tool_name,
+        tool_mode,
+        citation,
+        stop_condition,
+    )
+}
+
+fn investigation_step_with_prefix(
+    step_id_prefix: &str,
+    existing_steps: &[Ec2InvestigationStep],
+    kind: Ec2InvestigationStepKind,
+    tool_name: &'static str,
+    tool_mode: Ec2InvestigationToolMode,
+    citation: &Ec2EvidenceCitation,
+    stop_condition: &str,
+) -> Ec2InvestigationStep {
     Ec2InvestigationStep {
-        step_id: format!("ec2-cost-step-{:02}", existing_steps.len() + 1),
+        step_id: format!("{}-step-{:02}", step_id_prefix, existing_steps.len() + 1),
         kind,
         tool_name,
         tool_mode,
@@ -416,8 +3108,21 @@ fn mutation_gate(
     citation: &Ec2EvidenceCitation,
     required_approval: &'static str,
 ) -> Ec2MutationApprovalGate {
+    mutation_gate_with_prefix("ec2-cost", existing_gates, citation, required_approval)
+}
+
+fn mutation_gate_with_prefix(
+    gate_id_prefix: &str,
+    existing_gates: &[Ec2MutationApprovalGate],
+    citation: &Ec2EvidenceCitation,
+    required_approval: &'static str,
+) -> Ec2MutationApprovalGate {
     Ec2MutationApprovalGate {
-        gate_id: format!("ec2-cost-approval-{:02}", existing_gates.len() + 1),
+        gate_id: format!(
+            "{}-approval-{:02}",
+            gate_id_prefix,
+            existing_gates.len() + 1
+        ),
         target_resource_id: citation.resource_id.clone(),
         required_approval,
         blast_radius: format!(
@@ -430,6 +3135,62 @@ fn mutation_gate(
 }
 
 fn ec2_cost_posture_rule(
+    report: &PillarReport,
+    rule_id: &'static str,
+    reason_codes: &[&'static str],
+) -> Ec2PostureRule {
+    ec2_posture_rule(report, rule_id, reason_codes)
+}
+
+fn ec2_security_posture_rule(
+    report: &PillarReport,
+    rule_id: &'static str,
+    reason_codes: &[&'static str],
+) -> Ec2PostureRule {
+    ec2_posture_rule(report, rule_id, reason_codes)
+}
+
+fn ec2_resilience_posture_rule(
+    report: &PillarReport,
+    rule_id: &'static str,
+    reason_codes: &[&'static str],
+) -> Ec2PostureRule {
+    ec2_posture_rule(report, rule_id, reason_codes)
+}
+
+fn ec2_performance_posture_rule(
+    report: &PillarReport,
+    rule_id: &'static str,
+    reason_codes: &[&'static str],
+) -> Ec2PostureRule {
+    ec2_posture_rule(report, rule_id, reason_codes)
+}
+
+fn ec2_scalability_posture_rule(
+    report: &PillarReport,
+    rule_id: &'static str,
+    reason_codes: &[&'static str],
+) -> Ec2PostureRule {
+    ec2_posture_rule(report, rule_id, reason_codes)
+}
+
+fn ec2_disaster_recovery_posture_rule(
+    report: &PillarReport,
+    rule_id: &'static str,
+    reason_codes: &[&'static str],
+) -> Ec2PostureRule {
+    ec2_posture_rule(report, rule_id, reason_codes)
+}
+
+fn ec2_operational_excellence_posture_rule(
+    report: &PillarReport,
+    rule_id: &'static str,
+    reason_codes: &[&'static str],
+) -> Ec2PostureRule {
+    ec2_posture_rule(report, rule_id, reason_codes)
+}
+
+fn ec2_posture_rule(
     report: &PillarReport,
     rule_id: &'static str,
     reason_codes: &[&'static str],
@@ -493,7 +3254,10 @@ fn evaluate_cost(resource: &AwsResourceModel, findings: &mut Vec<InventoryFindin
                 "Instance {} is stopped but still accrues EBS and IP charges; review for termination or snapshot",
                 resource.resource_id
             ),
-            evidence: json!({ "state": state }),
+            evidence: json!({
+                "state": state,
+                "tags": resource.tags,
+            }),
         });
     }
 
@@ -510,6 +3274,7 @@ fn evaluate_cost(resource: &AwsResourceModel, findings: &mut Vec<InventoryFindin
             ),
             evidence: json!({
                 "required_metric": "CPUUtilization",
+                "tags": resource.tags,
                 "resource_data_keys": resource_data_keys(resource),
             }),
         }),
@@ -530,6 +3295,7 @@ fn evaluate_cost(resource: &AwsResourceModel, findings: &mut Vec<InventoryFindin
                     "metric_name": "CPUUtilization",
                     "max": max_cpu,
                     "low_utilization_max": LOW_CPU_UTILIZATION_MAX,
+                    "tags": resource.tags,
                 }),
             });
         }
@@ -551,7 +3317,10 @@ fn evaluate_security(resource: &AwsResourceModel, findings: &mut Vec<InventoryFi
                     "Instance {} has a public IP address assigned; verify it is intentionally internet-facing",
                     resource.resource_id
                 ),
-                evidence: json!({ "public_ip": public_ip }),
+                evidence: json!({
+                    "public_ip": public_ip,
+                    "tags": resource.tags,
+                }),
             });
         }
     }
@@ -587,6 +3356,7 @@ fn evaluate_security(resource: &AwsResourceModel, findings: &mut Vec<InventoryFi
             evidence: json!({
                 "required_metrics": packet_metrics,
                 "missing_metrics": missing_packet_metrics,
+                "tags": resource.tags,
             }),
         });
     }
@@ -609,6 +3379,7 @@ fn evaluate_security(resource: &AwsResourceModel, findings: &mut Vec<InventoryFi
                     "public_ip": public_ip,
                     "metric_name": "NetworkPacketsIn",
                     "max": max_packets_in,
+                    "tags": resource.tags,
                 }),
             });
         }
@@ -630,7 +3401,10 @@ fn evaluate_resilience(resource: &AwsResourceModel, findings: &mut Vec<Inventory
                 "Instance {} has no availability zone recorded; placement resilience cannot be assessed",
                 resource.resource_id
             ),
-            evidence: json!({ "resource_data": resource.resource_data }),
+            evidence: json!({
+                "resource_data": resource.resource_data,
+                "tags": resource.tags,
+            }),
         });
     }
 
@@ -657,6 +3431,7 @@ fn evaluate_resilience(resource: &AwsResourceModel, findings: &mut Vec<Inventory
             ),
             evidence: json!({
                 "required_metrics": status_metrics,
+                "tags": resource.tags,
                 "resource_data_keys": resource_data_keys(resource),
             }),
         });
@@ -678,6 +3453,7 @@ fn evaluate_resilience(resource: &AwsResourceModel, findings: &mut Vec<Inventory
             evidence: json!({
                 "metric_name": metric_name,
                 "max": max_value,
+                "tags": resource.tags,
             }),
         });
     }
@@ -782,7 +3558,7 @@ fn evaluate_disaster_recovery(
     now: DateTime<Utc>,
     findings: &mut Vec<InventoryFinding>,
 ) {
-    match recovery_point_age_hours(resource, now) {
+    match recovery_point_evidence(resource, now) {
         None => findings.push(InventoryFinding {
             resource_id: resource.resource_id.clone(),
             arn: resource.arn.clone(),
@@ -797,12 +3573,16 @@ fn evaluate_disaster_recovery(
                 "expected_fields": [
                     "latest_recovery_point_age_hours",
                     "recovery_point_age_hours",
-                    "latest_recovery_point_at"
+                    "backup_age_hours",
+                    "latest_recovery_point_at",
+                    "recovery_point_at",
+                    "disaster_recovery.latest_recovery_point_age_hours",
+                    "disaster_recovery.latest_recovery_point_at"
                 ],
                 "resource_data_keys": resource_data_keys(resource),
             }),
         }),
-        Some(age_hours) if age_hours > RECOVERY_POINT_STALE_AFTER_HOURS => {
+        Some(recovery_point) if recovery_point.age_hours > RECOVERY_POINT_STALE_AFTER_HOURS => {
             findings.push(InventoryFinding {
                 resource_id: resource.resource_id.clone(),
                 arn: resource.arn.clone(),
@@ -814,8 +3594,10 @@ fn evaluate_disaster_recovery(
                     resource.resource_id
                 ),
                 evidence: json!({
-                    "latest_recovery_point_age_hours": age_hours,
+                    "latest_recovery_point_age_hours": recovery_point.age_hours,
                     "stale_after_hours": RECOVERY_POINT_STALE_AFTER_HOURS,
+                    "source_field": recovery_point.source_field,
+                    "source_value": recovery_point.source_value,
                 }),
             });
         }
@@ -945,14 +3727,68 @@ fn check_az_concentration(resources: &[AwsResourceModel]) -> Option<InventoryFin
         evidence: json!({
             "availability_zone": first_az,
             "instance_ids": instance_ids,
+            "tags": shared_routing_tags(placements.iter().map(|(resource, _)| *resource)),
         }),
     })
+}
+
+fn shared_routing_tags<'a>(
+    resources: impl Iterator<Item = &'a AwsResourceModel>,
+) -> Map<String, Value> {
+    let mut owners = BTreeSet::new();
+    let mut environments = BTreeSet::new();
+    let mut applications = BTreeSet::new();
+
+    for resource in resources {
+        if let Some(owner) = tag_string(&resource.tags, &["owner", "team"]) {
+            owners.insert(owner);
+        }
+        if let Some(environment) = tag_string(&resource.tags, &["environment", "env"]) {
+            environments.insert(environment);
+        }
+        if let Some(application) = tag_string(&resource.tags, &["application", "app"]) {
+            applications.insert(application);
+        }
+    }
+
+    let mut tags = Map::new();
+    if owners.len() == 1 {
+        if let Some(owner) = owners.into_iter().next() {
+            tags.insert("owner".to_string(), Value::String(owner));
+        }
+    }
+    if environments.len() == 1 {
+        if let Some(environment) = environments.into_iter().next() {
+            tags.insert("environment".to_string(), Value::String(environment));
+        }
+    }
+    if applications.len() == 1 {
+        if let Some(application) = applications.into_iter().next() {
+            tags.insert("application".to_string(), Value::String(application));
+        }
+    }
+    tags
+}
+
+fn tag_string(tags: &Value, keys: &[&str]) -> Option<String> {
+    keys.iter()
+        .filter_map(|key| tags.get(key))
+        .filter_map(Value::as_str)
+        .map(str::trim)
+        .find(|value| !value.is_empty())
+        .map(str::to_string)
 }
 
 const LOW_CPU_UTILIZATION_MAX: f64 = 5.0;
 const HIGH_CPU_UTILIZATION_MIN: f64 = 90.0;
 const SCALING_CPU_PRESSURE_MIN: f64 = 80.0;
 const RECOVERY_POINT_STALE_AFTER_HOURS: f64 = 24.0;
+
+struct RecoveryPointEvidence {
+    age_hours: f64,
+    source_field: &'static str,
+    source_value: Value,
+}
 
 fn missing_metrics(resource: &AwsResourceModel, required_metrics: &[&str]) -> Vec<String> {
     required_metrics
@@ -968,44 +3804,72 @@ fn metric_max(resource: &AwsResourceModel, metric_name: &str) -> Option<f64> {
         .reduce(f64::max)
 }
 
-fn recovery_point_age_hours(resource: &AwsResourceModel, now: DateTime<Utc>) -> Option<f64> {
+fn recovery_point_evidence(
+    resource: &AwsResourceModel,
+    now: DateTime<Utc>,
+) -> Option<RecoveryPointEvidence> {
     for key in [
         "latest_recovery_point_age_hours",
         "recovery_point_age_hours",
         "backup_age_hours",
     ] {
-        if let Some(value) = resource
-            .resource_data
-            .get(key)
-            .and_then(|value| value.as_f64().or_else(|| value.as_i64().map(|n| n as f64)))
-        {
-            return Some(value);
+        if let Some(raw_value) = resource.resource_data.get(key) {
+            if let Some(age_hours) = value_as_f64(raw_value) {
+                return Some(RecoveryPointEvidence {
+                    age_hours,
+                    source_field: key,
+                    source_value: raw_value.clone(),
+                });
+            }
         }
     }
 
-    if let Some(value) = resource
+    if let Some(raw_value) = resource
         .resource_data
         .pointer("/disaster_recovery/latest_recovery_point_age_hours")
-        .and_then(|value| value.as_f64().or_else(|| value.as_i64().map(|n| n as f64)))
     {
-        return Some(value);
+        if let Some(age_hours) = value_as_f64(raw_value) {
+            return Some(RecoveryPointEvidence {
+                age_hours,
+                source_field: "disaster_recovery.latest_recovery_point_age_hours",
+                source_value: raw_value.clone(),
+            });
+        }
     }
 
     for key in ["latest_recovery_point_at", "recovery_point_at"] {
-        if let Some(value) = resource
-            .resource_data
-            .get(key)
-            .and_then(|value| value.as_str())
-            .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
-        {
-            return Some((now - value.with_timezone(&Utc)).num_hours() as f64);
+        if let Some(raw_value) = resource.resource_data.get(key) {
+            if let Some(age_hours) = recovery_point_timestamp_age_hours(raw_value, now) {
+                return Some(RecoveryPointEvidence {
+                    age_hours,
+                    source_field: key,
+                    source_value: raw_value.clone(),
+                });
+            }
         }
     }
 
     resource
         .resource_data
         .pointer("/disaster_recovery/latest_recovery_point_at")
-        .and_then(|value| value.as_str())
+        .and_then(|raw_value| {
+            recovery_point_timestamp_age_hours(raw_value, now).map(|age_hours| {
+                RecoveryPointEvidence {
+                    age_hours,
+                    source_field: "disaster_recovery.latest_recovery_point_at",
+                    source_value: raw_value.clone(),
+                }
+            })
+        })
+}
+
+fn value_as_f64(value: &Value) -> Option<f64> {
+    value.as_f64().or_else(|| value.as_i64().map(|n| n as f64))
+}
+
+fn recovery_point_timestamp_age_hours(value: &Value, now: DateTime<Utc>) -> Option<f64> {
+    value
+        .as_str()
         .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
         .map(|value| (now - value.with_timezone(&Utc)).num_hours() as f64)
 }
@@ -1250,6 +4114,490 @@ mod tests {
     }
 
     #[test]
+    fn ec2_security_posture_summary_flags_public_owner_and_packet_rules() {
+        let exposed = fixture(
+            "i-sec-exposed",
+            json!({}),
+            json!({
+                "state": "running",
+                "public_ip": "54.0.0.1",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[12.0]),
+                        metric("NetworkPacketsOut", &[6.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let telemetry_gap = fixture(
+            "i-sec-gap",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "private_ip": "10.0.0.5",
+                "availability_zone": "us-east-1a"
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[exposed, telemetry_gap], Pillar::Security, now());
+        let posture = ec2_security_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 5);
+        assert_eq!(posture.rules_failed, 4);
+        assert_eq!(
+            posture.affected_resources,
+            vec!["i-sec-exposed".to_string(), "i-sec-gap".to_string()]
+        );
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-security-public-ip-exposure"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule.reason_codes.contains(&REASON_SEC_PUBLIC_IP)
+                && rule.affected_resources == vec!["i-sec-exposed"]
+                && rule.suppression_supported
+                && rule.assignment_supported
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-security-owner-routing-present"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule.reason_codes.contains(&REASON_SEC_MISSING_OWNER_TAG)
+                && rule.affected_resources == vec!["i-sec-exposed"]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-security-packet-telemetry-present"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule
+                    .reason_codes
+                    .contains(&REASON_SEC_MISSING_PACKET_TELEMETRY)
+                && rule.affected_resources == vec!["i-sec-gap"]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-security-public-packet-traffic"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule
+                    .reason_codes
+                    .contains(&REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY)
+                && rule.affected_resources == vec!["i-sec-exposed"]
+        }));
+    }
+
+    #[test]
+    fn ec2_security_posture_summary_blocks_pass_when_inventory_is_stale() {
+        let stale = fixture(
+            "i-sec-stale",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "private_ip": "10.0.0.5",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[0.0]),
+                        metric("NetworkPacketsOut", &[0.0])
+                    ]
+                }
+            }),
+            48,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Security, now());
+        let posture = ec2_security_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 5);
+        assert_eq!(posture.rules_failed, 1);
+        assert_eq!(posture.affected_resources, vec!["i-sec-stale"]);
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-security-inventory-freshness"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule.reason_codes.contains(&REASON_INV_STALE_DATA)
+                && rule.affected_resources == vec!["i-sec-stale"]
+        }));
+    }
+
+    #[test]
+    fn ec2_security_posture_summary_passes_for_private_owned_packet_telemetry() {
+        let healthy = fixture(
+            "i-sec-healthy",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "private_ip": "10.0.0.5",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[0.0]),
+                        metric("NetworkPacketsOut", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[healthy], Pillar::Security, now());
+        let posture = ec2_security_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Pass);
+        assert_eq!(posture.rules_evaluated, 5);
+        assert_eq!(posture.rules_failed, 0);
+        assert!(posture.affected_resources.is_empty());
+        assert!(posture
+            .rules
+            .iter()
+            .all(|rule| rule.status == Ec2PostureStatus::Pass));
+    }
+
+    #[test]
+    fn ec2_security_triage_context_separates_facts_hypotheses_and_missing_data() {
+        let exposed = fixture(
+            "i-sec-exposed",
+            json!({}),
+            json!({
+                "state": "running",
+                "public_ip": "54.0.0.1",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[12.0]),
+                        metric("NetworkPacketsOut", &[6.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let telemetry_gap = fixture(
+            "i-sec-gap",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "private_ip": "10.0.0.5",
+                "availability_zone": "us-east-1a"
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[exposed, telemetry_gap], Pillar::Security, now());
+        let triage = ec2_security_triage_context(&report);
+
+        assert_eq!(triage.workflow_id, "ec2_security_triage_context");
+        assert_eq!(triage.pillar, Pillar::Security);
+        assert_eq!(
+            triage.context_builder_id,
+            "ec2-security-deterministic-context-v1"
+        );
+        assert_eq!(triage.prompt_template_id, "ec2-security-ai-triage-v1");
+        assert_eq!(triage.generation_mode, "deterministic_no_llm");
+        assert_eq!(triage.max_prompt_tokens, 1200);
+        assert_eq!(
+            triage.provider_routing,
+            vec!["primary_ops_llm", "fallback_ops_llm"]
+        );
+        assert!(triage.guardrails.read_only_mode);
+        assert!(triage.guardrails.separate_facts_from_hypotheses);
+        assert!(triage.guardrails.ask_for_missing_data);
+        assert!(triage.guardrails.no_llm_invocation);
+        assert!(triage.guardrails.no_mutation_planning);
+        assert_eq!(triage.facts.len(), 4);
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("public IP assignment")));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("packet telemetry alongside public IP")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("owner, team, or service metadata")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("NetworkPacketsIn and NetworkPacketsOut")));
+        assert_eq!(triage.evidence_citations.len(), 4);
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_SEC_PUBLIC_IP && citation.resource_id == "i-sec-exposed"
+        }));
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_SEC_MISSING_PACKET_TELEMETRY
+                && citation.resource_id == "i-sec-gap"
+        }));
+    }
+
+    #[test]
+    fn ec2_security_triage_context_asks_for_refresh_when_inventory_is_stale() {
+        let stale = fixture(
+            "i-sec-stale",
+            json!({}),
+            json!({
+                "state": "running",
+                "public_ip": "54.0.0.1",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[12.0]),
+                        metric("NetworkPacketsOut", &[6.0])
+                    ]
+                }
+            }),
+            48,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Security, now());
+        let triage = ec2_security_triage_context(&report);
+
+        assert!(triage
+            .facts
+            .iter()
+            .any(|fact| fact.contains(REASON_INV_STALE_DATA)));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("Refresh EC2 inventory")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("before interpreting public IP assignment")));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .all(|hypothesis| !hypothesis.contains("internet-reachable exposure")));
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_INV_STALE_DATA && citation.resource_id == "i-sec-stale"
+        }));
+    }
+
+    #[test]
+    fn ec2_security_agentic_investigation_plan_is_read_only_until_approval() {
+        let exposed = fixture(
+            "i-sec-exposed",
+            json!({}),
+            json!({
+                "state": "running",
+                "public_ip": "54.0.0.1",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[12.0]),
+                        metric("NetworkPacketsOut", &[6.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let telemetry_gap = fixture(
+            "i-sec-gap",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "private_ip": "10.0.0.5",
+                "availability_zone": "us-east-1a"
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[exposed, telemetry_gap], Pillar::Security, now());
+        let plan = ec2_security_agentic_investigation_plan(&report);
+
+        assert_eq!(plan.workflow_id, "ec2_security_agentic_investigation");
+        assert_eq!(plan.default_tool_mode, Ec2InvestigationToolMode::ReadOnly);
+        assert!(plan.replay_required);
+        assert_eq!(plan.max_evidence_citations, 4);
+        assert!(plan.steps.iter().any(|step| {
+            step.step_id.starts_with("ec2-security-step-")
+                && step.tool_name == "ec2.describe_instance_networking"
+                && step.tool_mode == Ec2InvestigationToolMode::ReadOnly
+                && step.target_resource_id == "i-sec-exposed"
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "ec2.compare_security_group_ingress"
+                && step.tool_mode == Ec2InvestigationToolMode::ReadOnly
+                && step.stop_condition.contains("owner intent")
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "ec2.vpc_flow_logs.query_instance_traffic"
+                && step.tool_mode == Ec2InvestigationToolMode::ReadOnly
+                && step.stop_condition.contains("flow logs")
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "ec2.cloudwatch.get_packet_metrics"
+                && step.tool_mode == Ec2InvestigationToolMode::ReadOnly
+                && step.target_resource_id == "i-sec-gap"
+        }));
+        assert_eq!(
+            plan.steps.last().map(|step| step.tool_mode),
+            Some(Ec2InvestigationToolMode::ApprovalRequired)
+        );
+        assert_eq!(
+            plan.steps.last().map(|step| step.tool_name),
+            Some("ec2.security.prepare_approval_plan")
+        );
+        assert_eq!(
+            plan.steps.last().map(|step| step.reason_code.as_str()),
+            Some("EC2_SECURITY_APPROVAL_PLAN_REQUIRED")
+        );
+        assert_eq!(plan.approval_gates.len(), 3);
+        assert!(plan.approval_gates.iter().all(|gate| gate
+            .gate_id
+            .starts_with("ec2-security-approval-")
+            && gate.rollback_note_required
+            && gate
+                .blast_radius
+                .contains("no mutation is executable from the investigation plan")));
+    }
+
+    #[test]
+    fn ec2_security_agentic_investigation_plan_refreshes_stale_data_without_mutation_gate() {
+        let stale = fixture(
+            "i-sec-stale",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "private_ip": "10.0.0.5",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[0.0]),
+                        metric("NetworkPacketsOut", &[0.0])
+                    ]
+                }
+            }),
+            48,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Security, now());
+        let plan = ec2_security_agentic_investigation_plan(&report);
+
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "ec2.inventory.refresh_status"
+                && step.tool_mode == Ec2InvestigationToolMode::ReadOnly
+                && step.reason_code == REASON_INV_STALE_DATA
+        }));
+        assert!(plan.approval_gates.is_empty());
+        assert!(plan
+            .steps
+            .iter()
+            .all(|step| step.tool_mode == Ec2InvestigationToolMode::ReadOnly));
+    }
+
+    #[test]
+    fn ec2_security_remediation_workflow_plans_dry_run_actions_until_approved() {
+        let exposed = fixture(
+            "i-sec-exposed",
+            json!({}),
+            json!({
+                "state": "running",
+                "public_ip": "54.0.0.1",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[12.0]),
+                        metric("NetworkPacketsOut", &[6.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[exposed], Pillar::Security, now());
+        let workflow = ec2_security_remediation_workflow(&report);
+
+        assert_eq!(workflow.workflow_id, "ec2_security_safe_remediation");
+        assert!(workflow.read_only_mode);
+        assert_eq!(
+            workflow.rbac_permission,
+            "aws.ec2.security.remediation.approve"
+        );
+        assert_eq!(workflow.audit_stream, "ec2_security_remediation_audit");
+        assert!(!workflow.stale_data_blocks_execution);
+        assert_eq!(workflow.actions.len(), 3);
+        assert!(workflow.actions.iter().all(|action| {
+            let action_text = format!(
+                "{} {} {}",
+                action.action_id, action.audit_event_type, action.idempotency_key
+            );
+            action.action_id.starts_with("ec2-security-remediation-")
+                && action.dry_run
+                && action.requires_approval
+                && action.approval_gate_id.is_some()
+                && action.status == Ec2RemediationStatus::DryRunPendingApproval
+                && action.audit_event_type == "ec2.security.remediation.dry_run_planned"
+                && action.rollback_note.contains("rollback")
+                && action.validation_steps.contains(
+                    &"capture operator approval, rollback note, and audit id before execution",
+                )
+                && !["execute", "run_instances", "terminate", "modify", "assign"]
+                    .iter()
+                    .any(|term| action_text.contains(term))
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == Ec2RemediationActionKind::ReviewSecurityExposure
+                && action.target_resource_id == "i-sec-exposed"
+                && action
+                    .evidence_reason_codes
+                    .contains(&REASON_SEC_PUBLIC_IP.to_string())
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == Ec2RemediationActionKind::ReviewPublicPacketTraffic
+                && action.target_resource_id == "i-sec-exposed"
+                && action
+                    .evidence_reason_codes
+                    .contains(&REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY.to_string())
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == Ec2RemediationActionKind::ReviewSecurityOwnerMetadata
+                && action.target_resource_id == "i-sec-exposed"
+                && action
+                    .evidence_reason_codes
+                    .contains(&REASON_SEC_MISSING_OWNER_TAG.to_string())
+        }));
+    }
+
+    #[test]
+    fn ec2_security_remediation_workflow_blocks_execution_when_data_is_stale() {
+        let stale = fixture(
+            "i-sec-stale",
+            json!({}),
+            json!({
+                "state": "running",
+                "public_ip": "54.0.0.1",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[12.0]),
+                        metric("NetworkPacketsOut", &[6.0])
+                    ]
+                }
+            }),
+            48,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Security, now());
+        let workflow = ec2_security_remediation_workflow(&report);
+
+        assert!(workflow.stale_data_blocks_execution);
+        assert!(!workflow.actions.is_empty());
+        assert!(workflow.actions.iter().all(|action| {
+            action.dry_run && action.status == Ec2RemediationStatus::BlockedMissingEvidence
+        }));
+    }
+
+    #[test]
     fn resilience_flags_missing_availability_zone() {
         let r = fixture(
             "i-noaz",
@@ -1360,6 +4708,806 @@ mod tests {
             report.findings
         );
         assert_eq!(report.score, 100);
+    }
+
+    #[test]
+    fn ec2_resilience_posture_summary_maps_rules_to_affected_resources() {
+        let missing_az = fixture(
+            "i-noaz",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let status_failed = fixture(
+            "i-status-failed",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0, 1.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[missing_az, status_failed], Pillar::Resilience, now());
+        let posture = ec2_resilience_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 4);
+        assert_eq!(posture.rules_failed, 2);
+        assert_eq!(
+            posture
+                .rules
+                .iter()
+                .map(|rule| rule.rule_id)
+                .collect::<Vec<_>>(),
+            vec![
+                "ec2-resilience-availability-zone-recorded",
+                "ec2-resilience-multi-az-placement",
+                "ec2-resilience-status-check-telemetry",
+                "ec2-resilience-status-check-health",
+            ]
+        );
+        assert_eq!(
+            posture
+                .rules
+                .iter()
+                .map(|rule| rule.reason_codes.clone())
+                .collect::<Vec<_>>(),
+            vec![
+                vec![REASON_RES_MISSING_AZ],
+                vec![REASON_RES_SINGLE_AZ_CONCENTRATION],
+                vec![REASON_RES_MISSING_STATUS_TELEMETRY],
+                vec![REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY],
+            ]
+        );
+        assert!(posture.affected_resources.contains(&"i-noaz".to_string()));
+        assert!(posture
+            .affected_resources
+            .contains(&"i-status-failed".to_string()));
+        let az_rule = posture
+            .rules
+            .iter()
+            .find(|rule| rule.rule_id == "ec2-resilience-availability-zone-recorded")
+            .expect("availability zone rule");
+        assert_eq!(az_rule.status, Ec2PostureStatus::Fail);
+        assert_eq!(az_rule.reason_codes, vec![REASON_RES_MISSING_AZ]);
+        assert!(az_rule.assignment_supported);
+        assert!(az_rule.suppression_supported);
+    }
+
+    #[test]
+    fn ec2_resilience_posture_summary_passes_for_multi_az_healthy_fleet() {
+        let a = fixture(
+            "i-a",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let b = fixture(
+            "i-b",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1b",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[a, b], Pillar::Resilience, now());
+        let posture = ec2_resilience_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Pass);
+        assert_eq!(posture.rules_failed, 0);
+        assert!(posture.affected_resources.is_empty());
+    }
+
+    #[test]
+    fn ec2_resilience_triage_context_separates_facts_hypotheses_and_questions() {
+        let missing_az = fixture(
+            "i-noaz",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let status_failed = fixture(
+            "i-status-failed",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0, 1.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[missing_az, status_failed], Pillar::Resilience, now());
+        let triage = ec2_resilience_triage_context(&report);
+
+        assert_eq!(triage.workflow_id, "ec2_resilience_triage_context");
+        assert_eq!(triage.pillar, Pillar::Resilience);
+        assert_eq!(
+            triage.context_builder_id,
+            "ec2-resilience-deterministic-context-v1"
+        );
+        assert_eq!(triage.generation_mode, "deterministic_no_llm");
+        assert!(triage.guardrails.read_only_mode);
+        assert!(triage.guardrails.evidence_required);
+        assert!(triage.guardrails.separate_facts_from_hypotheses);
+        assert!(triage.guardrails.ask_for_missing_data);
+        assert!(triage.guardrails.no_llm_invocation);
+        assert!(triage.guardrails.no_mutation_planning);
+        assert!(triage
+            .facts
+            .iter()
+            .any(|fact| fact.contains(REASON_RES_MISSING_AZ)));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("EC2 status-check failure telemetry")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("availability zone placement")));
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY
+                && citation.resource_id == "i-status-failed"
+        }));
+    }
+
+    #[test]
+    fn ec2_resilience_agentic_investigation_plan_is_read_only_until_approval() {
+        let missing_az = fixture(
+            "i-noaz",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let status_failed = fixture(
+            "i-status-failed",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0, 1.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[missing_az, status_failed], Pillar::Resilience, now());
+        let plan = ec2_resilience_agentic_investigation_plan(&report);
+
+        assert_eq!(plan.workflow_id, "ec2_resilience_agentic_investigation");
+        assert_eq!(plan.default_tool_mode, Ec2InvestigationToolMode::ReadOnly);
+        assert!(plan.replay_required);
+        assert!(plan.steps.iter().any(|step| {
+            step.step_id.starts_with("ec2-resilience-step-")
+                && step.tool_name == "ec2.describe_instances.placement"
+                && step.tool_mode == Ec2InvestigationToolMode::ReadOnly
+                && step.target_resource_id == "i-noaz"
+        }));
+        assert!(plan.steps.iter().any(|step| {
+            step.tool_name == "ec2.describe_instance_status"
+                && step.tool_mode == Ec2InvestigationToolMode::ReadOnly
+                && step.target_resource_id == "i-status-failed"
+        }));
+        assert_eq!(
+            plan.steps.last().map(|step| step.tool_mode),
+            Some(Ec2InvestigationToolMode::ApprovalRequired)
+        );
+        assert_eq!(
+            plan.steps.last().map(|step| step.reason_code.as_str()),
+            Some("EC2_RESILIENCE_APPROVAL_PLAN_REQUIRED")
+        );
+        assert_eq!(plan.approval_gates.len(), 1);
+        assert!(plan.approval_gates.iter().all(|gate| gate
+            .gate_id
+            .starts_with("ec2-resilience-approval-")
+            && gate.rollback_note_required
+            && gate
+                .blast_radius
+                .contains("no mutation is executable from the investigation plan")));
+    }
+
+    #[test]
+    fn ec2_resilience_remediation_workflow_plans_dry_run_actions_until_approved() {
+        let a = fixture(
+            "i-a",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let b = fixture(
+            "i-b",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0, 1.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[a, b], Pillar::Resilience, now());
+        let workflow = ec2_resilience_remediation_workflow(&report);
+
+        assert_eq!(workflow.workflow_id, "ec2_resilience_safe_remediation");
+        assert!(workflow.read_only_mode);
+        assert_eq!(
+            workflow.rbac_permission,
+            "aws.ec2.resilience.remediation.approve"
+        );
+        assert_eq!(workflow.audit_stream, "ec2_resilience_remediation_audit");
+        assert!(!workflow.stale_data_blocks_execution);
+        assert_eq!(workflow.actions.len(), 2);
+        assert!(workflow.actions.iter().all(|action| {
+            let action_text = format!(
+                "{} {} {}",
+                action.action_id, action.audit_event_type, action.idempotency_key
+            );
+            action.action_id.starts_with("ec2-resilience-remediation-")
+                && action.dry_run
+                && action.requires_approval
+                && action.approval_gate_id.is_some()
+                && action.status == Ec2RemediationStatus::DryRunPendingApproval
+                && action.audit_event_type == "ec2.resilience.remediation.dry_run_planned"
+                && action.rollback_note.contains("rollback")
+                && !["execute", "reboot", "start", "stop", "terminate", "modify"]
+                    .iter()
+                    .any(|term| action_text.contains(term))
+                && action
+                    .validation_steps
+                    .contains(&"capture operator approval and audit id before execution")
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == Ec2RemediationActionKind::PlanMultiAzPlacement
+                && action.target_resource_id == "fleet"
+                && action
+                    .evidence_reason_codes
+                    .contains(&REASON_RES_SINGLE_AZ_CONCENTRATION.to_string())
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == Ec2RemediationActionKind::ReviewStatusCheckRecovery
+                && action.target_resource_id == "i-b"
+                && action
+                    .evidence_reason_codes
+                    .contains(&REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY.to_string())
+        }));
+    }
+
+    #[test]
+    fn ec2_resilience_remediation_workflow_blocks_execution_when_data_is_stale() {
+        let stale = fixture(
+            "i-stale-status",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[1.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            30,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Resilience, now());
+        let workflow = ec2_resilience_remediation_workflow(&report);
+
+        assert!(workflow.stale_data_blocks_execution);
+        assert!(!workflow.actions.is_empty());
+        assert!(workflow.actions.iter().all(|action| {
+            action.dry_run && action.status == Ec2RemediationStatus::BlockedMissingEvidence
+        }));
+    }
+
+    #[test]
+    fn ec2_resilience_remediation_ignores_missing_evidence_gaps() {
+        let missing_evidence = fixture(
+            "i-missing-evidence",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running"
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[missing_evidence], Pillar::Resilience, now());
+        let investigation = ec2_resilience_agentic_investigation_plan(&report);
+        let workflow = ec2_resilience_remediation_workflow(&report);
+
+        assert!(reason_codes(&report).contains(&REASON_RES_MISSING_AZ));
+        assert!(reason_codes(&report).contains(&REASON_RES_MISSING_STATUS_TELEMETRY));
+        assert!(investigation.steps.iter().any(|step| {
+            step.tool_name == "ec2.describe_instances.placement"
+                && step.tool_mode == Ec2InvestigationToolMode::ReadOnly
+        }));
+        assert!(investigation.steps.iter().any(|step| {
+            step.tool_name == "ec2.cloudwatch.get_status_check_metrics"
+                && step.tool_mode == Ec2InvestigationToolMode::ReadOnly
+        }));
+        assert!(workflow.actions.is_empty());
+        assert!(workflow.approval_gates.is_empty());
+    }
+
+    #[test]
+    fn ec2_resilience_slo_policy_snapshot_tracks_owner_policy_and_notifications() {
+        let tagged_a = fixture(
+            "i-tagged-res-a",
+            json!({
+                "owner": "sre",
+                "environment": "prod",
+                "application": "payments"
+            }),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let tagged_b = fixture(
+            "i-tagged-res-b",
+            json!({
+                "owner": "sre",
+                "environment": "prod",
+                "application": "payments"
+            }),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[tagged_a, tagged_b], Pillar::Resilience, now());
+        let snapshot = ec2_resilience_slo_policy_snapshot(&report);
+
+        assert_eq!(snapshot.workflow_id, "ec2_resilience_slo_policy");
+        assert!(snapshot.read_only_mode);
+        assert!(snapshot.freshness_required);
+        assert_eq!(
+            snapshot.objective.objective_id,
+            "ec2-resilience-score-min-95"
+        );
+        assert_eq!(
+            snapshot.objective.status,
+            Ec2ResilienceObjectiveStatus::AtRisk
+        );
+        assert_eq!(snapshot.objective.target_score_min, 95);
+        assert_eq!(snapshot.objective.failed_rule_count, 1);
+        assert_eq!(snapshot.objective.affected_resource_count, 1);
+        assert_eq!(
+            snapshot.objective.trend_direction,
+            Ec2ResilienceTrendDirection::Degrading
+        );
+        assert_eq!(snapshot.objective.owner_filters, vec!["sre"]);
+        assert_eq!(snapshot.objective.environment_filters, vec!["prod"]);
+        assert_eq!(snapshot.objective.application_filters, vec!["payments"]);
+        assert_eq!(
+            snapshot.objective.notification_targets,
+            vec!["environment:prod", "owner:sre"]
+        );
+        assert_eq!(snapshot.objective.policy_state, "active_with_findings");
+        assert!(snapshot
+            .objective
+            .status_history
+            .contains(&"resilience_policy_evaluated"));
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_RES_SINGLE_AZ_CONCENTRATION.to_string()));
+    }
+
+    #[test]
+    fn ec2_resilience_slo_policy_snapshot_marks_status_failures_as_degrading() {
+        let status_failed = fixture(
+            "i-status-failed-slo",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0, 1.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[status_failed], Pillar::Resilience, now());
+        let snapshot = ec2_resilience_slo_policy_snapshot(&report);
+
+        assert_eq!(
+            snapshot.objective.status,
+            Ec2ResilienceObjectiveStatus::AtRisk
+        );
+        assert_eq!(
+            snapshot.objective.trend_direction,
+            Ec2ResilienceTrendDirection::Degrading
+        );
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY.to_string()));
+    }
+
+    #[test]
+    fn ec2_resilience_slo_policy_snapshot_marks_stale_data_as_breached() {
+        let stale = fixture(
+            "i-stale-res",
+            json!({}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            30,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Resilience, now());
+        let snapshot = ec2_resilience_slo_policy_snapshot(&report);
+
+        assert_eq!(
+            snapshot.objective.status,
+            Ec2ResilienceObjectiveStatus::Breached
+        );
+        assert_eq!(
+            snapshot.objective.trend_direction,
+            Ec2ResilienceTrendDirection::Degrading
+        );
+        assert_eq!(snapshot.objective.policy_state, "blocked_stale_data");
+        assert_eq!(
+            snapshot.objective.notification_targets,
+            vec!["resilience-operations"]
+        );
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+    }
+
+    #[test]
+    fn ec2_resilience_forecast_snapshot_builds_read_only_recovery_exposure_from_placement_and_status_check_evidence(
+    ) {
+        let healthy_a = fixture(
+            "i-forecast-a",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let failing_b = fixture(
+            "i-forecast-b",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0, 1.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[healthy_a, failing_b], Pillar::Resilience, now());
+        let forecast = ec2_resilience_forecast_snapshot(&report);
+
+        assert_eq!(forecast.workflow_id, "ec2_resilience_forecasting");
+        assert!(forecast.read_only_mode);
+        assert_eq!(forecast.baseline_window_days, 30);
+        assert_eq!(forecast.forecast_horizon_days, 30);
+        assert_eq!(forecast.confidence_level, 75);
+        assert_eq!(forecast.risk_level, Ec2ResilienceForecastRisk::High);
+        assert_eq!(
+            forecast.recovery_capacity_risk,
+            "active_status_check_failure_exposure"
+        );
+        assert!(!forecast.blocked_by_stale_data);
+        assert_eq!(
+            forecast.blast_radius_summary,
+            "status_check_failures_can_reduce_instance_reachability"
+        );
+        assert!(forecast.recovery_note.contains("read-only"));
+        assert!(forecast
+            .threshold_controls
+            .contains(&"recovery_exposure_index_warning_threshold"));
+        assert!(forecast
+            .what_if_inputs
+            .contains(&"distribute_instances_across_availability_zones"));
+        assert!(forecast.forecast_band.expected_recovery_exposure_index > 100);
+        assert!(forecast
+            .risk_drivers
+            .iter()
+            .any(|driver| driver.reason_code == REASON_RES_SINGLE_AZ_CONCENTRATION));
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY
+                && driver.affected_resources == vec!["i-forecast-b"]
+        }));
+        assert!(forecast.missing_data_reason_codes.is_empty());
+        assert!(forecast
+            .evidence_reason_codes
+            .contains(&REASON_RES_STATUS_CHECK_FAILURE_TELEMETRY.to_string()));
+    }
+
+    #[test]
+    fn ec2_resilience_forecast_snapshot_blocks_on_stale_or_missing_status_check_evidence() {
+        let stale_missing = fixture(
+            "i-forecast-stale",
+            json!({}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a"
+            }),
+            30,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale_missing], Pillar::Resilience, now());
+        let forecast = ec2_resilience_forecast_snapshot(&report);
+
+        assert_eq!(forecast.risk_level, Ec2ResilienceForecastRisk::Blocked);
+        assert!(forecast.blocked_by_stale_data);
+        assert_eq!(
+            forecast.recovery_capacity_risk,
+            "blocked_until_inventory_refresh"
+        );
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "needs_fresh_resilience_telemetry_fixture"
+        );
+        assert!(forecast
+            .missing_data_reason_codes
+            .contains(&REASON_RES_MISSING_STATUS_TELEMETRY.to_string()));
+        assert!(forecast
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(forecast
+            .risk_drivers
+            .iter()
+            .any(|driver| driver.reason_code == REASON_INV_STALE_DATA));
+    }
+
+    #[test]
+    fn ec2_resilience_reporting_bundle_materializes_executive_and_incident_views() {
+        let healthy_a = fixture(
+            "i-report-a",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let healthy_b = fixture(
+            "i-report-b",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("StatusCheckFailed", &[0.0]),
+                        metric("StatusCheckFailed_Instance", &[0.0]),
+                        metric("StatusCheckFailed_System", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[healthy_a, healthy_b], Pillar::Resilience, now());
+        let bundle = ec2_resilience_reporting_bundle(&report);
+
+        assert_eq!(bundle.workflow_id, "ec2_resilience_reporting");
+        assert!(bundle.read_only_mode);
+        assert_eq!(bundle.scheduled_delivery_state, "ready_for_schedule");
+        assert!(bundle.portfolio_summary_ready);
+        assert!(bundle.workload_summary_ready);
+        assert!(!bundle.stale_data_blocks_delivery);
+        assert_eq!(
+            bundle.executive_summary.report_id,
+            "ec2-resilience-executive-summary"
+        );
+        assert_eq!(bundle.executive_summary.rules_failed, 1);
+        assert_eq!(
+            bundle.executive_summary.blast_radius_summary,
+            "single_az_placement_can_turn_one_az_event_into_fleet_outage"
+        );
+        assert!(bundle
+            .executive_summary
+            .top_reason_codes
+            .contains(&REASON_RES_SINGLE_AZ_CONCENTRATION.to_string()));
+        assert_eq!(
+            bundle.incident_review.report_id,
+            "ec2-resilience-incident-review"
+        );
+        assert_eq!(bundle.incident_review.page, 0);
+        assert_eq!(bundle.incident_review.page_size, 50);
+        assert_eq!(bundle.incident_review.total, 1);
+        assert!(bundle.incident_review.rows.iter().all(|row| {
+            row.suppression_supported
+                && row.recovery_note.contains("multi-AZ")
+                && row.reason_code == REASON_RES_SINGLE_AZ_CONCENTRATION
+        }));
+        assert!(bundle.missing_data_reason_codes.is_empty());
+    }
+
+    #[test]
+    fn ec2_resilience_reporting_bundle_blocks_delivery_for_stale_or_missing_evidence() {
+        let stale_missing = fixture(
+            "i-report-stale",
+            json!({}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a"
+            }),
+            30,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale_missing], Pillar::Resilience, now());
+        let bundle = ec2_resilience_reporting_bundle(&report);
+
+        assert_eq!(
+            bundle.scheduled_delivery_state,
+            "blocked_until_fresh_resilience_evidence"
+        );
+        assert!(!bundle.portfolio_summary_ready);
+        assert!(!bundle.workload_summary_ready);
+        assert!(bundle.stale_data_blocks_delivery);
+        assert!(bundle
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(bundle
+            .missing_data_reason_codes
+            .contains(&REASON_RES_MISSING_STATUS_TELEMETRY.to_string()));
+        assert!(bundle.incident_review.rows.iter().any(|row| {
+            row.reason_code == REASON_INV_STALE_DATA
+                && row
+                    .recovery_note
+                    .contains("Refresh EC2 resilience evidence")
+        }));
     }
 
     #[test]
@@ -1573,6 +5721,890 @@ mod tests {
     }
 
     #[test]
+    fn ec2_cost_remediation_workflow_plans_dry_run_actions_until_approved() {
+        let idle = fixture(
+            "i-idle",
+            json!({"cost-center": "cc-42", "owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[1.2, 2.4, 3.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let stopped = fixture(
+            "i-stopped",
+            json!({}),
+            json!({
+                "state": "stopped",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[12.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[idle, stopped], Pillar::Cost, now());
+        let workflow = ec2_cost_remediation_workflow(&report);
+
+        assert_eq!(workflow.workflow_id, "ec2_cost_safe_remediation");
+        assert!(workflow.read_only_mode);
+        assert_eq!(workflow.rbac_permission, "aws.ec2.cost.remediation.approve");
+        assert_eq!(workflow.audit_stream, "ec2_cost_remediation_audit");
+        assert!(!workflow.stale_data_blocks_execution);
+        assert_eq!(workflow.actions.len(), 3);
+        assert!(workflow.actions.iter().all(|action| {
+            action.dry_run
+                && action.requires_approval
+                && action.approval_gate_id.is_some()
+                && action.status == Ec2RemediationStatus::DryRunPendingApproval
+                && action.audit_event_type == "ec2.cost.remediation.dry_run_planned"
+                && action.rollback_note.contains("rollback")
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == Ec2RemediationActionKind::RightSizeInstance
+                && action.target_resource_id == "i-idle"
+                && action
+                    .evidence_reason_codes
+                    .contains(&REASON_COST_LOW_UTILIZATION_TELEMETRY.to_string())
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == Ec2RemediationActionKind::ReviewStoppedInstanceArtifacts
+                && action.target_resource_id == "i-stopped"
+                && action
+                    .evidence_reason_codes
+                    .contains(&REASON_COST_STOPPED_INSTANCE.to_string())
+        }));
+        assert!(workflow.actions.iter().any(|action| {
+            action.kind == Ec2RemediationActionKind::AssignCostTags
+                && action.target_resource_id == "i-stopped"
+                && action
+                    .evidence_reason_codes
+                    .contains(&REASON_COST_MISSING_ALLOCATION_TAGS.to_string())
+        }));
+    }
+
+    #[test]
+    fn ec2_cost_remediation_workflow_blocks_execution_when_cost_data_is_stale() {
+        let stale = fixture(
+            "i-stale",
+            json!({"cost-center": "cc-42", "owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[1.2, 2.4, 3.0])
+                    ]
+                }
+            }),
+            30,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Cost, now());
+        let workflow = ec2_cost_remediation_workflow(&report);
+
+        assert!(workflow.stale_data_blocks_execution);
+        assert!(workflow.actions.iter().all(|action| {
+            action.dry_run && action.status == Ec2RemediationStatus::BlockedMissingEvidence
+        }));
+    }
+
+    #[test]
+    fn ec2_security_slo_policy_snapshot_tracks_owner_policy_and_notifications() {
+        let exposed = fixture(
+            "i-sec-owned",
+            json!({
+                "owner": "security",
+                "environment": "prod",
+                "application": "payments"
+            }),
+            json!({
+                "state": "running",
+                "public_ip": "54.0.0.1",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[12.0]),
+                        metric("NetworkPacketsOut", &[6.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[exposed], Pillar::Security, now());
+        let snapshot = ec2_security_slo_policy_snapshot(&report);
+
+        assert_eq!(snapshot.workflow_id, "ec2_security_slo_policy");
+        assert!(snapshot.read_only_mode);
+        assert!(snapshot.freshness_required);
+        assert_eq!(snapshot.objective.objective_id, "ec2-security-score-min-95");
+        assert_eq!(
+            snapshot.objective.status,
+            Ec2SecurityObjectiveStatus::Breached
+        );
+        assert_eq!(snapshot.objective.target_score_min, 95);
+        assert_eq!(snapshot.objective.failed_rule_count, 2);
+        assert_eq!(snapshot.objective.affected_resource_count, 1);
+        assert_eq!(
+            snapshot.objective.trend_direction,
+            Ec2SecurityTrendDirection::Degrading
+        );
+        assert_eq!(snapshot.objective.owner_filters, vec!["security"]);
+        assert_eq!(snapshot.objective.environment_filters, vec!["prod"]);
+        assert_eq!(snapshot.objective.application_filters, vec!["payments"]);
+        assert_eq!(
+            snapshot.objective.notification_targets,
+            vec!["environment:prod", "owner:security"]
+        );
+        assert_eq!(snapshot.objective.policy_state, "active_with_findings");
+        assert!(snapshot
+            .objective
+            .status_history
+            .contains(&"security_policy_evaluated"));
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_SEC_PUBLIC_IP.to_string()));
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY.to_string()));
+    }
+
+    #[test]
+    fn ec2_security_slo_policy_snapshot_marks_stale_data_as_breached() {
+        let stale = fixture(
+            "i-sec-stale-slo",
+            json!({"team": "sre", "env": "stage", "app": "checkout"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[0.0]),
+                        metric("NetworkPacketsOut", &[0.0])
+                    ]
+                }
+            }),
+            48,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Security, now());
+        let snapshot = ec2_security_slo_policy_snapshot(&report);
+
+        assert_eq!(
+            snapshot.objective.status,
+            Ec2SecurityObjectiveStatus::Breached
+        );
+        assert_eq!(
+            snapshot.objective.trend_direction,
+            Ec2SecurityTrendDirection::Degrading
+        );
+        assert_eq!(snapshot.objective.policy_state, "blocked_stale_data");
+        assert_eq!(snapshot.objective.owner_filters, vec!["sre"]);
+        assert_eq!(snapshot.objective.environment_filters, vec!["stage"]);
+        assert_eq!(snapshot.objective.application_filters, vec!["checkout"]);
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+    }
+
+    #[test]
+    fn ec2_security_slo_policy_snapshot_does_not_route_service_as_owner() {
+        let service_tagged = fixture(
+            "i-sec-service-only",
+            json!({"service": "checkout", "environment": "prod"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[0.0]),
+                        metric("NetworkPacketsOut", &[0.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[service_tagged], Pillar::Security, now());
+        let snapshot = ec2_security_slo_policy_snapshot(&report);
+
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_SEC_MISSING_OWNER_TAG.to_string()));
+        assert!(snapshot.objective.owner_filters.is_empty());
+        assert_eq!(snapshot.objective.application_filters, vec!["checkout"]);
+        assert_eq!(
+            snapshot.objective.notification_targets,
+            vec!["environment:prod"]
+        );
+    }
+
+    #[test]
+    fn ec2_security_forecast_snapshot_builds_read_only_exposure_band_from_evidence() {
+        let exposed = fixture(
+            "i-sec-forecast",
+            json!({"owner": "security"}),
+            json!({
+                "state": "running",
+                "public_ip": "54.0.0.1",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[12.0]),
+                        metric("NetworkPacketsOut", &[6.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[exposed], Pillar::Security, now());
+        let forecast = ec2_security_forecast_snapshot(&report);
+
+        assert_eq!(forecast.workflow_id, "ec2_security_forecasting");
+        assert!(forecast.read_only_mode);
+        assert_eq!(forecast.baseline_window_days, 30);
+        assert_eq!(forecast.forecast_horizon_days, 30);
+        assert_eq!(forecast.confidence_level, 75);
+        assert_eq!(forecast.risk_level, Ec2SecurityForecastRisk::High);
+        assert_eq!(
+            forecast.exposure_capacity_risk,
+            "public_exposure_with_observed_packet_traffic"
+        );
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "ready_security_findings_baseline"
+        );
+        assert_eq!(forecast.forecast_band.horizon_days, 30);
+        assert!(forecast.forecast_band.expected_security_exposure_index > 100);
+        assert!(
+            forecast.forecast_band.upper_security_exposure_index
+                > forecast.forecast_band.lower_security_exposure_index
+        );
+        assert!(forecast
+            .threshold_controls
+            .contains(&"security_exposure_index_warning_threshold"));
+        assert!(forecast
+            .what_if_inputs
+            .contains(&"verify_public_ip_business_intent"));
+        assert!(!forecast.blocked_by_stale_data);
+        assert!(forecast
+            .blast_radius_summary
+            .contains("packet_traffic_need_sg_nacl_route_verification"));
+        assert!(forecast.missing_data_reason_codes.is_empty());
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY
+                && driver.affected_resources == vec!["i-sec-forecast"]
+                && driver.security_exposure_index_delta == 40
+        }));
+        assert!(forecast
+            .evidence_reason_codes
+            .contains(&REASON_SEC_PUBLIC_IP.to_string()));
+    }
+
+    #[test]
+    fn ec2_security_forecast_snapshot_blocks_when_security_data_is_stale() {
+        let stale = fixture(
+            "i-sec-stale-forecast",
+            json!({"owner": "security"}),
+            json!({
+                "state": "running",
+                "public_ip": "54.0.0.1",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("NetworkPacketsIn", &[12.0]),
+                        metric("NetworkPacketsOut", &[6.0])
+                    ]
+                }
+            }),
+            48,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Security, now());
+        let forecast = ec2_security_forecast_snapshot(&report);
+
+        assert_eq!(forecast.risk_level, Ec2SecurityForecastRisk::Blocked);
+        assert!(forecast.blocked_by_stale_data);
+        assert_eq!(
+            forecast.exposure_capacity_risk,
+            "blocked_until_inventory_refresh"
+        );
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "needs_fresh_security_telemetry_fixture"
+        );
+        assert!(forecast
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_INV_STALE_DATA
+                && driver.affected_resources == vec!["i-sec-stale-forecast"]
+        }));
+    }
+
+    #[test]
+    fn ec2_security_forecast_snapshot_blocks_empty_inventory() {
+        let report = evaluate_ec2_fleet(&[], Pillar::Security, now());
+        let forecast = ec2_security_forecast_snapshot(&report);
+
+        assert_eq!(forecast.risk_level, Ec2SecurityForecastRisk::Blocked);
+        assert!(!forecast.blocked_by_stale_data);
+        assert_eq!(
+            forecast.exposure_capacity_risk,
+            "blocked_until_security_inventory_exists"
+        );
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "blocked_missing_security_inventory_fixture"
+        );
+        assert_eq!(
+            forecast.blast_radius_summary,
+            "security_exposure_blast_radius_unknown_until_inventory_exists"
+        );
+        assert_eq!(
+            forecast.missing_data_reason_codes,
+            vec![REASON_INV_NO_RESOURCES.to_string()]
+        );
+    }
+
+    #[test]
+    fn ec2_security_forecast_snapshot_saturates_large_fleet_indexes() {
+        let resources = (0..2_500)
+            .map(|index| {
+                fixture(
+                    &format!("i-sec-large-{index}"),
+                    json!({}),
+                    json!({
+                        "state": "running",
+                        "public_ip": format!("54.0.{}.{}", index / 255, index % 255),
+                        "availability_zone": "us-east-1a",
+                        "cloudwatch_metrics": {
+                            "metrics": [
+                                metric("NetworkPacketsIn", &[12.0]),
+                                metric("NetworkPacketsOut", &[6.0])
+                            ]
+                        }
+                    }),
+                    1,
+                    now(),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let report = evaluate_ec2_fleet(&resources, Pillar::Security, now());
+        let forecast = ec2_security_forecast_snapshot(&report);
+
+        assert_eq!(forecast.risk_level, Ec2SecurityForecastRisk::High);
+        assert_eq!(
+            forecast.forecast_band.expected_security_exposure_index,
+            u16::MAX
+        );
+        assert_eq!(
+            forecast.forecast_band.upper_security_exposure_index,
+            u16::MAX
+        );
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_SEC_PUBLIC_PACKET_TRAFFIC_TELEMETRY
+                && driver.security_exposure_index_delta == u16::MAX
+        }));
+    }
+
+    #[test]
+    fn ec2_performance_forecast_snapshot_builds_read_only_pressure_band_from_evidence() {
+        let missing = fixture(
+            "i-perf-missing-forecast",
+            json!({"owner": "ops"}),
+            json!({
+                "state": "running",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[52.0]),
+                        metric("NetworkIn", &[20.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let hot = fixture(
+            "i-perf-hot-forecast",
+            json!({"owner": "ops"}),
+            json!({
+                "state": "running",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[94.0]),
+                        metric("NetworkIn", &[20.0]),
+                        metric("NetworkOut", &[15.0]),
+                        metric("DiskReadOps", &[3.0]),
+                        metric("DiskWriteOps", &[2.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[missing, hot], Pillar::Performance, now());
+        let forecast = ec2_performance_forecast_snapshot(&report);
+
+        assert_eq!(forecast.workflow_id, "ec2_performance_forecasting");
+        assert!(forecast.read_only_mode);
+        assert_eq!(forecast.baseline_window_days, 30);
+        assert_eq!(forecast.forecast_horizon_days, 30);
+        assert_eq!(forecast.confidence_level, 75);
+        assert_eq!(forecast.risk_level, Ec2PerformanceForecastRisk::High);
+        assert_eq!(
+            forecast.performance_capacity_risk,
+            "cpu_constrained_compute_capacity"
+        );
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "needs_fresh_performance_telemetry_fixture"
+        );
+        assert_eq!(forecast.forecast_band.horizon_days, 30);
+        assert!(forecast.forecast_band.expected_performance_pressure_index > 100);
+        assert!(
+            forecast.forecast_band.upper_performance_pressure_index
+                > forecast.forecast_band.lower_performance_pressure_index
+        );
+        assert!(forecast
+            .threshold_controls
+            .contains(&"performance_pressure_index_warning_threshold"));
+        assert!(forecast
+            .what_if_inputs
+            .contains(&"compare_cpu_pressure_to_workload_demand"));
+        assert!(!forecast.blocked_by_stale_data);
+        assert_eq!(
+            forecast.blast_radius_summary,
+            "instances_with_high_cpu_can_expand_latency_or_throttle_risk"
+        );
+        assert!(forecast
+            .missing_data_reason_codes
+            .contains(&REASON_PERF_MISSING_CORE_TELEMETRY.to_string()));
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_PERF_HIGH_CPU_TELEMETRY
+                && driver.affected_resources == vec!["i-perf-hot-forecast"]
+                && driver.performance_pressure_index_delta == 38
+        }));
+        assert!(forecast
+            .evidence_reason_codes
+            .contains(&REASON_PERF_HIGH_CPU_TELEMETRY.to_string()));
+    }
+
+    #[test]
+    fn ec2_performance_forecast_snapshot_blocks_when_data_is_stale_or_empty() {
+        let stale = fixture(
+            "i-perf-stale-forecast",
+            json!({"owner": "ops"}),
+            json!({
+                "state": "running",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[94.0]),
+                        metric("NetworkIn", &[20.0]),
+                        metric("NetworkOut", &[15.0]),
+                        metric("DiskReadOps", &[3.0]),
+                        metric("DiskWriteOps", &[2.0])
+                    ]
+                }
+            }),
+            48,
+            now(),
+        );
+
+        let stale_report = evaluate_ec2_fleet(&[stale], Pillar::Performance, now());
+        let stale_forecast = ec2_performance_forecast_snapshot(&stale_report);
+        assert_eq!(
+            stale_forecast.risk_level,
+            Ec2PerformanceForecastRisk::Blocked
+        );
+        assert!(stale_forecast.blocked_by_stale_data);
+        assert_eq!(
+            stale_forecast.performance_capacity_risk,
+            "blocked_until_inventory_refresh"
+        );
+        assert!(stale_forecast
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+
+        let empty_report = evaluate_ec2_fleet(&[], Pillar::Performance, now());
+        let empty_forecast = ec2_performance_forecast_snapshot(&empty_report);
+        assert_eq!(
+            empty_forecast.risk_level,
+            Ec2PerformanceForecastRisk::Blocked
+        );
+        assert_eq!(
+            empty_forecast.performance_capacity_risk,
+            "blocked_until_performance_inventory_exists"
+        );
+        assert_eq!(
+            empty_forecast.missing_data_reason_codes,
+            vec![REASON_INV_NO_RESOURCES.to_string()]
+        );
+        assert_eq!(
+            empty_forecast.blast_radius_summary,
+            "performance_pressure_blast_radius_unknown_until_inventory_exists"
+        );
+    }
+
+    #[test]
+    fn ec2_performance_forecast_snapshot_saturates_large_fleet_indexes() {
+        let resources = (0..2_500)
+            .map(|index| {
+                fixture(
+                    &format!("i-perf-large-{index}"),
+                    json!({"owner": "ops"}),
+                    json!({
+                        "state": "running",
+                        "cloudwatch_metrics": {
+                            "metrics": [
+                                metric("CPUUtilization", &[95.0])
+                            ]
+                        }
+                    }),
+                    1,
+                    now(),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let report = evaluate_ec2_fleet(&resources, Pillar::Performance, now());
+        let forecast = ec2_performance_forecast_snapshot(&report);
+
+        assert_eq!(forecast.risk_level, Ec2PerformanceForecastRisk::High);
+        assert_eq!(
+            forecast.forecast_band.expected_performance_pressure_index,
+            u16::MAX
+        );
+        assert_eq!(
+            forecast.forecast_band.upper_performance_pressure_index,
+            u16::MAX
+        );
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_PERF_HIGH_CPU_TELEMETRY
+                && driver.performance_pressure_index_delta == u16::MAX
+        }));
+    }
+
+    #[test]
+    fn ec2_cost_slo_policy_snapshot_tracks_owner_policy_and_notifications() {
+        let tagged = fixture(
+            "i-tagged",
+            json!({
+                "cost-center": "cc-42",
+                "owner": "sre",
+                "environment": "prod",
+                "application": "payments"
+            }),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[1.2, 2.4, 3.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let unowned = fixture(
+            "i-unowned",
+            json!({}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[44.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[tagged, unowned], Pillar::Cost, now());
+        let snapshot = ec2_cost_slo_policy_snapshot(&report);
+
+        assert_eq!(snapshot.workflow_id, "ec2_cost_slo_policy");
+        assert!(snapshot.read_only_mode);
+        assert!(snapshot.freshness_required);
+        assert_eq!(snapshot.objective.objective_id, "ec2-cost-score-min-90");
+        assert_eq!(snapshot.objective.status, Ec2CostObjectiveStatus::AtRisk);
+        assert_eq!(snapshot.objective.target_score_min, 90);
+        assert_eq!(snapshot.objective.failed_rule_count, 2);
+        assert!(snapshot.objective.affected_resource_count >= 2);
+        assert_eq!(snapshot.objective.owner_filters, vec!["sre"]);
+        assert_eq!(snapshot.objective.environment_filters, vec!["prod"]);
+        assert_eq!(snapshot.objective.application_filters, vec!["payments"]);
+        assert_eq!(
+            snapshot.objective.notification_targets,
+            vec!["environment:prod", "owner:sre"]
+        );
+        assert_eq!(snapshot.objective.policy_state, "active_with_findings");
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_COST_LOW_UTILIZATION_TELEMETRY.to_string()));
+    }
+
+    #[test]
+    fn ec2_cost_slo_policy_snapshot_marks_stale_data_as_breached() {
+        let stale = fixture(
+            "i-stale",
+            json!({"cost-center": "cc-42", "owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[44.0])
+                    ]
+                }
+            }),
+            30,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Cost, now());
+        let snapshot = ec2_cost_slo_policy_snapshot(&report);
+
+        assert_eq!(snapshot.objective.status, Ec2CostObjectiveStatus::Breached);
+        assert_eq!(
+            snapshot.objective.trend_direction,
+            Ec2CostTrendDirection::Degrading
+        );
+        assert_eq!(snapshot.objective.policy_state, "blocked_stale_data");
+        assert!(snapshot
+            .evidence_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+    }
+
+    #[test]
+    fn ec2_cost_forecast_snapshot_builds_read_only_cost_band_from_evidence() {
+        let idle = fixture(
+            "i-idle",
+            json!({"cost-center": "cc-42", "owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[1.2, 2.4, 3.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let stopped = fixture(
+            "i-stopped",
+            json!({}),
+            json!({
+                "state": "stopped",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[12.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[idle, stopped], Pillar::Cost, now());
+        let forecast = ec2_cost_forecast_snapshot(&report);
+
+        assert_eq!(forecast.workflow_id, "ec2_cost_forecasting");
+        assert!(forecast.read_only_mode);
+        assert_eq!(forecast.baseline_window_days, 30);
+        assert_eq!(forecast.forecast_horizon_days, 30);
+        assert_eq!(forecast.confidence_level, 80);
+        assert_eq!(forecast.risk_level, Ec2CostForecastRisk::Moderate);
+        assert_eq!(forecast.capacity_risk, "overprovisioned_compute_capacity");
+        assert_eq!(forecast.forecast_band.expected_monthly_cost_index, 132);
+        assert!(forecast.forecast_band.upper_monthly_cost_index > 132);
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "ready_findings_baseline"
+        );
+        assert!(forecast
+            .what_if_inputs
+            .contains(&"rightsize_low_utilization_instances"));
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_COST_LOW_UTILIZATION_TELEMETRY
+                && driver.affected_resources == vec!["i-idle".to_string()]
+                && driver.monthly_cost_index_delta == 18
+        }));
+        assert!(forecast.risk_drivers.iter().any(|driver| {
+            driver.reason_code == REASON_COST_STOPPED_INSTANCE
+                && driver.affected_resources == vec!["i-stopped".to_string()]
+        }));
+    }
+
+    #[test]
+    fn ec2_cost_forecast_snapshot_blocks_on_stale_or_missing_telemetry() {
+        let stale = fixture(
+            "i-stale",
+            json!({"cost-center": "cc-42", "owner": "sre"}),
+            json!({"state": "running", "availability_zone": "us-east-1a"}),
+            30,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Cost, now());
+        let forecast = ec2_cost_forecast_snapshot(&report);
+
+        assert_eq!(forecast.risk_level, Ec2CostForecastRisk::Blocked);
+        assert!(forecast.blocked_by_stale_data);
+        assert_eq!(forecast.capacity_risk, "blocked_until_inventory_refresh");
+        assert_eq!(
+            forecast.backtesting_fixture_status,
+            "needs_fresh_telemetry_fixture"
+        );
+        assert!(forecast
+            .missing_data_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(forecast
+            .missing_data_reason_codes
+            .contains(&REASON_COST_MISSING_UTILIZATION_TELEMETRY.to_string()));
+        assert!(forecast.forecast_band.upper_monthly_cost_index > 100);
+    }
+
+    #[test]
+    fn ec2_cost_reporting_bundle_materializes_executive_and_engineering_views() {
+        let idle = fixture(
+            "i-idle",
+            json!({
+                "cost-center": "cc-42",
+                "owner": "sre",
+                "environment": "prod"
+            }),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[1.2, 2.4, 3.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let stopped = fixture(
+            "i-stopped",
+            json!({}),
+            json!({
+                "state": "stopped",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[12.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[idle, stopped], Pillar::Cost, now());
+        let bundle = ec2_cost_reporting_bundle(&report);
+
+        assert_eq!(bundle.workflow_id, "ec2_cost_reporting");
+        assert!(bundle.read_only_mode);
+        assert_eq!(bundle.scheduled_delivery_state, "ready_for_schedule");
+        assert_eq!(
+            bundle.executive_summary.report_id,
+            "ec2-cost-executive-summary"
+        );
+        assert_eq!(bundle.executive_summary.score, report.score);
+        assert_eq!(bundle.executive_summary.resources_evaluated, 2);
+        assert_eq!(bundle.executive_summary.stale_resources, 0);
+        assert!(bundle
+            .executive_summary
+            .affected_resources
+            .contains(&"i-idle".to_string()));
+        assert!(bundle
+            .executive_summary
+            .top_reason_codes
+            .contains(&REASON_COST_LOW_UTILIZATION_TELEMETRY.to_string()));
+        assert_eq!(
+            bundle.engineering_backlog.report_id,
+            "ec2-cost-engineering-backlog"
+        );
+        assert_eq!(bundle.engineering_backlog.page, 0);
+        assert_eq!(bundle.engineering_backlog.page_size, 50);
+        assert_eq!(bundle.engineering_backlog.total, report.findings.len());
+        assert!(bundle.engineering_backlog.rows.iter().any(|row| {
+            row.resource_id == "i-idle"
+                && row.reason_code == REASON_COST_LOW_UTILIZATION_TELEMETRY
+                && row.severity == Severity::Low
+                && row.evidence["metric_name"] == json!("CPUUtilization")
+        }));
+    }
+
+    #[test]
+    fn ec2_cost_reporting_bundle_blocks_scheduled_delivery_for_stale_inventory() {
+        let stale = fixture(
+            "i-stale",
+            json!({"cost-center": "cc-42", "owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[44.0])
+                    ]
+                }
+            }),
+            30,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Cost, now());
+        let bundle = ec2_cost_reporting_bundle(&report);
+
+        assert_eq!(
+            bundle.scheduled_delivery_state,
+            "blocked_until_fresh_inventory"
+        );
+        assert!(bundle
+            .evidence_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert_eq!(bundle.executive_summary.stale_resources, 1);
+        assert!(bundle
+            .executive_summary
+            .top_reason_codes
+            .contains(&REASON_INV_STALE_DATA.to_string()));
+        assert!(bundle
+            .engineering_backlog
+            .rows
+            .iter()
+            .any(|row| row.reason_code == REASON_INV_STALE_DATA));
+    }
+
+    #[test]
     fn ec2_telemetry_resilience_flags_status_check_failures() {
         let r = fixture(
             "i-status-failed",
@@ -1644,6 +6676,503 @@ mod tests {
         let codes = reason_codes(&report);
         assert!(codes.contains(&REASON_PERF_MISSING_CORE_TELEMETRY));
         assert!(codes.contains(&REASON_PERF_HIGH_CPU_TELEMETRY));
+    }
+
+    #[test]
+    fn ec2_performance_posture_summary_flags_core_telemetry_and_cpu_headroom_rules() {
+        let missing = fixture(
+            "i-perf-gap",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[35.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let hot = fixture(
+            "i-perf-hot",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[90.0, 94.0]),
+                        metric("NetworkIn", &[1024.0]),
+                        metric("NetworkOut", &[2048.0]),
+                        metric("DiskReadOps", &[10.0]),
+                        metric("DiskWriteOps", &[12.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[missing, hot], Pillar::Performance, now());
+        let posture = ec2_performance_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 3);
+        assert_eq!(posture.rules_failed, 2);
+        assert_eq!(
+            posture.affected_resources,
+            vec!["i-perf-gap".to_string(), "i-perf-hot".to_string()]
+        );
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-performance-core-telemetry-present"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule
+                    .reason_codes
+                    .contains(&REASON_PERF_MISSING_CORE_TELEMETRY)
+                && rule.affected_resources == vec!["i-perf-gap"]
+                && rule.suppression_supported
+                && rule.assignment_supported
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-performance-cpu-headroom"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule.reason_codes.contains(&REASON_PERF_HIGH_CPU_TELEMETRY)
+                && rule.affected_resources == vec!["i-perf-hot"]
+        }));
+    }
+
+    #[test]
+    fn ec2_performance_posture_summary_blocks_pass_when_inventory_is_stale() {
+        let stale = fixture(
+            "i-perf-stale",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[30.0]),
+                        metric("NetworkIn", &[1024.0]),
+                        metric("NetworkOut", &[2048.0]),
+                        metric("DiskReadOps", &[10.0]),
+                        metric("DiskWriteOps", &[12.0])
+                    ]
+                }
+            }),
+            48,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Performance, now());
+        let posture = ec2_performance_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 3);
+        assert_eq!(posture.rules_failed, 1);
+        assert_eq!(posture.affected_resources, vec!["i-perf-stale"]);
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-performance-inventory-freshness"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule.reason_codes.contains(&REASON_INV_STALE_DATA)
+                && rule.affected_resources == vec!["i-perf-stale"]
+        }));
+    }
+
+    #[test]
+    fn ec2_performance_posture_summary_passes_for_fresh_complete_telemetry() {
+        let healthy = fixture(
+            "i-perf-healthy",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[30.0, 45.0]),
+                        metric("NetworkIn", &[1024.0]),
+                        metric("NetworkOut", &[2048.0]),
+                        metric("DiskReadOps", &[10.0]),
+                        metric("DiskWriteOps", &[12.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[healthy], Pillar::Performance, now());
+        let posture = ec2_performance_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Pass);
+        assert_eq!(posture.rules_evaluated, 3);
+        assert_eq!(posture.rules_failed, 0);
+        assert!(posture.affected_resources.is_empty());
+        assert!(posture
+            .rules
+            .iter()
+            .all(|rule| rule.status == Ec2PostureStatus::Pass));
+    }
+
+    #[test]
+    fn ec2_performance_triage_context_separates_facts_hypotheses_and_missing_data() {
+        let missing = fixture(
+            "i-perf-gap",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[35.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let hot = fixture(
+            "i-perf-hot",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[90.0, 94.0]),
+                        metric("NetworkIn", &[1024.0]),
+                        metric("NetworkOut", &[2048.0]),
+                        metric("DiskReadOps", &[10.0]),
+                        metric("DiskWriteOps", &[12.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[missing, hot], Pillar::Performance, now());
+        let triage = ec2_performance_triage_context(&report);
+
+        assert_eq!(triage.workflow_id, "ec2_performance_triage_context");
+        assert_eq!(triage.pillar, Pillar::Performance);
+        assert_eq!(
+            triage.context_builder_id,
+            "ec2-performance-deterministic-context-v1"
+        );
+        assert_eq!(triage.prompt_template_id, "ec2-performance-ai-triage-v1");
+        assert_eq!(triage.generation_mode, "deterministic_no_llm");
+        assert_eq!(triage.max_prompt_tokens, 1200);
+        assert_eq!(
+            triage.provider_routing,
+            vec!["primary_ops_llm", "fallback_ops_llm"]
+        );
+        assert!(triage.guardrails.read_only_mode);
+        assert!(triage.guardrails.separate_facts_from_hypotheses);
+        assert!(triage.guardrails.ask_for_missing_data);
+        assert!(triage.guardrails.no_llm_invocation);
+        assert_eq!(triage.facts.len(), 2);
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("CPU constrained")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("CPUUtilization")));
+        assert_eq!(triage.evidence_citations.len(), 2);
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_PERF_HIGH_CPU_TELEMETRY
+                && citation.resource_id == "i-perf-hot"
+        }));
+    }
+
+    #[test]
+    fn ec2_performance_triage_context_asks_for_refresh_when_inventory_is_stale() {
+        let stale = fixture(
+            "i-perf-stale",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[30.0]),
+                        metric("NetworkIn", &[1024.0]),
+                        metric("NetworkOut", &[2048.0]),
+                        metric("DiskReadOps", &[10.0]),
+                        metric("DiskWriteOps", &[12.0])
+                    ]
+                }
+            }),
+            48,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Performance, now());
+        let triage = ec2_performance_triage_context(&report);
+
+        assert!(triage
+            .facts
+            .iter()
+            .any(|fact| fact.contains(REASON_INV_STALE_DATA)));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("Refresh EC2 inventory")));
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_INV_STALE_DATA && citation.resource_id == "i-perf-stale"
+        }));
+    }
+
+    #[test]
+    fn ec2_scalability_triage_context_separates_facts_hypotheses_and_missing_data() {
+        let missing = fixture(
+            "i-scale-gap",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[35.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let pressured = fixture(
+            "i-scale-hot",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[88.0, 92.0]),
+                        metric("NetworkIn", &[1024.0]),
+                        metric("NetworkOut", &[2048.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[missing, pressured], Pillar::Scalability, now());
+        let triage = ec2_scalability_triage_context(&report);
+
+        assert_eq!(triage.workflow_id, "ec2_scalability_triage_context");
+        assert_eq!(triage.pillar, Pillar::Scalability);
+        assert_eq!(
+            triage.context_builder_id,
+            "ec2-scalability-deterministic-context-v1"
+        );
+        assert_eq!(triage.prompt_template_id, "ec2-scalability-ai-triage-v1");
+        assert_eq!(triage.generation_mode, "deterministic_no_llm");
+        assert_eq!(triage.max_prompt_tokens, 1200);
+        assert_eq!(
+            triage.provider_routing,
+            vec!["primary_ops_llm", "fallback_ops_llm"]
+        );
+        assert!(triage.guardrails.read_only_mode);
+        assert!(triage.guardrails.separate_facts_from_hypotheses);
+        assert!(triage.guardrails.ask_for_missing_data);
+        assert!(triage.guardrails.no_llm_invocation);
+        assert!(triage.guardrails.no_mutation_planning);
+        assert_eq!(triage.facts.len(), 2);
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("scale-out")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("NetworkIn")));
+        assert_eq!(triage.evidence_citations.len(), 2);
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_SCALE_HIGH_CPU_PRESSURE_TELEMETRY
+                && citation.resource_id == "i-scale-hot"
+        }));
+    }
+
+    #[test]
+    fn ec2_scalability_triage_context_asks_for_refresh_when_inventory_is_stale() {
+        let stale = fixture(
+            "i-scale-stale",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[91.0, 93.0]),
+                        metric("NetworkIn", &[1024.0]),
+                        metric("NetworkOut", &[2048.0])
+                    ]
+                }
+            }),
+            48,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Scalability, now());
+        let triage = ec2_scalability_triage_context(&report);
+
+        assert!(triage
+            .facts
+            .iter()
+            .any(|fact| fact.contains(REASON_INV_STALE_DATA)));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("Refresh EC2 inventory")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("before interpreting high CPUUtilization")));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .all(|hypothesis| !hypothesis.contains("scale-out")));
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_INV_STALE_DATA && citation.resource_id == "i-scale-stale"
+        }));
+    }
+
+    #[test]
+    fn ec2_scalability_posture_summary_flags_demand_telemetry_and_cpu_pressure_rules() {
+        let missing = fixture(
+            "i-scale-gap",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[35.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+        let pressured = fixture(
+            "i-scale-hot",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[88.0, 92.0]),
+                        metric("NetworkIn", &[1024.0]),
+                        metric("NetworkOut", &[2048.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[missing, pressured], Pillar::Scalability, now());
+        let posture = ec2_scalability_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 3);
+        assert_eq!(posture.rules_failed, 2);
+        assert_eq!(
+            posture.affected_resources,
+            vec!["i-scale-gap".to_string(), "i-scale-hot".to_string()]
+        );
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-scalability-demand-telemetry-present"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule
+                    .reason_codes
+                    .contains(&REASON_SCALE_MISSING_DEMAND_TELEMETRY)
+                && rule.affected_resources == vec!["i-scale-gap"]
+                && rule.suppression_supported
+                && rule.assignment_supported
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-scalability-cpu-pressure"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule
+                    .reason_codes
+                    .contains(&REASON_SCALE_HIGH_CPU_PRESSURE_TELEMETRY)
+                && rule.affected_resources == vec!["i-scale-hot"]
+        }));
+    }
+
+    #[test]
+    fn ec2_scalability_posture_summary_blocks_pass_when_inventory_is_stale() {
+        let stale = fixture(
+            "i-scale-stale",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[30.0]),
+                        metric("NetworkIn", &[1024.0]),
+                        metric("NetworkOut", &[2048.0])
+                    ]
+                }
+            }),
+            48,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::Scalability, now());
+        let posture = ec2_scalability_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 3);
+        assert_eq!(posture.rules_failed, 1);
+        assert_eq!(posture.affected_resources, vec!["i-scale-stale"]);
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-scalability-inventory-freshness"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule.reason_codes.contains(&REASON_INV_STALE_DATA)
+                && rule.affected_resources == vec!["i-scale-stale"]
+        }));
+    }
+
+    #[test]
+    fn ec2_scalability_posture_summary_passes_for_fresh_complete_demand_telemetry() {
+        let healthy = fixture(
+            "i-scale-healthy",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "cloudwatch_metrics": {
+                    "metrics": [
+                        metric("CPUUtilization", &[30.0, 45.0]),
+                        metric("NetworkIn", &[1024.0]),
+                        metric("NetworkOut", &[2048.0])
+                    ]
+                }
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[healthy], Pillar::Scalability, now());
+        let posture = ec2_scalability_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Pass);
+        assert_eq!(posture.rules_evaluated, 3);
+        assert_eq!(posture.rules_failed, 0);
+        assert!(posture.affected_resources.is_empty());
+        assert!(posture
+            .rules
+            .iter()
+            .all(|rule| rule.status == Ec2PostureStatus::Pass));
     }
 
     #[test]
@@ -1765,6 +7294,230 @@ mod tests {
     }
 
     #[test]
+    fn ec2_disaster_recovery_posture_summary_flags_recovery_point_rules() {
+        let missing = fixture(
+            "i-no-recovery-evidence",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a"
+            }),
+            1,
+            now(),
+        );
+        let stale = fixture(
+            "i-stale-recovery",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1b",
+                "latest_recovery_point_age_hours": 72
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[missing, stale], Pillar::DisasterRecovery, now());
+        let posture = ec2_disaster_recovery_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 3);
+        assert_eq!(posture.rules_failed, 2);
+        assert_eq!(
+            posture.affected_resources,
+            vec![
+                "i-no-recovery-evidence".to_string(),
+                "i-stale-recovery".to_string()
+            ]
+        );
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-disaster-recovery-recovery-point-telemetry-present"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule
+                    .reason_codes
+                    .contains(&REASON_DR_MISSING_RECOVERY_POINT_TELEMETRY)
+                && rule.affected_resources == vec!["i-no-recovery-evidence"]
+                && rule.suppression_supported
+                && rule.assignment_supported
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-disaster-recovery-recovery-point-freshness"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule
+                    .reason_codes
+                    .contains(&REASON_DR_STALE_RECOVERY_POINT_TELEMETRY)
+                && rule.affected_resources == vec!["i-stale-recovery"]
+        }));
+    }
+
+    #[test]
+    fn ec2_disaster_recovery_triage_context_separates_facts_hypotheses_and_missing_data() {
+        let missing = fixture(
+            "i-no-recovery-evidence",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a"
+            }),
+            1,
+            now(),
+        );
+        let stale = fixture(
+            "i-stale-recovery",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1b",
+                "latest_recovery_point_age_hours": 72
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[missing, stale], Pillar::DisasterRecovery, now());
+        let triage = ec2_disaster_recovery_triage_context(&report);
+
+        assert_eq!(triage.workflow_id, "ec2_disaster_recovery_triage_context");
+        assert_eq!(triage.pillar, Pillar::DisasterRecovery);
+        assert_eq!(
+            triage.context_builder_id,
+            "ec2-disaster-recovery-deterministic-context-v1"
+        );
+        assert_eq!(
+            triage.prompt_template_id,
+            "ec2-disaster-recovery-ai-triage-v1"
+        );
+        assert_eq!(triage.generation_mode, "deterministic_no_llm");
+        assert!(triage.guardrails.read_only_mode);
+        assert!(triage.guardrails.evidence_required);
+        assert!(triage.guardrails.separate_facts_from_hypotheses);
+        assert!(triage.guardrails.ask_for_missing_data);
+        assert!(triage
+            .facts
+            .iter()
+            .any(|fact| fact.contains(REASON_DR_MISSING_RECOVERY_POINT_TELEMETRY)));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("backup policy")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("latest recovery point")));
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_DR_STALE_RECOVERY_POINT_TELEMETRY
+                && citation.resource_id == "i-stale-recovery"
+        }));
+    }
+
+    #[test]
+    fn ec2_disaster_recovery_triage_preserves_recovery_point_source_provenance() {
+        let nested_age = fixture(
+            "i-nested-recovery-age",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "disaster_recovery": {
+                    "latest_recovery_point_age_hours": 96
+                }
+            }),
+            1,
+            now(),
+        );
+        let timestamp = fixture(
+            "i-recovery-timestamp",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1b",
+                "latest_recovery_point_at": "2026-06-08T00:00:00Z"
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[nested_age, timestamp], Pillar::DisasterRecovery, now());
+        let triage = ec2_disaster_recovery_triage_context(&report);
+
+        let nested_citation = triage
+            .evidence_citations
+            .iter()
+            .find(|citation| citation.resource_id == "i-nested-recovery-age")
+            .expect("nested age citation");
+        assert_eq!(
+            nested_citation.evidence["source_field"],
+            "disaster_recovery.latest_recovery_point_age_hours"
+        );
+        assert_eq!(nested_citation.evidence["source_value"], 96);
+        assert_eq!(
+            nested_citation.evidence["latest_recovery_point_age_hours"],
+            96.0
+        );
+
+        let timestamp_citation = triage
+            .evidence_citations
+            .iter()
+            .find(|citation| citation.resource_id == "i-recovery-timestamp")
+            .expect("timestamp citation");
+        assert_eq!(
+            timestamp_citation.evidence["source_field"],
+            "latest_recovery_point_at"
+        );
+        assert_eq!(
+            timestamp_citation.evidence["source_value"],
+            "2026-06-08T00:00:00Z"
+        );
+        assert!(
+            timestamp_citation.evidence["latest_recovery_point_age_hours"]
+                .as_f64()
+                .expect("timestamp-derived age")
+                > RECOVERY_POINT_STALE_AFTER_HOURS
+        );
+    }
+
+    #[test]
+    fn ec2_disaster_recovery_missing_evidence_lists_all_accepted_recovery_point_shapes() {
+        let missing = fixture(
+            "i-no-recovery-evidence",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a"
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(&[missing], Pillar::DisasterRecovery, now());
+        let finding = report
+            .findings
+            .iter()
+            .find(|finding| finding.reason_code == REASON_DR_MISSING_RECOVERY_POINT_TELEMETRY)
+            .expect("missing recovery point finding");
+        let expected_fields = finding.evidence["expected_fields"]
+            .as_array()
+            .expect("expected field list");
+
+        for expected_field in [
+            "latest_recovery_point_age_hours",
+            "recovery_point_age_hours",
+            "backup_age_hours",
+            "latest_recovery_point_at",
+            "recovery_point_at",
+            "disaster_recovery.latest_recovery_point_age_hours",
+            "disaster_recovery.latest_recovery_point_at",
+        ] {
+            assert!(
+                expected_fields
+                    .iter()
+                    .any(|field| field.as_str() == Some(expected_field)),
+                "missing expected field {expected_field}"
+            );
+        }
+    }
+
+    #[test]
     fn ec2_telemetry_operational_excellence_flags_collection_errors_and_basic_monitoring() {
         let missing_metadata = fixture(
             "i-no-collection-metadata",
@@ -1814,6 +7567,241 @@ mod tests {
         assert!(codes.contains(&REASON_OE_MISSING_TELEMETRY_COLLECTION_METADATA));
         assert!(codes.contains(&REASON_OE_TELEMETRY_COLLECTION_ERRORS));
         assert!(codes.contains(&REASON_OE_BASIC_MONITORING));
+    }
+
+    #[test]
+    fn ec2_operational_excellence_posture_summary_flags_collection_and_monitoring_rules() {
+        let missing_metadata = fixture(
+            "i-no-collection-metadata",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "monitoring_state": "enabled"
+            }),
+            1,
+            now(),
+        );
+        let collection_error = fixture(
+            "i-collection-error",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1b",
+                "monitoring_state": "disabled",
+                "telemetry_collection_started_at": "2026-06-10T00:00:00Z",
+                "telemetry_collection_completed_at": "2026-06-10T00:00:03Z",
+                "telemetry_collection_duration_ms": 3000,
+                "telemetry_collection_success_count": 1,
+                "telemetry_collection_failure_count": 0,
+                "telemetry_collection_error_count": 1,
+                "telemetry_collection_errors": [
+                    {
+                        "source": "cloudwatch",
+                        "operation": "GetMetricData",
+                        "error": "throttled"
+                    }
+                ]
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(
+            &[missing_metadata, collection_error],
+            Pillar::OperationalExcellence,
+            now(),
+        );
+        let posture = ec2_operational_excellence_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Fail);
+        assert_eq!(posture.rules_evaluated, 4);
+        assert_eq!(posture.rules_failed, 3);
+        assert_eq!(
+            posture.affected_resources,
+            vec![
+                "i-collection-error".to_string(),
+                "i-no-collection-metadata".to_string()
+            ]
+        );
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-operational-excellence-collection-metadata-present"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule
+                    .reason_codes
+                    .contains(&REASON_OE_MISSING_TELEMETRY_COLLECTION_METADATA)
+                && rule.affected_resources == vec!["i-no-collection-metadata"]
+                && rule.suppression_supported
+                && rule.assignment_supported
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-operational-excellence-collection-errors-clear"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule
+                    .reason_codes
+                    .contains(&REASON_OE_TELEMETRY_COLLECTION_ERRORS)
+                && rule.affected_resources == vec!["i-collection-error"]
+        }));
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-operational-excellence-detailed-monitoring-enabled"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule.reason_codes.contains(&REASON_OE_BASIC_MONITORING)
+                && rule.affected_resources == vec!["i-collection-error"]
+        }));
+    }
+
+    #[test]
+    fn ec2_operational_excellence_posture_summary_blocks_pass_when_inventory_is_stale() {
+        let stale = fixture(
+            "i-stale-oe",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "monitoring_state": "enabled",
+                "telemetry_collection_started_at": "2026-06-10T00:00:00Z",
+                "telemetry_collection_completed_at": "2026-06-10T00:00:03Z",
+                "telemetry_collection_duration_ms": 3000,
+                "telemetry_collection_success_count": 1,
+                "telemetry_collection_failure_count": 0,
+                "telemetry_collection_error_count": 0,
+                "telemetry_collection_errors": []
+            }),
+            1,
+            now() - Duration::hours(49),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::OperationalExcellence, now());
+        let posture = ec2_operational_excellence_posture_summary(&report);
+
+        assert_eq!(posture.status, Ec2PostureStatus::Fail);
+        assert!(posture.rules.iter().any(|rule| {
+            rule.rule_id == "ec2-operational-excellence-inventory-freshness"
+                && rule.status == Ec2PostureStatus::Fail
+                && rule.reason_codes.contains(&REASON_INV_STALE_DATA)
+                && rule.affected_resources == vec!["i-stale-oe"]
+        }));
+    }
+
+    #[test]
+    fn ec2_operational_excellence_triage_context_separates_facts_hypotheses_and_missing_data() {
+        let missing_metadata = fixture(
+            "i-no-collection-metadata",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "monitoring_state": "enabled"
+            }),
+            1,
+            now(),
+        );
+        let collection_error = fixture(
+            "i-collection-error",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1b",
+                "monitoring_state": "disabled",
+                "telemetry_collection_started_at": "2026-06-10T00:00:00Z",
+                "telemetry_collection_completed_at": "2026-06-10T00:00:03Z",
+                "telemetry_collection_duration_ms": 3000,
+                "telemetry_collection_success_count": 1,
+                "telemetry_collection_failure_count": 0,
+                "telemetry_collection_error_count": 1,
+                "telemetry_collection_errors": [
+                    {
+                        "source": "cloudwatch",
+                        "operation": "GetMetricData",
+                        "error": "throttled"
+                    }
+                ]
+            }),
+            1,
+            now(),
+        );
+
+        let report = evaluate_ec2_fleet(
+            &[missing_metadata, collection_error],
+            Pillar::OperationalExcellence,
+            now(),
+        );
+        let triage = ec2_operational_excellence_triage_context(&report);
+
+        assert_eq!(
+            triage.workflow_id,
+            "ec2_operational_excellence_triage_context"
+        );
+        assert_eq!(triage.pillar, Pillar::OperationalExcellence);
+        assert_eq!(
+            triage.context_builder_id,
+            "ec2-operational-excellence-deterministic-context-v1"
+        );
+        assert_eq!(
+            triage.prompt_template_id,
+            "ec2-operational-excellence-ai-triage-v1"
+        );
+        assert_eq!(triage.generation_mode, "deterministic_no_llm");
+        assert!(triage.guardrails.read_only_mode);
+        assert!(triage.guardrails.evidence_required);
+        assert!(triage.guardrails.separate_facts_from_hypotheses);
+        assert!(triage.guardrails.ask_for_missing_data);
+        assert!(triage.guardrails.no_llm_invocation);
+        assert!(triage.guardrails.no_mutation_planning);
+        assert!(triage
+            .facts
+            .iter()
+            .any(|fact| fact.contains(REASON_OE_MISSING_TELEMETRY_COLLECTION_METADATA)));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("collection errors")));
+        assert!(triage
+            .hypotheses
+            .iter()
+            .any(|hypothesis| hypothesis.contains("lower-resolution telemetry")));
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("telemetry collection metadata")));
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_OE_TELEMETRY_COLLECTION_ERRORS
+                && citation.resource_id == "i-collection-error"
+                && citation.evidence["telemetry_collection_error_count"] == 1
+        }));
+    }
+
+    #[test]
+    fn ec2_operational_excellence_triage_context_asks_for_refresh_when_inventory_is_stale() {
+        let stale = fixture(
+            "i-stale-oe",
+            json!({"owner": "sre"}),
+            json!({
+                "state": "running",
+                "availability_zone": "us-east-1a",
+                "monitoring_state": "enabled",
+                "telemetry_collection_started_at": "2026-06-10T00:00:00Z",
+                "telemetry_collection_completed_at": "2026-06-10T00:00:03Z",
+                "telemetry_collection_duration_ms": 3000,
+                "telemetry_collection_success_count": 1,
+                "telemetry_collection_failure_count": 0,
+                "telemetry_collection_error_count": 0,
+                "telemetry_collection_errors": []
+            }),
+            1,
+            now() - Duration::hours(49),
+        );
+
+        let report = evaluate_ec2_fleet(&[stale], Pillar::OperationalExcellence, now());
+        let triage = ec2_operational_excellence_triage_context(&report);
+
+        assert!(triage
+            .missing_data_questions
+            .iter()
+            .any(|question| question.contains("Refresh EC2 inventory for i-stale-oe")));
+        assert!(triage.evidence_citations.iter().any(|citation| {
+            citation.reason_code == REASON_INV_STALE_DATA && citation.resource_id == "i-stale-oe"
+        }));
     }
 
     #[test]
