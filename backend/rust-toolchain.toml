@@ -1,0 +1,6 @@
+[toolchain]
+# Pin the toolchain so local, CI, and Docker builds all use the same Rust.
+# Keep this in sync with RUST_VERSION in Dockerfile / Dockerfile.base.
+channel = "1.94"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

@@ -53,4 +53,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
 RUN cargo install cargo-nextest || true
 RUN cargo install cargo2junit || true
 
-CMD ["bash", "-lc", "mkdir -p test-results && (cargo nextest run --profile ci --junit output=test-results/junit.xml || (cargo test --test integration -- --nocapture | cargo2junit > test-results/junit.xml))"]
+# The integration suite is gated behind the `integration-tests` cargo feature
+# and lives in tests/integration_tests.rs (target name `integration_tests`).
+# nextest writes JUnit via [profile.ci.junit]; only fall back to plain
+# `cargo test` when nextest itself is unavailable, not on a test failure.
+CMD ["bash", "-lc", "set -o pipefail; mkdir -p test-results; if command -v cargo-nextest >/dev/null 2>&1; then cargo nextest run --profile ci --features integration-tests; else cargo test --features integration-tests --test integration_tests -- --nocapture | cargo2junit > test-results/junit.xml; fi"]
