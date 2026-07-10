@@ -35,6 +35,8 @@ pub const REASON_COST_MISSING_ALLOCATION_TAGS: &str = "S3_COST_MISSING_ALLOCATIO
 pub const REASON_COST_NO_LIFECYCLE_RULES: &str = "S3_COST_NO_LIFECYCLE_RULES";
 pub const REASON_SEC_MISSING_OWNER_TAG: &str = "S3_SEC_MISSING_OWNER_TAG";
 pub const REASON_SEC_POSTURE_DATA_NOT_COLLECTED: &str = "S3_SEC_POSTURE_DATA_NOT_COLLECTED";
+pub const REASON_SEC_UNENCRYPTED: &str = "S3_SEC_UNENCRYPTED";
+pub const REASON_SEC_PUBLIC_ACCESS_NOT_BLOCKED: &str = "S3_SEC_PUBLIC_ACCESS_NOT_BLOCKED";
 pub const REASON_RES_VERSIONING_DISABLED: &str = "S3_RES_VERSIONING_DISABLED";
 pub const REASON_INV_STALE_DATA: &str = "S3_INV_STALE_DATA";
 
@@ -117,26 +119,80 @@ fn evaluate_cost(resource: &AwsResourceModel, findings: &mut Vec<InventoryFindin
 }
 
 fn evaluate_security(resource: &AwsResourceModel, findings: &mut Vec<InventoryFinding>) {
-    // The collector does not yet gather encryption or public-access-block
-    // state. Surface the gap deterministically rather than scoring blind.
-    let has_encryption_data = resource.resource_data.get("encryption").is_some();
-    let has_public_access_data = resource.resource_data.get("public_access_block").is_some();
-    if !has_encryption_data || !has_public_access_data {
-        findings.push(InventoryFinding {
-            resource_id: resource.resource_id.clone(),
-            arn: resource.arn.clone(),
-            pillar: Pillar::Security,
-            reason_code: REASON_SEC_POSTURE_DATA_NOT_COLLECTED.to_string(),
-            severity: Severity::Medium,
-            message: format!(
-                "Bucket {} security posture (encryption, public access block) is not collected yet; security pillar cannot be fully assessed",
-                resource.resource_id
-            ),
-            evidence: json!({
-                "encryption_collected": has_encryption_data,
-                "public_access_block_collected": has_public_access_data,
-            }),
-        });
+    // s3_control_plane persists `encryption` and `public_access_block` when it
+    // can determine them. When both are present we score the real posture;
+    // when either is absent (collector could not read it — e.g. AccessDenied)
+    // we surface the gap deterministically rather than assuming it is secure.
+    let encryption = resource.resource_data.get("encryption");
+    let public_access_block = resource.resource_data.get("public_access_block");
+    match (encryption, public_access_block) {
+        (Some(encryption), Some(public_access_block)) => {
+            let encrypted = encryption
+                .get("enabled")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if !encrypted {
+                findings.push(InventoryFinding {
+                    resource_id: resource.resource_id.clone(),
+                    arn: resource.arn.clone(),
+                    pillar: Pillar::Security,
+                    reason_code: REASON_SEC_UNENCRYPTED.to_string(),
+                    severity: Severity::High,
+                    message: format!(
+                        "Bucket {} has no default server-side encryption; objects can be stored unencrypted at rest",
+                        resource.resource_id
+                    ),
+                    evidence: json!({ "encryption": encryption }),
+                });
+            }
+
+            // Every one of the four controls must be on for the bucket to be
+            // fully shielded from public exposure; any gap is a finding.
+            let blocks_all_public_access = [
+                "block_public_acls",
+                "ignore_public_acls",
+                "block_public_policy",
+                "restrict_public_buckets",
+            ]
+            .iter()
+            .all(|key| {
+                public_access_block
+                    .get(*key)
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+            });
+            if !blocks_all_public_access {
+                findings.push(InventoryFinding {
+                    resource_id: resource.resource_id.clone(),
+                    arn: resource.arn.clone(),
+                    pillar: Pillar::Security,
+                    reason_code: REASON_SEC_PUBLIC_ACCESS_NOT_BLOCKED.to_string(),
+                    severity: Severity::High,
+                    message: format!(
+                        "Bucket {} does not block all public access; an ACL or bucket policy could expose it to the internet",
+                        resource.resource_id
+                    ),
+                    evidence: json!({ "public_access_block": public_access_block }),
+                });
+            }
+        }
+        _ => {
+            findings.push(InventoryFinding {
+                resource_id: resource.resource_id.clone(),
+                arn: resource.arn.clone(),
+                pillar: Pillar::Security,
+                reason_code: REASON_SEC_POSTURE_DATA_NOT_COLLECTED.to_string(),
+                severity: Severity::Medium,
+                message: format!(
+                    "Bucket {} security posture (encryption, public access block) could not be collected; security pillar cannot be fully assessed",
+                    resource.resource_id
+                ),
+                evidence: json!({
+                    "encryption_collected": encryption.is_some(),
+                    "public_access_block_collected": public_access_block.is_some(),
+                }),
+            });
+        }
     }
 
     if !has_any_tag(&resource.tags, OWNER_TAG_KEYS) {
@@ -223,8 +279,14 @@ mod tests {
             "region": "us-east-1",
             "versioning_enabled": true,
             "lifecycle_rules": [{"id": "expire-old", "status": "Enabled", "transition_days": 30}],
-            "encryption": {"sse": "AES256"},
-            "public_access_block": {"block_public_acls": true},
+            "encryption": {"enabled": true, "sse_algorithm": "AES256"},
+            "public_access_block": {
+                "block_public_acls": true,
+                "ignore_public_acls": true,
+                "block_public_policy": true,
+                "restrict_public_buckets": true,
+                "configured": true,
+            },
         })
     }
 
@@ -304,6 +366,64 @@ mod tests {
             .expect("data gap finding");
         assert_eq!(gap.severity, Severity::Medium);
         assert_eq!(gap.evidence["encryption_collected"], json!(false));
+    }
+
+    #[test]
+    fn security_flags_unencrypted_bucket() {
+        let mut data = healthy_data();
+        data["encryption"] = json!({ "enabled": false });
+        let r = fixture("bucket-unencrypted", json!({"owner": "sre"}), data, 1, now());
+        let report = evaluate_s3_fleet(&[r], Pillar::Security, now());
+        let codes: Vec<&str> = report
+            .findings
+            .iter()
+            .map(|f| f.reason_code.as_str())
+            .collect();
+        assert!(codes.contains(&REASON_SEC_UNENCRYPTED));
+        assert!(!codes.contains(&REASON_SEC_POSTURE_DATA_NOT_COLLECTED));
+    }
+
+    #[test]
+    fn security_flags_bucket_not_blocking_all_public_access() {
+        let mut data = healthy_data();
+        // Only three of the four controls are on -> still exposed.
+        data["public_access_block"] = json!({
+            "block_public_acls": true,
+            "ignore_public_acls": true,
+            "block_public_policy": true,
+            "restrict_public_buckets": false,
+            "configured": true,
+        });
+        let r = fixture("bucket-public", json!({"owner": "sre"}), data, 1, now());
+        let report = evaluate_s3_fleet(&[r], Pillar::Security, now());
+        let public = report
+            .findings
+            .iter()
+            .find(|f| f.reason_code == REASON_SEC_PUBLIC_ACCESS_NOT_BLOCKED)
+            .expect("public access finding");
+        assert_eq!(public.severity, Severity::High);
+    }
+
+    #[test]
+    fn security_reports_gap_when_only_one_signal_collected() {
+        // Encryption present but public-access-block missing -> still a gap,
+        // and we must not emit a real posture finding from partial data.
+        let r = fixture(
+            "bucket-partial",
+            json!({"owner": "sre"}),
+            json!({"encryption": {"enabled": true}}),
+            1,
+            now(),
+        );
+        let report = evaluate_s3_fleet(&[r], Pillar::Security, now());
+        let codes: Vec<&str> = report
+            .findings
+            .iter()
+            .map(|f| f.reason_code.as_str())
+            .collect();
+        assert!(codes.contains(&REASON_SEC_POSTURE_DATA_NOT_COLLECTED));
+        assert!(!codes.contains(&REASON_SEC_UNENCRYPTED));
+        assert!(!codes.contains(&REASON_SEC_PUBLIC_ACCESS_NOT_BLOCKED));
     }
 
     #[test]

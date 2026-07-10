@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+use aws_sdk_s3::error::ProvideErrorMetadata;
 use aws_sdk_s3::Client as S3Client;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -163,6 +164,86 @@ impl S3ControlPlane {
                 }
             };
 
+            // Collect default-encryption posture. A successful response with an
+            // SSE rule means encryption is on; the
+            // ServerSideEncryptionConfigurationNotFound service error is AWS
+            // telling us there is no default encryption (a real security
+            // finding), so we persist an explicit disabled marker. Any other
+            // error (AccessDenied, throttling, network) leaves the key absent so
+            // the evaluator reports the posture as uncollected rather than
+            // guessing it is secure.
+            let encryption_value = match client
+                .get_bucket_encryption()
+                .bucket(bucket_name)
+                .send()
+                .await
+            {
+                Ok(resp) => {
+                    let default_rule = resp
+                        .server_side_encryption_configuration()
+                        .and_then(|c| c.rules().first())
+                        .and_then(|r| r.apply_server_side_encryption_by_default());
+                    match default_rule {
+                        Some(def) => Some(json!({
+                            "enabled": true,
+                            "sse_algorithm": def.sse_algorithm().as_str(),
+                            "kms_master_key_id": def.kms_master_key_id(),
+                        })),
+                        None => Some(json!({ "enabled": false })),
+                    }
+                }
+                Err(e) => {
+                    if e.code() == Some("ServerSideEncryptionConfigurationNotFoundError") {
+                        Some(json!({ "enabled": false }))
+                    } else {
+                        debug!(
+                            "Could not collect encryption for bucket {}: {}",
+                            bucket_name, e
+                        );
+                        None
+                    }
+                }
+            };
+
+            // Collect public-access-block posture. A missing configuration
+            // (NoSuchPublicAccessBlockConfiguration) means nothing is blocked at
+            // the bucket level -> record all flags false and mark it
+            // unconfigured. Unknown errors leave the key absent.
+            let public_access_block_value = match client
+                .get_public_access_block()
+                .bucket(bucket_name)
+                .send()
+                .await
+            {
+                Ok(resp) => {
+                    let cfg = resp.public_access_block_configuration();
+                    Some(json!({
+                        "block_public_acls": cfg.and_then(|c| c.block_public_acls()).unwrap_or(false),
+                        "ignore_public_acls": cfg.and_then(|c| c.ignore_public_acls()).unwrap_or(false),
+                        "block_public_policy": cfg.and_then(|c| c.block_public_policy()).unwrap_or(false),
+                        "restrict_public_buckets": cfg.and_then(|c| c.restrict_public_buckets()).unwrap_or(false),
+                        "configured": true,
+                    }))
+                }
+                Err(e) => {
+                    if e.code() == Some("NoSuchPublicAccessBlockConfiguration") {
+                        Some(json!({
+                            "block_public_acls": false,
+                            "ignore_public_acls": false,
+                            "block_public_policy": false,
+                            "restrict_public_buckets": false,
+                            "configured": false,
+                        }))
+                    } else {
+                        debug!(
+                            "Could not collect public access block for bucket {}: {}",
+                            bucket_name, e
+                        );
+                        None
+                    }
+                }
+            };
+
             // Build resource data
             let mut resource_data = serde_json::Map::new();
 
@@ -180,6 +261,14 @@ impl S3ControlPlane {
 
             if !lifecycle_rules.is_empty() {
                 resource_data.insert("lifecycle_rules".to_string(), json!(lifecycle_rules));
+            }
+
+            if let Some(encryption) = encryption_value {
+                resource_data.insert("encryption".to_string(), encryption);
+            }
+
+            if let Some(public_access_block) = public_access_block_value {
+                resource_data.insert("public_access_block".to_string(), public_access_block);
             }
 
             // Create resource DTO
