@@ -32,6 +32,8 @@ pub const REASON_COST_MISSING_ALLOCATION_TAGS: &str = "RDS_COST_MISSING_ALLOCATI
 pub const REASON_COST_GP2_STORAGE: &str = "RDS_COST_GP2_STORAGE";
 pub const REASON_SEC_MISSING_OWNER_TAG: &str = "RDS_SEC_MISSING_OWNER_TAG";
 pub const REASON_SEC_ACCESS_DATA_NOT_COLLECTED: &str = "RDS_SEC_ACCESS_DATA_NOT_COLLECTED";
+pub const REASON_SEC_PUBLICLY_ACCESSIBLE: &str = "RDS_SEC_PUBLICLY_ACCESSIBLE";
+pub const REASON_SEC_STORAGE_UNENCRYPTED: &str = "RDS_SEC_STORAGE_UNENCRYPTED";
 pub const REASON_RES_SINGLE_AZ: &str = "RDS_RES_SINGLE_AZ";
 pub const REASON_RES_BACKUPS_DISABLED: &str = "RDS_RES_BACKUPS_DISABLED";
 pub const REASON_INV_STALE_DATA: &str = "RDS_INV_STALE_DATA";
@@ -106,26 +108,59 @@ fn evaluate_cost(resource: &AwsResourceModel, findings: &mut Vec<InventoryFindin
 }
 
 fn evaluate_security(resource: &AwsResourceModel, findings: &mut Vec<InventoryFinding>) {
-    // Public accessibility and encryption state are not collected yet;
-    // surface the gap deterministically instead of scoring blind.
-    let has_public_access_data = resource.resource_data.get("publicly_accessible").is_some();
-    let has_encryption_data = resource.resource_data.get("storage_encrypted").is_some();
-    if !has_public_access_data || !has_encryption_data {
-        findings.push(InventoryFinding {
-            resource_id: resource.resource_id.clone(),
-            arn: resource.arn.clone(),
-            pillar: Pillar::Security,
-            reason_code: REASON_SEC_ACCESS_DATA_NOT_COLLECTED.to_string(),
-            severity: Severity::Medium,
-            message: format!(
-                "DB instance {} security posture (public accessibility, storage encryption) is not collected yet; security pillar cannot be fully assessed",
-                resource.resource_id
-            ),
-            evidence: json!({
-                "publicly_accessible_collected": has_public_access_data,
-                "storage_encrypted_collected": has_encryption_data,
-            }),
-        });
+    // rds_control_plane persists publicly_accessible/storage_encrypted when
+    // AWS reports them. When both are present we score the real posture; when
+    // either is absent we surface the gap instead of assuming it is secure.
+    let publicly_accessible = resource.resource_data.get("publicly_accessible");
+    let storage_encrypted = resource.resource_data.get("storage_encrypted");
+    match (publicly_accessible, storage_encrypted) {
+        (Some(publicly_accessible), Some(storage_encrypted)) => {
+            if publicly_accessible.as_bool() == Some(true) {
+                findings.push(InventoryFinding {
+                    resource_id: resource.resource_id.clone(),
+                    arn: resource.arn.clone(),
+                    pillar: Pillar::Security,
+                    reason_code: REASON_SEC_PUBLICLY_ACCESSIBLE.to_string(),
+                    severity: Severity::High,
+                    message: format!(
+                        "DB instance {} is publicly accessible; it is reachable from the internet if a security group allows it",
+                        resource.resource_id
+                    ),
+                    evidence: json!({ "publicly_accessible": publicly_accessible }),
+                });
+            }
+            if storage_encrypted.as_bool() == Some(false) {
+                findings.push(InventoryFinding {
+                    resource_id: resource.resource_id.clone(),
+                    arn: resource.arn.clone(),
+                    pillar: Pillar::Security,
+                    reason_code: REASON_SEC_STORAGE_UNENCRYPTED.to_string(),
+                    severity: Severity::High,
+                    message: format!(
+                        "DB instance {} has storage encryption disabled; data at rest is unencrypted",
+                        resource.resource_id
+                    ),
+                    evidence: json!({ "storage_encrypted": storage_encrypted }),
+                });
+            }
+        }
+        _ => {
+            findings.push(InventoryFinding {
+                resource_id: resource.resource_id.clone(),
+                arn: resource.arn.clone(),
+                pillar: Pillar::Security,
+                reason_code: REASON_SEC_ACCESS_DATA_NOT_COLLECTED.to_string(),
+                severity: Severity::Medium,
+                message: format!(
+                    "DB instance {} security posture (public accessibility, storage encryption) could not be collected; security pillar cannot be fully assessed",
+                    resource.resource_id
+                ),
+                evidence: json!({
+                    "publicly_accessible_collected": publicly_accessible.is_some(),
+                    "storage_encrypted_collected": storage_encrypted.is_some(),
+                }),
+            });
+        }
     }
 
     if !has_any_tag(&resource.tags, OWNER_TAG_KEYS) {
@@ -300,6 +335,51 @@ mod tests {
             "unexpected: {:?}",
             report.findings
         );
+    }
+
+    #[test]
+    fn security_flags_public_and_unencrypted_instance() {
+        let mut data = healthy_data();
+        data["publicly_accessible"] = json!(true);
+        data["storage_encrypted"] = json!(false);
+        let r = fixture("db-exposed", json!({"owner": "dba"}), data, 1, now());
+        let report = evaluate_rds_fleet(&[r], Pillar::Security, now());
+        let codes: Vec<&str> = report
+            .findings
+            .iter()
+            .map(|f| f.reason_code.as_str())
+            .collect();
+        assert!(codes.contains(&REASON_SEC_PUBLICLY_ACCESSIBLE));
+        assert!(codes.contains(&REASON_SEC_STORAGE_UNENCRYPTED));
+        assert!(!codes.contains(&REASON_SEC_ACCESS_DATA_NOT_COLLECTED));
+        for f in &report.findings {
+            if f.reason_code == REASON_SEC_PUBLICLY_ACCESSIBLE
+                || f.reason_code == REASON_SEC_STORAGE_UNENCRYPTED
+            {
+                assert_eq!(f.severity as u8, Severity::High as u8);
+            }
+        }
+    }
+
+    #[test]
+    fn security_reports_gap_from_partial_posture_data() {
+        // publicly_accessible present but storage_encrypted missing -> gap,
+        // and no real posture finding from partial data.
+        let r = fixture(
+            "db-partial",
+            json!({"owner": "dba"}),
+            json!({"engine": "mysql", "publicly_accessible": true}),
+            1,
+            now(),
+        );
+        let report = evaluate_rds_fleet(&[r], Pillar::Security, now());
+        let codes: Vec<&str> = report
+            .findings
+            .iter()
+            .map(|f| f.reason_code.as_str())
+            .collect();
+        assert!(codes.contains(&REASON_SEC_ACCESS_DATA_NOT_COLLECTED));
+        assert!(!codes.contains(&REASON_SEC_PUBLICLY_ACCESSIBLE));
     }
 
     #[test]
