@@ -122,6 +122,39 @@ impl VpcControlPlane {
                 resource_data.insert("is_default".to_string(), json!(is_default));
             }
 
+            // Collect flow logs for this VPC. An Ok response (even empty) is
+            // written as `flow_logs` so the evaluator can tell "enabled" from
+            // "disabled"; an API error leaves the key absent -> honest data gap.
+            let flow_logs_filter = aws_sdk_ec2::types::Filter::builder()
+                .name("resource-id")
+                .values(&vpc_id)
+                .build();
+            match client
+                .describe_flow_logs()
+                .filter(flow_logs_filter)
+                .send()
+                .await
+            {
+                Ok(flow_logs_resp) => {
+                    let flow_logs: Vec<serde_json::Value> = flow_logs_resp
+                        .flow_logs()
+                        .iter()
+                        .map(|fl| {
+                            json!({
+                                "flow_log_id": fl.flow_log_id(),
+                                "flow_log_status": fl.flow_log_status(),
+                                "traffic_type": fl.traffic_type().map(|t| t.as_str()),
+                                "log_destination_type": fl.log_destination_type().map(|t| t.as_str()),
+                            })
+                        })
+                        .collect();
+                    resource_data.insert("flow_logs".to_string(), json!(flow_logs));
+                }
+                Err(e) => {
+                    debug!("Could not collect flow logs for VPC {}: {}", vpc_id, e);
+                }
+            }
+
             // Create resource DTO
             let vpc_resource = AwsResourceDto {
                 id: None,
