@@ -24,6 +24,42 @@ use crate::services::aws::client_factory::AwsClientFactory;
 use crate::services::AwsService;
 use serde_json::json;
 
+/// Serialize a security group's IP permission list (ingress or egress) into
+/// the shape the security_group evaluator consumes for open-ingress analysis.
+/// `describe_security_groups` already returns the rules inline, so no extra
+/// API call is needed. `ip_protocol == "-1"` means all protocols/all ports;
+/// `from_port`/`to_port` are absent in that case.
+fn serialize_ip_permissions(perms: &[aws_sdk_ec2::types::IpPermission]) -> Vec<serde_json::Value> {
+    perms
+        .iter()
+        .map(|perm| {
+            let ipv4_cidrs: Vec<&str> = perm
+                .ip_ranges()
+                .iter()
+                .filter_map(|r| r.cidr_ip())
+                .collect();
+            let ipv6_cidrs: Vec<&str> = perm
+                .ipv6_ranges()
+                .iter()
+                .filter_map(|r| r.cidr_ipv6())
+                .collect();
+            let referenced_group_ids: Vec<&str> = perm
+                .user_id_group_pairs()
+                .iter()
+                .filter_map(|g| g.group_id())
+                .collect();
+            json!({
+                "ip_protocol": perm.ip_protocol(),
+                "from_port": perm.from_port(),
+                "to_port": perm.to_port(),
+                "ipv4_cidrs": ipv4_cidrs,
+                "ipv6_cidrs": ipv6_cidrs,
+                "referenced_group_ids": referenced_group_ids,
+            })
+        })
+        .collect()
+}
+
 // Control plane implementation for VPC resources
 pub struct VpcControlPlane {
     aws_service: Arc<AwsService>,
@@ -246,6 +282,18 @@ impl VpcControlPlane {
             if let Some(vpc_id) = sg.vpc_id() {
                 resource_data.insert("vpc_id".to_string(), json!(vpc_id));
             }
+
+            // Persist ingress/egress rules for open-exposure analysis. These
+            // keys are always written (possibly empty arrays) so the evaluator
+            // can tell "collected, no open rule" apart from "not collected".
+            resource_data.insert(
+                "ingress_rules".to_string(),
+                json!(serialize_ip_permissions(sg.ip_permissions())),
+            );
+            resource_data.insert(
+                "egress_rules".to_string(),
+                json!(serialize_ip_permissions(sg.ip_permissions_egress())),
+            );
 
             // Create resource DTO
             let sg_resource = AwsResourceDto {
