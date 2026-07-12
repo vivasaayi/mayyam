@@ -30,6 +30,7 @@ use crate::services::aws::inventory::types::{
 // Reason codes are the stable contract for findings; never reuse or rename.
 pub const REASON_COST_TAG_DATA_NOT_COLLECTED: &str = "SNS_COST_TAG_DATA_NOT_COLLECTED";
 pub const REASON_SEC_ENCRYPTION_DATA_NOT_COLLECTED: &str = "SNS_SEC_ENCRYPTION_DATA_NOT_COLLECTED";
+pub const REASON_SEC_UNENCRYPTED: &str = "SNS_SEC_UNENCRYPTED";
 pub const REASON_RES_NO_SUBSCRIPTIONS: &str = "SNS_RES_NO_SUBSCRIPTIONS";
 pub const REASON_RES_PENDING_SUBSCRIPTIONS: &str = "SNS_RES_PENDING_SUBSCRIPTIONS";
 pub const REASON_INV_STALE_DATA: &str = "SNS_INV_STALE_DATA";
@@ -90,7 +91,11 @@ fn evaluate_cost(resource: &AwsResourceModel, findings: &mut Vec<InventoryFindin
 }
 
 fn evaluate_security(resource: &AwsResourceModel, findings: &mut Vec<InventoryFinding>) {
-    if resource.resource_data.get("kms_master_key_id").is_none() {
+    let kms_key = resource.resource_data.get("kms_master_key_id");
+    let encryption_flag = resource.resource_data.get("encryption_at_rest_enabled");
+
+    // Legacy rows collected before encryption fields existed have neither key.
+    if kms_key.is_none() && encryption_flag.is_none() {
         findings.push(InventoryFinding {
             resource_id: resource.resource_id.clone(),
             arn: resource.arn.clone(),
@@ -98,10 +103,32 @@ fn evaluate_security(resource: &AwsResourceModel, findings: &mut Vec<InventoryFi
             reason_code: REASON_SEC_ENCRYPTION_DATA_NOT_COLLECTED.to_string(),
             severity: Severity::Medium,
             message: format!(
-                "Encryption configuration for topic {} is not collected yet; security pillar cannot be fully assessed",
+                "Encryption configuration for topic {} could not be collected; security pillar cannot be fully assessed",
                 resource.resource_id
             ),
             evidence: json!({ "kms_master_key_id_collected": false }),
+        });
+        return;
+    }
+
+    // SNS encryption at rest is KMS-only; a topic is encrypted iff a key is set.
+    let encrypted = encryption_flag.and_then(|v| v.as_bool()).unwrap_or(false)
+        || kms_key
+            .and_then(|v| v.as_str())
+            .map(|s| !s.is_empty())
+            .unwrap_or(false);
+    if !encrypted {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Security,
+            reason_code: REASON_SEC_UNENCRYPTED.to_string(),
+            severity: Severity::Medium,
+            message: format!(
+                "Topic {} has no encryption at rest (no KMS key); published messages are stored unencrypted",
+                resource.resource_id
+            ),
+            evidence: json!({ "kms_master_key_id": kms_key }),
         });
     }
 }
@@ -240,6 +267,32 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![REASON_SEC_ENCRYPTION_DATA_NOT_COLLECTED]
         );
+    }
+
+    #[test]
+    fn security_flags_unencrypted_topic() {
+        let r = fixture(
+            "plain",
+            json!({"team": "alerts"}),
+            json!({"subscriptions_confirmed": 1, "encryption_at_rest_enabled": false}),
+            now(),
+        );
+        let report = evaluate_sns_fleet(&[r], Pillar::Security, now());
+        assert_eq!(
+            report
+                .findings
+                .iter()
+                .map(|f| f.reason_code.as_str())
+                .collect::<Vec<_>>(),
+            vec![REASON_SEC_UNENCRYPTED]
+        );
+    }
+
+    #[test]
+    fn security_passes_for_kms_encrypted_topic() {
+        let r = fixture("enc", json!({"team": "alerts"}), healthy_data(), now());
+        let report = evaluate_sns_fleet(&[r], Pillar::Security, now());
+        assert!(report.findings.is_empty(), "unexpected: {:?}", report.findings);
     }
 
     #[test]

@@ -30,6 +30,7 @@ use crate::services::aws::inventory::types::{
 // Reason codes are the stable contract for findings; never reuse or rename.
 pub const REASON_COST_TAG_DATA_NOT_COLLECTED: &str = "SQS_COST_TAG_DATA_NOT_COLLECTED";
 pub const REASON_SEC_ENCRYPTION_DATA_NOT_COLLECTED: &str = "SQS_SEC_ENCRYPTION_DATA_NOT_COLLECTED";
+pub const REASON_SEC_UNENCRYPTED: &str = "SQS_SEC_UNENCRYPTED";
 pub const REASON_RES_DLQ_DATA_NOT_COLLECTED: &str = "SQS_RES_DLQ_DATA_NOT_COLLECTED";
 pub const REASON_RES_SHORT_RETENTION: &str = "SQS_RES_SHORT_RETENTION";
 pub const REASON_INV_STALE_DATA: &str = "SQS_INV_STALE_DATA";
@@ -96,12 +97,11 @@ fn evaluate_cost(resource: &AwsResourceModel, findings: &mut Vec<InventoryFindin
 }
 
 fn evaluate_security(resource: &AwsResourceModel, findings: &mut Vec<InventoryFinding>) {
-    if resource.resource_data.get("kms_master_key_id").is_none()
-        && resource
-            .resource_data
-            .get("sqs_managed_sse_enabled")
-            .is_none()
-    {
+    let kms_key = resource.resource_data.get("kms_master_key_id");
+    let managed_sse = resource.resource_data.get("sqs_managed_sse_enabled");
+
+    // Legacy rows collected before encryption fields existed have neither key.
+    if kms_key.is_none() && managed_sse.is_none() {
         findings.push(InventoryFinding {
             resource_id: resource.resource_id.clone(),
             arn: resource.arn.clone(),
@@ -109,12 +109,37 @@ fn evaluate_security(resource: &AwsResourceModel, findings: &mut Vec<InventoryFi
             reason_code: REASON_SEC_ENCRYPTION_DATA_NOT_COLLECTED.to_string(),
             severity: Severity::Medium,
             message: format!(
-                "Encryption configuration for queue {} is not collected yet; security pillar cannot be fully assessed",
+                "Encryption configuration for queue {} could not be collected; security pillar cannot be fully assessed",
                 resource.resource_id
             ),
             evidence: json!({
                 "kms_master_key_id_collected": false,
                 "sqs_managed_sse_enabled_collected": false,
+            }),
+        });
+        return;
+    }
+
+    // Encrypted if an SSE-KMS key is set or SSE-SQS is enabled.
+    let kms_on = kms_key
+        .and_then(|v| v.as_str())
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+    let managed_on = managed_sse.and_then(|v| v.as_bool()).unwrap_or(false);
+    if !kms_on && !managed_on {
+        findings.push(InventoryFinding {
+            resource_id: resource.resource_id.clone(),
+            arn: resource.arn.clone(),
+            pillar: Pillar::Security,
+            reason_code: REASON_SEC_UNENCRYPTED.to_string(),
+            severity: Severity::Medium,
+            message: format!(
+                "Queue {} has no encryption at rest (neither SSE-KMS nor SSE-SQS); message payloads are stored unencrypted",
+                resource.resource_id
+            ),
+            evidence: json!({
+                "kms_master_key_id": kms_key,
+                "sqs_managed_sse_enabled": managed_on,
             }),
         });
     }
@@ -241,6 +266,49 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![REASON_SEC_ENCRYPTION_DATA_NOT_COLLECTED]
         );
+    }
+
+    #[test]
+    fn security_flags_unencrypted_queue() {
+        let r = fixture(
+            "q-plain",
+            json!({"team": "events"}),
+            json!({
+                "queue_url": "u",
+                "message_retention_period": 345600,
+                "sqs_managed_sse_enabled": false,
+                "redrive_policy": {"maxReceiveCount": 5},
+            }),
+            now(),
+        );
+        let report = evaluate_sqs_fleet(&[r], Pillar::Security, now());
+        assert_eq!(
+            report
+                .findings
+                .iter()
+                .map(|f| f.reason_code.as_str())
+                .collect::<Vec<_>>(),
+            vec![REASON_SEC_UNENCRYPTED]
+        );
+    }
+
+    #[test]
+    fn security_passes_for_sse_kms_queue() {
+        let r = fixture("q-kms", json!({"team": "events"}), healthy_data(), now());
+        let report = evaluate_sqs_fleet(&[r], Pillar::Security, now());
+        assert!(report.findings.is_empty(), "unexpected: {:?}", report.findings);
+    }
+
+    #[test]
+    fn security_passes_for_sse_sqs_queue() {
+        let r = fixture(
+            "q-managed",
+            json!({"team": "events"}),
+            json!({"queue_url": "u", "sqs_managed_sse_enabled": true}),
+            now(),
+        );
+        let report = evaluate_sqs_fleet(&[r], Pillar::Security, now());
+        assert!(report.findings.is_empty(), "unexpected: {:?}", report.findings);
     }
 
     #[test]

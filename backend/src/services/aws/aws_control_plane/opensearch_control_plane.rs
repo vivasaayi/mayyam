@@ -203,17 +203,13 @@ impl OpenSearchControlPlane {
                         domain_data.insert("vpc_options".to_string(), json!(null));
                     }
 
-                    // Process encryption options
+                    // Process encryption options. Always record `enabled` (as a
+                    // definitive bool) so the evaluator can tell "collected and
+                    // disabled" apart from "not collected".
                     if let Some(encryption) = domain_status.encryption_at_rest_options() {
-                        let mut encryption_data = serde_json::Map::new();
-
-                        if let Some(enabled) = encryption.enabled() {
-                            encryption_data.insert("enabled".to_string(), json!(enabled));
-                        }
-
                         domain_data.insert(
                             "encryption_at_rest_options".to_string(),
-                            json!(encryption_data),
+                            json!({ "enabled": encryption.enabled().unwrap_or(false) }),
                         );
                     }
 

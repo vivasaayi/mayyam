@@ -151,6 +151,18 @@ impl SnsControlPlane {
                         }
                     }
 
+                    // Encryption at rest is KMS-only for SNS (KmsMasterKeyId).
+                    // Persist a definitive flag so the evaluator can distinguish
+                    // "unencrypted" from "not collected".
+                    let kms_key = attributes.get("KmsMasterKeyId").filter(|k| !k.is_empty());
+                    if let Some(kms_key) = kms_key {
+                        topic_data.insert("kms_master_key_id".to_string(), json!(kms_key));
+                    }
+                    topic_data.insert(
+                        "encryption_at_rest_enabled".to_string(),
+                        json!(kms_key.is_some()),
+                    );
+
                     // Create resource DTO
                     let topic_dto = AwsResourceDto {
                         id: None,

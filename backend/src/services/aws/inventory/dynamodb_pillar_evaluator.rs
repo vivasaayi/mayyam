@@ -127,7 +127,7 @@ fn evaluate_security(resource: &AwsResourceModel, findings: &mut Vec<InventoryFi
             reason_code: REASON_SEC_POSTURE_DATA_NOT_COLLECTED.to_string(),
             severity: Severity::Medium,
             message: format!(
-                "Encryption configuration for table {} is not collected yet; security pillar cannot be fully assessed",
+                "Encryption configuration for table {} could not be collected; security pillar cannot be fully assessed",
                 resource.resource_id
             ),
             evidence: json!({ "sse_description_collected": false }),
@@ -270,6 +270,17 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![REASON_SEC_POSTURE_DATA_NOT_COLLECTED]
         );
+    }
+
+    #[test]
+    fn security_passes_when_sse_description_collected() {
+        // Tables are always encrypted; a collected sse_description (even the
+        // AWS-owned default) clears the data gap and produces no finding.
+        let mut data = healthy_data();
+        data["sse_description"] = json!({"status": "ENABLED", "sse_type": "AWS_OWNED"});
+        let r = fixture("orders", json!({"team": "commerce"}), data, now());
+        let report = evaluate_dynamodb_fleet(&[r], Pillar::Security, now());
+        assert!(report.findings.is_empty(), "unexpected: {:?}", report.findings);
     }
 
     #[test]

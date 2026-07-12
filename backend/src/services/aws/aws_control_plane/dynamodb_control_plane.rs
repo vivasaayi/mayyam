@@ -199,6 +199,21 @@ impl DynamoDbControlPlane {
                     resource_data.insert("table_size_bytes".to_string(), json!(size));
                 }
 
+                // DynamoDB tables are always encrypted at rest. SSEDescription
+                // is only present when a KMS key (AWS-managed or customer-managed)
+                // is used; its absence means the default AWS-owned key. Record
+                // the real type either way so the evaluator does not report a
+                // false "not collected" data gap.
+                let sse_value = match table_details.sse_description() {
+                    Some(sse) => json!({
+                        "status": sse.status().map(|s| s.as_str()),
+                        "sse_type": sse.sse_type().map(|t| t.as_str()),
+                        "kms_master_key_arn": sse.kms_master_key_arn(),
+                    }),
+                    None => json!({ "status": "ENABLED", "sse_type": "AWS_OWNED" }),
+                };
+                resource_data.insert("sse_description".to_string(), sse_value);
+
                 // Create resource DTO
                 let table = AwsResourceDto {
                     id: None,
