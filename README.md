@@ -70,7 +70,7 @@ Remote install without cloning the repository:
 curl -fsSL https://raw.githubusercontent.com/sumitharajan/mayyam/main/scripts/install.sh | bash
 ```
 
-This pulls the published multi-platform container image and starts Mayyam with Docker Compose, which avoids compiling the Rust/AWS dependency graph on Mac or Linux hosts.
+This pulls the published multi-platform Linux container image and starts Mayyam with Docker Compose, which avoids compiling the Rust/AWS dependency graph on macOS, Linux, or Windows hosts. The image is published for `linux/amd64` and `linux/arm64`; Docker automatically selects the matching image, including through Docker Desktop on macOS and Windows.
 
 ```bash
 cp .env.distributable.example .env.distributable

@@ -48,7 +48,7 @@ oauth2 = "4.4"
 samael = "0.0.12"  # SAML2 authentication support
 
 # Kafka
-rdkafka = { version = "0.34", features = ["dynamic-linking"] }
+rdkafka = { version = "0.34", features = ["cmake-build"] }
 
 # Compression and filesystem operations
 flate2 = "1.0"  # Gzip compression
