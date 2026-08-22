@@ -23,3 +23,14 @@ tmp
 frontend/node_modules
 frontend/build
 backend/target
+docs
+_work
+.claude
+.agents
+.codex
+frontend/playwright-report
+frontend/test-results
+backend/test-results
+backend/logs
+backend/backups
+test_data_file*.csv
