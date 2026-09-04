@@ -15,6 +15,7 @@ on:
       - 'frontend/**'
       - 'docker/**'
       - 'scripts/validate-build-optimization.sh'
+      - 'scripts/backend-base-image-ref.sh'
   workflow_dispatch:
 
 env:
@@ -48,6 +49,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
+      packages: read
     strategy:
       fail-fast: false
       matrix:
@@ -65,6 +67,27 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3.12.0
 
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Resolve backend dependency base
+      id: backend_base
+      env:
+        REPOSITORY_OWNER: ${{ github.repository_owner }}
+      run: |
+        CANDIDATE_IMAGE="$(bash scripts/backend-base-image-ref.sh "${REPOSITORY_OWNER}")"
+        if docker buildx imagetools inspect "${CANDIDATE_IMAGE}" >/dev/null 2>&1; then
+          echo "image=${CANDIDATE_IMAGE}" >> "${GITHUB_OUTPUT}"
+          echo "Reusing ${CANDIDATE_IMAGE}"
+        else
+          echo "image=backend-base-local" >> "${GITHUB_OUTPUT}"
+          echo "No published dependency base for this manifest; using the local fallback."
+        fi
+
     - name: Build production container
       uses: docker/build-push-action@v6
       with:
@@ -72,6 +95,8 @@ jobs:
         file: ./Dockerfile
         platforms: ${{ matrix.platform }}
         push: false
+        build-args: |
+          BACKEND_BASE_IMAGE=${{ steps.backend_base.outputs.image }}
         cache-from: type=gha,scope=mayyam-production-${{ matrix.arch }}
         cache-to: type=gha,mode=max,scope=mayyam-production-${{ matrix.arch }}
 
@@ -110,14 +135,23 @@ jobs:
           type=ref,event=branch
           type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
-    - name: Compute backend base image tag
+    - name: Compute backend base image reference
       id: backend_base
+      env:
+        REPOSITORY_OWNER: ${{ github.repository_owner }}
       run: |
-        LOCK_HASH="$(sha256sum backend/Cargo.toml backend/Cargo.lock backend/rust-toolchain.toml Dockerfile.base | sha256sum | awk '{print $1}')"
-        echo "lock_hash=${LOCK_HASH}" >> "$GITHUB_OUTPUT"
-        echo "registry_image=ghcr.io/${GITHUB_REPOSITORY_OWNER}/mayyam-backend-base:${LOCK_HASH}" >> "$GITHUB_OUTPUT"
+        REGISTRY_IMAGE="$(bash scripts/backend-base-image-ref.sh "${REPOSITORY_OWNER}")"
+        echo "registry_image=${REGISTRY_IMAGE}" >> "${GITHUB_OUTPUT}"
+        if docker buildx imagetools inspect "${REGISTRY_IMAGE}" >/dev/null 2>&1; then
+          echo "exists=true" >> "${GITHUB_OUTPUT}"
+          echo "Reusing ${REGISTRY_IMAGE}"
+        else
+          echo "exists=false" >> "${GITHUB_OUTPUT}"
+          echo "${REGISTRY_IMAGE} will be built and published."
+        fi
 
     - name: Build and push backend base image
+      if: steps.backend_base.outputs.exists != 'true'
       uses: docker/build-push-action@v6
       with:
         context: .

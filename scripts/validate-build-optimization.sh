@@ -49,6 +49,15 @@ fi
 assert_present "if: github.event_name != 'push'" .github/workflows/docker-image.yml
 assert_present "needs: [validate-compose]" .github/workflows/docker-image.yml
 
+# Reuse the immutable dependency image published from main. Dependency-changing
+# PRs safely fall back to the local base stage until main publishes their hash.
+assert_present "scripts/backend-base-image-ref.sh" .github/workflows/docker-image.yml
+assert_present 'BACKEND_BASE_IMAGE=${{ steps.backend_base.outputs.image }}' .github/workflows/docker-image.yml
+assert_present "if: steps.backend_base.outputs.exists != 'true'" .github/workflows/docker-image.yml
+if [[ ! -f scripts/backend-base-image-ref.sh ]]; then
+    fail "scripts/backend-base-image-ref.sh does not exist"
+fi
+
 # Keep runtime-only nginx changes outside the React source-copy cache boundary.
 assert_present "COPY docker/nginx.single-container.conf" Dockerfile
 if [[ ! -f docker/nginx.single-container.conf ]]; then
