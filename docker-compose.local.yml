@@ -152,13 +152,19 @@ services:
       AWS_REGION: us-east-1
       API_URL: http://backend:8085
       TEST_API_BASE_URL: http://backend:8085
+      # The stack stands up localstack + kafka, so exercise those suites.
+      # K8s tests stay off — there is no cluster in this compose stack.
+      ENABLE_AWS_TESTS: "1"
+      ENABLE_KAFKA_TESTS: "1"
     depends_on:
       backend:
         condition: service_healthy
     volumes:
       - ./backend:/usr/src/app
     working_dir: /usr/src/app
-    command: cargo test --test integration -- --nocapture
+    # Suite is gated behind the `integration-tests` feature and lives in
+    # tests/integration_tests.rs; nextest emits JUnit via [profile.ci.junit].
+    command: bash -lc "mkdir -p test-results && cargo nextest run --profile ci --features integration-tests"
 
 volumes:
   postgres_data:

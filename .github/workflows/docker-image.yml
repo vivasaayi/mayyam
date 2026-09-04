@@ -2,17 +2,34 @@ name: Docker Image CI
 
 on:
   push:
-    branches: [ "*" ]
+    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+    paths:
+      - '.github/workflows/docker-image.yml'
+      - '.dockerignore'
+      - 'Dockerfile'
+      - 'Dockerfile.base'
+      - 'docker-compose*.yml'
+      - 'backend/**'
+      - 'frontend/**'
+      - 'docker/**'
+      - 'scripts/validate-build-optimization.sh'
+      - 'scripts/backend-base-image-ref.sh'
+  workflow_dispatch:
 
 env:
   DOCKER_BUILDKIT: 1
   COMPOSE_DOCKER_CLI_BUILD: 1
   COMPOSE_PROJECT_NAME: mayyam
 
+concurrency:
+  group: docker-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
+  validate-compose:
+    name: Docker Compose configuration
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -20,82 +37,72 @@ jobs:
     steps:
     - uses: actions/checkout@v5
     
+    - name: Validate compose files
+      run: |
+        bash scripts/validate-build-optimization.sh
+        docker compose --profile dev config >/dev/null
+        docker compose --profile uat --profile test config >/dev/null
+
+  build:
+    name: Container build (${{ matrix.arch }})
+    if: github.event_name != 'push'
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
+
+    steps:
+    - uses: actions/checkout@v5
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3.12.0
 
-    - name: Compute backend base image tag
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Resolve backend dependency base
       id: backend_base
+      env:
+        REPOSITORY_OWNER: ${{ github.repository_owner }}
       run: |
-        LOCK_HASH="$(sha256sum backend/Cargo.lock | awk '{print $1}')"
-        echo "lock_hash=${LOCK_HASH}" >> "$GITHUB_OUTPUT"
-        echo "local_image=mayyam-backend-base:${LOCK_HASH}" >> "$GITHUB_OUTPUT"
-        
-    - name: Build backend base image for development testing
+        CANDIDATE_IMAGE="$(bash scripts/backend-base-image-ref.sh "${REPOSITORY_OWNER}")"
+        if docker buildx imagetools inspect "${CANDIDATE_IMAGE}" >/dev/null 2>&1; then
+          echo "image=${CANDIDATE_IMAGE}" >> "${GITHUB_OUTPUT}"
+          echo "Reusing ${CANDIDATE_IMAGE}"
+        else
+          echo "image=backend-base-local" >> "${GITHUB_OUTPUT}"
+          echo "No published dependency base for this manifest; using the local fallback."
+        fi
+
+    - name: Build production container
       uses: docker/build-push-action@v6
       with:
         context: .
-        file: ./Dockerfile.base
-        load: true
-        tags: ${{ steps.backend_base.outputs.local_image }}
-        cache-from: type=gha,scope=mayyam-backend-base
-        cache-to: type=gha,mode=max,scope=mayyam-backend-base
-
-    - name: Build production image
-      env:
-        BACKEND_BASE_IMAGE: ${{ steps.backend_base.outputs.local_image }}
-        DOCKER_BUILDKIT: 1
-      run: |
-        docker build \
-          --build-arg BACKEND_BASE_IMAGE="${BACKEND_BASE_IMAGE}" \
-          -t mayyam-production-smoke:ci \
-          .
-
-    - name: Build and test development environment
-      env:
-        BACKEND_BASE_IMAGE: ${{ steps.backend_base.outputs.local_image }}
-        DOCKER_BUILDKIT: 0
-        COMPOSE_DOCKER_CLI_BUILD: 0
-      run: |
-        # Build development images
-        docker compose --profile dev build
-        
-        # Start development environment
-        docker compose --profile dev up -d
-        for i in {1..60}; do
-          if curl -fsS http://localhost:8080/health; then
-            break
-          fi
-          if [ "$i" -eq 60 ]; then
-            docker compose --profile dev logs backend-dev
-            exit 1
-          fi
-          sleep 5
-        done
-        
-        # Test backend directly
-        curl -f http://localhost:8080/health
-        
-        # Test frontend proxy
-        curl -f http://localhost:3000/
-        
-        # Cleanup
-        docker compose --profile dev down
-    
-    - name: Tag and prepare for registry (optional)
-      if: github.ref == 'refs/heads/main'
-      run: |
-        # Tag the development images using service names directly
-        docker tag mayyam-backend-dev:latest mayyam-backend:latest
-        docker tag mayyam-frontend-dev:latest mayyam-frontend:latest
-        docker tag mayyam-backend-dev:latest mayyam-backend:${{ github.sha }}
-        docker tag mayyam-frontend-dev:latest mayyam-frontend:${{ github.sha }}
-        
-        # List built images
-        docker images | grep mayyam
+        file: ./Dockerfile
+        platforms: ${{ matrix.platform }}
+        push: false
+        build-args: |
+          BACKEND_BASE_IMAGE=${{ steps.backend_base.outputs.image }}
+        cache-from: type=gha,scope=mayyam-production-${{ matrix.arch }}
+        cache-to: type=gha,mode=max,scope=mayyam-production-${{ matrix.arch }}
 
   publish:
     runs-on: ubuntu-latest
-    needs: build
+    needs: [validate-compose]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     # We need permissions to write to packages
     permissions:
@@ -104,12 +111,12 @@ jobs:
     
     steps:
     - uses: actions/checkout@v5
-    
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3.12.0
 
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3.12.0
     
     - name: Log in to GitHub Container Registry
       uses: docker/login-action@v3
@@ -122,26 +129,35 @@ jobs:
       id: meta
       uses: docker/metadata-action@v5
       with:
-        images: ghcr.io/${{ github.repository }}/mayyam
+        images: ghcr.io/${{ github.repository_owner }}/mayyam
         tags: |
           type=sha
           type=ref,event=branch
           type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
-    - name: Compute backend base image tag
+    - name: Compute backend base image reference
       id: backend_base
+      env:
+        REPOSITORY_OWNER: ${{ github.repository_owner }}
       run: |
-        LOCK_HASH="$(sha256sum backend/Cargo.lock | awk '{print $1}')"
-        echo "lock_hash=${LOCK_HASH}" >> "$GITHUB_OUTPUT"
-        echo "registry_image=ghcr.io/${GITHUB_REPOSITORY}/mayyam-backend-base:${LOCK_HASH}" >> "$GITHUB_OUTPUT"
+        REGISTRY_IMAGE="$(bash scripts/backend-base-image-ref.sh "${REPOSITORY_OWNER}")"
+        echo "registry_image=${REGISTRY_IMAGE}" >> "${GITHUB_OUTPUT}"
+        if docker buildx imagetools inspect "${REGISTRY_IMAGE}" >/dev/null 2>&1; then
+          echo "exists=true" >> "${GITHUB_OUTPUT}"
+          echo "Reusing ${REGISTRY_IMAGE}"
+        else
+          echo "exists=false" >> "${GITHUB_OUTPUT}"
+          echo "${REGISTRY_IMAGE} will be built and published."
+        fi
 
     - name: Build and push backend base image
+      if: steps.backend_base.outputs.exists != 'true'
       uses: docker/build-push-action@v6
       with:
         context: .
         file: ./Dockerfile.base
-        push: true
         platforms: linux/amd64,linux/arm64
+        push: true
         tags: ${{ steps.backend_base.outputs.registry_image }}
         cache-from: type=gha,scope=mayyam-backend-base
         cache-to: type=gha,mode=max,scope=mayyam-backend-base
@@ -151,9 +167,9 @@ jobs:
       with:
         context: .
         file: ./Dockerfile
+        platforms: linux/amd64,linux/arm64
         pull: true
         push: true
-        platforms: linux/amd64,linux/arm64
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         build-args: |

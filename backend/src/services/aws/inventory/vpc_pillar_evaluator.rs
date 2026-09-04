@@ -31,6 +31,7 @@ use crate::services::aws::inventory::types::{
 pub const REASON_COST_NO_TAGS: &str = "VPC_COST_NO_TAGS";
 pub const REASON_SEC_DEFAULT_VPC_PRESENT: &str = "VPC_SEC_DEFAULT_VPC_PRESENT";
 pub const REASON_SEC_FLOW_LOGS_DATA_NOT_COLLECTED: &str = "VPC_SEC_FLOW_LOGS_DATA_NOT_COLLECTED";
+pub const REASON_SEC_FLOW_LOGS_DISABLED: &str = "VPC_SEC_FLOW_LOGS_DISABLED";
 pub const REASON_RES_NOT_AVAILABLE: &str = "VPC_RES_NOT_AVAILABLE";
 pub const REASON_INV_STALE_DATA: &str = "VPC_INV_STALE_DATA";
 
@@ -110,19 +111,40 @@ fn evaluate_security(resource: &AwsResourceModel, findings: &mut Vec<InventoryFi
         });
     }
 
-    if resource.resource_data.get("flow_logs").is_none() {
-        findings.push(InventoryFinding {
-            resource_id: resource.resource_id.clone(),
-            arn: resource.arn.clone(),
-            pillar: Pillar::Security,
-            reason_code: REASON_SEC_FLOW_LOGS_DATA_NOT_COLLECTED.to_string(),
-            severity: Severity::Medium,
-            message: format!(
-                "Flow log configuration for VPC {} is not collected yet; network audit posture cannot be assessed",
-                resource.resource_id
-            ),
-            evidence: json!({ "flow_logs_collected": false }),
-        });
+    match resource.resource_data.get("flow_logs") {
+        Some(flow_logs) => {
+            // An empty array means the collector queried AWS and found no flow
+            // logs configured for this VPC -> traffic is not being logged.
+            let no_flow_logs = flow_logs.as_array().map(|a| a.is_empty()).unwrap_or(true);
+            if no_flow_logs {
+                findings.push(InventoryFinding {
+                    resource_id: resource.resource_id.clone(),
+                    arn: resource.arn.clone(),
+                    pillar: Pillar::Security,
+                    reason_code: REASON_SEC_FLOW_LOGS_DISABLED.to_string(),
+                    severity: Severity::Medium,
+                    message: format!(
+                        "VPC {} has no flow logs; network traffic is not recorded and intrusion/exfiltration cannot be audited",
+                        resource.resource_id
+                    ),
+                    evidence: json!({ "flow_logs": flow_logs }),
+                });
+            }
+        }
+        None => {
+            findings.push(InventoryFinding {
+                resource_id: resource.resource_id.clone(),
+                arn: resource.arn.clone(),
+                pillar: Pillar::Security,
+                reason_code: REASON_SEC_FLOW_LOGS_DATA_NOT_COLLECTED.to_string(),
+                severity: Severity::Medium,
+                message: format!(
+                    "Flow log configuration for VPC {} could not be collected; network audit posture cannot be assessed",
+                    resource.resource_id
+                ),
+                evidence: json!({ "flow_logs_collected": false }),
+            });
+        }
     }
 }
 
@@ -212,6 +234,24 @@ mod tests {
             "unexpected: {:?}",
             report.findings
         );
+    }
+
+    #[test]
+    fn security_flags_vpc_with_no_flow_logs() {
+        let r = fixture(
+            "vpc-nolog",
+            json!({"team": "net"}),
+            json!({"vpc_id": "vpc-nolog", "state": "available", "is_default": false, "flow_logs": []}),
+            now(),
+        );
+        let report = evaluate_vpc_fleet(&[r], Pillar::Security, now());
+        let codes: Vec<&str> = report
+            .findings
+            .iter()
+            .map(|f| f.reason_code.as_str())
+            .collect();
+        assert!(codes.contains(&REASON_SEC_FLOW_LOGS_DISABLED));
+        assert!(!codes.contains(&REASON_SEC_FLOW_LOGS_DATA_NOT_COLLECTED));
     }
 
     #[test]

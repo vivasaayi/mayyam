@@ -34,9 +34,7 @@ ARG CARGO_BUILD_JOBS
 
 WORKDIR /usr/src/app
 
-ENV PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH \
-    LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH \
-    RUSTC_WRAPPER=/usr/local/cargo/bin/sccache \
+ENV RUSTC_WRAPPER=/usr/local/cargo/bin/sccache \
     CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS} \
     SCCACHE_DIR=/var/cache/sccache \
     SCCACHE_CACHE_SIZE=10G
@@ -54,8 +52,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         ca-certificates \
         git \
         cmake \
-        g++ \
-        libsasl2-dev; \
+        g++; \
     arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
     case "${arch}" in \
         amd64|x86_64) sccache_arch="x86_64-unknown-linux-musl" ;; \
@@ -66,14 +63,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     mv "/tmp/sccache-v${SCCACHE_VERSION}-${sccache_arch}/sccache" /usr/local/cargo/bin/; \
     rm -rf /tmp/sccache* /var/lib/apt/lists/*
 
-RUN git clone --depth 1 --branch v2.10.0 https://github.com/confluentinc/librdkafka.git /tmp/librdkafka && \
-    cd /tmp/librdkafka && \
-    ./configure --prefix=/usr/local && \
-    make -j"$(nproc)" && \
-    make install && \
-    rm -rf /tmp/librdkafka
-
-RUN pkg-config --modversion rdkafka && sccache --version
+RUN sccache --version
 
 COPY backend/Cargo.toml backend/Cargo.lock ./
 
@@ -127,10 +117,7 @@ RUN apt-get update && \
         nginx \
         bash \
         ca-certificates \
-        libsasl2-2 \
         libssl3 \
-        liblz4-1 \
-        libzstd1 \
         zlib1g \
         curl && \
     rm -f /etc/nginx/sites-enabled/default /etc/nginx/sites-available/default && \
@@ -144,14 +131,11 @@ COPY --from=backend-builder /usr/src/app/target/release/mayyam /app/mayyam
 COPY --from=backend-builder /usr/src/app/config.default.yml /app/config.default.yml
 COPY --from=backend-builder /usr/src/app/config.yml /app/config.yml
 
-# Copy librdkafka libs
-COPY --from=backend-builder /usr/local/lib/librdkafka* /usr/local/lib/
-
 # Copy frontend build output
 COPY --from=frontend-builder /app/frontend/build /usr/share/nginx/html
 
 # Copy single-container nginx config
-COPY frontend/nginx.single-container.conf /etc/nginx/conf.d/default.conf
+COPY docker/nginx.single-container.conf /etc/nginx/conf.d/default.conf
 
 # Create non-root user for backend
 RUN useradd --create-home --shell /bin/bash appuser && \
@@ -163,7 +147,6 @@ RUN chmod +x /start.sh
 
 # Runtime config
 ENV RUST_LOG=info
-ENV LD_LIBRARY_PATH=/usr/local/lib
 
 # Expose ports
 EXPOSE 80 8080

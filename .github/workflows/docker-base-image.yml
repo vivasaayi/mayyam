@@ -1,14 +1,11 @@
 name: Build and Push Backend Base Image
 
 on:
-  push:
-    branches: [ "main" ]
-    paths:
-      - 'backend/Cargo.toml'
-      - 'backend/Cargo.lock'
-      - '.github/workflows/docker-base-image.yml'
-      - 'Dockerfile.base'
   workflow_dispatch:
+
+concurrency:
+  group: backend-base-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-base-image:
@@ -37,7 +34,7 @@ jobs:
       id: meta
       uses: docker/metadata-action@v5
       with:
-        images: ghcr.io/${{ github.repository }}/mayyam-backend-base
+        images: ghcr.io/${{ github.repository_owner }}/mayyam-backend-base
         tags: |
           type=raw,value=latest
 

@@ -152,6 +152,19 @@ impl RdsControlPlane {
                 json!(db_instance.backup_retention_period()),
             );
 
+            // Security posture: only persist when AWS reported it, so the
+            // evaluator can distinguish a collected value from an uncollected
+            // one (absent key -> honest data-gap finding).
+            if let Some(storage_encrypted) = db_instance.storage_encrypted() {
+                resource_data.insert("storage_encrypted".to_string(), json!(storage_encrypted));
+            }
+            if let Some(publicly_accessible) = db_instance.publicly_accessible() {
+                resource_data.insert(
+                    "publicly_accessible".to_string(),
+                    json!(publicly_accessible),
+                );
+            }
+
             // Create resource DTO
             let instance = AwsResourceDto {
                 id: None,

@@ -1,3 +1,14 @@
 [profile.default.junit]
 path = "test-results/junit.xml"
 report-name = "mayyam-integration-tests"
+
+# CI profile used by the integration-tests container (see Dockerfile.test /
+# docker-compose.local.yml). Reports every failure instead of stopping at the
+# first, retries flaky network-bound integration tests, and still emits JUnit.
+[profile.ci]
+fail-fast = false
+retries = 2
+
+[profile.ci.junit]
+path = "test-results/junit.xml"
+report-name = "mayyam-integration-tests"

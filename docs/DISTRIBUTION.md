@@ -56,6 +56,8 @@ That installer now:
 - starts Mayyam plus its internal app DB
 - pulls the published multi-platform image instead of building Rust locally
 
+The published image supports `linux/amd64` and `linux/arm64`. It runs natively on Linux and through Docker Desktop's Linux-container mode on macOS and Windows. It is not a native Windows container image.
+
 Image publishing example
 
 ```bash

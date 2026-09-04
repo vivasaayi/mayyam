@@ -175,6 +175,25 @@ impl SqsControlPlane {
                 );
             }
 
+            // Encryption at rest: SSE-KMS (KmsMasterKeyId) or SSE-SQS
+            // (SqsManagedSseEnabled). Persist the managed-SSE flag definitively
+            // so the evaluator can distinguish "unencrypted" from "not collected".
+            if let Some(kms_key) = attributes.get("KmsMasterKeyId") {
+                resource_data.insert("kms_master_key_id".to_string(), json!(kms_key));
+            }
+            resource_data.insert(
+                "sqs_managed_sse_enabled".to_string(),
+                json!(attributes
+                    .get("SqsManagedSseEnabled")
+                    .map(|v| v == "true")
+                    .unwrap_or(false)),
+            );
+
+            // Redrive policy (dead-letter queue) for the resilience pillar.
+            if let Some(redrive) = attributes.get("RedrivePolicy") {
+                resource_data.insert("redrive_policy".to_string(), json!(redrive));
+            }
+
             // Create resource DTO
             let queue = AwsResourceDto {
                 id: None,

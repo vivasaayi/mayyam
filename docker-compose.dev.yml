@@ -128,8 +128,6 @@ services:
       - AWS_REGION=us-east-1
       - API_URL=http://backend:8085
       - TEST_API_BASE_URL=http://backend:8085
-      - PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
-      - LD_LIBRARY_PATH=/usr/local/lib
     depends_on:
       backend:
         condition: service_healthy

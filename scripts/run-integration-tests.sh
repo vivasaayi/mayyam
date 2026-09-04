@@ -25,17 +25,16 @@ fi
 
 echo "Running integration-tests container"
 # Run the integration-tests container and *capture* its exit code.
-docker compose -f docker-compose.local.yml run --rm integration-tests
-
-RC=$?
+RC=0
+docker compose -f docker-compose.local.yml run --rm integration-tests || RC=$?
 
 echo "Integration tests finished with return code: $RC"
 
-echo "Tearing down docker-compose test stack"
-docker compose -f docker-compose.local.yml down --volumes --remove-orphans
-
 echo "Collecting docker-compose logs"
 docker compose -f docker-compose.local.yml logs --no-color > docker-compose.integration.log || true
+
+echo "Tearing down docker-compose test stack"
+docker compose -f docker-compose.local.yml down --volumes --remove-orphans
 
 # If junit results exist, print a short summary
 if [ -f backend/test-results/junit.xml ]; then

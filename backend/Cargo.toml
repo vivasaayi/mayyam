@@ -48,7 +48,7 @@ oauth2 = "4.4"
 samael = "0.0.12"  # SAML2 authentication support
 
 # Kafka
-rdkafka = { version = "0.34", features = ["dynamic-linking"] }
+rdkafka = { version = "0.34", features = ["cmake-build"] }
 
 # Compression and filesystem operations
 flate2 = "1.0"  # Gzip compression
@@ -61,7 +61,6 @@ tempfile = "3.8"   # Temporary file creation for safe operations
 # AWS SDKX
 aws-config = "1.1.7"
 aws-sdk-ec2 = "1.23.0"
-aws-smithy-http = "0.60.6"  # Added for AWS SDK core types
 aws-smithy-types = "1.1.7"  # Added for AWS SDK date time formatting
 aws-sdk-s3 = "1.23.0"
 aws-sdk-rds = "1.23.0"

@@ -32,6 +32,8 @@ use crate::services::aws::inventory::types::{
 pub const REASON_COST_NO_TAGS: &str = "OPENSEARCH_COST_NO_TAGS";
 pub const REASON_SEC_ENCRYPTION_DATA_NOT_COLLECTED: &str =
     "OPENSEARCH_SEC_ENCRYPTION_DATA_NOT_COLLECTED";
+pub const REASON_SEC_ENCRYPTION_AT_REST_DISABLED: &str =
+    "OPENSEARCH_SEC_ENCRYPTION_AT_REST_DISABLED";
 pub const REASON_RES_SINGLE_NODE: &str = "OPENSEARCH_RES_SINGLE_NODE";
 pub const REASON_RES_NO_ZONE_AWARENESS: &str = "OPENSEARCH_RES_NO_ZONE_AWARENESS";
 pub const REASON_RES_NO_DEDICATED_MASTER: &str = "OPENSEARCH_RES_NO_DEDICATED_MASTER";
@@ -93,19 +95,42 @@ fn evaluate_cost(resource: &AwsResourceModel, findings: &mut Vec<InventoryFindin
 }
 
 fn evaluate_security(resource: &AwsResourceModel, findings: &mut Vec<InventoryFinding>) {
-    if resource.resource_data.get("encryption_at_rest").is_none() {
-        findings.push(InventoryFinding {
-            resource_id: resource.resource_id.clone(),
-            arn: resource.arn.clone(),
-            pillar: Pillar::Security,
-            reason_code: REASON_SEC_ENCRYPTION_DATA_NOT_COLLECTED.to_string(),
-            severity: Severity::Medium,
-            message: format!(
-                "Encryption state for domain {} is not collected yet; security pillar cannot be fully assessed",
-                resource.resource_id
-            ),
-            evidence: json!({ "encryption_at_rest_collected": false }),
-        });
+    // opensearch_control_plane persists encryption_at_rest_options.enabled.
+    match resource.resource_data.get("encryption_at_rest_options") {
+        Some(encryption) => {
+            let enabled = encryption
+                .get("enabled")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if !enabled {
+                findings.push(InventoryFinding {
+                    resource_id: resource.resource_id.clone(),
+                    arn: resource.arn.clone(),
+                    pillar: Pillar::Security,
+                    reason_code: REASON_SEC_ENCRYPTION_AT_REST_DISABLED.to_string(),
+                    severity: Severity::High,
+                    message: format!(
+                        "Domain {} has encryption at rest disabled; indexed data is stored unencrypted",
+                        resource.resource_id
+                    ),
+                    evidence: json!({ "encryption_at_rest_options": encryption }),
+                });
+            }
+        }
+        None => {
+            findings.push(InventoryFinding {
+                resource_id: resource.resource_id.clone(),
+                arn: resource.arn.clone(),
+                pillar: Pillar::Security,
+                reason_code: REASON_SEC_ENCRYPTION_DATA_NOT_COLLECTED.to_string(),
+                severity: Severity::Medium,
+                message: format!(
+                    "Encryption state for domain {} could not be collected; security pillar cannot be fully assessed",
+                    resource.resource_id
+                ),
+                evidence: json!({ "encryption_at_rest_collected": false }),
+            });
+        }
     }
 }
 
@@ -211,7 +236,7 @@ mod tests {
             json!({"team": "obs"}),
             json!({
                 "domain_name": "logs",
-                "encryption_at_rest": {"enabled": true},
+                "encryption_at_rest_options": {"enabled": true},
                 "cluster_config": {
                     "instance_count": 1,
                     "zone_awareness_enabled": false,
@@ -238,7 +263,7 @@ mod tests {
             json!({"team": "obs"}),
             json!({
                 "domain_name": "search",
-                "encryption_at_rest": {"enabled": true},
+                "encryption_at_rest_options": {"enabled": true},
                 "cluster_config": {
                     "instance_count": 3,
                     "zone_awareness_enabled": true,
@@ -275,11 +300,40 @@ mod tests {
     }
 
     #[test]
+    fn security_flags_encryption_at_rest_disabled() {
+        let r = fixture(
+            "plain",
+            json!({"team": "obs"}),
+            json!({"domain_name": "plain", "encryption_at_rest_options": {"enabled": false}}),
+            now(),
+        );
+        let report = evaluate_opensearch_fleet(&[r], Pillar::Security, now());
+        let f = report
+            .findings
+            .iter()
+            .find(|f| f.reason_code == REASON_SEC_ENCRYPTION_AT_REST_DISABLED)
+            .expect("encryption disabled finding");
+        assert_eq!(f.severity as u8, Severity::High as u8);
+    }
+
+    #[test]
+    fn security_passes_when_encryption_at_rest_enabled() {
+        let r = fixture(
+            "secure",
+            json!({"team": "obs"}),
+            json!({"domain_name": "secure", "encryption_at_rest_options": {"enabled": true}}),
+            now(),
+        );
+        let report = evaluate_opensearch_fleet(&[r], Pillar::Security, now());
+        assert!(report.findings.is_empty(), "unexpected: {:?}", report.findings);
+    }
+
+    #[test]
     fn cost_reports_tag_gap_for_untagged_domain() {
         let r = fixture(
             "untagged",
             json!({}),
-            json!({"domain_name": "untagged", "encryption_at_rest": {"enabled": true}}),
+            json!({"domain_name": "untagged", "encryption_at_rest_options": {"enabled": true}}),
             now(),
         );
         let report = evaluate_opensearch_fleet(&[r], Pillar::Cost, now());
